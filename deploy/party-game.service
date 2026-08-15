@@ -1,0 +1,25 @@
+[Unit]
+Description=Party Game server
+After=network.target
+
+[Service]
+Type=simple
+User=partygame
+Group=partygame
+WorkingDirectory=/opt/party-game
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/opt/party-game/node_modules/.bin/tsx server/src/index.ts
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=party-game
+
+# Light hardening - safe defaults for a Node app that only needs to read its
+# own directory and talk on the network.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

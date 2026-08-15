@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm run dev -w @game/server\" \"npm run dev -w @game/client\"",
+    "build": "npm run build -w @game/client",
+    "start": "npm run start -w @game/server",
     "typecheck": "npm run typecheck -w @game/shared && npm run typecheck -w @game/server && npm run typecheck -w @game/client"
   },
   "devDependencies": {

@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { Server } from 'socket.io';
@@ -41,12 +43,35 @@ import {
 } from './rooms.js';
 import { calculatePoints } from './scoring.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const isProduction = process.env.NODE_ENV === 'production';
+const PRODUCTION_ORIGIN = 'https://demboyz11.duckdns.org';
+// Permissive in dev (any origin - useful for testing from a phone on the
+// LAN against the Vite dev server); locked to the real domain in prod.
+const corsOptions = { origin: isProduction ? PRODUCTION_ORIGIN : true };
+
 const app = express();
-app.use(cors({ origin: true }));
+app.use(cors(corsOptions));
+
+if (isProduction) {
+  // In production, Caddy proxies both the built client and the API through
+  // this same process, so Express also serves the static build - with an
+  // SPA fallback so a direct load or refresh of e.g. /play doesn't 404.
+  const clientDistPath = path.join(__dirname, '../../client/dist');
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    // Never let the fallback intercept Socket.IO's own HTTP endpoints.
+    if (req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 const httpServer = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: true },
+  cors: corsOptions,
 });
 
 // socket.id -> the single room/role a socket is currently associated with
@@ -503,7 +528,12 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3001;
-httpServer.listen(PORT, () => {
-  console.log(`server listening on port ${PORT}`);
+const PORT = Number(process.env.PORT) || 3001;
+// In production, only Caddy (on the same machine) should ever reach this
+// port directly - bind to loopback only. In dev, stay on all interfaces so
+// a phone on the LAN can hit the dev server directly if needed.
+const HOST = isProduction ? '127.0.0.1' : '0.0.0.0';
+
+httpServer.listen(PORT, HOST, () => {
+  console.log(`server listening on ${HOST}:${PORT} (${isProduction ? 'production' : 'development'})`);
 });
