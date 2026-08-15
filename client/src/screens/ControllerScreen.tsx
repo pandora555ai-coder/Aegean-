@@ -13,6 +13,7 @@ import {
   type QuestionShowPlayerPayload,
   type RevealPlayerPayload,
   type RevealShowPayload,
+  type ScoreboardPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -40,6 +41,7 @@ export default function ControllerScreen() {
   const [pendingChoice, setPendingChoice] = useState<number | null>(null);
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
+  const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -61,6 +63,7 @@ export default function ControllerScreen() {
         setPendingChoice(null);
         setAcceptedChoice(null);
         setReveal(null);
+        setScoreboard(null);
       }
     }
 
@@ -74,12 +77,18 @@ export default function ControllerScreen() {
       }
     }
 
+    function handleScoreboardShow(payload: ScoreboardPayload) {
+      setReveal(null);
+      setScoreboard(payload);
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
+    socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -88,6 +97,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
+      socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     };
   }, []);
 
@@ -111,6 +121,35 @@ export default function ControllerScreen() {
     }
     setPendingChoice(index);
     socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
+  }
+
+  if (scoreboard) {
+    const sorted = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
+    const myIndex = sorted.findIndex((standing) => standing.playerId === playerId);
+    const me = myIndex >= 0 ? sorted[myIndex] : null;
+    const above = myIndex > 0 ? sorted[myIndex - 1] : null;
+    const gap = me && above ? above.score - me.score : 0;
+
+    return (
+      <div style={styles.container}>
+        <div style={styles.scoreboardRank} data-testid="scoreboard-rank">
+          #{me ? me.rank : '-'}
+        </div>
+        <div style={styles.scoreboardScore} data-testid="scoreboard-score">
+          {me ? me.score : 0} πόντοι
+        </div>
+        {above ? (
+          <div style={styles.scoreboardGap} data-testid="scoreboard-gap">
+            {gap} πόντοι πίσω από τον/την {above.name}
+          </div>
+        ) : (
+          <div style={styles.scoreboardGap} data-testid="scoreboard-gap">
+            Είσαι πρώτος/η!
+          </div>
+        )}
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τη βαθμολογία</div>
+      </div>
+    );
   }
 
   if (reveal) {
@@ -340,6 +379,23 @@ const styles: Record<string, CSSProperties> = {
   },
   revealRank: {
     fontSize: '1.25rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: '#555',
+  },
+  scoreboardRank: {
+    fontSize: '3rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: '#2563eb',
+  },
+  scoreboardScore: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
+    textAlign: 'center',
+  },
+  scoreboardGap: {
+    fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
     color: '#555',

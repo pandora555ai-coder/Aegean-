@@ -16,6 +16,7 @@ import {
   type RevealShowPayload,
   type RoomCode,
   type RoomCreatedPayload,
+  type ScoreboardPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -31,6 +32,7 @@ export default function HostScreen() {
   const [answerProgress, setAnswerProgress] = useState<AnswerProgressPayload | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(QUESTION_TIME_MS / 1000));
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
+  const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -50,6 +52,7 @@ export default function HostScreen() {
         setQuestion(payload);
         setAnswerProgress(null);
         setReveal(null);
+        setScoreboard(null);
       }
     }
 
@@ -63,12 +66,17 @@ export default function HostScreen() {
       }
     }
 
+    function handleScoreboardShow(payload: ScoreboardPayload) {
+      setScoreboard(payload);
+    }
+
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
+    socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -77,6 +85,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
+      socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     };
   }, []);
 
@@ -97,6 +106,10 @@ export default function HostScreen() {
 
   function handleStartGame() {
     socket.emit(ClientEvents.START_GAME, {});
+  }
+
+  function handleNext() {
+    socket.emit(ClientEvents.NEXT, {});
   }
 
   const players = lobby?.players ?? [];
@@ -139,6 +152,41 @@ export default function HostScreen() {
             </div>
           ))}
         </div>
+        <button data-testid="continue-button" style={styles.startButton} type="button" onClick={handleNext}>
+          Συνέχεια
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === 'SCOREBOARD' && scoreboard) {
+    const sortedStandings = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
+
+    return (
+      <div style={styles.container}>
+        <div style={styles.progress}>
+          Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
+        </div>
+        <div style={styles.standingsList}>
+          {sortedStandings.map((standing) => (
+            <div
+              key={standing.playerId}
+              data-testid="standing-row"
+              data-connected={standing.connected}
+              style={standing.connected ? styles.standingRow : styles.standingRowDisconnected}
+            >
+              <span style={styles.standingRank}>#{standing.rank}</span>
+              <span style={styles.standingName}>
+                {standing.name}
+                {!standing.connected && ' (αποσυνδέθηκε)'}
+              </span>
+              <span style={styles.standingScore}>{standing.score}</span>
+            </div>
+          ))}
+        </div>
+        <button data-testid="next-button" style={styles.startButton} type="button" onClick={handleNext}>
+          {scoreboard.isLastQuestion ? 'Τελικά αποτελέσματα' : 'Επόμενη'}
+        </button>
       </div>
     );
   }
@@ -398,5 +446,43 @@ const styles: Record<string, CSSProperties> = {
   resultPoints: {
     fontFamily: 'monospace',
     fontWeight: 700,
+  },
+  standingsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    width: '100%',
+    maxWidth: '800px',
+  },
+  standingRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.5rem',
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    padding: '1rem 1.5rem',
+    borderRadius: '0.75rem',
+    background: '#f3f4f6',
+  },
+  standingRowDisconnected: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.5rem',
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    padding: '1rem 1.5rem',
+    borderRadius: '0.75rem',
+    background: '#f3f4f6',
+    opacity: 0.4,
+  },
+  standingRank: {
+    color: '#2563eb',
+    minWidth: '3rem',
+  },
+  standingName: {
+    flex: 1,
+  },
+  standingScore: {
+    fontFamily: 'monospace',
   },
 };

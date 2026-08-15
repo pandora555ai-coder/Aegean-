@@ -18,6 +18,8 @@ import {
   type RevealPlayerPayload,
   type RevealPlayerResult,
   type RoomCode,
+  type ScoreboardPayload,
+  type ScoreboardStanding,
   type ServerToClientEvents,
 } from '@game/shared';
 import {
@@ -187,6 +189,36 @@ function endQuestion(code: RoomCode): void {
   );
 }
 
+// Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
+// ranking" convention, where a rank equals 1 + the number of players
+// strictly ahead of it.
+function buildScoreboard(room: Room): ScoreboardPayload {
+  const sorted = [...room.players.values()].sort((a, b) => b.score - a.score);
+
+  const standings: ScoreboardStanding[] = [];
+  let previousScore: number | null = null;
+  let previousRank = 0;
+  sorted.forEach((player, index) => {
+    const rank = player.score === previousScore ? previousRank : index + 1;
+    standings.push({
+      playerId: player.playerId,
+      name: player.name,
+      score: player.score,
+      rank,
+      connected: player.connected,
+    });
+    previousScore = player.score;
+    previousRank = rank;
+  });
+
+  return {
+    standings,
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    isLastQuestion: room.currentQuestionIndex >= room.questions.length - 1,
+  };
+}
+
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
 
@@ -338,6 +370,46 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on(ClientEvents.NEXT, () => {
+    const association = socketAssociationBySocketId.get(socket.id);
+    if (!association || association.role !== 'host') {
+      console.log(`rejected ${ClientEvents.NEXT} from ${socket.id}: not a host`);
+      return;
+    }
+
+    const room = getRoom(association.code);
+    if (!room) {
+      console.log(`rejected ${ClientEvents.NEXT} from ${socket.id}: room ${association.code} not found`);
+      return;
+    }
+
+    if (room.phase === 'REVEAL') {
+      room.phase = 'SCOREBOARD';
+      io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+      io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
+      console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
+      return;
+    }
+
+    if (room.phase === 'SCOREBOARD') {
+      const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
+      if (isLastQuestion) {
+        room.phase = 'GAME_OVER';
+        io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+        console.log(`room ${room.code} reached GAME_OVER`);
+        return;
+      }
+
+      room.currentQuestionIndex += 1;
+      room.phase = 'QUESTION';
+      io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+      startQuestion(room);
+      return;
+    }
+
+    console.log(`rejected ${ClientEvents.NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or SCOREBOARD`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`client disconnected: ${socket.id}`);
 
@@ -363,6 +435,16 @@ io.on('connection', (socket) => {
         `room ${association.code} players: ${JSON.stringify(Array.from(room?.players.values() ?? []))}`,
       );
       broadcastLobbyUpdate(association.code);
+
+      // The player who just left might have been the only one still
+      // unanswered - re-run the "everyone answered" check so the question
+      // doesn't sit waiting on the timer for someone who's no longer here.
+      if (room && room.phase === 'QUESTION') {
+        const connectedPlayers = getConnectedPlayers(room);
+        if (connectedPlayers.length > 0 && room.answers.size >= connectedPlayers.length) {
+          endQuestion(room.code);
+        }
+      }
     }
   });
 });

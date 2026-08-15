@@ -4,6 +4,7 @@ export const ClientEvents = {
   PLAYER_JOIN: 'player:join',
   START_GAME: 'host:start_game',
   SUBMIT_ANSWER: 'player:submit_answer',
+  NEXT: 'host:next',
 } as const;
 
 export const ServerEvents = {
@@ -18,6 +19,7 @@ export const ServerEvents = {
   ANSWER_ACCEPTED: 'answer:accepted',
   ANSWER_PROGRESS: 'answer:progress',
   REVEAL_SHOW: 'reveal:show',
+  SCOREBOARD_SHOW: 'scoreboard:show',
 } as const;
 
 export type RoomCode = string;
@@ -177,12 +179,32 @@ export function isRevealHostPayload(payload: RevealShowPayload): payload is Reve
   return 'results' in payload;
 }
 
+export interface HostNextPayload {}
+
+export interface ScoreboardStanding {
+  playerId: string;
+  name: string;
+  score: number;
+  rank: number; // tied scores share the same rank (1,1,3 - not 1,2,3)
+  connected: boolean;
+}
+
+// Symmetric, unlike question:show / reveal:show - standings are public,
+// that's the point of a scoreboard.
+export interface ScoreboardPayload {
+  standings: ScoreboardStanding[];
+  questionIndex: number; // the question just completed, 0-based
+  totalQuestions: number;
+  isLastQuestion: boolean;
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
   [ClientEvents.PLAYER_JOIN]: (payload: PlayerJoinPayload) => void;
   [ClientEvents.START_GAME]: (payload: HostStartGamePayload) => void;
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
+  [ClientEvents.NEXT]: (payload: HostNextPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -197,4 +219,5 @@ export type ServerToClientEvents = {
   [ServerEvents.ANSWER_ACCEPTED]: (payload: AnswerAcceptedPayload) => void;
   [ServerEvents.ANSWER_PROGRESS]: (payload: AnswerProgressPayload) => void;
   [ServerEvents.REVEAL_SHOW]: (payload: RevealShowPayload) => void;
+  [ServerEvents.SCOREBOARD_SHOW]: (payload: ScoreboardPayload) => void;
 };

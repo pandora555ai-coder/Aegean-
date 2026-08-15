@@ -46,8 +46,19 @@ Progress log for the party game build, task by task.
       file was deleted; reconnect preserves score, proven via the
       server's own disconnect log showing the same score (1495) before
       and after a disconnect/reconnect cycle)
-- [ ] **Task 8 — Scoreboard + advance** — NEXT
-- [ ] **Task 9 — Game over + play again**
+- [x] **Task 8 — Scoreboard + advance** — DONE (8/8 acceptance criteria: full
+      2-question loop QUESTION→REVEAL→SCOREBOARD→QUESTION→REVEAL→SCOREBOARD
+      observed via `phase:changed` sequence; a player's score accumulated
+      1500→3000 across Q1/Q2; a near-simultaneous submission produced a
+      genuine tie, standings showed ranks **1,1,3**; a lone answer at the
+      start of Q2 proved `answers` was cleared (progress read 1/3, question
+      did not end prematurely); a fresh per-question timer confirmed by
+      temporarily shortening it (Q1 ended in 5ms via full-answer completion,
+      Q2's fresh timer fired at exactly 2500ms); playing all 5 questions
+      through to the last scoreboard's `host:next` reached GAME_OVER; the
+      disconnect fix ended a question in ~203ms instead of waiting the 20s
+      timer)
+- [ ] **Task 9 — Game over + play again** — NEXT
 
 ## Known open items
 
@@ -65,21 +76,21 @@ Progress log for the party game build, task by task.
       their `socketId` + `connected: true`, keeps their original name, and
       logs "player X reconnected to room Y" instead of creating a
       duplicate entry.
-- A player who joins mid-question (phase !== 'LOBBY') successfully joins
-  the room and lobby, but is left on the WAITING view ("waiting for the
-  game to start") rather than the current question — they don't get a
-  `question:show` because that's only emitted at `host:start_game` time.
-  No crash, but they're stuck until the next question. Needs handling
-  (e.g. send them the current question on join) in a later task.
+- A player who joins after `phase !== 'LOBBY'` successfully joins the room
+  and lobby, but is left on the WAITING view regardless of the actual
+  phase (QUESTION/REVEAL/SCOREBOARD/GAME_OVER) — `question:show`,
+  `reveal:show`, and `scoreboard:show` are all one-shot emits at their
+  respective transition points, never replayed to a late joiner. No
+  crash, but they're stuck until the next full phase transition. Needs a
+  "catch up this player to the current phase" step in `player:join` for
+  the reconnect/late-join case.
 - The host's on-screen countdown is a local client-side estimate that
   starts when `question:show` arrives - it is cosmetic only. The
   authoritative timer lives on the server (`room.questionTimer`,
   `room.questionStartedAt`), which is what actually ends the question;
   the client never has to be trusted or synced precisely for this to be
   correct.
-- The "everyone answered" check only re-runs inside the `player:submit_answer`
-  handler, not on disconnect. If every remaining connected player has
-  already answered and the LAST unanswered player then disconnects, the
-  question doesn't end immediately - it waits for the timer. (Confirmed
-  fine when the disconnect happens *before* the remaining players answer,
-  per Task 6's acceptance test; this is the narrower remaining gap.)
+- [x] Fixed: the disconnect handler now re-runs the "everyone answered"
+      check itself (not just `player:submit_answer`), so if the LAST
+      unanswered connected player disconnects, the question ends
+      immediately instead of waiting for the timer. Verified at ~203ms.
