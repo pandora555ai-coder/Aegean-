@@ -4,6 +4,7 @@ import {
   MAX_NAME_LENGTH,
   ServerEvents,
   type JoinRejectedPayload,
+  type LobbyUpdatePayload,
   type PlayerJoinedPayload,
 } from '@game/shared';
 import { socket } from '../socket';
@@ -25,6 +26,7 @@ export default function ControllerScreen() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
+  const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -36,12 +38,18 @@ export default function ControllerScreen() {
       setError(REJECTION_MESSAGES[payload.reason]);
     }
 
+    function handleLobbyUpdate(payload: LobbyUpdatePayload) {
+      setLobby(payload);
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
+    socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
+      socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     };
   }, []);
 
@@ -60,10 +68,12 @@ export default function ControllerScreen() {
   const canJoin = connected && code.length === 4 && name.trim().length > 0;
 
   if (joined) {
+    const connectedCount = lobby?.players.filter((player) => player.connected).length ?? 1;
     return (
       <div style={styles.container}>
         <div style={styles.title}>{joined.name}</div>
         <div style={styles.subtitle}>waiting for the game to start</div>
+        <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
       </div>
     );
   }
@@ -111,6 +121,7 @@ const styles: Record<string, CSSProperties> = {
   title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center' },
   status: { textAlign: 'center', color: '#666' },
   subtitle: { fontSize: '1.1rem', color: '#555', textAlign: 'center' },
+  lobbyCount: { fontSize: '1rem', color: '#777', textAlign: 'center' },
   input: {
     width: '100%',
     fontSize: '1.5rem',

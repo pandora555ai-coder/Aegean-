@@ -4,8 +4,11 @@ import cors from 'cors';
 import { Server } from 'socket.io';
 import {
   ClientEvents,
+  MIN_PLAYERS,
   ServerEvents,
   type ClientToServerEvents,
+  type LobbyPlayer,
+  type LobbyUpdatePayload,
   type Player,
   type RoomCode,
   type ServerToClientEvents,
@@ -38,6 +41,29 @@ type SocketAssociation =
   | { role: 'player'; code: RoomCode; playerId: string };
 
 const socketAssociationBySocketId = new Map<string, SocketAssociation>();
+
+function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
+  const room = getRoom(code);
+  if (!room) {
+    return null;
+  }
+
+  const players: LobbyPlayer[] = Array.from(room.players.values()).map((player) => ({
+    playerId: player.playerId,
+    name: player.name,
+    connected: player.connected,
+  }));
+  const canStart = players.filter((player) => player.connected).length >= MIN_PLAYERS;
+
+  return { code, players, canStart };
+}
+
+function broadcastLobbyUpdate(code: RoomCode): void {
+  const payload = buildLobbyUpdate(code);
+  if (payload) {
+    io.to(code).emit(ServerEvents.LOBBY_UPDATE, payload);
+  }
+}
 
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
@@ -73,6 +99,21 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Same playerId already in this room -> reconnect, not a new join.
+    // The original name is kept, and this bypasses ROOM_FULL / NAME_TAKEN:
+    // the player already occupies a seat and can't clash with their own name.
+    const existingPlayer = getPlayer(code, playerId);
+    if (existingPlayer) {
+      existingPlayer.socketId = socket.id;
+      existingPlayer.connected = true;
+      socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
+      socket.join(code);
+      socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: existingPlayer.name, code });
+      console.log(`player ${existingPlayer.name} reconnected to room ${code}`);
+      broadcastLobbyUpdate(code);
+      return;
+    }
+
     if (isRoomFull(room)) {
       socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'ROOM_FULL' });
       return;
@@ -90,6 +131,7 @@ io.on('connection', (socket) => {
     socket.join(code);
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code}`);
+    broadcastLobbyUpdate(code);
   });
 
   socket.on('disconnect', () => {
@@ -116,6 +158,7 @@ io.on('connection', (socket) => {
       console.log(
         `room ${association.code} players: ${JSON.stringify(Array.from(room?.players.values() ?? []))}`,
       );
+      broadcastLobbyUpdate(association.code);
     }
   });
 });

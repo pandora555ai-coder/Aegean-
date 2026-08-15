@@ -12,8 +12,14 @@ Progress log for the party game build, task by task.
       name clash, 9th-player ROOM_FULL, playerId stable across reload,
       disconnect keeps player with `connected: false`, numeric keypad
       attributes present)
-- [ ] **Task 4 — Lobby sync** — NEXT
-- [ ] **Task 5 — Start game + first question** (asymmetric host/player payloads)
+- [x] **Task 4 — Lobby sync** — DONE (8/8 acceptance criteria: live 3-name
+      host lobby with "3/8" counter, dimmed-on-disconnect within ~1s,
+      reconnect with same name (no NAME_TAKEN, list doesn't grow),
+      reconnect with different name keeps original name, a genuinely
+      different player still gets NAME_TAKEN, "Περιμένουμε παίκτες..."
+      below MIN_PLAYERS / "Έναρξη" at/above it, `lobby:update` payload
+      verified socketId-free via captured websocket frame)
+- [ ] **Task 5 — Start game + first question** (asymmetric host/player payloads) — NEXT
 - [ ] **Task 6 — Hidden answer submission**
 - [ ] **Task 7 — Scoring + reveal**
 - [ ] **Task 8 — Scoreboard + advance**
@@ -30,8 +36,8 @@ Progress log for the party game build, task by task.
 - The 4-digit room code keyspace (10,000 possible codes) saturates near
   ~9,000 concurrent rooms; if that limit is ever a real concern, widen
   codes to 5-6 digits.
-- Reconnect is not yet handled: a player rejoining with their existing
-  `playerId` after a disconnect will currently hit `NAME_TAKEN` (their own
-  stale entry, still `connected: false`, blocks the name). Needs a
-  same-playerId short-circuit in the `player:join` handler — planned for
-  the reconnect work mentioned in Task 3.
+- [x] Reconnect fixed: `player:join` now checks for an existing player with
+      the same `playerId` before the ROOM_FULL/NAME_TAKEN checks, updates
+      their `socketId` + `connected: true`, keeps their original name, and
+      logs "player X reconnected to room Y" instead of creating a
+      duplicate entry.

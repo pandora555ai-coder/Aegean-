@@ -10,12 +10,14 @@ export const ServerEvents = {
   ROOM_CREATED: 'room:created',
   PLAYER_JOINED: 'player:joined',
   JOIN_REJECTED: 'join:rejected',
+  LOBBY_UPDATE: 'lobby:update',
 } as const;
 
 export type RoomCode = string;
 
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
+export const MIN_PLAYERS = 2;
 
 export interface ClientPingPayload {
   sentAt: number;
@@ -62,6 +64,19 @@ export interface Player {
   connected: boolean;
 }
 
+/** Player as seen by clients - never includes socketId, which is server-internal only. */
+export interface LobbyPlayer {
+  playerId: string;
+  name: string;
+  connected: boolean;
+}
+
+export interface LobbyUpdatePayload {
+  code: RoomCode;
+  players: LobbyPlayer[];
+  canStart: boolean;
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -74,4 +89,5 @@ export type ServerToClientEvents = {
   [ServerEvents.ROOM_CREATED]: (payload: RoomCreatedPayload) => void;
   [ServerEvents.PLAYER_JOINED]: (payload: PlayerJoinedPayload) => void;
   [ServerEvents.JOIN_REJECTED]: (payload: JoinRejectedPayload) => void;
+  [ServerEvents.LOBBY_UPDATE]: (payload: LobbyUpdatePayload) => void;
 };
