@@ -3,6 +3,7 @@ export const ClientEvents = {
   CREATE_ROOM: 'host:create_room',
   PLAYER_JOIN: 'player:join',
   START_GAME: 'host:start_game',
+  SUBMIT_ANSWER: 'player:submit_answer',
 } as const;
 
 export const ServerEvents = {
@@ -14,6 +15,8 @@ export const ServerEvents = {
   LOBBY_UPDATE: 'lobby:update',
   QUESTION_SHOW: 'question:show',
   PHASE_CHANGED: 'phase:changed',
+  ANSWER_ACCEPTED: 'answer:accepted',
+  ANSWER_PROGRESS: 'answer:progress',
 } as const;
 
 export type RoomCode = string;
@@ -21,6 +24,7 @@ export type RoomCode = string;
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
 export const MIN_PLAYERS = 2;
+export const QUESTION_TIME_MS = 20000;
 
 export interface ClientPingPayload {
   sentAt: number;
@@ -120,11 +124,26 @@ export function isQuestionShowHostPayload(payload: QuestionShowPayload): payload
   return 'question' in payload;
 }
 
+export interface SubmitAnswerPayload {
+  choice: number; // 0-3
+}
+
+export interface AnswerAcceptedPayload {
+  choice: number;
+}
+
+export interface AnswerProgressPayload {
+  answered: number;
+  total: number;
+  answeredPlayerIds: string[]; // so the TV can show WHO has answered - never the choice
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
   [ClientEvents.PLAYER_JOIN]: (payload: PlayerJoinPayload) => void;
   [ClientEvents.START_GAME]: (payload: HostStartGamePayload) => void;
+  [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -136,4 +155,6 @@ export type ServerToClientEvents = {
   [ServerEvents.LOBBY_UPDATE]: (payload: LobbyUpdatePayload) => void;
   [ServerEvents.QUESTION_SHOW]: (payload: QuestionShowPayload) => void;
   [ServerEvents.PHASE_CHANGED]: (payload: PhaseChangedPayload) => void;
+  [ServerEvents.ANSWER_ACCEPTED]: (payload: AnswerAcceptedPayload) => void;
+  [ServerEvents.ANSWER_PROGRESS]: (payload: AnswerProgressPayload) => void;
 };

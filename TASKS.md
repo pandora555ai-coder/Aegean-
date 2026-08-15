@@ -25,8 +25,17 @@ Progress log for the party game build, task by task.
       host frame has question text and no correctIndex, non-host
       `host:start_game` rejected and logged, real double-click on "Έναρξη"
       only starts once, mid-question joiner handled without a crash)
-- [ ] **Task 6 — Hidden answer submission** — NEXT
-- [ ] **Task 7 — Scoring + reveal**
+- [x] **Task 6 — Hidden answer submission** — DONE (8/8 acceptance criteria:
+      counter progresses 1/3→2/3→3/3 as players answer, each phone shows
+      only its own choice, `answer:progress` frame verified choice-free,
+      `answer:accepted` frame verified to contain only the submitter's own
+      choice, a second submission is rejected server-side and doesn't
+      change the recorded answer, the 20s timer ends the question when
+      players don't all answer (verified with a temporarily shortened
+      timer, restored after), answering before the timer ends the question
+      immediately and the timer never fires a second time, a mid-question
+      disconnect doesn't block the remaining players from ending it)
+- [ ] **Task 7 — Scoring + reveal** — NEXT
 - [ ] **Task 8 — Scoreboard + advance**
 - [ ] **Task 9 — Game over + play again**
 
@@ -52,3 +61,9 @@ Progress log for the party game build, task by task.
   `question:show` because that's only emitted at `host:start_game` time.
   No crash, but they're stuck until the next question. Needs handling
   (e.g. send them the current question on join) in a later task.
+- The host's on-screen countdown is a local client-side estimate that
+  starts when `question:show` arrives - it is cosmetic only. The
+  authoritative timer lives on the server (`room.questionTimer`,
+  `room.questionStartedAt`), which is what actually ends the question;
+  the client never has to be trusted or synced precisely for this to be
+  correct.

@@ -1,6 +1,11 @@
 import { MAX_NAME_LENGTH, MAX_PLAYERS, type GamePhase, type Player, type Question, type RoomCode } from '@game/shared';
 import { getQuestions } from './questions.js';
 
+export interface RecordedAnswer {
+  choice: number;
+  timeMs: number;
+}
+
 export interface Room {
   code: RoomCode;
   hostSocketId: string;
@@ -9,6 +14,9 @@ export interface Room {
   phase: GamePhase;
   questions: Question[];
   currentQuestionIndex: number; // -1 until the game starts
+  answers: Map<string, RecordedAnswer>; // keyed by playerId, cleared every question
+  questionStartedAt: number;
+  questionTimer: NodeJS.Timeout | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -40,6 +48,9 @@ export function createRoom(hostSocketId: string): Room {
     phase: 'LOBBY',
     questions: getQuestions(),
     currentQuestionIndex: -1,
+    answers: new Map(),
+    questionStartedAt: 0,
+    questionTimer: null,
   };
 
   rooms.set(code, room);
@@ -79,6 +90,10 @@ export function isNameTaken(room: Room, name: string): boolean {
 
 export function isRoomFull(room: Room): boolean {
   return room.players.size >= MAX_PLAYERS;
+}
+
+export function getConnectedPlayers(room: Room): Player[] {
+  return Array.from(room.players.values()).filter((player) => player.connected);
 }
 
 export function addPlayer(code: RoomCode, player: Player): void {

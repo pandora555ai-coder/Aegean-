@@ -2,8 +2,10 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import {
   ClientEvents,
   MAX_PLAYERS,
+  QUESTION_TIME_MS,
   ServerEvents,
   isQuestionShowHostPayload,
+  type AnswerProgressPayload,
   type GamePhase,
   type LobbyUpdatePayload,
   type PhaseChangedPayload,
@@ -23,6 +25,8 @@ export default function HostScreen() {
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
+  const [answerProgress, setAnswerProgress] = useState<AnswerProgressPayload | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(Math.ceil(QUESTION_TIME_MS / 1000));
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -40,21 +44,39 @@ export default function HostScreen() {
     function handleQuestionShow(payload: QuestionShowPayload) {
       if (isQuestionShowHostPayload(payload)) {
         setQuestion(payload);
+        setAnswerProgress(null);
       }
+    }
+
+    function handleAnswerProgress(payload: AnswerProgressPayload) {
+      setAnswerProgress(payload);
     }
 
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
+    socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
+      socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== 'QUESTION' || !question) {
+      return;
+    }
+    setSecondsLeft(Math.ceil(QUESTION_TIME_MS / 1000));
+    const interval = setInterval(() => {
+      setSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase, question?.questionIndex]);
 
   function handleCreateRoom() {
     socket.emit(ClientEvents.CREATE_ROOM, {});
@@ -69,8 +91,15 @@ export default function HostScreen() {
   const canStart = lobby?.canStart ?? false;
 
   if (phase === 'QUESTION' && question) {
+    const answeredIds = new Set(answerProgress?.answeredPlayerIds ?? []);
+    const answeredCount = answerProgress?.answered ?? 0;
+    const totalCount = answerProgress?.total ?? connectedCount;
+
     return (
       <div style={styles.container}>
+        <div style={styles.timer} data-testid="countdown">
+          {secondsLeft}
+        </div>
         <div style={styles.category}>{question.category}</div>
         <div style={styles.progress} data-testid="question-progress">
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
@@ -84,6 +113,21 @@ export default function HostScreen() {
               <span style={styles.optionLabel}>{OPTION_LABELS[index]}</span>
               <span>{option}</span>
             </div>
+          ))}
+        </div>
+        <div style={styles.answerCounter} data-testid="answer-progress">
+          {answeredCount}/{totalCount} απάντησαν
+        </div>
+        <div style={styles.answeredNames}>
+          {players.map((player) => (
+            <span
+              key={player.playerId}
+              data-testid="answered-marker"
+              data-answered={answeredIds.has(player.playerId)}
+              style={answeredIds.has(player.playerId) ? styles.nameAnswered : styles.nameNotAnswered}
+            >
+              {player.name}
+            </span>
           ))}
         </div>
       </div>
@@ -236,5 +280,30 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     color: '#2563eb',
     minWidth: '2rem',
+  },
+  timer: {
+    fontSize: '3rem',
+    fontWeight: 800,
+    fontFamily: 'monospace',
+    color: '#dc2626',
+  },
+  answerCounter: {
+    fontSize: '2rem',
+    fontWeight: 700,
+    color: '#16a34a',
+  },
+  answeredNames: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: '0.75rem',
+    fontSize: '1.5rem',
+    fontWeight: 600,
+  },
+  nameAnswered: {
+    color: '#16a34a',
+  },
+  nameNotAnswered: {
+    color: '#bbb',
   },
 };

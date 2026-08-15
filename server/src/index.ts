@@ -5,7 +5,9 @@ import { Server } from 'socket.io';
 import {
   ClientEvents,
   MIN_PLAYERS,
+  QUESTION_TIME_MS,
   ServerEvents,
+  type AnswerProgressPayload,
   type ClientToServerEvents,
   type LobbyPlayer,
   type LobbyUpdatePayload,
@@ -20,12 +22,14 @@ import {
   createRoom,
   deleteRoom,
   getActiveRoomCount,
+  getConnectedPlayers,
   getPlayer,
   getRoom,
   isNameTaken,
   isRoomFull,
   isValidPlayerName,
   normalizePlayerName,
+  type Room,
 } from './rooms.js';
 
 const app = express();
@@ -65,6 +69,66 @@ function broadcastLobbyUpdate(code: RoomCode): void {
   if (payload) {
     io.to(code).emit(ServerEvents.LOBBY_UPDATE, payload);
   }
+}
+
+function startQuestion(room: Room): void {
+  room.answers.clear();
+  room.questionStartedAt = Date.now();
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+  }
+  room.questionTimer = setTimeout(() => endQuestion(room.code), QUESTION_TIME_MS);
+
+  const question = room.questions[room.currentQuestionIndex];
+  const totalQuestions = room.questions.length;
+
+  const hostPayload: QuestionShowHostPayload = {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions,
+    question: question.question,
+    options: question.options,
+    category: question.category,
+  };
+  io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
+
+  const playerPayload: QuestionShowPlayerPayload = {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions,
+    options: question.options,
+    category: question.category,
+  };
+  for (const player of getConnectedPlayers(room)) {
+    io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
+  }
+
+  console.log(`room ${room.code} started — question ${room.currentQuestionIndex + 1}/${totalQuestions}`);
+}
+
+// Ends the current question exactly once - guarded by the phase check, so
+// whichever of (all connected players answered) / (timer fired) happens
+// first wins, and the timer is always cleared so it can never fire twice.
+function endQuestion(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'QUESTION') {
+    return;
+  }
+
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+    room.questionTimer = null;
+  }
+
+  room.phase = 'REVEAL';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+
+  const collectedAnswers = Array.from(room.answers.entries()).map(([playerId, answer]) => ({
+    playerId,
+    choice: answer.choice,
+    timeMs: answer.timeMs,
+  }));
+  console.log(
+    `room ${room.code} question ${room.currentQuestionIndex + 1} ended — answers: ${JSON.stringify(collectedAnswers)}`,
+  );
 }
 
 io.on('connection', (socket) => {
@@ -165,32 +229,57 @@ io.on('connection', (socket) => {
     room.phase = 'QUESTION';
     room.currentQuestionIndex = 0;
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    startQuestion(room);
+  });
 
-    const question = room.questions[room.currentQuestionIndex];
-    const totalQuestions = room.questions.length;
-
-    const hostPayload: QuestionShowHostPayload = {
-      questionIndex: room.currentQuestionIndex,
-      totalQuestions,
-      question: question.question,
-      options: question.options,
-      category: question.category,
-    };
-    socket.emit(ServerEvents.QUESTION_SHOW, hostPayload);
-
-    const playerPayload: QuestionShowPlayerPayload = {
-      questionIndex: room.currentQuestionIndex,
-      totalQuestions,
-      options: question.options,
-      category: question.category,
-    };
-    for (const player of room.players.values()) {
-      if (player.connected) {
-        io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
-      }
+  socket.on(ClientEvents.SUBMIT_ANSWER, (payload) => {
+    const association = socketAssociationBySocketId.get(socket.id);
+    if (!association || association.role !== 'player') {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from ${socket.id}: not a player`);
+      return;
     }
 
-    console.log(`room ${room.code} started — question 1/${totalQuestions}`);
+    const room = getRoom(association.code);
+    if (!room) {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from ${socket.id}: room ${association.code} not found`);
+      return;
+    }
+
+    if (room.phase !== 'QUESTION') {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} for room ${room.code}: phase is ${room.phase}, not QUESTION`);
+      return;
+    }
+
+    const { choice } = payload;
+    if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from ${socket.id}: invalid choice ${choice}`);
+      return;
+    }
+
+    const { playerId } = association;
+    if (room.answers.has(playerId)) {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from player ${playerId}: already answered this question`);
+      return;
+    }
+
+    // Server clock only - a client-supplied timestamp can never be trusted.
+    const timeMs = Date.now() - room.questionStartedAt;
+    room.answers.set(playerId, { choice, timeMs });
+    socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice });
+
+    const connectedPlayers = getConnectedPlayers(room);
+    const progressPayload: AnswerProgressPayload = {
+      answered: room.answers.size,
+      total: connectedPlayers.length,
+      answeredPlayerIds: Array.from(room.answers.keys()),
+    };
+    io.to(room.hostSocketId).emit(ServerEvents.ANSWER_PROGRESS, progressPayload);
+
+    console.log(`player ${playerId} answered question ${room.currentQuestionIndex + 1} in room ${room.code}`);
+
+    if (room.answers.size >= connectedPlayers.length) {
+      endQuestion(room.code);
+    }
   });
 
   socket.on('disconnect', () => {

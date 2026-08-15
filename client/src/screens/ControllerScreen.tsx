@@ -4,6 +4,7 @@ import {
   MAX_NAME_LENGTH,
   ServerEvents,
   isQuestionShowHostPayload,
+  type AnswerAcceptedPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
   type PlayerJoinedPayload,
@@ -33,6 +34,8 @@ export default function ControllerScreen() {
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   const [question, setQuestion] = useState<QuestionShowPlayerPayload | null>(null);
+  const [pendingChoice, setPendingChoice] = useState<number | null>(null);
+  const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -51,19 +54,27 @@ export default function ControllerScreen() {
     function handleQuestionShow(payload: QuestionShowPayload) {
       if (!isQuestionShowHostPayload(payload)) {
         setQuestion(payload);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
       }
+    }
+
+    function handleAnswerAccepted(payload: AnswerAcceptedPayload) {
+      setAcceptedChoice(payload.choice);
     }
 
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
+    socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
+      socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     };
   }, []);
 
@@ -81,8 +92,26 @@ export default function ControllerScreen() {
 
   const canJoin = connected && code.length === 4 && name.trim().length > 0;
 
-  function handleAnswerTap() {
-    // Submission is Task 6 - buttons are rendered but intentionally inert for now.
+  function handleAnswerTap(index: number) {
+    if (pendingChoice !== null) {
+      return; // optimistic lock - first tap is final, no changing the answer
+    }
+    setPendingChoice(index);
+    socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
+  }
+
+  if (question && acceptedChoice !== null) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.category}>{question.category}</div>
+        <div style={styles.submittedChoice} data-testid="submitted-choice">
+          {OPTION_LABELS[acceptedChoice]}. {question.options[acceptedChoice]}
+        </div>
+        <div style={styles.lookAtTv} data-testid="waiting-message">
+          Περίμενε τους υπόλοιπους...
+        </div>
+      </div>
+    );
   }
 
   if (question) {
@@ -96,8 +125,9 @@ export default function ControllerScreen() {
               key={index}
               type="button"
               data-testid="answer-button"
-              style={styles.answerButton}
-              onClick={handleAnswerTap}
+              style={pendingChoice !== null ? styles.answerButtonDisabled : styles.answerButton}
+              onClick={() => handleAnswerTap(index)}
+              disabled={pendingChoice !== null}
             >
               <span style={styles.answerLabel}>{OPTION_LABELS[index]}</span>
               <span>{option}</span>
@@ -196,6 +226,15 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     color: '#333',
   },
+  submittedChoice: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    padding: '1.5rem',
+    borderRadius: '0.75rem',
+    background: '#eff6ff',
+    border: '2px solid #2563eb',
+  },
   answerGrid: {
     display: 'flex',
     flexDirection: 'column',
@@ -214,6 +253,21 @@ const styles: Record<string, CSSProperties> = {
     background: 'white',
     color: '#111',
     textAlign: 'left',
+  },
+  answerButtonDisabled: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    width: '100%',
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    padding: '1.25rem 1rem',
+    borderRadius: '0.75rem',
+    border: '2px solid #d1d5db',
+    background: '#f3f4f6',
+    color: '#999',
+    textAlign: 'left',
+    opacity: 0.6,
   },
   answerLabel: {
     fontWeight: 800,
