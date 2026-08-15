@@ -7,6 +7,7 @@ import {
   isQuestionShowHostPayload,
   isRevealHostPayload,
   type AnswerProgressPayload,
+  type GameOverPayload,
   type GamePhase,
   type LobbyUpdatePayload,
   type PhaseChangedPayload,
@@ -33,6 +34,7 @@ export default function HostScreen() {
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(QUESTION_TIME_MS / 1000));
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
+  const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -45,6 +47,16 @@ export default function HostScreen() {
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       setPhase(payload.phase);
+      if (payload.phase === 'LOBBY') {
+        // A fresh game (via "play again") - clear every transient round view
+        // so the lobby renders cleanly instead of a stale QUESTION/REVEAL/
+        // SCOREBOARD/GAME_OVER screen flashing first.
+        setQuestion(null);
+        setAnswerProgress(null);
+        setReveal(null);
+        setScoreboard(null);
+        setGameOver(null);
+      }
     }
 
     function handleQuestionShow(payload: QuestionShowPayload) {
@@ -70,6 +82,10 @@ export default function HostScreen() {
       setScoreboard(payload);
     }
 
+    function handleGameOver(payload: GameOverPayload) {
+      setGameOver(payload);
+    }
+
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -77,6 +93,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
+    socket.on(ServerEvents.GAME_OVER, handleGameOver);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -86,6 +103,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
+      socket.off(ServerEvents.GAME_OVER, handleGameOver);
     };
   }, []);
 
@@ -112,9 +130,43 @@ export default function HostScreen() {
     socket.emit(ClientEvents.NEXT, {});
   }
 
+  function handlePlayAgain() {
+    socket.emit(ClientEvents.PLAY_AGAIN, {});
+  }
+
   const players = lobby?.players ?? [];
   const connectedCount = players.filter((player) => player.connected).length;
   const canStart = lobby?.canStart ?? false;
+
+  if (phase === 'GAME_OVER' && gameOver) {
+    const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
+
+    return (
+      <div style={styles.container}>
+        <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
+        <div style={styles.winnerBanner} data-testid="winner-banner">
+          {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
+          {gameOver.winnerName}
+        </div>
+        <div style={styles.standingsList}>
+          {sortedFinalStandings.map((standing) => (
+            <div
+              key={standing.playerId}
+              data-testid="final-standing-row"
+              style={standing.rank === 1 ? styles.standingRowWinner : styles.standingRow}
+            >
+              <span style={styles.standingRank}>#{standing.rank}</span>
+              <span style={styles.standingName}>{standing.name}</span>
+              <span style={styles.standingScore}>{standing.score}</span>
+            </div>
+          ))}
+        </div>
+        <button data-testid="play-again-button" style={styles.startButton} type="button" onClick={handlePlayAgain}>
+          Ξανά
+        </button>
+      </div>
+    );
+  }
 
   if (phase === 'REVEAL' && reveal && question) {
     const sortedResults = [...reveal.results].sort((a, b) => b.totalScore - a.totalScore);
@@ -484,5 +536,27 @@ const styles: Record<string, CSSProperties> = {
   },
   standingScore: {
     fontFamily: 'monospace',
+  },
+  gameOverTitle: {
+    fontSize: '2.5rem',
+    fontWeight: 700,
+    color: '#666',
+  },
+  winnerBanner: {
+    fontSize: '3.5rem',
+    fontWeight: 800,
+    color: '#f59e0b',
+    textAlign: 'center',
+  },
+  standingRowWinner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.5rem',
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    padding: '1rem 1.5rem',
+    borderRadius: '0.75rem',
+    background: '#fef3c7',
+    border: '3px solid #f59e0b',
   },
 };

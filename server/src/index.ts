@@ -9,6 +9,8 @@ import {
   ServerEvents,
   type AnswerProgressPayload,
   type ClientToServerEvents,
+  type GameOverPayload,
+  type GameOverStanding,
   type LobbyPlayer,
   type LobbyUpdatePayload,
   type Player,
@@ -34,6 +36,7 @@ import {
   isRoomFull,
   isValidPlayerName,
   normalizePlayerName,
+  resetRoomForNewGame,
   type Room,
 } from './rooms.js';
 import { calculatePoints } from './scoring.js';
@@ -219,6 +222,29 @@ function buildScoreboard(room: Room): ScoreboardPayload {
   };
 }
 
+function buildGameOver(room: Room): GameOverPayload {
+  const sorted = [...room.players.values()].sort((a, b) => b.score - a.score);
+
+  const standings: GameOverStanding[] = [];
+  let previousScore: number | null = null;
+  let previousRank = 0;
+  sorted.forEach((player, index) => {
+    const rank = player.score === previousScore ? previousRank : index + 1;
+    standings.push({ playerId: player.playerId, name: player.name, score: player.score, rank });
+    previousScore = player.score;
+    previousRank = rank;
+  });
+
+  const winners = standings.filter((standing) => standing.rank === 1);
+
+  return {
+    standings,
+    winnerName: winners.map((winner) => winner.name).join(' & '),
+    isTie: winners.length > 1,
+    totalQuestions: room.questions.length,
+  };
+}
+
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
 
@@ -396,7 +422,11 @@ io.on('connection', (socket) => {
       if (isLastQuestion) {
         room.phase = 'GAME_OVER';
         io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-        console.log(`room ${room.code} reached GAME_OVER`);
+        const gameOverPayload = buildGameOver(room);
+        io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
+        console.log(
+          `room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`,
+        );
         return;
       }
 
@@ -408,6 +438,30 @@ io.on('connection', (socket) => {
     }
 
     console.log(`rejected ${ClientEvents.NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or SCOREBOARD`);
+  });
+
+  socket.on(ClientEvents.PLAY_AGAIN, () => {
+    const association = socketAssociationBySocketId.get(socket.id);
+    if (!association || association.role !== 'host') {
+      console.log(`rejected ${ClientEvents.PLAY_AGAIN} from ${socket.id}: not a host`);
+      return;
+    }
+
+    const room = getRoom(association.code);
+    if (!room) {
+      console.log(`rejected ${ClientEvents.PLAY_AGAIN} from ${socket.id}: room ${association.code} not found`);
+      return;
+    }
+
+    if (room.phase !== 'GAME_OVER') {
+      console.log(`rejected ${ClientEvents.PLAY_AGAIN} for room ${room.code}: phase is ${room.phase}, not GAME_OVER`);
+      return;
+    }
+
+    resetRoomForNewGame(room);
+    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    broadcastLobbyUpdate(room.code);
+    console.log(`room ${room.code} reset for a new game`);
   });
 
   socket.on('disconnect', () => {

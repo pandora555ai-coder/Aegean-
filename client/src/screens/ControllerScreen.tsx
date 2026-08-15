@@ -6,8 +6,10 @@ import {
   isQuestionShowHostPayload,
   isRevealHostPayload,
   type AnswerAcceptedPayload,
+  type GameOverPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
+  type PhaseChangedPayload,
   type PlayerJoinedPayload,
   type QuestionShowPayload,
   type QuestionShowPlayerPayload,
@@ -42,11 +44,26 @@ export default function ControllerScreen() {
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
+  const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
       setJoined(payload);
       setError(null);
+    }
+
+    function handlePhaseChanged(payload: PhaseChangedPayload) {
+      if (payload.phase === 'LOBBY') {
+        // A fresh game (via "play again") - clear every transient round
+        // view so we fall back to the `joined` waiting view below, with no
+        // need to re-enter the room code.
+        setQuestion(null);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
+        setReveal(null);
+        setScoreboard(null);
+        setGameOver(null);
+      }
     }
 
     function handleRejected(payload: JoinRejectedPayload) {
@@ -82,22 +99,31 @@ export default function ControllerScreen() {
       setScoreboard(payload);
     }
 
+    function handleGameOver(payload: GameOverPayload) {
+      setScoreboard(null);
+      setGameOver(payload);
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+    socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
+    socket.on(ServerEvents.GAME_OVER, handleGameOver);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+      socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
+      socket.off(ServerEvents.GAME_OVER, handleGameOver);
     };
   }, []);
 
@@ -121,6 +147,26 @@ export default function ControllerScreen() {
     }
     setPendingChoice(index);
     socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
+  }
+
+  if (gameOver) {
+    const me = gameOver.standings.find((standing) => standing.playerId === playerId);
+    const won = me ? me.rank === 1 : false;
+
+    return (
+      <div style={styles.container}>
+        <div style={won ? styles.gameOverWon : styles.gameOverLost} data-testid="gameover-verdict">
+          {won ? (gameOver.isTie ? 'Ισοπαλία στην κορυφή!' : 'Κέρδισες!') : 'Τέλος παιχνιδιού'}
+        </div>
+        <div style={styles.scoreboardRank} data-testid="gameover-rank">
+          #{me ? me.rank : '-'}
+        </div>
+        <div style={styles.scoreboardScore} data-testid="gameover-score">
+          {me ? me.score : 0} πόντοι
+        </div>
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
+      </div>
+    );
   }
 
   if (scoreboard) {
@@ -397,6 +443,18 @@ const styles: Record<string, CSSProperties> = {
   scoreboardGap: {
     fontSize: '1.1rem',
     fontWeight: 600,
+    textAlign: 'center',
+    color: '#555',
+  },
+  gameOverWon: {
+    fontSize: '2rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: '#f59e0b',
+  },
+  gameOverLost: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
     textAlign: 'center',
     color: '#555',
   },

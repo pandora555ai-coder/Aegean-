@@ -1,5 +1,5 @@
 import { MAX_NAME_LENGTH, MAX_PLAYERS, type GamePhase, type Player, type Question, type RoomCode } from '@game/shared';
-import { getQuestions } from './questions.js';
+import { getQuestions, getShuffledQuestions } from './questions.js';
 
 export interface RecordedAnswer {
   choice: number;
@@ -114,4 +114,21 @@ export function removePlayer(code: RoomCode, playerId: string): boolean {
     return false;
   }
   return room.players.delete(playerId);
+}
+
+// Resets a finished game back to a fresh LOBBY - keeps every player (both
+// connected and disconnected) with their playerId/name intact, so nobody
+// has to rejoin for "play again".
+export function resetRoomForNewGame(room: Room): void {
+  room.phase = 'LOBBY';
+  room.currentQuestionIndex = -1;
+  room.answers.clear();
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+    room.questionTimer = null;
+  }
+  room.questions = getShuffledQuestions();
+  for (const player of room.players.values()) {
+    player.score = 0;
+  }
 }

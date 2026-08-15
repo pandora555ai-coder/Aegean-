@@ -58,7 +58,22 @@ Progress log for the party game build, task by task.
       through to the last scoreboard's `host:next` reached GAME_OVER; the
       disconnect fix ended a question in ~203ms instead of waiting the 20s
       timer)
-- [ ] **Task 9 — Game over + play again** — NEXT
+- [x] **Task 9 — Game over + play again** — DONE (8/8 acceptance criteria:
+      full 5-question game reached `game:over` with correct final standings
+      on host and each phone; a forced tie via near-simultaneous correct
+      answers produced `isTie: true` with `winnerName: "Tie1 & Tie2"`;
+      "Ξανά" reset the room to LOBBY keeping all 3 players (captured
+      `lobby:update` payload) and zeroed a 7500-point score down to a
+      fresh-round-only total; a full Playwright session confirmed phones
+      auto-return to the waiting view with no code re-entry and an
+      unchanged `playerId` across the reset; a second full 5-question game
+      played through to a second `game:over` with no server restart; a
+      stray-timer check (game 1's last question ending via a temporarily
+      shortened timer) confirmed game 2's own fresh timer fired exactly
+      once at the right time, not early; full 2-game end-to-end browser
+      session completed with zero issues reported)
+- **v0.1 complete** — the full game loop (lobby → questions → reveal →
+  scoreboard → game over → play again) works end-to-end.
 
 ## Known open items
 

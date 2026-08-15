@@ -5,6 +5,7 @@ export const ClientEvents = {
   START_GAME: 'host:start_game',
   SUBMIT_ANSWER: 'player:submit_answer',
   NEXT: 'host:next',
+  PLAY_AGAIN: 'host:play_again',
 } as const;
 
 export const ServerEvents = {
@@ -20,6 +21,7 @@ export const ServerEvents = {
   ANSWER_PROGRESS: 'answer:progress',
   REVEAL_SHOW: 'reveal:show',
   SCOREBOARD_SHOW: 'scoreboard:show',
+  GAME_OVER: 'game:over',
 } as const;
 
 export type RoomCode = string;
@@ -198,6 +200,22 @@ export interface ScoreboardPayload {
   isLastQuestion: boolean;
 }
 
+export interface HostPlayAgainPayload {}
+
+export interface GameOverStanding {
+  playerId: string;
+  name: string;
+  score: number;
+  rank: number;
+}
+
+export interface GameOverPayload {
+  standings: GameOverStanding[];
+  winnerName: string; // if tied, joined names: "Άννα & Μπάμπης"
+  isTie: boolean;
+  totalQuestions: number;
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -205,6 +223,7 @@ export type ClientToServerEvents = {
   [ClientEvents.START_GAME]: (payload: HostStartGamePayload) => void;
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
   [ClientEvents.NEXT]: (payload: HostNextPayload) => void;
+  [ClientEvents.PLAY_AGAIN]: (payload: HostPlayAgainPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -220,4 +239,5 @@ export type ServerToClientEvents = {
   [ServerEvents.ANSWER_PROGRESS]: (payload: AnswerProgressPayload) => void;
   [ServerEvents.REVEAL_SHOW]: (payload: RevealShowPayload) => void;
   [ServerEvents.SCOREBOARD_SHOW]: (payload: ScoreboardPayload) => void;
+  [ServerEvents.GAME_OVER]: (payload: GameOverPayload) => void;
 };
