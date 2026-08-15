@@ -17,7 +17,9 @@ Progress log for the party game build, task by task.
 
 ## Known open items
 
-- Verify only ONE `client connected` log fires per page load.
+- [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED
+      (Playwright single fresh-context load, StrictMode on: 1 connect, 1
+      disconnect on close)
 - `socketId` -> room mapping is currently split between `server/src/index.ts`
   and `server/src/rooms.ts`; consolidate when players are added.
 - The 4-digit room code keyspace (10,000 possible codes) saturates near
