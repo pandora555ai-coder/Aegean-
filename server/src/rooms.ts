@@ -1,9 +1,10 @@
-import type { RoomCode } from '@game/shared';
+import { MAX_NAME_LENGTH, MAX_PLAYERS, type Player, type RoomCode } from '@game/shared';
 
 export interface Room {
   code: RoomCode;
   hostSocketId: string;
   createdAt: number;
+  players: Map<string, Player>; // keyed by playerId
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -31,6 +32,7 @@ export function createRoom(hostSocketId: string): Room {
     code,
     hostSocketId,
     createdAt: Date.now(),
+    players: new Map(),
   };
 
   rooms.set(code, room);
@@ -47,4 +49,47 @@ export function deleteRoom(code: RoomCode): boolean {
 
 export function getActiveRoomCount(): number {
   return rooms.size;
+}
+
+export function normalizePlayerName(name: string): string {
+  return name.trim();
+}
+
+export function isValidPlayerName(name: string): boolean {
+  const trimmed = normalizePlayerName(name);
+  return trimmed.length > 0 && trimmed.length <= MAX_NAME_LENGTH;
+}
+
+export function isNameTaken(room: Room, name: string): boolean {
+  const normalized = normalizePlayerName(name).toLowerCase();
+  for (const player of room.players.values()) {
+    if (player.name.toLowerCase() === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isRoomFull(room: Room): boolean {
+  return room.players.size >= MAX_PLAYERS;
+}
+
+export function addPlayer(code: RoomCode, player: Player): void {
+  const room = rooms.get(code);
+  if (!room) {
+    throw new Error(`cannot add player to unknown room ${code}`);
+  }
+  room.players.set(player.playerId, player);
+}
+
+export function getPlayer(code: RoomCode, playerId: string): Player | undefined {
+  return rooms.get(code)?.players.get(playerId);
+}
+
+export function removePlayer(code: RoomCode, playerId: string): boolean {
+  const room = rooms.get(code);
+  if (!room) {
+    return false;
+  }
+  return room.players.delete(playerId);
 }
