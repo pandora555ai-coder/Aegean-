@@ -19,8 +19,13 @@ Progress log for the party game build, task by task.
       different player still gets NAME_TAKEN, "Περιμένουμε παίκτες..."
       below MIN_PLAYERS / "Έναρξη" at/above it, `lobby:update` payload
       verified socketId-free via captured websocket frame)
-- [ ] **Task 5 — Start game + first question** (asymmetric host/player payloads) — NEXT
-- [ ] **Task 6 — Hidden answer submission**
+- [x] **Task 5 — Start game + first question** (asymmetric host/player
+      payloads) — DONE (8/8 acceptance criteria: host+both players enter
+      question 1/5 in sync, player frame has no question text/correctIndex,
+      host frame has question text and no correctIndex, non-host
+      `host:start_game` rejected and logged, real double-click on "Έναρξη"
+      only starts once, mid-question joiner handled without a crash)
+- [ ] **Task 6 — Hidden answer submission** — NEXT
 - [ ] **Task 7 — Scoring + reveal**
 - [ ] **Task 8 — Scoreboard + advance**
 - [ ] **Task 9 — Game over + play again**
@@ -41,3 +46,9 @@ Progress log for the party game build, task by task.
       their `socketId` + `connected: true`, keeps their original name, and
       logs "player X reconnected to room Y" instead of creating a
       duplicate entry.
+- A player who joins mid-question (phase !== 'LOBBY') successfully joins
+  the room and lobby, but is left on the WAITING view ("waiting for the
+  game to start") rather than the current question — they don't get a
+  `question:show` because that's only emitted at `host:start_game` time.
+  No crash, but they're stuck until the next question. Needs handling
+  (e.g. send them the current question on join) in a later task.

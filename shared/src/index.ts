@@ -2,6 +2,7 @@ export const ClientEvents = {
   PING: 'client:ping',
   CREATE_ROOM: 'host:create_room',
   PLAYER_JOIN: 'player:join',
+  START_GAME: 'host:start_game',
 } as const;
 
 export const ServerEvents = {
@@ -11,6 +12,8 @@ export const ServerEvents = {
   PLAYER_JOINED: 'player:joined',
   JOIN_REJECTED: 'join:rejected',
   LOBBY_UPDATE: 'lobby:update',
+  QUESTION_SHOW: 'question:show',
+  PHASE_CHANGED: 'phase:changed',
 } as const;
 
 export type RoomCode = string;
@@ -77,10 +80,51 @@ export interface LobbyUpdatePayload {
   canStart: boolean;
 }
 
+export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
+
+export interface Question {
+  id: string;
+  category: string;
+  question: string; // Greek
+  options: string[]; // exactly 4, Greek
+  correctIndex: number; // 0-3 - SERVER ONLY, never sent to clients
+}
+
+export interface HostStartGamePayload {}
+
+export interface PhaseChangedPayload {
+  phase: GamePhase;
+}
+
+// 'question:show' is asymmetric: the host gets the question text, players
+// don't (they read it off the TV - the phone is a controller). Both shapes
+// share the same event name, so clients narrow on the presence of `question`.
+export interface QuestionShowHostPayload {
+  questionIndex: number; // 0-based
+  totalQuestions: number;
+  question: string;
+  options: string[];
+  category: string;
+}
+
+export interface QuestionShowPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  options: string[];
+  category: string;
+}
+
+export type QuestionShowPayload = QuestionShowHostPayload | QuestionShowPlayerPayload;
+
+export function isQuestionShowHostPayload(payload: QuestionShowPayload): payload is QuestionShowHostPayload {
+  return 'question' in payload;
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
   [ClientEvents.PLAYER_JOIN]: (payload: PlayerJoinPayload) => void;
+  [ClientEvents.START_GAME]: (payload: HostStartGamePayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -90,4 +134,6 @@ export type ServerToClientEvents = {
   [ServerEvents.PLAYER_JOINED]: (payload: PlayerJoinedPayload) => void;
   [ServerEvents.JOIN_REJECTED]: (payload: JoinRejectedPayload) => void;
   [ServerEvents.LOBBY_UPDATE]: (payload: LobbyUpdatePayload) => void;
+  [ServerEvents.QUESTION_SHOW]: (payload: QuestionShowPayload) => void;
+  [ServerEvents.PHASE_CHANGED]: (payload: PhaseChangedPayload) => void;
 };

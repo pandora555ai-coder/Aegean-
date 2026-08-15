@@ -1,10 +1,14 @@
-import { MAX_NAME_LENGTH, MAX_PLAYERS, type Player, type RoomCode } from '@game/shared';
+import { MAX_NAME_LENGTH, MAX_PLAYERS, type GamePhase, type Player, type Question, type RoomCode } from '@game/shared';
+import { getQuestions } from './questions.js';
 
 export interface Room {
   code: RoomCode;
   hostSocketId: string;
   createdAt: number;
   players: Map<string, Player>; // keyed by playerId
+  phase: GamePhase;
+  questions: Question[];
+  currentQuestionIndex: number; // -1 until the game starts
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -33,6 +37,9 @@ export function createRoom(hostSocketId: string): Room {
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
+    phase: 'LOBBY',
+    questions: getQuestions(),
+    currentQuestionIndex: -1,
   };
 
   rooms.set(code, room);

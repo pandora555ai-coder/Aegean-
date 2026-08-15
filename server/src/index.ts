@@ -10,6 +10,8 @@ import {
   type LobbyPlayer,
   type LobbyUpdatePayload,
   type Player,
+  type QuestionShowHostPayload,
+  type QuestionShowPlayerPayload,
   type RoomCode,
   type ServerToClientEvents,
 } from '@game/shared';
@@ -132,6 +134,63 @@ io.on('connection', (socket) => {
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code}`);
     broadcastLobbyUpdate(code);
+  });
+
+  socket.on(ClientEvents.START_GAME, () => {
+    const association = socketAssociationBySocketId.get(socket.id);
+    if (!association || association.role !== 'host') {
+      console.log(`rejected ${ClientEvents.START_GAME} from ${socket.id}: not a host`);
+      return;
+    }
+
+    const room = getRoom(association.code);
+    if (!room) {
+      console.log(`rejected ${ClientEvents.START_GAME} from ${socket.id}: room ${association.code} not found`);
+      return;
+    }
+
+    const connectedCount = Array.from(room.players.values()).filter((player) => player.connected).length;
+    if (connectedCount < MIN_PLAYERS) {
+      console.log(
+        `rejected ${ClientEvents.START_GAME} for room ${room.code}: only ${connectedCount} connected players`,
+      );
+      return;
+    }
+
+    if (room.phase !== 'LOBBY') {
+      console.log(`rejected ${ClientEvents.START_GAME} for room ${room.code}: phase is ${room.phase}, not LOBBY`);
+      return;
+    }
+
+    room.phase = 'QUESTION';
+    room.currentQuestionIndex = 0;
+    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+
+    const question = room.questions[room.currentQuestionIndex];
+    const totalQuestions = room.questions.length;
+
+    const hostPayload: QuestionShowHostPayload = {
+      questionIndex: room.currentQuestionIndex,
+      totalQuestions,
+      question: question.question,
+      options: question.options,
+      category: question.category,
+    };
+    socket.emit(ServerEvents.QUESTION_SHOW, hostPayload);
+
+    const playerPayload: QuestionShowPlayerPayload = {
+      questionIndex: room.currentQuestionIndex,
+      totalQuestions,
+      options: question.options,
+      category: question.category,
+    };
+    for (const player of room.players.values()) {
+      if (player.connected) {
+        io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
+      }
+    }
+
+    console.log(`room ${room.code} started — question 1/${totalQuestions}`);
   });
 
   socket.on('disconnect', () => {

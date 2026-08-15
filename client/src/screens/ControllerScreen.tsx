@@ -3,13 +3,18 @@ import {
   ClientEvents,
   MAX_NAME_LENGTH,
   ServerEvents,
+  isQuestionShowHostPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
   type PlayerJoinedPayload,
+  type QuestionShowPayload,
+  type QuestionShowPlayerPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
+
+const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
 
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
@@ -27,6 +32,7 @@ export default function ControllerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
+  const [question, setQuestion] = useState<QuestionShowPlayerPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -42,14 +48,22 @@ export default function ControllerScreen() {
       setLobby(payload);
     }
 
+    function handleQuestionShow(payload: QuestionShowPayload) {
+      if (!isQuestionShowHostPayload(payload)) {
+        setQuestion(payload);
+      }
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+    socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+      socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     };
   }, []);
 
@@ -66,6 +80,33 @@ export default function ControllerScreen() {
   }
 
   const canJoin = connected && code.length === 4 && name.trim().length > 0;
+
+  function handleAnswerTap() {
+    // Submission is Task 6 - buttons are rendered but intentionally inert for now.
+  }
+
+  if (question) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.category}>{question.category}</div>
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+        <div style={styles.answerGrid}>
+          {question.options.map((option, index) => (
+            <button
+              key={index}
+              type="button"
+              data-testid="answer-button"
+              style={styles.answerButton}
+              onClick={handleAnswerTap}
+            >
+              <span style={styles.answerLabel}>{OPTION_LABELS[index]}</span>
+              <span>{option}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (joined) {
     const connectedCount = lobby?.players.filter((player) => player.connected).length ?? 1;
@@ -141,4 +182,42 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
   },
   error: { color: '#dc2626', fontWeight: 600, textAlign: 'center' },
+  category: {
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#666',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  },
+  lookAtTv: {
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: '#333',
+  },
+  answerGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  answerButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    width: '100%',
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    padding: '1.25rem 1rem',
+    borderRadius: '0.75rem',
+    border: '2px solid #2563eb',
+    background: 'white',
+    color: '#111',
+    textAlign: 'left',
+  },
+  answerLabel: {
+    fontWeight: 800,
+    color: '#2563eb',
+    minWidth: '1.5rem',
+  },
 };
