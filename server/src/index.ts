@@ -8,6 +8,8 @@ import {
   ClientEvents,
   MIN_PLAYERS,
   QUESTION_TIME_MS,
+  REVEAL_DURATION_MS,
+  SCOREBOARD_DURATION_MS,
   ServerEvents,
   type AnswerProgressPayload,
   type ClientToServerEvents,
@@ -25,6 +27,7 @@ import {
   type ScoreboardPayload,
   type ScoreboardStanding,
   type ServerToClientEvents,
+  type StateSyncPayload,
 } from '@game/shared';
 import {
   addPlayer,
@@ -32,6 +35,7 @@ import {
   deleteRoom,
   getActiveRoomCount,
   getConnectedPlayers,
+  haveAllConnectedPlayersAnswered,
   getPlayer,
   getRoom,
   isNameTaken,
@@ -103,6 +107,101 @@ function broadcastLobbyUpdate(code: RoomCode): void {
   if (payload) {
     io.to(code).emit(ServerEvents.LOBBY_UPDATE, payload);
   }
+}
+
+// Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
+// ranking" convention, where a rank equals 1 + the number of players
+// strictly ahead of it.
+function computeCompetitionRanks<T>(
+  items: T[],
+  getScore: (item: T) => number,
+  getId: (item: T) => string,
+): Map<string, number> {
+  const sorted = [...items].sort((a, b) => getScore(b) - getScore(a));
+  const ranks = new Map<string, number>();
+  let previousScore: number | null = null;
+  let previousRank = 0;
+  sorted.forEach((item, index) => {
+    const score = getScore(item);
+    const rank = score === previousScore ? previousRank : index + 1;
+    ranks.set(getId(item), rank);
+    previousScore = score;
+    previousRank = rank;
+  });
+  return ranks;
+}
+
+// How much of the current REVEAL/SCOREBOARD auto-advance window is left,
+// computed from the server's own clock - used both for the fresh emission
+// (where it's ~the full duration) and for catching a reconnecting player up
+// via state:sync (where it's whatever's actually left).
+function remainingPhaseMs(room: Room, durationMs: number): number {
+  return Math.max(0, durationMs - (Date.now() - room.phaseTimerStartedAt));
+}
+
+// Reads room.lastReveal (set once, at the moment REVEAL begins) rather than
+// recomputing anything, so these can be reused identically for the fresh
+// broadcast and for a later state:sync catch-up.
+function buildRevealHostPayload(room: Room): RevealHostPayload | null {
+  if (!room.lastReveal) {
+    return null;
+  }
+  return {
+    correctIndex: room.lastReveal.correctIndex,
+    correctOption: room.lastReveal.correctOption,
+    results: room.lastReveal.results,
+    answerCounts: room.lastReveal.answerCounts,
+    autoAdvanceMs: remainingPhaseMs(room, REVEAL_DURATION_MS),
+  };
+}
+
+function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPayload | null {
+  if (!room.lastReveal) {
+    return null;
+  }
+  const autoAdvanceMs = remainingPhaseMs(room, REVEAL_DURATION_MS);
+  const myResult = room.lastReveal.results.find((result) => result.playerId === playerId);
+
+  if (myResult) {
+    const ranks = computeCompetitionRanks(
+      room.lastReveal.results,
+      (result) => result.totalScore,
+      (result) => result.playerId,
+    );
+    return {
+      correctIndex: room.lastReveal.correctIndex,
+      correctOption: room.lastReveal.correctOption,
+      yourChoice: myResult.choice,
+      yourCorrect: myResult.correct,
+      pointsAwarded: myResult.pointsAwarded,
+      totalScore: myResult.totalScore,
+      rank: ranks.get(playerId) ?? room.lastReveal.results.length,
+      autoAdvanceMs,
+    };
+  }
+
+  // Wasn't connected when this question ended (e.g. reconnecting now, mid
+  // REVEAL, after having been offline for the whole question) - a neutral
+  // view: no points this round, but their real total/rank among everyone.
+  const player = room.players.get(playerId);
+  if (!player) {
+    return null;
+  }
+  const ranks = computeCompetitionRanks(
+    [...room.players.values()],
+    (p) => p.score,
+    (p) => p.playerId,
+  );
+  return {
+    correctIndex: room.lastReveal.correctIndex,
+    correctOption: room.lastReveal.correctOption,
+    yourChoice: null,
+    yourCorrect: false,
+    pointsAwarded: 0,
+    totalScore: player.score,
+    rank: ranks.get(playerId) ?? room.players.size,
+    autoAdvanceMs,
+  };
 }
 
 function startQuestion(room: Room): void {
@@ -179,86 +278,85 @@ function endQuestion(code: RoomCode): void {
     }
   }
 
-  const rankByPlayerId = new Map<string, number>();
-  [...results]
-    .sort((a, b) => b.totalScore - a.totalScore)
-    .forEach((result, index) => rankByPlayerId.set(result.playerId, index + 1));
+  const correctOption = question.options[question.correctIndex];
 
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
-  const hostPayload: RevealHostPayload = {
-    correctIndex: question.correctIndex,
-    correctOption: question.options[question.correctIndex],
-    results,
-    answerCounts,
-  };
-  io.to(room.hostSocketId).emit(ServerEvents.REVEAL_SHOW, hostPayload);
+  // Snapshot + timestamp so a player who reconnects mid-REVEAL can be
+  // caught up via state:sync without recomputing (or re-scoring) anything.
+  room.phaseTimerStartedAt = Date.now();
+  room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts };
+
+  const hostPayload = buildRevealHostPayload(room);
+  if (hostPayload) {
+    io.to(room.hostSocketId).emit(ServerEvents.REVEAL_SHOW, hostPayload);
+  }
 
   for (const result of results) {
     const player = room.players.get(result.playerId);
     if (!player) {
       continue;
     }
-    const playerPayload: RevealPlayerPayload = {
-      correctIndex: question.correctIndex,
-      correctOption: question.options[question.correctIndex],
-      yourChoice: result.choice,
-      yourCorrect: result.correct,
-      pointsAwarded: result.pointsAwarded,
-      totalScore: result.totalScore,
-      rank: rankByPlayerId.get(result.playerId) ?? results.length,
-    };
-    io.to(player.socketId).emit(ServerEvents.REVEAL_SHOW, playerPayload);
+    const playerPayload = buildRevealPlayerPayload(room, result.playerId);
+    if (playerPayload) {
+      io.to(player.socketId).emit(ServerEvents.REVEAL_SHOW, playerPayload);
+    }
   }
 
   console.log(
     `room ${room.code} question ${room.currentQuestionIndex + 1} revealed — correctIndex=${question.correctIndex} results: ${JSON.stringify(results)}`,
   );
+
+  if (room.phaseTimer) {
+    clearTimeout(room.phaseTimer);
+  }
+  room.phaseTimer = setTimeout(() => advanceFromReveal(room.code), REVEAL_DURATION_MS);
 }
 
-// Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
-// ranking" convention, where a rank equals 1 + the number of players
-// strictly ahead of it.
 function buildScoreboard(room: Room): ScoreboardPayload {
-  const sorted = [...room.players.values()].sort((a, b) => b.score - a.score);
+  const players = [...room.players.values()];
+  const ranks = computeCompetitionRanks(
+    players,
+    (player) => player.score,
+    (player) => player.playerId,
+  );
 
-  const standings: ScoreboardStanding[] = [];
-  let previousScore: number | null = null;
-  let previousRank = 0;
-  sorted.forEach((player, index) => {
-    const rank = player.score === previousScore ? previousRank : index + 1;
-    standings.push({
+  const standings: ScoreboardStanding[] = [...players]
+    .sort((a, b) => b.score - a.score)
+    .map((player) => ({
       playerId: player.playerId,
       name: player.name,
       score: player.score,
-      rank,
+      rank: ranks.get(player.playerId) ?? players.length,
       connected: player.connected,
-    });
-    previousScore = player.score;
-    previousRank = rank;
-  });
+    }));
 
   return {
     standings,
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     isLastQuestion: room.currentQuestionIndex >= room.questions.length - 1,
+    autoAdvanceMs: remainingPhaseMs(room, SCOREBOARD_DURATION_MS),
   };
 }
 
 function buildGameOver(room: Room): GameOverPayload {
-  const sorted = [...room.players.values()].sort((a, b) => b.score - a.score);
+  const players = [...room.players.values()];
+  const ranks = computeCompetitionRanks(
+    players,
+    (player) => player.score,
+    (player) => player.playerId,
+  );
 
-  const standings: GameOverStanding[] = [];
-  let previousScore: number | null = null;
-  let previousRank = 0;
-  sorted.forEach((player, index) => {
-    const rank = player.score === previousScore ? previousRank : index + 1;
-    standings.push({ playerId: player.playerId, name: player.name, score: player.score, rank });
-    previousScore = player.score;
-    previousRank = rank;
-  });
+  const standings: GameOverStanding[] = [...players]
+    .sort((a, b) => b.score - a.score)
+    .map((player) => ({
+      playerId: player.playerId,
+      name: player.name,
+      score: player.score,
+      rank: ranks.get(player.playerId) ?? players.length,
+    }));
 
   const winners = standings.filter((standing) => standing.rank === 1);
 
@@ -268,6 +366,89 @@ function buildGameOver(room: Room): GameOverPayload {
     isTie: winners.length > 1,
     totalQuestions: room.questions.length,
   };
+}
+
+// Ends REVEAL exactly once - guarded by the phase check, so whichever of
+// (the auto-advance timer firing) / (host clicking "skip") happens first
+// wins, and the timer is always cleared so it can never fire twice.
+function advanceFromReveal(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'REVEAL') {
+    return;
+  }
+
+  if (room.phaseTimer) {
+    clearTimeout(room.phaseTimer);
+    room.phaseTimer = null;
+  }
+
+  room.phase = 'SCOREBOARD';
+  room.phaseTimerStartedAt = Date.now();
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
+  console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
+
+  room.phaseTimer = setTimeout(() => advanceFromScoreboard(room.code), SCOREBOARD_DURATION_MS);
+}
+
+// Same one-shot discipline as advanceFromReveal.
+function advanceFromScoreboard(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'SCOREBOARD') {
+    return;
+  }
+
+  if (room.phaseTimer) {
+    clearTimeout(room.phaseTimer);
+    room.phaseTimer = null;
+  }
+
+  const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
+  if (isLastQuestion) {
+    room.phase = 'GAME_OVER';
+    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    const gameOverPayload = buildGameOver(room);
+    io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
+    console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
+    return;
+  }
+
+  room.currentQuestionIndex += 1;
+  room.phase = 'QUESTION';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  startQuestion(room);
+}
+
+// Catches a single player up to whatever's currently happening in the room -
+// used right after a join/reconnect when phase !== 'LOBBY', so nobody is
+// ever stuck looking at a stale waiting view.
+function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload | null {
+  switch (room.phase) {
+    case 'QUESTION': {
+      const question = room.questions[room.currentQuestionIndex];
+      const remainingMs = Math.max(0, room.questionStartedAt + QUESTION_TIME_MS - Date.now());
+      const recorded = room.answers.get(playerId);
+      return {
+        phase: 'QUESTION',
+        questionIndex: room.currentQuestionIndex,
+        totalQuestions: room.questions.length,
+        options: question.options,
+        category: question.category,
+        remainingMs,
+        yourChoice: recorded ? recorded.choice : null,
+      };
+    }
+    case 'REVEAL': {
+      const payload = buildRevealPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'REVEAL' } : null;
+    }
+    case 'SCOREBOARD':
+      return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
+    case 'GAME_OVER':
+      return { ...buildGameOver(room), phase: 'GAME_OVER' };
+    default:
+      return null; // LOBBY - callers never ask for this
+  }
 }
 
 io.on('connection', (socket) => {
@@ -316,6 +497,12 @@ io.on('connection', (socket) => {
       socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: existingPlayer.name, code });
       console.log(`player ${existingPlayer.name} reconnected to room ${code}`);
       broadcastLobbyUpdate(code);
+      if (room.phase !== 'LOBBY') {
+        const syncPayload = buildStateSyncForPlayer(room, playerId);
+        if (syncPayload) {
+          socket.emit(ServerEvents.STATE_SYNC, syncPayload);
+        }
+      }
       return;
     }
 
@@ -337,6 +524,12 @@ io.on('connection', (socket) => {
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code}`);
     broadcastLobbyUpdate(code);
+    if (room.phase !== 'LOBBY') {
+      const syncPayload = buildStateSyncForPlayer(room, playerId);
+      if (syncPayload) {
+        socket.emit(ServerEvents.STATE_SYNC, syncPayload);
+      }
+    }
   });
 
   socket.on(ClientEvents.START_GAME, () => {
@@ -416,7 +609,7 @@ io.on('connection', (socket) => {
 
     console.log(`player ${playerId} answered question ${room.currentQuestionIndex + 1} in room ${room.code}`);
 
-    if (room.answers.size >= connectedPlayers.length) {
+    if (haveAllConnectedPlayersAnswered(room)) {
       endQuestion(room.code);
     }
   });
@@ -434,31 +627,19 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // "host:next" is a manual SKIP of whichever auto-advance is pending -
+    // both advanceFrom* functions already clear the pending timer before
+    // doing anything else, so calling them directly here is exactly "cancel
+    // the timer and advance immediately".
     if (room.phase === 'REVEAL') {
-      room.phase = 'SCOREBOARD';
-      io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-      io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
-      console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
+      console.log(`room ${room.code} skipped past reveal (host)`);
+      advanceFromReveal(room.code);
       return;
     }
 
     if (room.phase === 'SCOREBOARD') {
-      const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
-      if (isLastQuestion) {
-        room.phase = 'GAME_OVER';
-        io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-        const gameOverPayload = buildGameOver(room);
-        io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
-        console.log(
-          `room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`,
-        );
-        return;
-      }
-
-      room.currentQuestionIndex += 1;
-      room.phase = 'QUESTION';
-      io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-      startQuestion(room);
+      console.log(`room ${room.code} skipped past scoreboard (host)`);
+      advanceFromScoreboard(room.code);
       return;
     }
 
@@ -518,11 +699,8 @@ io.on('connection', (socket) => {
       // The player who just left might have been the only one still
       // unanswered - re-run the "everyone answered" check so the question
       // doesn't sit waiting on the timer for someone who's no longer here.
-      if (room && room.phase === 'QUESTION') {
-        const connectedPlayers = getConnectedPlayers(room);
-        if (connectedPlayers.length > 0 && room.answers.size >= connectedPlayers.length) {
-          endQuestion(room.code);
-        }
+      if (room && room.phase === 'QUESTION' && haveAllConnectedPlayersAnswered(room)) {
+        endQuestion(room.code);
       }
     }
   });

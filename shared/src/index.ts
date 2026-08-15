@@ -22,6 +22,7 @@ export const ServerEvents = {
   REVEAL_SHOW: 'reveal:show',
   SCOREBOARD_SHOW: 'scoreboard:show',
   GAME_OVER: 'game:over',
+  STATE_SYNC: 'state:sync',
 } as const;
 
 export type RoomCode = string;
@@ -32,6 +33,8 @@ export const MIN_PLAYERS = 2;
 export const QUESTION_TIME_MS = 20000;
 export const BASE_POINTS = 1000;
 export const SPEED_BONUS_MAX = 500;
+export const REVEAL_DURATION_MS = 6000;
+export const SCOREBOARD_DURATION_MS = 8000;
 
 export interface ClientPingPayload {
   sentAt: number;
@@ -163,6 +166,7 @@ export interface RevealHostPayload {
   correctOption: string;
   results: RevealPlayerResult[];
   answerCounts: number[]; // how many picked each option
+  autoAdvanceMs: number; // so clients can render a progress bar
 }
 
 export interface RevealPlayerPayload {
@@ -173,6 +177,7 @@ export interface RevealPlayerPayload {
   pointsAwarded: number;
   totalScore: number;
   rank: number; // current position, 1-based
+  autoAdvanceMs: number;
 }
 
 export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
@@ -198,6 +203,7 @@ export interface ScoreboardPayload {
   questionIndex: number; // the question just completed, 0-based
   totalQuestions: number;
   isLastQuestion: boolean;
+  autoAdvanceMs: number;
 }
 
 export interface HostPlayAgainPayload {}
@@ -215,6 +221,51 @@ export interface GameOverPayload {
   isTie: boolean;
   totalQuestions: number;
 }
+
+// Sent to a single socket right after it joins/reconnects, whenever the
+// room isn't in LOBBY - lets a late joiner or a reconnecting phone jump
+// straight to the correct current view instead of being stuck waiting.
+// Discriminates on `phase`; QUESTION and REVEAL further discriminate on
+// role using the same `isQuestionShowHostPayload` / `isRevealHostPayload`
+// guards as their live counterparts, since they carry the identical shapes
+// plus a couple of catch-up-only fields.
+export interface StateSyncLobbyPayload {
+  phase: 'LOBBY';
+  code: RoomCode;
+  players: LobbyPlayer[];
+  canStart: boolean;
+}
+
+export type StateSyncQuestionHostPayload = QuestionShowHostPayload & {
+  phase: 'QUESTION';
+  remainingMs: number;
+};
+
+export type StateSyncQuestionPlayerPayload = QuestionShowPlayerPayload & {
+  phase: 'QUESTION';
+  remainingMs: number;
+  yourChoice: number | null; // null if this player hasn't answered yet
+};
+
+export type StateSyncRevealHostPayload = RevealHostPayload & { phase: 'REVEAL' };
+export type StateSyncRevealPlayerPayload = RevealPlayerPayload & { phase: 'REVEAL' };
+
+export interface StateSyncScoreboardPayload extends ScoreboardPayload {
+  phase: 'SCOREBOARD';
+}
+
+export interface StateSyncGameOverPayload extends GameOverPayload {
+  phase: 'GAME_OVER';
+}
+
+export type StateSyncPayload =
+  | StateSyncLobbyPayload
+  | StateSyncQuestionHostPayload
+  | StateSyncQuestionPlayerPayload
+  | StateSyncRevealHostPayload
+  | StateSyncRevealPlayerPayload
+  | StateSyncScoreboardPayload
+  | StateSyncGameOverPayload;
 
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
@@ -240,4 +291,5 @@ export type ServerToClientEvents = {
   [ServerEvents.REVEAL_SHOW]: (payload: RevealShowPayload) => void;
   [ServerEvents.SCOREBOARD_SHOW]: (payload: ScoreboardPayload) => void;
   [ServerEvents.GAME_OVER]: (payload: GameOverPayload) => void;
+  [ServerEvents.STATE_SYNC]: (payload: StateSyncPayload) => void;
 };

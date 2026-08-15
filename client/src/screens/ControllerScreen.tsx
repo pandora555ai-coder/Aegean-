@@ -16,6 +16,7 @@ import {
   type RevealPlayerPayload,
   type RevealShowPayload,
   type ScoreboardPayload,
+  type StateSyncPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -104,6 +105,50 @@ export default function ControllerScreen() {
       setGameOver(payload);
     }
 
+    function handleStateSync(payload: StateSyncPayload) {
+      // Always start from a clean slate - only ONE of these ends up set,
+      // matching whatever phase we're catching up to.
+      setQuestion(null);
+      setPendingChoice(null);
+      setAcceptedChoice(null);
+      setReveal(null);
+      setScoreboard(null);
+      setGameOver(null);
+
+      switch (payload.phase) {
+        case 'LOBBY':
+          // Never actually sent (state:sync only fires when phase !==
+          // 'LOBBY') - lobby:update already covers the waiting view.
+          break;
+        case 'QUESTION':
+          if (!isQuestionShowHostPayload(payload)) {
+            setQuestion({
+              questionIndex: payload.questionIndex,
+              totalQuestions: payload.totalQuestions,
+              options: payload.options,
+              category: payload.category,
+            });
+            // Landed mid-question having already answered - go straight to
+            // the SUBMITTED view instead of a fresh (re-tappable) one.
+            if (payload.yourChoice !== null) {
+              setAcceptedChoice(payload.yourChoice);
+            }
+          }
+          break;
+        case 'REVEAL':
+          if (!isRevealHostPayload(payload)) {
+            setReveal(payload);
+          }
+          break;
+        case 'SCOREBOARD':
+          setScoreboard(payload);
+          break;
+        case 'GAME_OVER':
+          setGameOver(payload);
+          break;
+      }
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
@@ -113,6 +158,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
+    socket.on(ServerEvents.STATE_SYNC, handleStateSync);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -124,6 +170,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
+      socket.off(ServerEvents.STATE_SYNC, handleStateSync);
     };
   }, []);
 

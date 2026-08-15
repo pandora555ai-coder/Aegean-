@@ -1,9 +1,27 @@
-import { MAX_NAME_LENGTH, MAX_PLAYERS, type GamePhase, type Player, type Question, type RoomCode } from '@game/shared';
+import {
+  type GamePhase,
+  type Player,
+  type Question,
+  type RevealPlayerResult,
+  type RoomCode,
+  MAX_NAME_LENGTH,
+  MAX_PLAYERS,
+} from '@game/shared';
 import { getQuestions, getShuffledQuestions } from './questions.js';
 
 export interface RecordedAnswer {
   choice: number;
   timeMs: number;
+}
+
+// A snapshot of the last computed reveal, kept around so a player who
+// reconnects mid-REVEAL can be caught up via state:sync without recomputing
+// (or worse, re-scoring) anything.
+export interface RevealSnapshot {
+  correctIndex: number;
+  correctOption: string;
+  results: RevealPlayerResult[];
+  answerCounts: number[];
 }
 
 export interface Room {
@@ -17,6 +35,11 @@ export interface Room {
   answers: Map<string, RecordedAnswer>; // keyed by playerId, cleared every question
   questionStartedAt: number;
   questionTimer: NodeJS.Timeout | null;
+  // Auto-advance timer for REVEAL -> SCOREBOARD -> next question/GAME_OVER.
+  // Reused across both phases since a room is only ever in one at a time.
+  phaseTimer: NodeJS.Timeout | null;
+  phaseTimerStartedAt: number; // when the current phaseTimer was armed
+  lastReveal: RevealSnapshot | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -51,6 +74,9 @@ export function createRoom(hostSocketId: string): Room {
     answers: new Map(),
     questionStartedAt: 0,
     questionTimer: null,
+    phaseTimer: null,
+    phaseTimerStartedAt: 0,
+    lastReveal: null,
   };
 
   rooms.set(code, room);
@@ -62,6 +88,16 @@ export function getRoom(code: RoomCode): Room | undefined {
 }
 
 export function deleteRoom(code: RoomCode): boolean {
+  const room = rooms.get(code);
+  if (room) {
+    // No timer may fire against a room that no longer exists.
+    if (room.questionTimer) {
+      clearTimeout(room.questionTimer);
+    }
+    if (room.phaseTimer) {
+      clearTimeout(room.phaseTimer);
+    }
+  }
   return rooms.delete(code);
 }
 
@@ -96,6 +132,15 @@ export function getConnectedPlayers(room: Room): Player[] {
   return Array.from(room.players.values()).filter((player) => player.connected);
 }
 
+// Identity-based, not a count comparison: answers.size === connectedPlayers
+// .length can coincidentally match even when the *specific* players differ
+// (e.g. two players disconnect at once - one who'd answered, one who
+// hadn't - leaving a remaining connected player who never got to answer).
+export function haveAllConnectedPlayersAnswered(room: Room): boolean {
+  const connectedPlayers = getConnectedPlayers(room);
+  return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.answers.has(player.playerId));
+}
+
 export function addPlayer(code: RoomCode, player: Player): void {
   const room = rooms.get(code);
   if (!room) {
@@ -127,6 +172,12 @@ export function resetRoomForNewGame(room: Room): void {
     clearTimeout(room.questionTimer);
     room.questionTimer = null;
   }
+  if (room.phaseTimer) {
+    clearTimeout(room.phaseTimer);
+    room.phaseTimer = null;
+  }
+  room.phaseTimerStartedAt = 0;
+  room.lastReveal = null;
   room.questions = getShuffledQuestions();
   for (const player of room.players.values()) {
     player.score = 0;

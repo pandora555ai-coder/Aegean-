@@ -3,6 +3,8 @@ import {
   ClientEvents,
   MAX_PLAYERS,
   QUESTION_TIME_MS,
+  REVEAL_DURATION_MS,
+  SCOREBOARD_DURATION_MS,
   ServerEvents,
   isQuestionShowHostPayload,
   isRevealHostPayload,
@@ -18,6 +20,7 @@ import {
   type RoomCode,
   type RoomCreatedPayload,
   type ScoreboardPayload,
+  type StateSyncPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -35,6 +38,9 @@ export default function HostScreen() {
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
+  const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
+  const [scoreboardSecondsLeft, setScoreboardSecondsLeft] = useState(0);
+  const [wakeLockUnsupported, setWakeLockUnsupported] = useState(false);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -86,6 +92,38 @@ export default function HostScreen() {
       setGameOver(payload);
     }
 
+    // The host never actually reconnects mid-game today (a host disconnect
+    // tears the room down), so this is unreachable in practice - kept for
+    // symmetry with the player side and to be ready if host reconnect is
+    // ever added.
+    function handleStateSync(payload: StateSyncPayload) {
+      setPhase(payload.phase);
+      setQuestion(null);
+      setAnswerProgress(null);
+      setReveal(null);
+      setScoreboard(null);
+      setGameOver(null);
+
+      switch (payload.phase) {
+        case 'QUESTION':
+          if (isQuestionShowHostPayload(payload)) {
+            setQuestion(payload);
+          }
+          break;
+        case 'REVEAL':
+          if (isRevealHostPayload(payload)) {
+            setReveal(payload);
+          }
+          break;
+        case 'SCOREBOARD':
+          setScoreboard(payload);
+          break;
+        case 'GAME_OVER':
+          setGameOver(payload);
+          break;
+      }
+    }
+
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -94,6 +132,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
+    socket.on(ServerEvents.STATE_SYNC, handleStateSync);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -104,6 +143,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
+      socket.off(ServerEvents.STATE_SYNC, handleStateSync);
     };
   }, []);
 
@@ -117,6 +157,64 @@ export default function HostScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, question?.questionIndex]);
+
+  // Local countdowns driving the REVEAL/SCOREBOARD progress bars - purely
+  // cosmetic, so the moment doesn't feel abrupt. The server's own timers are
+  // what actually advance the game; these never have to be trusted.
+  useEffect(() => {
+    if (!reveal) {
+      return;
+    }
+    setRevealSecondsLeft(Math.ceil(reveal.autoAdvanceMs / 1000));
+    const interval = setInterval(() => {
+      setRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [reveal]);
+
+  useEffect(() => {
+    if (!scoreboard) {
+      return;
+    }
+    setScoreboardSecondsLeft(Math.ceil(scoreboard.autoAdvanceMs / 1000));
+    const interval = setInterval(() => {
+      setScoreboardSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [scoreboard]);
+
+  // Screen wake lock - the TV/tablet must not sleep mid-game, or the
+  // WebSocket freezes and the host connection drops.
+  useEffect(() => {
+    let wakeLock: WakeLockSentinel | null = null;
+
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) {
+        setWakeLockUnsupported(true);
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+      } catch {
+        // Not fatal - e.g. some browsers reject while the tab is hidden.
+        // visibilitychange below retries once the page is visible again.
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    }
+
+    requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      wakeLock?.release().catch(() => {});
+    };
+  }, []);
 
   function handleCreateRoom() {
     socket.emit(ClientEvents.CREATE_ROOM, {});
@@ -204,8 +302,16 @@ export default function HostScreen() {
             </div>
           ))}
         </div>
-        <button data-testid="continue-button" style={styles.startButton} type="button" onClick={handleNext}>
-          Συνέχεια
+        <div style={styles.progressBarTrack} data-testid="reveal-progress">
+          <div
+            style={{
+              ...styles.progressBarFill,
+              width: `${(revealSecondsLeft / Math.ceil(REVEAL_DURATION_MS / 1000)) * 100}%`,
+            }}
+          />
+        </div>
+        <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
+          Παράλειψη
         </button>
       </div>
     );
@@ -236,8 +342,16 @@ export default function HostScreen() {
             </div>
           ))}
         </div>
-        <button data-testid="next-button" style={styles.startButton} type="button" onClick={handleNext}>
-          {scoreboard.isLastQuestion ? 'Τελικά αποτελέσματα' : 'Επόμενη'}
+        <div style={styles.progressBarTrack} data-testid="scoreboard-progress">
+          <div
+            style={{
+              ...styles.progressBarFill,
+              width: `${(scoreboardSecondsLeft / Math.ceil(SCOREBOARD_DURATION_MS / 1000)) * 100}%`,
+            }}
+          />
+        </div>
+        <button data-testid="next-button" style={styles.skipButton} type="button" onClick={handleNext}>
+          Παράλειψη
         </button>
       </div>
     );
@@ -290,6 +404,11 @@ export default function HostScreen() {
   return (
     <div style={styles.container}>
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
+      {wakeLockUnsupported && (
+        <div style={styles.wakeLockHint} data-testid="wake-lock-hint">
+          Απενεργοποίησε το κλείδωμα οθόνης χειροκίνητα σε αυτή τη συσκευή
+        </div>
+      )}
 
       {roomCode === null ? (
         <button style={styles.createButton} type="button" onClick={handleCreateRoom} disabled={!connected}>
@@ -558,5 +677,33 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     background: '#fef3c7',
     border: '3px solid #f59e0b',
+  },
+  wakeLockHint: {
+    fontSize: '0.9rem',
+    color: '#999',
+  },
+  skipButton: {
+    fontSize: '1.1rem',
+    padding: '0.6rem 1.5rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #d1d5db',
+    background: 'transparent',
+    color: '#888',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  progressBarTrack: {
+    width: '100%',
+    maxWidth: '500px',
+    height: '0.5rem',
+    borderRadius: '999px',
+    background: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    background: '#2563eb',
+    borderRadius: '999px',
+    transition: 'width 1s linear',
   },
 };

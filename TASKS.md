@@ -74,6 +74,35 @@ Progress log for the party game build, task by task.
       session completed with zero issues reported)
 - **v0.1 complete** — the full game loop (lobby → questions → reveal →
   scoreboard → game over → play again) works end-to-end.
+- **Task 10 — Production deploy** — DONE. Live at
+  https://demboyz11.duckdns.org via Caddy (auto HTTPS) reverse-proxying to
+  a `tsx`-run Node process on `127.0.0.1:3001`, managed by the
+  `party-game` systemd service. See `DEPLOY.md`.
+- [x] **Task 11 — Live-testing fixes: auto-advance, wake lock, state resync**
+      — DONE (8/8 acceptance criteria). Fix 1: REVEAL (6s) and SCOREBOARD
+      (8s) now auto-advance via server-side timers stored on the room
+      (`room.phaseTimer`), with `host:next` repurposed as a manual skip
+      that cancels the pending timer first; a full 5-question game now
+      finishes hands-off in ~70s, and two back-to-back games (with
+      `play_again` between them) produced the exact expected
+      `phase:changed` sequence with zero stray/duplicate events. Fix 2:
+      screen wake lock on HostScreen (request on mount, re-acquire on
+      `visibilitychange`, release on unmount, feature-detected with a
+      fallback hint). Fix 3: new `state:sync` event catches a
+      joining/reconnecting player up to the room's current phase
+      (respecting all existing asymmetry - verified via a captured
+      mid-REVEAL frame containing only that player's own result); a
+      reconnecting mid-QUESTION player correctly lands on the SUBMITTED
+      view (if answered) or the answering view with accurate
+      server-computed `remainingMs` (if not); a brand-new player joining
+      mid-game gets caught up immediately instead of being stuck waiting.
+      Also fixed a real bug found while testing (pre-existing since Task
+      8, not introduced here): the "everyone answered" check compared
+      `answers.size >= connectedPlayers.length` (a count), which could
+      wrongly conclude "everyone answered" if two players disconnected
+      simultaneously - one who'd answered, one who hadn't - leaving a
+      remaining connected player who never got the chance. Replaced with
+      an identity-based `haveAllConnectedPlayersAnswered()` check.
 
 ## Known open items
 
@@ -91,14 +120,11 @@ Progress log for the party game build, task by task.
       their `socketId` + `connected: true`, keeps their original name, and
       logs "player X reconnected to room Y" instead of creating a
       duplicate entry.
-- A player who joins after `phase !== 'LOBBY'` successfully joins the room
-  and lobby, but is left on the WAITING view regardless of the actual
-  phase (QUESTION/REVEAL/SCOREBOARD/GAME_OVER) — `question:show`,
-  `reveal:show`, and `scoreboard:show` are all one-shot emits at their
-  respective transition points, never replayed to a late joiner. No
-  crash, but they're stuck until the next full phase transition. Needs a
-  "catch up this player to the current phase" step in `player:join` for
-  the reconnect/late-join case.
+- [x] Fixed (Task 11): a player joining or reconnecting when `phase !==
+      'LOBBY'` now gets a `state:sync` catch-up emit with exactly what
+      their current view needs, so they're never stuck on the waiting
+      view. Verified for QUESTION (answered and not), REVEAL, and a
+      brand-new mid-game joiner.
 - The host's on-screen countdown is a local client-side estimate that
   starts when `question:show` arrives - it is cosmetic only. The
   authoritative timer lives on the server (`room.questionTimer`,
