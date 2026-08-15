@@ -5,12 +5,15 @@ import {
   QUESTION_TIME_MS,
   ServerEvents,
   isQuestionShowHostPayload,
+  isRevealHostPayload,
   type AnswerProgressPayload,
   type GamePhase,
   type LobbyUpdatePayload,
   type PhaseChangedPayload,
   type QuestionShowHostPayload,
   type QuestionShowPayload,
+  type RevealHostPayload,
+  type RevealShowPayload,
   type RoomCode,
   type RoomCreatedPayload,
 } from '@game/shared';
@@ -27,6 +30,7 @@ export default function HostScreen() {
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
   const [answerProgress, setAnswerProgress] = useState<AnswerProgressPayload | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(QUESTION_TIME_MS / 1000));
+  const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -45,6 +49,7 @@ export default function HostScreen() {
       if (isQuestionShowHostPayload(payload)) {
         setQuestion(payload);
         setAnswerProgress(null);
+        setReveal(null);
       }
     }
 
@@ -52,11 +57,18 @@ export default function HostScreen() {
       setAnswerProgress(payload);
     }
 
+    function handleRevealShow(payload: RevealShowPayload) {
+      if (isRevealHostPayload(payload)) {
+        setReveal(payload);
+      }
+    }
+
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
+    socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -64,6 +76,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
+      socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
     };
   }, []);
 
@@ -89,6 +102,46 @@ export default function HostScreen() {
   const players = lobby?.players ?? [];
   const connectedCount = players.filter((player) => player.connected).length;
   const canStart = lobby?.canStart ?? false;
+
+  if (phase === 'REVEAL' && reveal && question) {
+    const sortedResults = [...reveal.results].sort((a, b) => b.totalScore - a.totalScore);
+
+    return (
+      <div style={styles.container}>
+        <div style={styles.progress}>
+          Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
+        </div>
+        <div style={styles.optionsGrid}>
+          {question.options.map((option, index) => (
+            <div
+              key={index}
+              data-testid="reveal-option"
+              data-correct={index === reveal.correctIndex}
+              style={index === reveal.correctIndex ? styles.optionCardCorrect : styles.optionCard}
+            >
+              <span style={styles.optionLabel}>{OPTION_LABELS[index]}</span>
+              <span>{option}</span>
+              <span style={styles.answerCount} data-testid="answer-count">
+                {reveal.answerCounts[index]}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div style={styles.resultsList}>
+          {sortedResults.map((result) => (
+            <div key={result.playerId} style={styles.resultRow} data-testid="reveal-result">
+              <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
+                {result.correct ? '✓' : '✗'} {result.name}
+              </span>
+              <span style={styles.resultPoints}>
+                +{result.pointsAwarded} ({result.totalScore})
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'QUESTION' && question) {
     const answeredIds = new Set(answerProgress?.answeredPlayerIds ?? []);
@@ -305,5 +358,45 @@ const styles: Record<string, CSSProperties> = {
   },
   nameNotAnswered: {
     color: '#bbb',
+  },
+  optionCardCorrect: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    padding: '1.5rem 2rem',
+    borderRadius: '1rem',
+    background: '#dcfce7',
+    border: '3px solid #16a34a',
+  },
+  answerCount: {
+    marginLeft: 'auto',
+    fontWeight: 800,
+    color: '#666',
+  },
+  resultsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    width: '100%',
+    maxWidth: '700px',
+  },
+  resultRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '1.75rem',
+    fontWeight: 600,
+    padding: '0.5rem 1rem',
+  },
+  resultNameCorrect: {
+    color: '#16a34a',
+  },
+  resultNameWrong: {
+    color: '#dc2626',
+  },
+  resultPoints: {
+    fontFamily: 'monospace',
+    fontWeight: 700,
   },
 };

@@ -14,6 +14,9 @@ import {
   type Player,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
+  type RevealHostPayload,
+  type RevealPlayerPayload,
+  type RevealPlayerResult,
   type RoomCode,
   type ServerToClientEvents,
 } from '@game/shared';
@@ -31,6 +34,7 @@ import {
   normalizePlayerName,
   type Room,
 } from './rooms.js';
+import { calculatePoints } from './scoring.js';
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -118,16 +122,68 @@ function endQuestion(code: RoomCode): void {
     room.questionTimer = null;
   }
 
+  const question = room.questions[room.currentQuestionIndex];
+  const connectedPlayers = getConnectedPlayers(room);
+
+  const results: RevealPlayerResult[] = connectedPlayers.map((player) => {
+    const recorded = room.answers.get(player.playerId);
+    const choice = recorded ? recorded.choice : null;
+    const correct = choice === question.correctIndex;
+    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? QUESTION_TIME_MS, QUESTION_TIME_MS);
+    player.score += pointsAwarded;
+
+    return {
+      playerId: player.playerId,
+      name: player.name,
+      choice,
+      correct,
+      pointsAwarded,
+      totalScore: player.score,
+    };
+  });
+
+  const answerCounts = [0, 0, 0, 0];
+  for (const result of results) {
+    if (result.choice !== null) {
+      answerCounts[result.choice] += 1;
+    }
+  }
+
+  const rankByPlayerId = new Map<string, number>();
+  [...results]
+    .sort((a, b) => b.totalScore - a.totalScore)
+    .forEach((result, index) => rankByPlayerId.set(result.playerId, index + 1));
+
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
-  const collectedAnswers = Array.from(room.answers.entries()).map(([playerId, answer]) => ({
-    playerId,
-    choice: answer.choice,
-    timeMs: answer.timeMs,
-  }));
+  const hostPayload: RevealHostPayload = {
+    correctIndex: question.correctIndex,
+    correctOption: question.options[question.correctIndex],
+    results,
+    answerCounts,
+  };
+  io.to(room.hostSocketId).emit(ServerEvents.REVEAL_SHOW, hostPayload);
+
+  for (const result of results) {
+    const player = room.players.get(result.playerId);
+    if (!player) {
+      continue;
+    }
+    const playerPayload: RevealPlayerPayload = {
+      correctIndex: question.correctIndex,
+      correctOption: question.options[question.correctIndex],
+      yourChoice: result.choice,
+      yourCorrect: result.correct,
+      pointsAwarded: result.pointsAwarded,
+      totalScore: result.totalScore,
+      rank: rankByPlayerId.get(result.playerId) ?? results.length,
+    };
+    io.to(player.socketId).emit(ServerEvents.REVEAL_SHOW, playerPayload);
+  }
+
   console.log(
-    `room ${room.code} question ${room.currentQuestionIndex + 1} ended — answers: ${JSON.stringify(collectedAnswers)}`,
+    `room ${room.code} question ${room.currentQuestionIndex + 1} revealed — correctIndex=${question.correctIndex} results: ${JSON.stringify(results)}`,
   );
 }
 
@@ -191,7 +247,7 @@ io.on('connection', (socket) => {
     }
 
     const trimmedName = normalizePlayerName(name);
-    const player: Player = { playerId, name: trimmedName, socketId: socket.id, connected: true };
+    const player: Player = { playerId, name: trimmedName, socketId: socket.id, connected: true, score: 0 };
     addPlayer(code, player);
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);

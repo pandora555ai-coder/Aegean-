@@ -35,8 +35,18 @@ Progress log for the party game build, task by task.
       timer, restored after), answering before the timer ends the question
       immediately and the timer never fires a second time, a mid-question
       disconnect doesn't block the remaining players from ending it)
-- [ ] **Task 7 — Scoring + reveal** — NEXT
-- [ ] **Task 8 — Scoreboard + advance**
+- [x] **Task 7 — Scoring + reveal** — DONE (8/8 acceptance criteria: host
+      reveal shows the correct option highlighted, per-player results and
+      answerCounts; player `reveal:show` frame verified to contain only
+      that player's own data; host `reveal:show` frame captured with the
+      full results table; a faster correct answer (1487) scored more than
+      a slower one (1479/1478 across runs); a non-answering player got
+      `choice: null` / 0 points; `calculatePoints` unit-tested directly
+      (instant ≈ 1500, at the buzzer ≈ 1000, wrong = 0) then the temp test
+      file was deleted; reconnect preserves score, proven via the
+      server's own disconnect log showing the same score (1495) before
+      and after a disconnect/reconnect cycle)
+- [ ] **Task 8 — Scoreboard + advance** — NEXT
 - [ ] **Task 9 — Game over + play again**
 
 ## Known open items
@@ -67,3 +77,9 @@ Progress log for the party game build, task by task.
   `room.questionStartedAt`), which is what actually ends the question;
   the client never has to be trusted or synced precisely for this to be
   correct.
+- The "everyone answered" check only re-runs inside the `player:submit_answer`
+  handler, not on disconnect. If every remaining connected player has
+  already answered and the LAST unanswered player then disconnects, the
+  question doesn't end immediately - it waits for the timer. (Confirmed
+  fine when the disconnect happens *before* the remaining players answer,
+  per Task 6's acceptance test; this is the narrower remaining gap.)

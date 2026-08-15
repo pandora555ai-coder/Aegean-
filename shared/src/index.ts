@@ -17,6 +17,7 @@ export const ServerEvents = {
   PHASE_CHANGED: 'phase:changed',
   ANSWER_ACCEPTED: 'answer:accepted',
   ANSWER_PROGRESS: 'answer:progress',
+  REVEAL_SHOW: 'reveal:show',
 } as const;
 
 export type RoomCode = string;
@@ -25,6 +26,8 @@ export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
 export const MIN_PLAYERS = 2;
 export const QUESTION_TIME_MS = 20000;
+export const BASE_POINTS = 1000;
+export const SPEED_BONUS_MAX = 500;
 
 export interface ClientPingPayload {
   sentAt: number;
@@ -69,6 +72,8 @@ export interface Player {
   /** Changes on every reconnect - never use as identity. */
   socketId: string;
   connected: boolean;
+  /** Initialised to 0 on join, preserved across reconnects. */
+  score: number;
 }
 
 /** Player as seen by clients - never includes socketId, which is server-internal only. */
@@ -138,6 +143,40 @@ export interface AnswerProgressPayload {
   answeredPlayerIds: string[]; // so the TV can show WHO has answered - never the choice
 }
 
+export interface RevealPlayerResult {
+  playerId: string;
+  name: string;
+  choice: number | null; // null = did not answer
+  correct: boolean;
+  pointsAwarded: number;
+  totalScore: number;
+}
+
+// 'reveal:show' is asymmetric, like 'question:show': the host sees every
+// player's result, players only ever see their own.
+export interface RevealHostPayload {
+  correctIndex: number; // now safe to send - the question has ended
+  correctOption: string;
+  results: RevealPlayerResult[];
+  answerCounts: number[]; // how many picked each option
+}
+
+export interface RevealPlayerPayload {
+  correctIndex: number;
+  correctOption: string;
+  yourChoice: number | null;
+  yourCorrect: boolean;
+  pointsAwarded: number;
+  totalScore: number;
+  rank: number; // current position, 1-based
+}
+
+export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
+
+export function isRevealHostPayload(payload: RevealShowPayload): payload is RevealHostPayload {
+  return 'results' in payload;
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -157,4 +196,5 @@ export type ServerToClientEvents = {
   [ServerEvents.PHASE_CHANGED]: (payload: PhaseChangedPayload) => void;
   [ServerEvents.ANSWER_ACCEPTED]: (payload: AnswerAcceptedPayload) => void;
   [ServerEvents.ANSWER_PROGRESS]: (payload: AnswerProgressPayload) => void;
+  [ServerEvents.REVEAL_SHOW]: (payload: RevealShowPayload) => void;
 };

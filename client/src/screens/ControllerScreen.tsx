@@ -4,12 +4,15 @@ import {
   MAX_NAME_LENGTH,
   ServerEvents,
   isQuestionShowHostPayload,
+  isRevealHostPayload,
   type AnswerAcceptedPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
   type PlayerJoinedPayload,
   type QuestionShowPayload,
   type QuestionShowPlayerPayload,
+  type RevealPlayerPayload,
+  type RevealShowPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -36,6 +39,7 @@ export default function ControllerScreen() {
   const [question, setQuestion] = useState<QuestionShowPlayerPayload | null>(null);
   const [pendingChoice, setPendingChoice] = useState<number | null>(null);
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
+  const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -56,6 +60,7 @@ export default function ControllerScreen() {
         setQuestion(payload);
         setPendingChoice(null);
         setAcceptedChoice(null);
+        setReveal(null);
       }
     }
 
@@ -63,11 +68,18 @@ export default function ControllerScreen() {
       setAcceptedChoice(payload.choice);
     }
 
+    function handleRevealShow(payload: RevealShowPayload) {
+      if (!isRevealHostPayload(payload)) {
+        setReveal(payload);
+      }
+    }
+
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
+    socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -75,6 +87,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
+      socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
     };
   }, []);
 
@@ -98,6 +111,28 @@ export default function ControllerScreen() {
     }
     setPendingChoice(index);
     socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
+  }
+
+  if (reveal) {
+    return (
+      <div style={styles.container}>
+        <div style={reveal.yourCorrect ? styles.revealCorrect : styles.revealWrong} data-testid="reveal-verdict">
+          {reveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
+        </div>
+        <div style={styles.revealCorrectOption}>
+          Σωστή απάντηση: {reveal.correctOption}
+        </div>
+        <div style={styles.revealPoints} data-testid="reveal-points">
+          +{reveal.pointsAwarded} πόντοι
+        </div>
+        <div style={styles.revealTotal} data-testid="reveal-total">
+          Σύνολο: {reveal.totalScore}
+        </div>
+        <div style={styles.revealRank} data-testid="reveal-rank">
+          Θέση #{reveal.rank}
+        </div>
+      </div>
+    );
   }
 
   if (question && acceptedChoice !== null) {
@@ -273,5 +308,40 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     color: '#2563eb',
     minWidth: '1.5rem',
+  },
+  revealCorrect: {
+    fontSize: '2.5rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: '#16a34a',
+  },
+  revealWrong: {
+    fontSize: '2.5rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: '#dc2626',
+  },
+  revealCorrectOption: {
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: '#333',
+  },
+  revealPoints: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
+    textAlign: 'center',
+  },
+  revealTotal: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: '#555',
+  },
+  revealRank: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: '#555',
   },
 };
