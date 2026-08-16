@@ -2,10 +2,10 @@ export const ClientEvents = {
   PING: 'client:ping',
   CREATE_ROOM: 'host:create_room',
   PLAYER_JOIN: 'player:join',
-  START_GAME: 'host:start_game',
+  VIP_START_GAME: 'vip:start_game',
   SUBMIT_ANSWER: 'player:submit_answer',
-  NEXT: 'host:next',
-  PLAY_AGAIN: 'host:play_again',
+  VIP_NEXT: 'vip:next',
+  VIP_PLAY_AGAIN: 'vip:play_again',
 } as const;
 
 export const ServerEvents = {
@@ -23,6 +23,7 @@ export const ServerEvents = {
   SCOREBOARD_SHOW: 'scoreboard:show',
   GAME_OVER: 'game:over',
   STATE_SYNC: 'state:sync',
+  VIP_CHANGED: 'vip:changed',
 } as const;
 
 export type RoomCode = string;
@@ -81,6 +82,8 @@ export interface Player {
   connected: boolean;
   /** Initialised to 0 on join, preserved across reconnects. */
   score: number;
+  /** Tied to playerId, not socketId - survives reconnects/refreshes. */
+  isVip: boolean;
 }
 
 /** Player as seen by clients - never includes socketId, which is server-internal only. */
@@ -88,6 +91,7 @@ export interface LobbyPlayer {
   playerId: string;
   name: string;
   connected: boolean;
+  isVip: boolean;
 }
 
 export interface LobbyUpdatePayload {
@@ -120,7 +124,7 @@ export type DifficultyMix = 'easy' | 'normal' | 'hard';
 export const DEFAULT_DIFFICULTY_MIX: DifficultyMix = 'normal';
 export const DEFAULT_QUESTION_COUNT = 10;
 
-export interface HostStartGamePayload {}
+export interface VipStartGamePayload {}
 
 export interface PhaseChangedPayload {
   phase: GamePhase;
@@ -200,7 +204,7 @@ export function isRevealHostPayload(payload: RevealShowPayload): payload is Reve
   return 'results' in payload;
 }
 
-export interface HostNextPayload {}
+export interface VipNextPayload {}
 
 export interface ScoreboardStanding {
   playerId: string;
@@ -220,7 +224,14 @@ export interface ScoreboardPayload {
   autoAdvanceMs: number;
 }
 
-export interface HostPlayAgainPayload {}
+export interface VipPlayAgainPayload {}
+
+// Broadcast to the whole room whenever VIP moves - either the first player
+// claiming a vacant VIP slot, or a migration away from a disconnecting VIP.
+export interface VipChangedPayload {
+  playerId: string;
+  name: string;
+}
 
 export interface GameOverStanding {
   playerId: string;
@@ -285,10 +296,10 @@ export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
   [ClientEvents.PLAYER_JOIN]: (payload: PlayerJoinPayload) => void;
-  [ClientEvents.START_GAME]: (payload: HostStartGamePayload) => void;
+  [ClientEvents.VIP_START_GAME]: (payload: VipStartGamePayload) => void;
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
-  [ClientEvents.NEXT]: (payload: HostNextPayload) => void;
-  [ClientEvents.PLAY_AGAIN]: (payload: HostPlayAgainPayload) => void;
+  [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
+  [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -306,4 +317,5 @@ export type ServerToClientEvents = {
   [ServerEvents.SCOREBOARD_SHOW]: (payload: ScoreboardPayload) => void;
   [ServerEvents.GAME_OVER]: (payload: GameOverPayload) => void;
   [ServerEvents.STATE_SYNC]: (payload: StateSyncPayload) => void;
+  [ServerEvents.VIP_CHANGED]: (payload: VipChangedPayload) => void;
 };

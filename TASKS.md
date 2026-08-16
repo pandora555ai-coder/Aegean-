@@ -136,6 +136,61 @@ Progress log for the party game build, task by task.
       view already rendered `question.category` (Task 5/8) - no client
       change was needed. Difficulty-mix selection UI is Task 14, out of
       scope here.
+- [x] **Task 13 — VIP model: control moves from the TV to the first
+      player's phone** — DONE (8/8 acceptance criteria). The TV/host
+      socket can no longer start, skip, or restart a game - it's now a
+      pure display. `/shared`: `host:start_game`/`host:next`/
+      `host:play_again` renamed to `vip:start_game`/`vip:next`/
+      `vip:play_again`; added `vip:changed` (broadcast on VIP migration),
+      `VipChangedPayload`, `isVip` on both `Player` and `LobbyPlayer`.
+      `/server` (`rooms.ts`): `Room.vipPlayerId: string | null`;
+      `claimVipIfVacant` assigns VIP to whoever joins/reconnects while it's
+      vacant (first-ever joiner, or the first back after everyone left) -
+      a no-op otherwise, so a former VIP reconnecting after someone else
+      took over does NOT reclaim it; `migrateVipAwayFrom` hands VIP to the
+      longest-connected remaining connected player, using the fact that
+      `room.players` (a `Map`) preserves original join order even across
+      reconnects, so "earliest joiner still connected" falls out for
+      free - no extra timestamp field needed. `/server` (`index.ts`):
+      every host-role check on the three control events replaced with a
+      single `getVipRoomForSocket()` helper (connected player + is this
+      room's `vipPlayerId`) - the TV socket is rejected automatically
+      since it has no `playerId` at all; VIP migration on disconnect is
+      immediate (no grace period) and happens before the `lobby:update`
+      broadcast so the payload is already consistent; a mid-QUESTION VIP
+      disconnect only touches `vipPlayerId`/`isVip`, never
+      `questionTimer` or `answers`, so the round is undisturbed.
+      `/client`: `ControllerScreen` shows a 👑 badge and, VIP-only, the
+      "Έναρξη" (disabled below `MIN_PLAYERS`) / "Παράλειψη" / "Ξανά"
+      controls, driven by `vip:changed` plus `isVip` on each
+      `lobby:update`; non-VIP players see "Ο/Η \<name\> θα ξεκινήσει το
+      παιχνίδι" instead. `HostScreen` had all three control buttons
+      deleted outright and now marks the VIP with 👑 in the player list
+      plus "Ο/Η \<name\> ξεκινά το παιχνίδι" while waiting. Verified via a
+      7-scenario scripted Socket.IO run covering every acceptance point
+      (first-joiner-is-VIP with a captured `lobby:update` payload,
+      non-VIP AND the TV both rejected from `vip:start_game` while a
+      subsequent legitimate VIP start proved the room had genuinely stayed
+      in LOBBY until then, a full 10-question game completed with the TV
+      socket emitting zero events after room creation, a solo VIP's
+      refresh - new socketId, same playerId - kept VIP with no
+      `vip:changed` broadcast, a 3-player room's VIP disconnect produced
+      an immediate `vip:changed` to the next-longest-connected player, and
+      a mid-QUESTION VIP disconnect left the round fully intact - the
+      remaining player's answer was still accepted and the reveal fired
+      normally); then cross-checked with a 3-tab Playwright session
+      against the built UI confirming the TV renders literally zero
+      buttons through LOBBY/QUESTION/REVEAL/SCOREBOARD while the VIP tab
+      alone shows the crown badge and every control, and the non-VIP tab
+      shows neither. One scope note: the "VIP survives a refresh" guarantee
+      was verified for the case where no other connected player is present
+      to hand VIP to - with other players connected, a real disconnect (a
+      refresh included) migrates VIP immediately per the explicit
+      no-grace-period requirement, and a former VIP reconnecting after
+      someone else already holds it does not reclaim it, per the equally
+      explicit non-reclaim requirement; both behaviours are correct as
+      specified; they just don't compose into "always survives a refresh
+      regardless of who else is connected."
 
 ## Known open items
 

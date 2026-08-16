@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent, type CSSProperties } from 'react
 import {
   ClientEvents,
   MAX_NAME_LENGTH,
+  MIN_PLAYERS,
   ServerEvents,
   isQuestionShowHostPayload,
   isRevealHostPayload,
@@ -17,6 +18,7 @@ import {
   type RevealShowPayload,
   type ScoreboardPayload,
   type StateSyncPayload,
+  type VipChangedPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
@@ -46,6 +48,8 @@ export default function ControllerScreen() {
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
+  const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
+  const [vipName, setVipName] = useState<string | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -73,6 +77,16 @@ export default function ControllerScreen() {
 
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
       setLobby(payload);
+      const vip = payload.players.find((player) => player.isVip);
+      setVipPlayerId(vip ? vip.playerId : null);
+      if (vip) {
+        setVipName(vip.name);
+      }
+    }
+
+    function handleVipChanged(payload: VipChangedPayload) {
+      setVipPlayerId(payload.playerId);
+      setVipName(payload.name);
     }
 
     function handleQuestionShow(payload: QuestionShowPayload) {
@@ -159,6 +173,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
+    socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -171,6 +186,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
+      socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
     };
   }, []);
 
@@ -187,6 +203,7 @@ export default function ControllerScreen() {
   }
 
   const canJoin = connected && code.length === 4 && name.trim().length > 0;
+  const isVip = vipPlayerId === playerId;
 
   function handleAnswerTap(index: number) {
     if (pendingChoice !== null) {
@@ -196,12 +213,29 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
   }
 
+  function handleStartGame() {
+    socket.emit(ClientEvents.VIP_START_GAME, {});
+  }
+
+  function handleNext() {
+    socket.emit(ClientEvents.VIP_NEXT, {});
+  }
+
+  function handlePlayAgain() {
+    socket.emit(ClientEvents.VIP_PLAY_AGAIN, {});
+  }
+
   if (gameOver) {
     const me = gameOver.standings.find((standing) => standing.playerId === playerId);
     const won = me ? me.rank === 1 : false;
 
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={won ? styles.gameOverWon : styles.gameOverLost} data-testid="gameover-verdict">
           {won ? (gameOver.isTie ? 'Ισοπαλία στην κορυφή!' : 'Κέρδισες!') : 'Τέλος παιχνιδιού'}
         </div>
@@ -212,6 +246,11 @@ export default function ControllerScreen() {
           {me ? me.score : 0} πόντοι
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
+        {isVip && (
+          <button data-testid="play-again-button" style={styles.button} type="button" onClick={handlePlayAgain}>
+            Ξανά
+          </button>
+        )}
       </div>
     );
   }
@@ -225,6 +264,11 @@ export default function ControllerScreen() {
 
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={styles.scoreboardRank} data-testid="scoreboard-rank">
           #{me ? me.rank : '-'}
         </div>
@@ -241,6 +285,11 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τη βαθμολογία</div>
+        {isVip && (
+          <button data-testid="next-button" style={styles.skipButton} type="button" onClick={handleNext}>
+            Παράλειψη
+          </button>
+        )}
       </div>
     );
   }
@@ -248,6 +297,11 @@ export default function ControllerScreen() {
   if (reveal) {
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={reveal.yourCorrect ? styles.revealCorrect : styles.revealWrong} data-testid="reveal-verdict">
           {reveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
         </div>
@@ -263,6 +317,11 @@ export default function ControllerScreen() {
         <div style={styles.revealRank} data-testid="reveal-rank">
           Θέση #{reveal.rank}
         </div>
+        {isVip && (
+          <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
+            Παράλειψη
+          </button>
+        )}
       </div>
     );
   }
@@ -270,6 +329,11 @@ export default function ControllerScreen() {
   if (question && acceptedChoice !== null) {
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={styles.category}>{question.category}</div>
         <div style={styles.submittedChoice} data-testid="submitted-choice">
           {OPTION_LABELS[acceptedChoice]}. {question.options[acceptedChoice]}
@@ -284,6 +348,11 @@ export default function ControllerScreen() {
   if (question) {
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={styles.category}>{question.category}</div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
         <div style={styles.answerGrid}>
@@ -307,11 +376,32 @@ export default function ControllerScreen() {
 
   if (joined) {
     const connectedCount = lobby?.players.filter((player) => player.connected).length ?? 1;
+    const canStart = lobby?.canStart ?? false;
     return (
       <div style={styles.container}>
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
         <div style={styles.title}>{joined.name}</div>
         <div style={styles.subtitle}>waiting for the game to start</div>
         <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
+        {isVip ? (
+          <button
+            data-testid="start-button"
+            style={canStart ? styles.button : styles.buttonDisabled}
+            type="button"
+            onClick={handleStartGame}
+            disabled={!canStart}
+          >
+            Έναρξη{!canStart && ` (χρειάζονται ${MIN_PLAYERS}+ παίκτες)`}
+          </button>
+        ) : (
+          <div style={styles.subtitle} data-testid="waiting-for-vip">
+            Ο/Η {vipName ?? '...'} θα ξεκινήσει το παιχνίδι
+          </div>
+        )}
       </div>
     );
   }
@@ -376,6 +466,37 @@ const styles: Record<string, CSSProperties> = {
     border: 'none',
     background: '#2563eb',
     color: 'white',
+    fontWeight: 600,
+  },
+  buttonDisabled: {
+    width: '100%',
+    fontSize: '1.25rem',
+    padding: '1rem',
+    borderRadius: '0.5rem',
+    border: 'none',
+    background: '#9ca3af',
+    color: 'white',
+    fontWeight: 600,
+    cursor: 'not-allowed',
+  },
+  vipBadge: {
+    alignSelf: 'center',
+    fontSize: '1rem',
+    fontWeight: 700,
+    color: '#92400e',
+    background: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: '999px',
+    padding: '0.25rem 0.9rem',
+  },
+  skipButton: {
+    width: '100%',
+    fontSize: '1rem',
+    padding: '0.6rem 1rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #d1d5db',
+    background: 'transparent',
+    color: '#888',
     fontWeight: 600,
   },
   error: { color: '#dc2626', fontWeight: 600, textAlign: 'center' },

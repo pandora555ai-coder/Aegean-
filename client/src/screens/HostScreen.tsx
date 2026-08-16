@@ -220,21 +220,9 @@ export default function HostScreen() {
     socket.emit(ClientEvents.CREATE_ROOM, {});
   }
 
-  function handleStartGame() {
-    socket.emit(ClientEvents.START_GAME, {});
-  }
-
-  function handleNext() {
-    socket.emit(ClientEvents.NEXT, {});
-  }
-
-  function handlePlayAgain() {
-    socket.emit(ClientEvents.PLAY_AGAIN, {});
-  }
-
   const players = lobby?.players ?? [];
   const connectedCount = players.filter((player) => player.connected).length;
-  const canStart = lobby?.canStart ?? false;
+  const vip = players.find((player) => player.isVip) ?? null;
 
   if (phase === 'GAME_OVER' && gameOver) {
     const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
@@ -259,9 +247,6 @@ export default function HostScreen() {
             </div>
           ))}
         </div>
-        <button data-testid="play-again-button" style={styles.startButton} type="button" onClick={handlePlayAgain}>
-          Ξανά
-        </button>
       </div>
     );
   }
@@ -310,9 +295,6 @@ export default function HostScreen() {
             }}
           />
         </div>
-        <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
-          Παράλειψη
-        </button>
       </div>
     );
   }
@@ -350,9 +332,6 @@ export default function HostScreen() {
             }}
           />
         </div>
-        <button data-testid="next-button" style={styles.skipButton} type="button" onClick={handleNext}>
-          Παράλειψη
-        </button>
       </div>
     );
   }
@@ -430,18 +409,20 @@ export default function HostScreen() {
                 key={player.playerId}
                 data-testid="player-row"
                 data-connected={player.connected}
+                data-vip={player.isVip}
                 style={player.connected ? styles.playerName : styles.playerNameDisconnected}
               >
+                {player.isVip && '👑 '}
                 {player.name}
                 {!player.connected && ' (αποσυνδέθηκε)'}
               </div>
             ))}
           </div>
 
-          {canStart ? (
-            <button data-testid="start-button" style={styles.startButton} type="button" onClick={handleStartGame}>
-              Έναρξη
-            </button>
+          {vip ? (
+            <div data-testid="waiting-message" style={styles.waitingMessage}>
+              Ο/Η {vip.name} ξεκινά το παιχνίδι
+            </div>
           ) : (
             <div data-testid="waiting-message" style={styles.waitingMessage}>
               Περιμένουμε παίκτες...
@@ -500,16 +481,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '2.5rem',
     fontWeight: 600,
     color: '#999',
-  },
-  startButton: {
-    fontSize: '3rem',
-    padding: '1.5rem 4rem',
-    borderRadius: '1rem',
-    border: 'none',
-    background: '#16a34a',
-    color: 'white',
-    fontWeight: 700,
-    cursor: 'pointer',
   },
   category: {
     fontSize: '1.75rem',
@@ -681,16 +652,6 @@ const styles: Record<string, CSSProperties> = {
   wakeLockHint: {
     fontSize: '0.9rem',
     color: '#999',
-  },
-  skipButton: {
-    fontSize: '1.1rem',
-    padding: '0.6rem 1.5rem',
-    borderRadius: '0.5rem',
-    border: '1px solid #d1d5db',
-    background: 'transparent',
-    color: '#888',
-    fontWeight: 600,
-    cursor: 'pointer',
   },
   progressBarTrack: {
     width: '100%',

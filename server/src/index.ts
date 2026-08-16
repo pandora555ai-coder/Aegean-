@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
-import { Server } from 'socket.io';
+import { Server, type Socket } from 'socket.io';
 import {
   ClientEvents,
   MIN_PLAYERS,
@@ -28,9 +28,11 @@ import {
   type ScoreboardStanding,
   type ServerToClientEvents,
   type StateSyncPayload,
+  type VipChangedPayload,
 } from '@game/shared';
 import {
   addPlayer,
+  claimVipIfVacant,
   createRoom,
   deleteRoom,
   getActiveRoomCount,
@@ -41,6 +43,8 @@ import {
   isNameTaken,
   isRoomFull,
   isValidPlayerName,
+  isVip,
+  migrateVipAwayFrom,
   normalizePlayerName,
   resetRoomForNewGame,
   type Room,
@@ -96,6 +100,7 @@ function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
     playerId: player.playerId,
     name: player.name,
     connected: player.connected,
+    isVip: player.playerId === room.vipPlayerId,
   }));
   const canStart = players.filter((player) => player.connected).length >= MIN_PLAYERS;
 
@@ -451,6 +456,34 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
   }
 }
 
+// Authorises a vip:* event: the emitting socket must be a connected PLAYER
+// (never the TV/host socket, which has no playerId at all) whose playerId
+// is the room's current vipPlayerId. Logs and returns null on any failure
+// so every vip:* handler gets identical, one-line rejection behaviour.
+function getVipRoomForSocket(
+  socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+  eventName: string,
+): Room | null {
+  const association = socketAssociationBySocketId.get(socket.id);
+  if (!association || association.role !== 'player') {
+    console.log(`rejected ${eventName} from ${socket.id}: not a player`);
+    return null;
+  }
+
+  const room = getRoom(association.code);
+  if (!room) {
+    console.log(`rejected ${eventName} from ${socket.id}: room ${association.code} not found`);
+    return null;
+  }
+
+  if (!isVip(room, association.playerId)) {
+    console.log(`rejected ${eventName} from ${socket.id}: player ${association.playerId} is not VIP in room ${room.code}`);
+    return null;
+  }
+
+  return room;
+}
+
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
 
@@ -492,6 +525,11 @@ io.on('connection', (socket) => {
     if (existingPlayer) {
       existingPlayer.socketId = socket.id;
       existingPlayer.connected = true;
+      // Only matters if VIP had gone vacant (everyone left, then this
+      // player was first back) - a no-op if VIP is already held, so a
+      // former VIP reconnecting after someone else took over does NOT
+      // reclaim it here.
+      claimVipIfVacant(room, existingPlayer);
       socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
       socket.join(code);
       socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: existingPlayer.name, code });
@@ -517,8 +555,17 @@ io.on('connection', (socket) => {
     }
 
     const trimmedName = normalizePlayerName(name);
-    const player: Player = { playerId, name: trimmedName, socketId: socket.id, connected: true, score: 0 };
+    const player: Player = {
+      playerId,
+      name: trimmedName,
+      socketId: socket.id,
+      connected: true,
+      score: 0,
+      isVip: false,
+    };
     addPlayer(code, player);
+    // The first player to ever join a room becomes VIP; a no-op otherwise.
+    claimVipIfVacant(room, player);
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
@@ -532,29 +579,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on(ClientEvents.START_GAME, () => {
-    const association = socketAssociationBySocketId.get(socket.id);
-    if (!association || association.role !== 'host') {
-      console.log(`rejected ${ClientEvents.START_GAME} from ${socket.id}: not a host`);
-      return;
-    }
-
-    const room = getRoom(association.code);
+  socket.on(ClientEvents.VIP_START_GAME, () => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_START_GAME);
     if (!room) {
-      console.log(`rejected ${ClientEvents.START_GAME} from ${socket.id}: room ${association.code} not found`);
       return;
     }
 
     const connectedCount = Array.from(room.players.values()).filter((player) => player.connected).length;
     if (connectedCount < MIN_PLAYERS) {
       console.log(
-        `rejected ${ClientEvents.START_GAME} for room ${room.code}: only ${connectedCount} connected players`,
+        `rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: only ${connectedCount} connected players`,
       );
       return;
     }
 
     if (room.phase !== 'LOBBY') {
-      console.log(`rejected ${ClientEvents.START_GAME} for room ${room.code}: phase is ${room.phase}, not LOBBY`);
+      console.log(`rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: phase is ${room.phase}, not LOBBY`);
       return;
     }
 
@@ -614,53 +654,39 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on(ClientEvents.NEXT, () => {
-    const association = socketAssociationBySocketId.get(socket.id);
-    if (!association || association.role !== 'host') {
-      console.log(`rejected ${ClientEvents.NEXT} from ${socket.id}: not a host`);
-      return;
-    }
-
-    const room = getRoom(association.code);
+  socket.on(ClientEvents.VIP_NEXT, () => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_NEXT);
     if (!room) {
-      console.log(`rejected ${ClientEvents.NEXT} from ${socket.id}: room ${association.code} not found`);
       return;
     }
 
-    // "host:next" is a manual SKIP of whichever auto-advance is pending -
+    // "vip:next" is a manual SKIP of whichever auto-advance is pending -
     // both advanceFrom* functions already clear the pending timer before
     // doing anything else, so calling them directly here is exactly "cancel
     // the timer and advance immediately".
     if (room.phase === 'REVEAL') {
-      console.log(`room ${room.code} skipped past reveal (host)`);
+      console.log(`room ${room.code} skipped past reveal (VIP)`);
       advanceFromReveal(room.code);
       return;
     }
 
     if (room.phase === 'SCOREBOARD') {
-      console.log(`room ${room.code} skipped past scoreboard (host)`);
+      console.log(`room ${room.code} skipped past scoreboard (VIP)`);
       advanceFromScoreboard(room.code);
       return;
     }
 
-    console.log(`rejected ${ClientEvents.NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or SCOREBOARD`);
+    console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or SCOREBOARD`);
   });
 
-  socket.on(ClientEvents.PLAY_AGAIN, () => {
-    const association = socketAssociationBySocketId.get(socket.id);
-    if (!association || association.role !== 'host') {
-      console.log(`rejected ${ClientEvents.PLAY_AGAIN} from ${socket.id}: not a host`);
-      return;
-    }
-
-    const room = getRoom(association.code);
+  socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_PLAY_AGAIN);
     if (!room) {
-      console.log(`rejected ${ClientEvents.PLAY_AGAIN} from ${socket.id}: room ${association.code} not found`);
       return;
     }
 
     if (room.phase !== 'GAME_OVER') {
-      console.log(`rejected ${ClientEvents.PLAY_AGAIN} for room ${room.code}: phase is ${room.phase}, not GAME_OVER`);
+      console.log(`rejected ${ClientEvents.VIP_PLAY_AGAIN} for room ${room.code}: phase is ${room.phase}, not GAME_OVER`);
       return;
     }
 
@@ -694,6 +720,22 @@ io.on('connection', (socket) => {
       console.log(
         `room ${association.code} players: ${JSON.stringify(Array.from(room?.players.values() ?? []))}`,
       );
+
+      // VIP migrates IMMEDIATELY on disconnect - no grace period, this is a
+      // couch game and control moving to whoever's sitting next to them is
+      // fine. Must happen before broadcastLobbyUpdate so the lobby payload
+      // already reflects the new VIP.
+      if (room && isVip(room, association.playerId)) {
+        const newVip = migrateVipAwayFrom(room, association.playerId);
+        if (newVip) {
+          const vipChangedPayload: VipChangedPayload = { playerId: newVip.playerId, name: newVip.name };
+          io.to(room.code).emit(ServerEvents.VIP_CHANGED, vipChangedPayload);
+          console.log(`room ${room.code} VIP transferred to ${newVip.name} (${newVip.playerId})`);
+        } else {
+          console.log(`room ${room.code} has no connected players left - VIP vacant`);
+        }
+      }
+
       broadcastLobbyUpdate(association.code);
 
       // The player who just left might have been the only one still

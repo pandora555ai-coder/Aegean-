@@ -45,6 +45,7 @@ export interface Room {
   lastReveal: RevealSnapshot | null;
   difficultyMix: DifficultyMix;
   questionCount: number;
+  vipPlayerId: string | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -86,6 +87,7 @@ export function createRoom(hostSocketId: string): Room {
     lastReveal: null,
     difficultyMix,
     questionCount,
+    vipPlayerId: null,
   };
 
   rooms.set(code, room);
@@ -148,6 +150,50 @@ export function getConnectedPlayers(room: Room): Player[] {
 export function haveAllConnectedPlayersAnswered(room: Room): boolean {
   const connectedPlayers = getConnectedPlayers(room);
   return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.answers.has(player.playerId));
+}
+
+export function isVip(room: Room, playerId: string): boolean {
+  return room.vipPlayerId === playerId;
+}
+
+// Claims a vacant VIP slot for `player` - called on every player:join
+// (fresh join AND reconnect), so it covers both "first player ever joins"
+// and "everyone had left, vipPlayerId went null, someone (re)joins and
+// picks it back up." A no-op if VIP is already held by anyone (including
+// this same player), so it never overrides an existing holder.
+export function claimVipIfVacant(room: Room, player: Player): void {
+  if (room.vipPlayerId !== null) {
+    return;
+  }
+  room.vipPlayerId = player.playerId;
+  player.isVip = true;
+}
+
+// Moves VIP off `playerId` to the longest-connected remaining connected
+// player - `room.players` is a Map, whose iteration order is insertion
+// (original join) order and is unaffected by later reconnects (Map.set on
+// an existing key updates the value in place, not its position), so the
+// first currently-connected player in that order is exactly "whoever has
+// been part of this room the longest and is still here." Returns the new
+// VIP, or null if no connected player remains (vipPlayerId goes null, and
+// the next joiner claims it via claimVipIfVacant). No-op (returns null) if
+// `playerId` didn't hold VIP to begin with.
+export function migrateVipAwayFrom(room: Room, playerId: string): Player | null {
+  if (room.vipPlayerId !== playerId) {
+    return null;
+  }
+
+  const formerVip = room.players.get(playerId);
+  if (formerVip) {
+    formerVip.isVip = false;
+  }
+
+  const nextVip = getConnectedPlayers(room)[0] ?? null;
+  room.vipPlayerId = nextVip ? nextVip.playerId : null;
+  if (nextVip) {
+    nextVip.isVip = true;
+  }
+  return nextVip;
 }
 
 export function addPlayer(code: RoomCode, player: Player): void {
