@@ -103,6 +103,39 @@ Progress log for the party game build, task by task.
       simultaneously - one who'd answered, one who hadn't - leaving a
       remaining connected player who never got the chance. Replaced with
       an identity-based `haveAllConnectedPlayersAnswered()` check.
+- [x] **Task 12 — Real question bank (299 Greek questions, JSON-backed)**
+      — DONE (8/8 acceptance criteria). Replaced the 5 hardcoded questions
+      with `server/src/data/questions.json` (299 entries), loaded and
+      validated once at startup (`server/src/questions.ts`, rewritten):
+      checks options.length===4, all 4 options distinct, correctIndex is
+      an integer 0-3, difficulty is a valid literal, and id is unique
+      across the file; invalid entries are excluded and logged by id +
+      reason rather than crashing, unless more than 5% of the file fails,
+      which throws instead. Startup log: 299 loaded, 0 excluded — by
+      difficulty {easy:90, medium:119, hard:90}, by category (18
+      categories, 9-30 each). Added `getQuestionSet(mix, count)`
+      (proper Fisher-Yates shuffle, no `sort(random)` shortcut) and
+      `getStats()`. `/shared`: added `Difficulty`, `DifficultyMix` (the
+      player-facing easy/normal/hard setting, mapped to which authored
+      difficulties it draws from - distinct from a question's own
+      `difficulty`), `DEFAULT_DIFFICULTY_MIX = 'normal'`,
+      `DEFAULT_QUESTION_COUNT = 10`, and `difficulty` added to the
+      `Question` interface. `Room` gained `difficultyMix` and
+      `questionCount`, consumed by `getQuestionSet` on both room creation
+      and `host:play_again`; `totalQuestions` was already derived from
+      `room.questions.length` everywhere, so it now reads 10 with no
+      wire-format changes needed. Verified via a scripted two-game
+      Socket.IO run: 10/10 unique questions within each game, 0 overlap
+      between game 1 and game 2's sets;
+      `getQuestionSet('easy', 10)` returned only easy/medium (sample
+      breakdown 3 easy/7 medium), `getQuestionSet('hard', 10)` returned
+      only medium/hard (4 hard/6 medium); temporarily corrupting
+      `q0005` (duplicated an option) made the loader exclude exactly that
+      id with reason "options are not all distinct" and drop the count to
+      298, restoring it brought the count back to 299. The host QUESTION
+      view already rendered `question.category` (Task 5/8) - no client
+      change was needed. Difficulty-mix selection UI is Task 14, out of
+      scope here.
 
 ## Known open items
 

@@ -1,13 +1,16 @@
 import {
+  type DifficultyMix,
   type GamePhase,
   type Player,
   type Question,
   type RevealPlayerResult,
   type RoomCode,
+  DEFAULT_DIFFICULTY_MIX,
+  DEFAULT_QUESTION_COUNT,
   MAX_NAME_LENGTH,
   MAX_PLAYERS,
 } from '@game/shared';
-import { getQuestions, getShuffledQuestions } from './questions.js';
+import { getQuestionSet } from './questions.js';
 
 export interface RecordedAnswer {
   choice: number;
@@ -40,6 +43,8 @@ export interface Room {
   phaseTimer: NodeJS.Timeout | null;
   phaseTimerStartedAt: number; // when the current phaseTimer was armed
   lastReveal: RevealSnapshot | null;
+  difficultyMix: DifficultyMix;
+  questionCount: number;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -63,13 +68,15 @@ export function generateRoomCode(): RoomCode {
 
 export function createRoom(hostSocketId: string): Room {
   const code = generateRoomCode();
+  const difficultyMix = DEFAULT_DIFFICULTY_MIX;
+  const questionCount = DEFAULT_QUESTION_COUNT;
   const room: Room = {
     code,
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
     phase: 'LOBBY',
-    questions: getQuestions(),
+    questions: getQuestionSet(difficultyMix, questionCount),
     currentQuestionIndex: -1,
     answers: new Map(),
     questionStartedAt: 0,
@@ -77,6 +84,8 @@ export function createRoom(hostSocketId: string): Room {
     phaseTimer: null,
     phaseTimerStartedAt: 0,
     lastReveal: null,
+    difficultyMix,
+    questionCount,
   };
 
   rooms.set(code, room);
@@ -178,7 +187,7 @@ export function resetRoomForNewGame(room: Room): void {
   }
   room.phaseTimerStartedAt = 0;
   room.lastReveal = null;
-  room.questions = getShuffledQuestions();
+  room.questions = getQuestionSet(room.difficultyMix, room.questionCount);
   for (const player of room.players.values()) {
     player.score = 0;
   }

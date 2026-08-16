@@ -98,13 +98,27 @@ export interface LobbyUpdatePayload {
 
 export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
 
+// A question's own intrinsic difficulty, as authored in the question bank.
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
 export interface Question {
   id: string;
   category: string;
+  difficulty: Difficulty;
   question: string; // Greek
   options: string[]; // exactly 4, Greek
   correctIndex: number; // 0-3 - SERVER ONLY, never sent to clients
 }
+
+// The PLAYER-FACING difficulty setting, distinct from a question's own
+// `difficulty`. Maps to which question difficulties get drawn from:
+//   'easy'   -> easy + medium
+//   'normal' -> easy + medium + hard
+//   'hard'   -> medium + hard
+export type DifficultyMix = 'easy' | 'normal' | 'hard';
+
+export const DEFAULT_DIFFICULTY_MIX: DifficultyMix = 'normal';
+export const DEFAULT_QUESTION_COUNT = 10;
 
 export interface HostStartGamePayload {}
 
