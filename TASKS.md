@@ -256,6 +256,51 @@ Progress log for the party game build, task by task.
       leftover timer. Production (`party-game.service`, port 3001) was
       never touched - all testing ran against an isolated dev instance on
       port 3099.
+- [x] **Task 15 — Lobby/joining overhaul: landing page, QR code, always-visible
+      room code** — DONE (8/8 acceptance criteria). The host view moved from
+      `/` to `/host`; `/` is now `LandingScreen` with two large choices
+      ("Δημιουργία δωματίου" -> `/host`, "Σύνδεση σε δωμάτιο" -> `/play`) -
+      it renders a `<Navigate to="/host" replace />` instead of its own
+      content whenever a Task-14 stored room code already exists, so a
+      recovering TV never even paints the landing page. That check
+      (`getStoredHostRoomCode`) plus `set`/`clearStoredHostRoomCode` were
+      pulled out of `HostScreen` into a small shared `hostRoomCode.ts`
+      module so both screens read/write the exact same localStorage key.
+      QR code: added the `qrcode` package (canvas rendering, no heavy UI
+      kit) + `@types/qrcode`; `HostScreen` draws a 240px code onto a
+      `<canvas>` inside a forced-white `qrWrapper` (independent of any
+      future theme), encoding `${window.location.origin}/play?code=<code>`
+      - never a hardcoded domain - redrawn every time LOBBY is (re)entered,
+      including after "play again" reuses the same code. `ControllerScreen`
+      reads `?code=` via `useSearchParams` in a lazy `useState` initializer,
+      accepting it only if it's exactly 4 digits (`/^\d{4}$/`) - anything
+      else leaves the field empty; the name field is untouched and "Join"
+      stays disabled until one is typed, so a QR scan pre-fills but never
+      auto-joins. Always-visible code: `HostScreen` renders a small
+      fixed-position, semi-transparent corner badge (`cornerRoomCode` style,
+      top-right, `position: fixed`) during QUESTION/REVEAL/SCOREBOARD -
+      LOBBY and GAME_OVER keep the existing large central code, the QR only
+      renders in LOBBY. Rejoin mid-game (Part 4) needed no new code - Task
+      11's `state:sync` and the existing score-preserving reconnect path in
+      `player:join` already covered it; this task only had to verify it.
+      Verified: (2) a real landing-page click on each button navigated to
+      `/host` and `/play` respectively; (3) creating a room then navigating
+      back to `/` landed straight on `/host` with the same room code, the
+      landing buttons never appeared; (4) the rendered QR canvas was decoded
+      programmatically with `jsQR` against its raw pixel data - decoded
+      exactly `http://localhost:5199/play?code=<the real code>`; (5)
+      `/play?code=1234` pre-filled the code field while the name field
+      stayed empty and "Join" stayed disabled; (6) `?code=abc`, `?code=12345`,
+      and `?code=12` were all ignored, field stayed empty in every case; (7)
+      screenshotted QUESTION/REVEAL/SCOREBOARD - the corner code was
+      correctly visible in all three and a bounding-box check confirmed zero
+      overlap with the question/results/standings content; (8) a
+      protocol-level test played 2 questions (Bob reached 1500 points), had
+      Bob disconnect mid-question-3 and a brand-new player Charlie join via
+      `?code=`, then reconnected Bob with his original playerId - both
+      landed on the live question 3 via `state:sync`; after that question
+      resolved, Bob's total was 2990 (his prior 1500 plus Q3's points -
+      never reset) while Charlie's was 1490 (just Q3 - started at 0).
 
 ## Known open items
 

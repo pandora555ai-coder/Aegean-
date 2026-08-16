@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ClientEvents,
   MAX_NAME_LENGTH,
@@ -36,8 +37,15 @@ const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
 export default function ControllerScreen() {
   const { connected } = useSocketConnection();
   const [playerId] = useState(() => getOrCreatePlayerId());
+  const [searchParams] = useSearchParams();
 
-  const [code, setCode] = useState('');
+  // Pre-fills from a QR/join link's ?code=XXXX, but never auto-joins - a
+  // name is still required, so the player must still tap Join themselves.
+  // A malformed param (not exactly 4 digits) is silently ignored.
+  const [code, setCode] = useState(() => {
+    const param = searchParams.get('code');
+    return param && /^\d{4}$/.test(param) ? param : '';
+  });
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);

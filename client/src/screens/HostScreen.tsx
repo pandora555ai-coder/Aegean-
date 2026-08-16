@@ -23,15 +23,13 @@ import {
   type ServerErrorPayload,
   type StateSyncPayload,
 } from '@game/shared';
+import QRCode from 'qrcode';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
+import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode } from '../hostRoomCode';
 
 const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
-// Persisted so a TV that goes to sleep (Tizen ignores the Wake Lock API and
-// treats "no remote input" as idle) can wake up, let socket.io reconnect on
-// its own, and silently rejoin the exact same room instead of getting stuck
-// on "Create Room".
-const HOST_ROOM_CODE_KEY = 'hostRoomCode';
+const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -49,18 +47,19 @@ export default function HostScreen() {
   const [wakeLockFailed, setWakeLockFailed] = useState(false);
   // True from mount only when a stored room code exists - keeps the
   // "Create Room" button from flashing while a host:rejoin is in flight.
-  const [isRejoining, setIsRejoining] = useState(() => !!localStorage.getItem(HOST_ROOM_CODE_KEY));
+  const [isRejoining, setIsRejoining] = useState(() => !!getStoredHostRoomCode());
   // Mirrors `roomCode` for handlers registered once (empty dep array) that
   // still need the LATEST value - avoids a stale-closure read of `roomCode`.
   const roomCodeRef = useRef<RoomCode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
       setRoomCode(payload.code);
       roomCodeRef.current = payload.code;
       setIsRejoining(false);
-      localStorage.setItem(HOST_ROOM_CODE_KEY, payload.code);
+      setStoredHostRoomCode(payload.code);
       startKeepAliveAudio();
     }
 
@@ -69,7 +68,7 @@ export default function HostScreen() {
     // code and fall back to the create screen.
     function handleServerError(payload: ServerErrorPayload) {
       console.warn(`server error: ${payload.message}`);
-      localStorage.removeItem(HOST_ROOM_CODE_KEY);
+      clearStoredHostRoomCode();
       roomCodeRef.current = null;
       setRoomCode(null);
       setIsRejoining(false);
@@ -94,7 +93,7 @@ export default function HostScreen() {
         // below, so a fresh "play again" round needs it set again for a
         // mid-game refresh to still auto-rejoin.
         if (roomCodeRef.current) {
-          localStorage.setItem(HOST_ROOM_CODE_KEY, roomCodeRef.current);
+          setStoredHostRoomCode(roomCodeRef.current);
         }
       }
     }
@@ -127,7 +126,7 @@ export default function HostScreen() {
       // The game concluded - nothing left to recover on a future refresh
       // unless/until "play again" makes the room live again (see
       // handlePhaseChanged's LOBBY branch, which re-arms this).
-      localStorage.removeItem(HOST_ROOM_CODE_KEY);
+      clearStoredHostRoomCode();
     }
 
     // Catches the TV display up to whatever's live right now - the normal
@@ -311,7 +310,7 @@ export default function HostScreen() {
   // with a single code path.
   useEffect(() => {
     function attemptRejoin() {
-      const stored = localStorage.getItem(HOST_ROOM_CODE_KEY);
+      const stored = getStoredHostRoomCode();
       if (stored) {
         socket.emit(ClientEvents.HOST_REJOIN, { code: stored });
       }
@@ -326,6 +325,31 @@ export default function HostScreen() {
       socket.off('connect', attemptRejoin);
     };
   }, []);
+
+  // Renders the join QR code onto the canvas - only mounted during LOBBY,
+  // so this re-runs (and redraws) every time we land back there, including
+  // after "play again" resets the phase with the SAME room code.
+  useEffect(() => {
+    if (!roomCode || phase !== 'LOBBY') {
+      return;
+    }
+    const canvas = qrCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    // Never hardcode the domain - derive from wherever this page was
+    // actually served from, so dev/staging/prod all just work.
+    const joinUrl = `${window.location.origin}/play?code=${roomCode}`;
+    QRCode.toCanvas(canvas, joinUrl, {
+      width: QR_SIZE_PX,
+      margin: 2,
+      // Forced light background regardless of any future theme - QR
+      // scanning fails on dark/inverted codes on many phone cameras.
+      color: { dark: '#000000', light: '#ffffff' },
+    }).catch((err: unknown) => {
+      console.warn('failed to render QR code', err);
+    });
+  }, [roomCode, phase]);
 
   function handleCreateRoom() {
     socket.emit(ClientEvents.CREATE_ROOM, {});
@@ -367,6 +391,11 @@ export default function HostScreen() {
 
     return (
       <div style={styles.container}>
+        {roomCode && (
+          <div style={styles.cornerRoomCode} data-testid="corner-room-code">
+            {roomCode}
+          </div>
+        )}
         <div style={styles.progress}>
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
         </div>
@@ -415,6 +444,11 @@ export default function HostScreen() {
 
     return (
       <div style={styles.container}>
+        {roomCode && (
+          <div style={styles.cornerRoomCode} data-testid="corner-room-code">
+            {roomCode}
+          </div>
+        )}
         <div style={styles.progress}>
           Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
         </div>
@@ -454,6 +488,11 @@ export default function HostScreen() {
 
     return (
       <div style={styles.container}>
+        {roomCode && (
+          <div style={styles.cornerRoomCode} data-testid="corner-room-code">
+            {roomCode}
+          </div>
+        )}
         <div style={styles.timer} data-testid="countdown">
           {secondsLeft}
         </div>
@@ -516,6 +555,10 @@ export default function HostScreen() {
             {roomCode.split('').join(' ')}
           </div>
 
+          <div style={styles.qrWrapper}>
+            <canvas ref={qrCanvasRef} data-testid="qr-code" width={QR_SIZE_PX} height={QR_SIZE_PX} />
+          </div>
+
           <div data-testid="player-counter" style={styles.counter}>
             {connectedCount}/{MAX_PLAYERS} παίκτες
           </div>
@@ -574,6 +617,29 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.5em',
+  },
+  qrWrapper: {
+    // Explicit white background regardless of theme - QR scanning fails on
+    // dark/inverted codes on many phone cameras, so this can't just inherit
+    // whatever the page background happens to be.
+    background: '#ffffff',
+    padding: '1rem',
+    borderRadius: '1rem',
+    lineHeight: 0,
+  },
+  cornerRoomCode: {
+    position: 'fixed',
+    top: '1rem',
+    right: '1rem',
+    fontSize: '1rem',
+    fontWeight: 700,
+    fontFamily: 'monospace',
+    letterSpacing: '0.15em',
+    color: '#888',
+    background: 'rgba(255,255,255,0.9)',
+    padding: '0.35rem 0.75rem',
+    borderRadius: '0.5rem',
+    zIndex: 10,
   },
   counter: {
     fontSize: '2.5rem',
