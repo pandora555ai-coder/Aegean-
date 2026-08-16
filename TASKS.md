@@ -191,6 +191,71 @@ Progress log for the party game build, task by task.
       explicit non-reclaim requirement; both behaviours are correct as
       specified; they just don't compose into "always survives a refresh
       regardless of who else is connected."
+- [x] **Task 14 — Keep the TV alive; make TV disconnection harmless** — DONE
+      (8/8 acceptance criteria). Built for a Tizen smart TV where the Wake
+      Lock API is silently ignored and the screen sleeps on "no remote
+      input" mid-game. Part 1 (`HostScreen`): a silent Web Audio keep-alive
+      generated entirely in code (`AudioContext` + `GainNode` at 0.0001
+      gain, NOT exactly 0, driving an `OscillatorNode`) - started from the
+      `room:created` handler (fired by the "Create Room" click, or by a
+      successful rejoin), wrapped in try/catch with feature detection, and
+      resumed on `visibilitychange`. Part 2: the wake-lock effect now
+      tracks real acquisition failure (not just API absence) via
+      `wakeLockFailed`, surfaced ONLY on the LOBBY view as "Συμβουλή:
+      απενεργοποιήστε το Eco Mode / Screen Saver στις ρυθμίσεις της
+      τηλεόρασης" - gated on `phase === 'LOBBY'` so it can never cover a
+      live question. Part 3 (the main one): `/shared` adds `host:rejoin`
+      (`{code}`); `/server` (`rooms.ts`) makes `Room.hostSocketId`
+      nullable and adds `ROOM_TTL_MS = 300000`,
+      `attachHostDisplay`/`detachHostDisplay`/`refreshRoomTtl` - a room is
+      scheduled for deletion only once `isRoomFullyEmpty` (no host display
+      AND no connected players), and reattaching either cancels it; a host
+      disconnect now calls `detachHostDisplay` instead of `deleteRoom`
+      (guarded so a stale old socket's disconnect can't clobber a fresher
+      `host:rejoin` that already replaced it), and every
+      `io.to(room.hostSocketId)` emit is now null-guarded so the game
+      (timers, phase advances, answers) runs identically with no display
+      attached. `/server` (`index.ts`) adds the `host:rejoin` handler
+      (`attachHostDisplay` + a new `buildStateSyncForHost`, which - unlike
+      the player-side version - also covers LOBBY, since a reattaching TV
+      has no other way to get the current player list) and a
+      `server:error` reply when the room no longer exists.
+      `/client` (`HostScreen`) persists `hostRoomCode` to localStorage on
+      `room:created`, attempts `host:rejoin` on EVERY `'connect'` event
+      (covers first mount, a plain refresh, AND socket.io's automatic
+      reconnect after the TV wakes - one code path for all three), shows a
+      transitional "Επανασύνδεση..." instead of ever flashing "Create
+      Room" while a stored code is pending, clears the stored code on
+      `server:error` or `GAME_OVER`, and re-arms it on the LOBBY
+      transition after "play again" (so a refresh mid-game-2 still
+      recovers). `socket.ts` now sets explicit reconnection options
+      (`reconnectionAttempts: Infinity`, capped backoff) since the TV may
+      be asleep far longer than the library's defaults anticipate.
+      Verified: (2) a Playwright-instrumented `AudioContext` subclass
+      confirmed exactly one instance created after "Create Room", state
+      `running`; (3) killed the host socket mid-QUESTION (before either
+      player answered) - both players' `player:submit_answer` were still
+      accepted and REVEAL still fired for both, with zero display attached
+      the entire time; (4) reconnected a fresh host socket to that same
+      room via `host:rejoin` - captured `state:sync` frame: `phase:
+      "REVEAL"` with the full host-shaped `results`/`answerCounts`/
+      `correctOption`, then the game continued advancing normally
+      afterward; (5) a real page reload with a stored code went straight
+      to the room-code view, `"Create Room"` never became visible; (6) a
+      bogus stored code (`"0000"`) produced a `server:error`, and the page
+      fell back to the `"Create Room"` button with localStorage cleared;
+      (7) with `ROOM_TTL_MS` temporarily lowered to 3000ms for the test: a
+      fully-empty room existed at +500ms and was gone at +3200ms (deletion
+      logged with reason), while a second room that got a `host:rejoin`
+      1.5s into its own 3s TTL window was confirmed to still exist *past*
+      what would have been the original deadline - restored to 300000
+      afterward and reconfirmed; (8) two full 10-question games back to
+      back (via `vip:play_again`) completed cleanly, with a 3-second
+      silent watch afterward confirming no stray `phase:changed`/
+      `question:show`/`reveal:show`/`scoreboard:show` fired from a
+      leftover timer. Production (`party-game.service`, port 3001) was
+      never touched - all testing ran against an isolated dev instance on
+      port 3099.
 
 ## Known open items
 

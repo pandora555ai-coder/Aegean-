@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ClientEvents,
   MAX_PLAYERS,
@@ -20,12 +20,18 @@ import {
   type RoomCode,
   type RoomCreatedPayload,
   type ScoreboardPayload,
+  type ServerErrorPayload,
   type StateSyncPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 
 const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
+// Persisted so a TV that goes to sleep (Tizen ignores the Wake Lock API and
+// treats "no remote input" as idle) can wake up, let socket.io reconnect on
+// its own, and silently rejoin the exact same room instead of getting stuck
+// on "Create Room".
+const HOST_ROOM_CODE_KEY = 'hostRoomCode';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -40,11 +46,33 @@ export default function HostScreen() {
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
   const [scoreboardSecondsLeft, setScoreboardSecondsLeft] = useState(0);
-  const [wakeLockUnsupported, setWakeLockUnsupported] = useState(false);
+  const [wakeLockFailed, setWakeLockFailed] = useState(false);
+  // True from mount only when a stored room code exists - keeps the
+  // "Create Room" button from flashing while a host:rejoin is in flight.
+  const [isRejoining, setIsRejoining] = useState(() => !!localStorage.getItem(HOST_ROOM_CODE_KEY));
+  // Mirrors `roomCode` for handlers registered once (empty dep array) that
+  // still need the LATEST value - avoids a stale-closure read of `roomCode`.
+  const roomCodeRef = useRef<RoomCode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
       setRoomCode(payload.code);
+      roomCodeRef.current = payload.code;
+      setIsRejoining(false);
+      localStorage.setItem(HOST_ROOM_CODE_KEY, payload.code);
+      startKeepAliveAudio();
+    }
+
+    // A failed host:rejoin (the stored room no longer exists server-side) -
+    // the only thing that currently emits server:error. Drop the stale
+    // code and fall back to the create screen.
+    function handleServerError(payload: ServerErrorPayload) {
+      console.warn(`server error: ${payload.message}`);
+      localStorage.removeItem(HOST_ROOM_CODE_KEY);
+      roomCodeRef.current = null;
+      setRoomCode(null);
+      setIsRejoining(false);
     }
 
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
@@ -62,6 +90,12 @@ export default function HostScreen() {
         setReveal(null);
         setScoreboard(null);
         setGameOver(null);
+        // Re-arm recovery for game 2+: GAME_OVER clears the stored code
+        // below, so a fresh "play again" round needs it set again for a
+        // mid-game refresh to still auto-rejoin.
+        if (roomCodeRef.current) {
+          localStorage.setItem(HOST_ROOM_CODE_KEY, roomCodeRef.current);
+        }
       }
     }
 
@@ -90,12 +124,15 @@ export default function HostScreen() {
 
     function handleGameOver(payload: GameOverPayload) {
       setGameOver(payload);
+      // The game concluded - nothing left to recover on a future refresh
+      // unless/until "play again" makes the room live again (see
+      // handlePhaseChanged's LOBBY branch, which re-arms this).
+      localStorage.removeItem(HOST_ROOM_CODE_KEY);
     }
 
-    // The host never actually reconnects mid-game today (a host disconnect
-    // tears the room down), so this is unreachable in practice - kept for
-    // symmetry with the player side and to be ready if host reconnect is
-    // ever added.
+    // Catches the TV display up to whatever's live right now - the normal
+    // path after host:rejoin (a fresh page load recovering a stored room
+    // code, or socket.io's own automatic reconnect after the TV wakes up).
     function handleStateSync(payload: StateSyncPayload) {
       setPhase(payload.phase);
       setQuestion(null);
@@ -105,6 +142,11 @@ export default function HostScreen() {
       setGameOver(null);
 
       switch (payload.phase) {
+        case 'LOBBY':
+          setRoomCode(payload.code);
+          roomCodeRef.current = payload.code;
+          setLobby({ code: payload.code, players: payload.players, canStart: payload.canStart });
+          break;
         case 'QUESTION':
           if (isQuestionShowHostPayload(payload)) {
             setQuestion(payload);
@@ -125,6 +167,7 @@ export default function HostScreen() {
     }
 
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
+    socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
@@ -136,6 +179,7 @@ export default function HostScreen() {
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
+      socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
@@ -184,26 +228,32 @@ export default function HostScreen() {
   }, [scoreboard]);
 
   // Screen wake lock - the TV/tablet must not sleep mid-game, or the
-  // WebSocket freezes and the host connection drops.
+  // WebSocket freezes and the host connection drops. Tracks whether it
+  // actually succeeded (Tizen and others silently ignore this API entirely)
+  // so the lobby can hint at a manual fallback instead of failing silently.
   useEffect(() => {
     let wakeLock: WakeLockSentinel | null = null;
 
     async function requestWakeLock() {
       if (!('wakeLock' in navigator)) {
-        setWakeLockUnsupported(true);
+        setWakeLockFailed(true);
         return;
       }
       try {
         wakeLock = await navigator.wakeLock.request('screen');
+        setWakeLockFailed(false);
       } catch {
-        // Not fatal - e.g. some browsers reject while the tab is hidden.
-        // visibilitychange below retries once the page is visible again.
+        // e.g. some browsers reject while the tab is hidden - visibilitychange
+        // below retries once the page is visible again.
+        setWakeLockFailed(true);
       }
     }
 
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
         requestWakeLock();
+        // AudioContexts get suspended when backgrounded - best effort retry.
+        audioCtxRef.current?.resume().catch(() => {});
       }
     }
 
@@ -213,6 +263,67 @@ export default function HostScreen() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       wakeLock?.release().catch(() => {});
+    };
+  }, []);
+
+  // Silent Web Audio keep-alive - best effort suppression of the TV's own
+  // screensaver/idle detection, which (unlike the Wake Lock API) many smart
+  // TV browsers respect for "still doing something" heuristics. Deliberately
+  // no audio ASSET: the loop is generated entirely in code.
+  useEffect(() => {
+    return () => {
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+    };
+  }, []);
+
+  function startKeepAliveAudio() {
+    if (audioCtxRef.current) {
+      return; // already running
+    }
+    try {
+      const AudioContextCtor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) {
+        return; // unsupported - fail silently, this is best-effort only
+      }
+      const ctx = new AudioContextCtor();
+      const gain = ctx.createGain();
+      // NOT exactly 0 - some platforms treat true silence as "not playing"
+      // and suspend/drop the context anyway, defeating the whole point.
+      gain.gain.value = 0.0001;
+      gain.connect(ctx.destination);
+      const oscillator = ctx.createOscillator();
+      oscillator.connect(gain);
+      oscillator.start();
+      audioCtxRef.current = ctx;
+    } catch {
+      // Best effort - AudioContext unavailable or blocked. Continue without it.
+    }
+  }
+
+  // Auto-recovery: on EVERY successful connection - the very first one on
+  // mount, and every automatic reconnect socket.io performs after the TV
+  // wakes back up - reattach as this room's host display if we have a
+  // stored code. This is the one mechanism that covers all three recovery
+  // paths (fresh page load, reconnect-after-sleep, and a plain refresh)
+  // with a single code path.
+  useEffect(() => {
+    function attemptRejoin() {
+      const stored = localStorage.getItem(HOST_ROOM_CODE_KEY);
+      if (stored) {
+        socket.emit(ClientEvents.HOST_REJOIN, { code: stored });
+      }
+    }
+
+    socket.on('connect', attemptRejoin);
+    if (socket.connected) {
+      attemptRejoin();
+    }
+
+    return () => {
+      socket.off('connect', attemptRejoin);
     };
   }, []);
 
@@ -383,16 +494,22 @@ export default function HostScreen() {
   return (
     <div style={styles.container}>
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
-      {wakeLockUnsupported && (
+      {phase === 'LOBBY' && wakeLockFailed && (
         <div style={styles.wakeLockHint} data-testid="wake-lock-hint">
-          Απενεργοποίησε το κλείδωμα οθόνης χειροκίνητα σε αυτή τη συσκευή
+          Συμβουλή: απενεργοποιήστε το Eco Mode / Screen Saver στις ρυθμίσεις της τηλεόρασης
         </div>
       )}
 
       {roomCode === null ? (
-        <button style={styles.createButton} type="button" onClick={handleCreateRoom} disabled={!connected}>
-          Create Room
-        </button>
+        isRejoining ? (
+          <div style={styles.status} data-testid="rejoining">
+            Επανασύνδεση...
+          </div>
+        ) : (
+          <button style={styles.createButton} type="button" onClick={handleCreateRoom} disabled={!connected}>
+            Create Room
+          </button>
+        )
       ) : (
         <>
           <div data-testid="room-code" style={styles.code}>

@@ -1,6 +1,7 @@
 export const ClientEvents = {
   PING: 'client:ping',
   CREATE_ROOM: 'host:create_room',
+  HOST_REJOIN: 'host:rejoin',
   PLAYER_JOIN: 'player:join',
   VIP_START_GAME: 'vip:start_game',
   SUBMIT_ANSWER: 'player:submit_answer',
@@ -53,6 +54,17 @@ export interface ServerErrorPayload {
 export interface HostCreateRoomPayload {}
 
 export interface RoomCreatedPayload {
+  code: RoomCode;
+}
+
+// Sent by the TV display to reattach to a room it believes it created
+// earlier (from localStorage) - covers both a page refresh and the
+// automatic socket.io reconnect after the underlying transport drops (e.g.
+// a smart TV putting the browser to sleep). On success the server responds
+// exactly like a fresh room:created followed by a state:sync for whatever
+// phase the game is actually in; on failure (room no longer exists) it
+// responds with server:error so the client clears its stored code.
+export interface HostRejoinPayload {
   code: RoomCode;
 }
 
@@ -295,6 +307,7 @@ export type StateSyncPayload =
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
+  [ClientEvents.HOST_REJOIN]: (payload: HostRejoinPayload) => void;
   [ClientEvents.PLAYER_JOIN]: (payload: PlayerJoinPayload) => void;
   [ClientEvents.VIP_START_GAME]: (payload: VipStartGamePayload) => void;
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;

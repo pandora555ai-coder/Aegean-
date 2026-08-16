@@ -27,9 +27,16 @@ export interface RevealSnapshot {
   answerCounts: number[];
 }
 
+// A room is deleted only once it's been fully empty - no host/TV display
+// AND no connected players - for this long. Reattaching either cancels it.
+export const ROOM_TTL_MS = 300000; // 5 minutes
+
 export interface Room {
   code: RoomCode;
-  hostSocketId: string;
+  // null when no TV/display is currently attached (e.g. it went to sleep) -
+  // the game keeps running regardless; broadcasts to it are simply skipped
+  // until a display reattaches via host:rejoin.
+  hostSocketId: string | null;
   createdAt: number;
   players: Map<string, Player>; // keyed by playerId
   phase: GamePhase;
@@ -46,6 +53,9 @@ export interface Room {
   difficultyMix: DifficultyMix;
   questionCount: number;
   vipPlayerId: string | null;
+  // Armed only while the room is fully empty (see refreshRoomTtl); cleared
+  // the instant anyone (host display or player) reattaches.
+  emptyTtlTimer: NodeJS.Timeout | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -88,6 +98,7 @@ export function createRoom(hostSocketId: string): Room {
     difficultyMix,
     questionCount,
     vipPlayerId: null,
+    emptyTtlTimer: null,
   };
 
   rooms.set(code, room);
@@ -108,8 +119,52 @@ export function deleteRoom(code: RoomCode): boolean {
     if (room.phaseTimer) {
       clearTimeout(room.phaseTimer);
     }
+    if (room.emptyTtlTimer) {
+      clearTimeout(room.emptyTtlTimer);
+    }
   }
   return rooms.delete(code);
+}
+
+function isRoomFullyEmpty(room: Room): boolean {
+  return room.hostSocketId === null && getConnectedPlayers(room).length === 0;
+}
+
+// Re-evaluates whether `room` should be scheduled for TTL deletion - call
+// after ANY change to host-display attachment or player connectivity.
+// Always clears any existing timer first, then reschedules only if the
+// room is CURRENTLY fully empty, so reattaching anyone (host display or
+// player) cancels a pending deletion for free.
+export function refreshRoomTtl(room: Room): void {
+  if (room.emptyTtlTimer) {
+    clearTimeout(room.emptyTtlTimer);
+    room.emptyTtlTimer = null;
+  }
+  if (isRoomFullyEmpty(room)) {
+    room.emptyTtlTimer = setTimeout(() => {
+      deleteRoom(room.code);
+      console.log(
+        `room ${room.code} deleted - empty (no host display, no connected players) for ${ROOM_TTL_MS}ms`,
+      );
+    }, ROOM_TTL_MS);
+  }
+}
+
+// Attaches `socketId` as the room's host/TV display - used both when a room
+// is first created and when a TV reconnects (host:rejoin) after
+// sleeping/refreshing. "Replacing the old hostSocketId" is the point: the
+// newest attacher always wins. Cancels any pending empty-room TTL.
+export function attachHostDisplay(room: Room, socketId: string): void {
+  room.hostSocketId = socketId;
+  refreshRoomTtl(room);
+}
+
+// Detaches the host display WITHOUT deleting the room or touching the game
+// in progress - the TV going to sleep must never end the game. May arm the
+// empty-room TTL if no players are connected either.
+export function detachHostDisplay(room: Room): void {
+  room.hostSocketId = null;
+  refreshRoomTtl(room);
 }
 
 export function getActiveRoomCount(): number {

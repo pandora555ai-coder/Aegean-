@@ -32,9 +32,10 @@ import {
 } from '@game/shared';
 import {
   addPlayer,
+  attachHostDisplay,
   claimVipIfVacant,
   createRoom,
-  deleteRoom,
+  detachHostDisplay,
   getActiveRoomCount,
   getConnectedPlayers,
   haveAllConnectedPlayersAnswered,
@@ -46,6 +47,7 @@ import {
   isVip,
   migrateVipAwayFrom,
   normalizePlayerName,
+  refreshRoomTtl,
   resetRoomForNewGame,
   type Room,
 } from './rooms.js';
@@ -227,7 +229,9 @@ function startQuestion(room: Room): void {
     options: question.options,
     category: question.category,
   };
-  io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
+  }
 
   const playerPayload: QuestionShowPlayerPayload = {
     questionIndex: room.currentQuestionIndex,
@@ -294,7 +298,7 @@ function endQuestion(code: RoomCode): void {
   room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts };
 
   const hostPayload = buildRevealHostPayload(room);
-  if (hostPayload) {
+  if (hostPayload && room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.REVEAL_SHOW, hostPayload);
   }
 
@@ -456,6 +460,40 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
   }
 }
 
+// Catches the TV/host display up to whatever's currently happening in the
+// room - used on host:rejoin, for EVERY phase including LOBBY (unlike the
+// player-side version above, a host reattaching mid-LOBBY still needs the
+// current player list, since it has no other way to get one).
+function buildStateSyncForHost(room: Room): StateSyncPayload | null {
+  switch (room.phase) {
+    case 'LOBBY': {
+      const lobbyPayload = buildLobbyUpdate(room.code);
+      return lobbyPayload ? { ...lobbyPayload, phase: 'LOBBY' } : null;
+    }
+    case 'QUESTION': {
+      const question = room.questions[room.currentQuestionIndex];
+      const remainingMs = Math.max(0, room.questionStartedAt + QUESTION_TIME_MS - Date.now());
+      return {
+        phase: 'QUESTION',
+        questionIndex: room.currentQuestionIndex,
+        totalQuestions: room.questions.length,
+        question: question.question,
+        options: question.options,
+        category: question.category,
+        remainingMs,
+      };
+    }
+    case 'REVEAL': {
+      const payload = buildRevealHostPayload(room);
+      return payload ? { ...payload, phase: 'REVEAL' } : null;
+    }
+    case 'SCOREBOARD':
+      return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
+    case 'GAME_OVER':
+      return { ...buildGameOver(room), phase: 'GAME_OVER' };
+  }
+}
+
 // Authorises a vip:* event: the emitting socket must be a connected PLAYER
 // (never the TV/host socket, which has no playerId at all) whose playerId
 // is the room's current vipPlayerId. Logs and returns null on any failure
@@ -504,6 +542,28 @@ io.on('connection', (socket) => {
     console.log(`active room count: ${getActiveRoomCount()}`);
   });
 
+  socket.on(ClientEvents.HOST_REJOIN, (payload) => {
+    const { code } = payload;
+    const room = getRoom(code);
+    if (!room) {
+      socket.emit(ServerEvents.ERROR, { message: `room ${code} not found` });
+      console.log(`rejected ${ClientEvents.HOST_REJOIN} from ${socket.id}: room ${code} not found`);
+      return;
+    }
+
+    attachHostDisplay(room, socket.id);
+    socketAssociationBySocketId.set(socket.id, { role: 'host', code: room.code });
+    socket.join(room.code);
+    socket.emit(ServerEvents.ROOM_CREATED, { code: room.code });
+
+    const syncPayload = buildStateSyncForHost(room);
+    if (syncPayload) {
+      socket.emit(ServerEvents.STATE_SYNC, syncPayload);
+    }
+
+    console.log(`room ${room.code} host display reattached by ${socket.id} (phase=${room.phase})`);
+  });
+
   socket.on(ClientEvents.PLAYER_JOIN, (payload) => {
     const { code, name, playerId } = payload;
 
@@ -530,6 +590,7 @@ io.on('connection', (socket) => {
       // former VIP reconnecting after someone else took over does NOT
       // reclaim it here.
       claimVipIfVacant(room, existingPlayer);
+      refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
       socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
       socket.join(code);
       socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: existingPlayer.name, code });
@@ -566,6 +627,7 @@ io.on('connection', (socket) => {
     addPlayer(code, player);
     // The first player to ever join a room becomes VIP; a no-op otherwise.
     claimVipIfVacant(room, player);
+    refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
@@ -645,7 +707,9 @@ io.on('connection', (socket) => {
       total: connectedPlayers.length,
       answeredPlayerIds: Array.from(room.answers.keys()),
     };
-    io.to(room.hostSocketId).emit(ServerEvents.ANSWER_PROGRESS, progressPayload);
+    if (room.hostSocketId) {
+      io.to(room.hostSocketId).emit(ServerEvents.ANSWER_PROGRESS, progressPayload);
+    }
 
     console.log(`player ${playerId} answered question ${room.currentQuestionIndex + 1} in room ${room.code}`);
 
@@ -706,9 +770,19 @@ io.on('connection', (socket) => {
     socketAssociationBySocketId.delete(socket.id);
 
     if (association.role === 'host') {
-      deleteRoom(association.code);
-      console.log(`room ${association.code} closed (host left)`);
-      console.log(`active room count: ${getActiveRoomCount()}`);
+      // The TV/display disconnecting must NEVER end the game - it might
+      // just be asleep. Only detach if THIS socket is still the currently
+      // attached display: a race where a newer host:rejoin already replaced
+      // it (e.g. a fast refresh) must not clobber that fresher attachment.
+      const room = getRoom(association.code);
+      if (room && room.hostSocketId === socket.id) {
+        detachHostDisplay(room);
+        console.log(`room ${association.code} lost its host display (TV asleep/closed) - game continues running`);
+      } else {
+        console.log(
+          `host socket ${socket.id} disconnected from room ${association.code} but had already been replaced - no-op`,
+        );
+      }
       return;
     }
 
@@ -734,6 +808,10 @@ io.on('connection', (socket) => {
         } else {
           console.log(`room ${room.code} has no connected players left - VIP vacant`);
         }
+      }
+
+      if (room) {
+        refreshRoomTtl(room); // may arm the empty-room TTL if nobody's left at all
       }
 
       broadcastLobbyUpdate(association.code);

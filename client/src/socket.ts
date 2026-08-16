@@ -7,4 +7,12 @@ import { SERVER_URL } from './config';
 // the page itself was served from.
 export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SERVER_URL || undefined, {
   autoConnect: false,
+  // Explicit, not just relying on the (already-true) defaults: the TV can
+  // be asleep for a long time, so it must keep retrying indefinitely with a
+  // backing-off delay rather than giving up after a fixed attempt count.
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 10000,
+  randomizationFactor: 0.5,
 });
