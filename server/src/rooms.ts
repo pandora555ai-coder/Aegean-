@@ -1,14 +1,16 @@
 import {
-  type DifficultyMix,
   type GamePhase,
   type Player,
   type Question,
   type RevealPlayerResult,
   type RoomCode,
-  DEFAULT_DIFFICULTY_MIX,
-  DEFAULT_QUESTION_COUNT,
+  type RoomSettings,
+  DEFAULT_ROOM_SETTINGS,
+  DIFFICULTY_MIX_OPTIONS,
   MAX_NAME_LENGTH,
   MAX_PLAYERS,
+  QUESTION_COUNT_OPTIONS,
+  QUESTION_TIME_OPTIONS_MS,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
 
@@ -50,8 +52,7 @@ export interface Room {
   phaseTimer: NodeJS.Timeout | null;
   phaseTimerStartedAt: number; // when the current phaseTimer was armed
   lastReveal: RevealSnapshot | null;
-  difficultyMix: DifficultyMix;
-  questionCount: number;
+  settings: RoomSettings;
   vipPlayerId: string | null;
   // Armed only while the room is fully empty (see refreshRoomTtl); cleared
   // the instant anyone (host display or player) reattaches.
@@ -79,15 +80,16 @@ export function generateRoomCode(): RoomCode {
 
 export function createRoom(hostSocketId: string): Room {
   const code = generateRoomCode();
-  const difficultyMix = DEFAULT_DIFFICULTY_MIX;
-  const questionCount = DEFAULT_QUESTION_COUNT;
   const room: Room = {
     code,
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
     phase: 'LOBBY',
-    questions: getQuestionSet(difficultyMix, questionCount),
+    // Nobody reads `questions` before the game actually starts - built for
+    // real by buildRoomQuestions() on vip:start_game and vip:play_again, so
+    // settings changes made while still in LOBBY never waste a shuffle.
+    questions: [],
     currentQuestionIndex: -1,
     answers: new Map(),
     questionStartedAt: 0,
@@ -95,8 +97,7 @@ export function createRoom(hostSocketId: string): Room {
     phaseTimer: null,
     phaseTimerStartedAt: 0,
     lastReveal: null,
-    difficultyMix,
-    questionCount,
+    settings: { ...DEFAULT_ROOM_SETTINGS },
     vipPlayerId: null,
     emptyTtlTimer: null,
   };
@@ -165,6 +166,34 @@ export function attachHostDisplay(room: Room, socketId: string): void {
 export function detachHostDisplay(room: Room): void {
   room.hostSocketId = null;
   refreshRoomTtl(room);
+}
+
+// (Re)builds `room.questions` from the room's CURRENT settings - called on
+// vip:start_game and vip:play_again (never eagerly at creation or on every
+// settings tweak, since nobody reads it until the game is actually live).
+export function buildRoomQuestions(room: Room): void {
+  room.questions = getQuestionSet(room.settings.difficultyMix, room.settings.questionCount);
+}
+
+// Merges a VIP-supplied partial settings update into `room.settings`,
+// validating every field against its allowed option list and silently
+// IGNORING (not rejecting the whole update for) any field that isn't one
+// of the allowed values - never trust the client. Returns the resulting
+// settings (unchanged if nothing in the partial was valid).
+export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): RoomSettings {
+  if (partial.questionCount !== undefined && (QUESTION_COUNT_OPTIONS as readonly number[]).includes(partial.questionCount)) {
+    room.settings.questionCount = partial.questionCount;
+  }
+  if (
+    partial.questionTimeMs !== undefined &&
+    (QUESTION_TIME_OPTIONS_MS as readonly number[]).includes(partial.questionTimeMs)
+  ) {
+    room.settings.questionTimeMs = partial.questionTimeMs;
+  }
+  if (partial.difficultyMix !== undefined && DIFFICULTY_MIX_OPTIONS.includes(partial.difficultyMix)) {
+    room.settings.difficultyMix = partial.difficultyMix;
+  }
+  return room.settings;
 }
 
 export function getActiveRoomCount(): number {
@@ -288,7 +317,10 @@ export function resetRoomForNewGame(room: Room): void {
   }
   room.phaseTimerStartedAt = 0;
   room.lastReveal = null;
-  room.questions = getQuestionSet(room.difficultyMix, room.questionCount);
+  // Settings PERSIST across play_again (room.settings is untouched) - the
+  // VIP doesn't have to reconfigure every game, only the question SET gets
+  // rebuilt (a fresh shuffle/draw against those same settings).
+  buildRoomQuestions(room);
   for (const player of room.players.values()) {
     player.score = 0;
   }

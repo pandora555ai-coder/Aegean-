@@ -7,7 +7,6 @@ import { Server, type Socket } from 'socket.io';
 import {
   ClientEvents,
   MIN_PLAYERS,
-  QUESTION_TIME_MS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   ServerEvents,
@@ -27,12 +26,14 @@ import {
   type ScoreboardPayload,
   type ScoreboardStanding,
   type ServerToClientEvents,
+  type SettingsUpdatedPayload,
   type StateSyncPayload,
   type VipChangedPayload,
 } from '@game/shared';
 import {
   addPlayer,
   attachHostDisplay,
+  buildRoomQuestions,
   claimVipIfVacant,
   createRoom,
   detachHostDisplay,
@@ -49,6 +50,7 @@ import {
   normalizePlayerName,
   refreshRoomTtl,
   resetRoomForNewGame,
+  updateRoomSettings,
   type Room,
 } from './rooms.js';
 import { calculatePoints } from './scoring.js';
@@ -106,7 +108,7 @@ function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
   }));
   const canStart = players.filter((player) => player.connected).length >= MIN_PLAYERS;
 
-  return { code, players, canStart };
+  return { code, players, canStart, settings: room.settings };
 }
 
 function broadcastLobbyUpdate(code: RoomCode): void {
@@ -217,7 +219,8 @@ function startQuestion(room: Room): void {
   if (room.questionTimer) {
     clearTimeout(room.questionTimer);
   }
-  room.questionTimer = setTimeout(() => endQuestion(room.code), QUESTION_TIME_MS);
+  const questionTimeMs = room.settings.questionTimeMs;
+  room.questionTimer = setTimeout(() => endQuestion(room.code), questionTimeMs);
 
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
@@ -228,6 +231,7 @@ function startQuestion(room: Room): void {
     question: question.question,
     options: question.options,
     category: question.category,
+    questionTimeMs,
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
@@ -238,6 +242,7 @@ function startQuestion(room: Room): void {
     totalQuestions,
     options: question.options,
     category: question.category,
+    questionTimeMs,
   };
   for (const player of getConnectedPlayers(room)) {
     io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
@@ -262,12 +267,13 @@ function endQuestion(code: RoomCode): void {
 
   const question = room.questions[room.currentQuestionIndex];
   const connectedPlayers = getConnectedPlayers(room);
+  const questionTimeMs = room.settings.questionTimeMs;
 
   const results: RevealPlayerResult[] = connectedPlayers.map((player) => {
     const recorded = room.answers.get(player.playerId);
     const choice = recorded ? recorded.choice : null;
     const correct = choice === question.correctIndex;
-    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? QUESTION_TIME_MS, QUESTION_TIME_MS);
+    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs);
     player.score += pointsAwarded;
 
     return {
@@ -435,7 +441,7 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
   switch (room.phase) {
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
-      const remainingMs = Math.max(0, room.questionStartedAt + QUESTION_TIME_MS - Date.now());
+      const remainingMs = Math.max(0, room.questionStartedAt + room.settings.questionTimeMs - Date.now());
       const recorded = room.answers.get(playerId);
       return {
         phase: 'QUESTION',
@@ -443,6 +449,7 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
         totalQuestions: room.questions.length,
         options: question.options,
         category: question.category,
+        questionTimeMs: room.settings.questionTimeMs,
         remainingMs,
         yourChoice: recorded ? recorded.choice : null,
       };
@@ -472,7 +479,7 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     }
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
-      const remainingMs = Math.max(0, room.questionStartedAt + QUESTION_TIME_MS - Date.now());
+      const remainingMs = Math.max(0, room.questionStartedAt + room.settings.questionTimeMs - Date.now());
       return {
         phase: 'QUESTION',
         questionIndex: room.currentQuestionIndex,
@@ -480,6 +487,7 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         question: question.question,
         options: question.options,
         category: question.category,
+        questionTimeMs: room.settings.questionTimeMs,
         remainingMs,
       };
     }
@@ -660,10 +668,34 @@ io.on('connection', (socket) => {
       return;
     }
 
+    buildRoomQuestions(room);
     room.phase = 'QUESTION';
     room.currentQuestionIndex = 0;
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     startQuestion(room);
+  });
+
+  socket.on(ClientEvents.VIP_UPDATE_SETTINGS, (payload) => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_UPDATE_SETTINGS);
+    if (!room) {
+      return;
+    }
+
+    if (room.phase !== 'LOBBY') {
+      console.log(
+        `rejected ${ClientEvents.VIP_UPDATE_SETTINGS} for room ${room.code}: phase is ${room.phase}, not LOBBY - settings are locked once a game starts`,
+      );
+      return;
+    }
+
+    // updateRoomSettings validates every field against its allowed option
+    // list itself, silently ignoring anything invalid - never trust the
+    // client. Always broadcast the resulting settings, even if nothing in
+    // this particular payload was valid, so the room stays in sync.
+    const updated = updateRoomSettings(room, payload);
+    const settingsPayload: SettingsUpdatedPayload = updated;
+    io.to(room.code).emit(ServerEvents.SETTINGS_UPDATED, settingsPayload);
+    console.log(`room ${room.code} settings updated: ${JSON.stringify(updated)}`);
   });
 
   socket.on(ClientEvents.SUBMIT_ANSWER, (payload) => {

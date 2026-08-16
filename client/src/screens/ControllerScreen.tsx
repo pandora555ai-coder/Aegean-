@@ -1,13 +1,20 @@
-import { useEffect, useState, type ChangeEvent, type CSSProperties } from 'react';
+import { useEffect, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ClientEvents,
+  DEFAULT_ROOM_SETTINGS,
+  DIFFICULTY_MIX_OPTIONS,
   MAX_NAME_LENGTH,
   MIN_PLAYERS,
+  QUESTION_COUNT_OPTIONS,
+  QUESTION_TIME_OPTIONS_MS,
+  REVEAL_DURATION_MS,
+  SCOREBOARD_DURATION_MS,
   ServerEvents,
   isQuestionShowHostPayload,
   isRevealHostPayload,
   type AnswerAcceptedPayload,
+  type DifficultyMix,
   type GameOverPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
@@ -17,13 +24,16 @@ import {
   type QuestionShowPlayerPayload,
   type RevealPlayerPayload,
   type RevealShowPayload,
+  type RoomSettings,
   type ScoreboardPayload,
+  type SettingsUpdatedPayload,
   type StateSyncPayload,
   type VipChangedPayload,
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
+import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 
 const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
 
@@ -33,6 +43,52 @@ const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_FULL: 'Το δωμάτιο είναι γεμάτο',
   INVALID_NAME: 'Μη έγκυρο όνομα',
 };
+
+// One row of the VIP settings panel - either a row of tappable segmented
+// buttons (VIP) or plain read-only text (everyone else). `T` is inferred
+// from the props at each call site, no explicit type argument needed.
+function SegmentedRow<T extends string | number>({
+  label,
+  options,
+  current,
+  format,
+  onSelect,
+  readOnly,
+  testIdPrefix,
+}: {
+  label: string;
+  options: readonly T[];
+  current: T;
+  format: (option: T) => ReactNode;
+  onSelect: (option: T) => void;
+  readOnly: boolean;
+  testIdPrefix: string;
+}) {
+  return (
+    <div style={styles.settingsRow}>
+      <span style={styles.settingsRowLabel}>{label}</span>
+      {readOnly ? (
+        <span style={styles.settingsRowValue} data-testid={`${testIdPrefix}-readonly`}>
+          {format(current)}
+        </span>
+      ) : (
+        <div style={styles.segmentedGroup}>
+          {options.map((option) => (
+            <button
+              key={String(option)}
+              type="button"
+              data-testid={`${testIdPrefix}-${option}`}
+              style={option === current ? styles.segmentActive : styles.segmentInactive}
+              onClick={() => onSelect(option)}
+            >
+              {format(option)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ControllerScreen() {
   const { connected } = useSocketConnection();
@@ -58,6 +114,7 @@ export default function ControllerScreen() {
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
+  const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -85,6 +142,7 @@ export default function ControllerScreen() {
 
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
       setLobby(payload);
+      setRoomSettings(payload.settings);
       const vip = payload.players.find((player) => player.isVip);
       setVipPlayerId(vip ? vip.playerId : null);
       if (vip) {
@@ -95,6 +153,10 @@ export default function ControllerScreen() {
     function handleVipChanged(payload: VipChangedPayload) {
       setVipPlayerId(payload.playerId);
       setVipName(payload.name);
+    }
+
+    function handleSettingsUpdated(payload: SettingsUpdatedPayload) {
+      setRoomSettings(payload);
     }
 
     function handleQuestionShow(payload: QuestionShowPayload) {
@@ -149,6 +211,7 @@ export default function ControllerScreen() {
               totalQuestions: payload.totalQuestions,
               options: payload.options,
               category: payload.category,
+              questionTimeMs: payload.questionTimeMs,
             });
             // Landed mid-question having already answered - go straight to
             // the SUBMITTED view instead of a fresh (re-tappable) one.
@@ -182,6 +245,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
+    socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -195,6 +259,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
+      socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     };
   }, []);
 
@@ -232,6 +297,14 @@ export default function ControllerScreen() {
   function handlePlayAgain() {
     socket.emit(ClientEvents.VIP_PLAY_AGAIN, {});
   }
+
+  function handleSettingChange(partial: Partial<RoomSettings>) {
+    socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, partial);
+  }
+
+  const estimatedMinutes = Math.round(
+    (roomSettings.questionCount * (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) / 60000,
+  );
 
   if (gameOver) {
     const me = gameOver.standings.find((standing) => standing.playerId === playerId);
@@ -395,6 +468,40 @@ export default function ControllerScreen() {
         <div style={styles.title}>{joined.name}</div>
         <div style={styles.subtitle}>waiting for the game to start</div>
         <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
+
+        <div style={styles.settingsPanel} data-testid="settings-panel">
+          <SegmentedRow
+            label="Ερωτήσεις"
+            options={QUESTION_COUNT_OPTIONS}
+            current={roomSettings.questionCount}
+            format={(count) => String(count)}
+            onSelect={(count) => handleSettingChange({ questionCount: count })}
+            readOnly={!isVip}
+            testIdPrefix="setting-count"
+          />
+          <SegmentedRow
+            label="Χρόνος"
+            options={QUESTION_TIME_OPTIONS_MS}
+            current={roomSettings.questionTimeMs}
+            format={(ms) => `${ms / 1000}΄΄`}
+            onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
+            readOnly={!isVip}
+            testIdPrefix="setting-time"
+          />
+          <SegmentedRow
+            label="Δυσκολία"
+            options={DIFFICULTY_MIX_OPTIONS}
+            current={roomSettings.difficultyMix}
+            format={(mix: DifficultyMix) => DIFFICULTY_MIX_LABELS[mix]}
+            onSelect={(mix) => handleSettingChange({ difficultyMix: mix })}
+            readOnly={!isVip}
+            testIdPrefix="setting-difficulty"
+          />
+          <div style={styles.estimatedLength} data-testid="estimated-length">
+            ~{estimatedMinutes} λεπτά
+          </div>
+        </div>
+
         {isVip ? (
           <button
             data-testid="start-button"
@@ -458,6 +565,59 @@ const styles: Record<string, CSSProperties> = {
   status: { textAlign: 'center', color: '#666' },
   subtitle: { fontSize: '1.1rem', color: '#555', textAlign: 'center' },
   lobbyCount: { fontSize: '1rem', color: '#777', textAlign: 'center' },
+  settingsPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+    padding: '0.9rem',
+    borderRadius: '0.75rem',
+    background: '#f8fafc',
+    border: '1px solid #e5e7eb',
+  },
+  settingsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  settingsRowLabel: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#555',
+  },
+  settingsRowValue: {
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    color: '#2563eb',
+  },
+  segmentedGroup: {
+    display: 'flex',
+    gap: '0.35rem',
+  },
+  segmentActive: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    padding: '0.4rem 0.7rem',
+    borderRadius: '0.5rem',
+    border: '2px solid #2563eb',
+    background: '#2563eb',
+    color: 'white',
+  },
+  segmentInactive: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    padding: '0.4rem 0.7rem',
+    borderRadius: '0.5rem',
+    border: '2px solid #d1d5db',
+    background: 'white',
+    color: '#555',
+  },
+  estimatedLength: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: '#999',
+    textAlign: 'center',
+  },
   input: {
     width: '100%',
     fontSize: '1.5rem',

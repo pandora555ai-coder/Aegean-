@@ -7,6 +7,7 @@ export const ClientEvents = {
   SUBMIT_ANSWER: 'player:submit_answer',
   VIP_NEXT: 'vip:next',
   VIP_PLAY_AGAIN: 'vip:play_again',
+  VIP_UPDATE_SETTINGS: 'vip:update_settings',
 } as const;
 
 export const ServerEvents = {
@@ -25,6 +26,7 @@ export const ServerEvents = {
   GAME_OVER: 'game:over',
   STATE_SYNC: 'state:sync',
   VIP_CHANGED: 'vip:changed',
+  SETTINGS_UPDATED: 'settings:updated',
 } as const;
 
 export type RoomCode = string;
@@ -32,7 +34,6 @@ export type RoomCode = string;
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
 export const MIN_PLAYERS = 2;
-export const QUESTION_TIME_MS = 20000;
 export const BASE_POINTS = 1000;
 export const SPEED_BONUS_MAX = 500;
 export const REVEAL_DURATION_MS = 6000;
@@ -110,6 +111,7 @@ export interface LobbyUpdatePayload {
   code: RoomCode;
   players: LobbyPlayer[];
   canStart: boolean;
+  settings: RoomSettings;
 }
 
 export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
@@ -132,9 +134,27 @@ export interface Question {
 //   'normal' -> easy + medium + hard
 //   'hard'   -> medium + hard
 export type DifficultyMix = 'easy' | 'normal' | 'hard';
+export const DIFFICULTY_MIX_OPTIONS: readonly DifficultyMix[] = ['easy', 'normal', 'hard'];
 
-export const DEFAULT_DIFFICULTY_MIX: DifficultyMix = 'normal';
-export const DEFAULT_QUESTION_COUNT = 10;
+export const QUESTION_COUNT_OPTIONS = [10, 15, 20] as const;
+export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
+
+export type RoomSettings = {
+  questionCount: number;
+  questionTimeMs: number;
+  difficultyMix: DifficultyMix;
+};
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  questionCount: 10,
+  questionTimeMs: 20000,
+  difficultyMix: 'normal',
+};
+
+// VIP -> server: only the fields being changed. Server -> room: the full,
+// validated settings after applying (and possibly rejecting) that partial.
+export type VipUpdateSettingsPayload = Partial<RoomSettings>;
+export type SettingsUpdatedPayload = RoomSettings;
 
 export interface VipStartGamePayload {}
 
@@ -151,6 +171,7 @@ export interface QuestionShowHostPayload {
   question: string;
   options: string[];
   category: string;
+  questionTimeMs: number; // the ROOM's configured per-question time, not a global
 }
 
 export interface QuestionShowPlayerPayload {
@@ -158,6 +179,7 @@ export interface QuestionShowPlayerPayload {
   totalQuestions: number;
   options: string[];
   category: string;
+  questionTimeMs: number;
 }
 
 export type QuestionShowPayload = QuestionShowHostPayload | QuestionShowPlayerPayload;
@@ -271,6 +293,7 @@ export interface StateSyncLobbyPayload {
   code: RoomCode;
   players: LobbyPlayer[];
   canStart: boolean;
+  settings: RoomSettings;
 }
 
 export type StateSyncQuestionHostPayload = QuestionShowHostPayload & {
@@ -313,6 +336,7 @@ export type ClientToServerEvents = {
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
   [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
+  [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -331,4 +355,5 @@ export type ServerToClientEvents = {
   [ServerEvents.GAME_OVER]: (payload: GameOverPayload) => void;
   [ServerEvents.STATE_SYNC]: (payload: StateSyncPayload) => void;
   [ServerEvents.VIP_CHANGED]: (payload: VipChangedPayload) => void;
+  [ServerEvents.SETTINGS_UPDATED]: (payload: SettingsUpdatedPayload) => void;
 };

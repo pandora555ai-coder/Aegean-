@@ -301,6 +301,76 @@ Progress log for the party game build, task by task.
       landed on the live question 3 via `state:sync`; after that question
       resolved, Bob's total was 2990 (his prior 1500 plus Q3's points -
       never reset) while Charlie's was 1490 (just Q3 - started at 0).
+- [x] **Task 16 — VIP-configurable game settings: question count, time,
+      difficulty** — DONE (9/9 acceptance criteria). `/shared` adds
+      `QUESTION_COUNT_OPTIONS` (10/15/20), `QUESTION_TIME_OPTIONS_MS`
+      (10s/20s/30s), `RoomSettings`, `DEFAULT_ROOM_SETTINGS`,
+      `DIFFICULTY_MIX_OPTIONS`, and `vip:update_settings` /
+      `settings:updated`; the old global `QUESTION_TIME_MS` and the Task 12
+      `DEFAULT_DIFFICULTY_MIX`/`DEFAULT_QUESTION_COUNT` constants are gone
+      outright rather than left as unused dead exports.
+      `QuestionShowHostPayload`/`QuestionShowPlayerPayload` (and their
+      `state:sync` variants, for free via the intersection types) each gained
+      `questionTimeMs` so every question a client ever sees is
+      self-describing about its own timing, instead of clients having to
+      separately track "whatever the lobby settings said" across a
+      reconnect. `LobbyUpdatePayload`/`StateSyncLobbyPayload` gained
+      `settings`. `/server` (`rooms.ts`): `Room.settings: RoomSettings`
+      replaces the old separate `difficultyMix`/`questionCount` fields;
+      `room.questions` starts empty at creation (nobody reads it before the
+      game is live) and is built for real by the new `buildRoomQuestions()`
+      only on `vip:start_game` and inside `resetRoomForNewGame` (so
+      `vip:play_again` gets a fresh shuffle against whatever settings are
+      still in force - the settings object itself is never touched by
+      play_again, which is the actual persistence mechanism); the new
+      `updateRoomSettings()` validates every field against its allowed
+      option list independently, silently ignoring anything invalid rather
+      than rejecting the whole update. `/server` (`index.ts`): the new
+      `vip:update_settings` handler reuses the existing `getVipRoomForSocket`
+      helper (VIP-only, automatic TV rejection) plus an explicit
+      `phase !== 'LOBBY'` guard, then always broadcasts the resulting
+      settings (changed or not) via `settings:updated`; every remaining use
+      of the old global time constant - the question timer's `setTimeout`,
+      `calculatePoints`'s time budget, and both `state:sync` builders'
+      `remainingMs` - now reads `room.settings.questionTimeMs`.
+      `/client`: a new `SegmentedRow` generic component in
+      `ControllerScreen` renders the three-row settings panel (Ερωτήσεις /
+      Χρόνος / Δυσκολία) above "Έναρξη" - tappable + highlighted-active for
+      the VIP, plain read-only text for everyone else - plus the estimated
+      length (`questionCount * (questionTimeMs + REVEAL_DURATION_MS +
+      SCOREBOARD_DURATION_MS)`, formatted "~N λεπτά"); `HostScreen` shows a
+      compact "N ερωτήσεις · Ns'' · <difficulty>" summary in LOBBY, live off
+      the same `lobby:update` / `settings:updated` / `state:sync` sources,
+      and its per-question countdown now resets from the live
+      `question.questionTimeMs` instead of a hardcoded default. A shared
+      `difficultyLabels.ts` keeps the Greek difficulty labels in exactly one
+      place between the two screens. Verified end-to-end over the wire: (2)
+      setting count to 20 produced a `totalQuestions: 20` first-question
+      payload and the game genuinely ran all 20 questions; (3) setting time
+      to 10s and leaving a question unanswered ended it at 10003ms measured
+      wall-clock, not the old 20s; (4) difficulty 'hard' verified via a
+      direct in-process import of `buildRoomQuestions` (a question's
+      `difficulty` is server-only and never sent to any client, so this is
+      the only way to observe it) - the served 20-question set broke down
+      as 12 medium / 8 hard, zero easy; (5) a non-VIP's
+      `vip:update_settings` produced no `settings:updated` broadcast at all,
+      confirmed settings still read the untouched defaults afterward; (6)
+      the VIP's own attempt mid-QUESTION was equally silently rejected -
+      settings are genuinely locked once a game starts, not just
+      non-VIP-blocked; (7) `{questionCount: 999, questionTimeMs: 1}`
+      produced a broadcast of the unchanged `{questionCount:10,
+      questionTimeMs:20000, difficultyMix:"normal"}` - invalid fields never
+      touch the room; (8) settings set to 20/10s/hard survived a full game
+      + `vip:play_again` all the way through to game 2's own first question
+      still reporting `totalQuestions: 20`; (9) covered all 4 answer options
+      across 4 players (`correctIndex` is never sent to any client, so this
+      is the only way to guarantee catching the correct answerer) - the
+      correct answer at ~1s into a 10s question scored 1450 of a possible
+      1500, confirming the speed bonus is computed against the room's 10s
+      window and not a stale 20s one (which would have scored barely above
+      the 1000 base). Production (`party-game.service`, port 3001) was
+      never touched - all testing ran against an isolated dev instance on
+      port 3099.
 
 ## Known open items
 

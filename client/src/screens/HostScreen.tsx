@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ClientEvents,
+  DEFAULT_ROOM_SETTINGS,
   MAX_PLAYERS,
-  QUESTION_TIME_MS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   ServerEvents,
@@ -19,14 +19,17 @@ import {
   type RevealShowPayload,
   type RoomCode,
   type RoomCreatedPayload,
+  type RoomSettings,
   type ScoreboardPayload,
   type ServerErrorPayload,
+  type SettingsUpdatedPayload,
   type StateSyncPayload,
 } from '@game/shared';
 import QRCode from 'qrcode';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode } from '../hostRoomCode';
+import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 
 const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
 const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
@@ -38,7 +41,8 @@ export default function HostScreen() {
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
   const [answerProgress, setAnswerProgress] = useState<AnswerProgressPayload | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(Math.ceil(QUESTION_TIME_MS / 1000));
+  const [secondsLeft, setSecondsLeft] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
+  const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
@@ -76,6 +80,11 @@ export default function HostScreen() {
 
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
       setLobby(payload);
+      setRoomSettings(payload.settings);
+    }
+
+    function handleSettingsUpdated(payload: SettingsUpdatedPayload) {
+      setRoomSettings(payload);
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -144,7 +153,8 @@ export default function HostScreen() {
         case 'LOBBY':
           setRoomCode(payload.code);
           roomCodeRef.current = payload.code;
-          setLobby({ code: payload.code, players: payload.players, canStart: payload.canStart });
+          setLobby({ code: payload.code, players: payload.players, canStart: payload.canStart, settings: payload.settings });
+          setRoomSettings(payload.settings);
           break;
         case 'QUESTION':
           if (isQuestionShowHostPayload(payload)) {
@@ -175,6 +185,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
+    socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -187,6 +198,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
+      socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     };
   }, []);
 
@@ -194,12 +206,15 @@ export default function HostScreen() {
     if (phase !== 'QUESTION' || !question) {
       return;
     }
-    setSecondsLeft(Math.ceil(QUESTION_TIME_MS / 1000));
+    // The ROOM's configured per-question time, not a global default - a
+    // 10s room must count down from 10, not from whatever the app's
+    // hardcoded value used to be.
+    setSecondsLeft(Math.ceil(question.questionTimeMs / 1000));
     const interval = setInterval(() => {
       setSecondsLeft((current) => Math.max(0, current - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [phase, question?.questionIndex]);
+  }, [phase, question?.questionIndex, question?.questionTimeMs]);
 
   // Local countdowns driving the REVEAL/SCOREBOARD progress bars - purely
   // cosmetic, so the moment doesn't feel abrupt. The server's own timers are
@@ -579,6 +594,11 @@ export default function HostScreen() {
             ))}
           </div>
 
+          <div data-testid="room-settings-summary" style={styles.settingsSummary}>
+            {roomSettings.questionCount} ερωτήσεις · {roomSettings.questionTimeMs / 1000}΄΄ ·{' '}
+            {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
+          </div>
+
           {vip ? (
             <div data-testid="waiting-message" style={styles.waitingMessage}>
               Ο/Η {vip.name} ξεκινά το παιχνίδι
@@ -664,6 +684,11 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '2.5rem',
     fontWeight: 600,
     color: '#999',
+  },
+  settingsSummary: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    color: '#888',
   },
   category: {
     fontSize: '1.75rem',
