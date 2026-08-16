@@ -1,0 +1,3889 @@
+[
+  {
+    "id": "q0001",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποια είναι η πρωτεύουσα της Ελλάδας;",
+    "options": [
+      "Λάρισα",
+      "Αθήνα",
+      "Θεσσαλονίκη",
+      "Πάτρα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0002",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το μεγαλύτερο ελληνικό νησί;",
+    "options": [
+      "Λέσβος",
+      "Κέρκυρα",
+      "Κρήτη",
+      "Ρόδος"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0003",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Σε ποιο νομό βρίσκεται ο Όλυμπος κυρίως;",
+    "options": [
+      "Αχαΐα",
+      "Ηλεία",
+      "Φωκίδα",
+      "Πιερία"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0004",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποια πόλη είναι γνωστή ως «συμπρωτεύουσα» της Ελλάδας;",
+    "options": [
+      "Θεσσαλονίκη",
+      "Πάτρα",
+      "Βόλος",
+      "Λάρισα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0005",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το βαθύτερο σημείο της Μεσογείου;",
+    "options": [
+      "Κρήτης",
+      "Καλυψώ",
+      "Οινουσσών",
+      "Κεφαλονιάς"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0006",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποια θάλασσα βρίσκεται ανατολικά της Ελλάδας;",
+    "options": [
+      "Αδριατική",
+      "Λιβυκό",
+      "Αιγαίο",
+      "Ιόνιο"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0007",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποια ελληνική πόλη είναι γνωστή για το Κάστρο της;",
+    "options": [
+      "Καλαμάτα",
+      "Κόρινθος",
+      "Χαλκίδα",
+      "Ιωάννινα"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0008",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποιο νησί είναι γνωστό ως «σμαραγδένιο νησί»;",
+    "options": [
+      "Ρόδος",
+      "Κέρκυρα",
+      "Σκιάθος",
+      "Νάξος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0009",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το ψηλότερο βουνό της Κρήτης;",
+    "options": [
+      "Σφακιανό",
+      "Ψηλορείτης",
+      "Λευκά Όρη",
+      "Δίκτη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0010",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποια λίμνη είναι η μεγαλύτερη φυσική λίμνη της Ελλάδας;",
+    "options": [
+      "Καστοριάς",
+      "Βόλβη",
+      "Τριχωνίδα",
+      "Ιωαννίνων"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0011",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποιος θεός ήταν ο θεός της θάλασσας;",
+    "options": [
+      "Άρης",
+      "Ερμής",
+      "Ήφαιστος",
+      "Ποσειδώνας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0012",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποιος σκότωσε τον Μινώταυρο;",
+    "options": [
+      "Θησέας",
+      "Ηρακλής",
+      "Περσέας",
+      "Οδυσσέας"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0013",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποια θεά γεννήθηκε σύμφωνα με τον μύθο από το κεφάλι του Δία;",
+    "options": [
+      "Ήρα",
+      "Αθηνά",
+      "Άρτεμις",
+      "Αφροδίτη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0014",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιος ήταν ο πατέρας του Δία;",
+    "options": [
+      "Ποσειδώνας",
+      "Άδης",
+      "Κρόνος",
+      "Ουρανός"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0015",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποια ήταν η σύζυγος του Ορφέα;",
+    "options": [
+      "Πηνελόπη",
+      "Αριάδνη",
+      "Ανδρομάχη",
+      "Ευρυδίκη"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0016",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποιος θεός ήταν ο αγγελιοφόρος των θεών;",
+    "options": [
+      "Ερμής",
+      "Απόλλων",
+      "Άρης",
+      "Διόνυσος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0017",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιο τέρας είχε εννέα κεφάλια;",
+    "options": [
+      "Μινώταυρος",
+      "Λερναία Ύδρα",
+      "Κέρβερος",
+      "Χίμαιρα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0018",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποια ήταν η μητέρα του Αχιλλέα;",
+    "options": [
+      "Αφροδίτη",
+      "Δήμητρα",
+      "Θέτιδα",
+      "Ήρα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0019",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιος ήρωας ταξίδεψε με τους Αργοναύτες;",
+    "options": [
+      "Θησέας",
+      "Ηρακλής",
+      "Περσέας",
+      "Ιάσονας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0020",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποιος θεός ήταν ο θεός της φωτιάς και της μεταλλουργίας;",
+    "options": [
+      "Ήφαιστος",
+      "Διόνυσος",
+      "Ερμής",
+      "Άρης"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0021",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποια χρονιά ξεκίνησε η Ελληνική Επανάσταση;",
+    "options": [
+      "1840",
+      "1821",
+      "1815",
+      "1830"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0022",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο πρώτος αυτοκράτορας της Ρωμαϊκής Αυτοκρατορίας;",
+    "options": [
+      "Νέρων",
+      "Κωνσταντίνος",
+      "Αύγουστος",
+      "Καίσαρας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0023",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποια πόλη έπεσε στους Οθωμανούς το 1453;",
+    "options": [
+      "Αθήνα",
+      "Θεσσαλονίκη",
+      "Σμύρνη",
+      "Κωνσταντινούπολη"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0024",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποιος ήταν ο ηγέτης της Μακεδονίας που δημιούργησε τεράστια αυτοκρατορία;",
+    "options": [
+      "Μέγας Αλέξανδρος",
+      "Φίλιππος Β΄",
+      "Περικλής",
+      "Λεωνίδας"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0025",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποια μάχη έγινε το 490 π.Χ.;",
+    "options": [
+      "Πλαταιές",
+      "Μαραθώνας",
+      "Θερμοπύλες",
+      "Σαλαμίνα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0026",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποιο τείχος έπεσε το 1989;",
+    "options": [
+      "Τείχος της Βιέννης",
+      "Τείχος της Μαδρίτης",
+      "Τείχος του Βερολίνου",
+      "Τείχος της Ρώμης"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0027",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποιος ήταν ο ηγέτης της Βρετανίας κατά μεγάλο μέρος του Β΄ Παγκοσμίου Πολέμου;",
+    "options": [
+      "Νέβιλ Τσάμπερλεν",
+      "Μάργκαρετ Θάτσερ",
+      "Τόνι Μπλερ",
+      "Ουίνστον Τσόρτσιλ"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0028",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποιος πολιτισμός κατασκεύασε τις πυραμίδες της Γκίζας;",
+    "options": [
+      "Αρχαίοι Αιγύπτιοι",
+      "Ρωμαίοι",
+      "Μάγια",
+      "Πέρσες"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0029",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποια αυτοκρατορία είχε πρωτεύουσα την Κωνσταντινούπολη για αιώνες;",
+    "options": [
+      "Μογγολική",
+      "Βυζαντινή",
+      "Ρωμαϊκή της Δύσης",
+      "Περσική"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0030",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποιος ήταν ο πρώτος άνθρωπος που πάτησε στη Σελήνη;",
+    "options": [
+      "Μπαζ Όλντριν",
+      "Τζον Γκλεν",
+      "Νιλ Άρμστρονγκ",
+      "Γιούρι Γκαγκάριν"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0031",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια είναι η μεγαλύτερη χώρα στον κόσμο σε έκταση;",
+    "options": [
+      "Καναδάς",
+      "Κίνα",
+      "ΗΠΑ",
+      "Ρωσία"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0032",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια είναι η πρωτεύουσα της Ιαπωνίας;",
+    "options": [
+      "Τόκιο",
+      "Κιότο",
+      "Οσάκα",
+      "Χιροσίμα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0033",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο μεγαλύτερος ωκεανός;",
+    "options": [
+      "Αρκτικός",
+      "Ειρηνικός",
+      "Ατλαντικός",
+      "Ινδικός"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0034",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Σε ποια χώρα βρίσκεται το Ταζ Μαχάλ;",
+    "options": [
+      "Νεπάλ",
+      "Ιράν",
+      "Ινδία",
+      "Πακιστάν"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0035",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποια είναι η μεγαλύτερη έρημος στον κόσμο;",
+    "options": [
+      "Σαχάρα",
+      "Γκόμπι",
+      "Καλαχάρι",
+      "Ανταρκτική"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0036",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια χώρα έχει σχήμα που μοιάζει με μπότα;",
+    "options": [
+      "Ιταλία",
+      "Ισπανία",
+      "Πορτογαλία",
+      "Ελλάδα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0037",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποια είναι η πρωτεύουσα της Αυστραλίας;",
+    "options": [
+      "Περθ",
+      "Καμπέρα",
+      "Σίδνεϊ",
+      "Μελβούρνη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0038",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποια χώρα έχει τις περισσότερες χερσαίες γειτονικές χώρες;",
+    "options": [
+      "Βραζιλία",
+      "Ινδία",
+      "Κίνα",
+      "Ρωσία"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0039",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Σε ποια ήπειρο βρίσκεται η έρημος Ατακάμα;",
+    "options": [
+      "Αφρική",
+      "Ασία",
+      "Αυστραλία",
+      "Νότια Αμερική"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0040",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το ψηλότερο βουνό της Γης πάνω από την επιφάνεια της θάλασσας;",
+    "options": [
+      "Έβερεστ",
+      "K2",
+      "Κιλιμάντζαρο",
+      "Άνδεων"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0041",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιος είναι ο πλησιέστερος πλανήτης στον Ήλιο;",
+    "options": [
+      "Άρης",
+      "Ερμής",
+      "Αφροδίτη",
+      "Γη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0042",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το χημικό σύμβολο του χρυσού;",
+    "options": [
+      "Fe",
+      "Cu",
+      "Au",
+      "Ag"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0043",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Πόσα οστά έχει περίπου ένας ενήλικας άνθρωπος;",
+    "options": [
+      "186",
+      "226",
+      "256",
+      "206"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0044",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποιος πλανήτης είναι γνωστός ως Κόκκινος Πλανήτης;",
+    "options": [
+      "Άρης",
+      "Δίας",
+      "Αφροδίτη",
+      "Κρόνος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0045",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το πιο άφθονο στοιχείο στο σύμπαν;",
+    "options": [
+      "Άνθρακας",
+      "Υδρογόνο",
+      "Οξυγόνο",
+      "Ήλιο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0046",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιο όργανο αντλεί το αίμα;",
+    "options": [
+      "Πνεύμονες",
+      "Νεφροί",
+      "Καρδιά",
+      "Ήπαρ"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0047",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο μεγαλύτερος πλανήτης του ηλιακού συστήματος;",
+    "options": [
+      "Κρόνος",
+      "Ποσειδώνας",
+      "Ουρανός",
+      "Δίας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0048",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Πόσο περίπου διαρκεί το φως του Ήλιου για να φτάσει στη Γη;",
+    "options": [
+      "8 λεπτά",
+      "1 λεπτό",
+      "30 λεπτά",
+      "1 ώρα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0049",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποια δύναμη μας κρατά στην επιφάνεια της Γης;",
+    "options": [
+      "Πίεση",
+      "Βαρύτητα",
+      "Τριβή",
+      "Μαγνητισμός"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0050",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το pH του καθαρού νερού περίπου στους 25°C;",
+    "options": [
+      "9",
+      "14",
+      "7",
+      "5"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0051",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποιος είναι ο πρωταγωνιστής του Harry Potter;",
+    "options": [
+      "Frodo Baggins",
+      "Luke Skywalker",
+      "Percy Jackson",
+      "Harry Potter"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0052",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Σε ποια ταινία εμφανίζεται ο Jack Sparrow;",
+    "options": [
+      "Pirates of the Caribbean",
+      "Titanic",
+      "Avatar",
+      "Gladiator"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0053",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο Bruce Wayne;",
+    "options": [
+      "Spider-Man",
+      "Batman",
+      "Superman",
+      "Iron Man"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0054",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια σειρά έχει τους Ross, Rachel, Monica, Chandler, Joey και Phoebe;",
+    "options": [
+      "Suits",
+      "The Office",
+      "Friends",
+      "Lost"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0055",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια ταινία κέρδισε το Όσκαρ Καλύτερης Ταινίας το 1998;",
+    "options": [
+      "Good Will Hunting",
+      "Saving Private Ryan",
+      "The Truman Show",
+      "Titanic"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0056",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποιος χαρακτήρας είναι ο πατέρας του Simba;",
+    "options": [
+      "Mufasa",
+      "Scar",
+      "Timon",
+      "Rafiki"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0057",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποιος υποδύθηκε τον Iron Man στο Marvel Cinematic Universe;",
+    "options": [
+      "Mark Ruffalo",
+      "Robert Downey Jr.",
+      "Chris Evans",
+      "Chris Hemsworth"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0058",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια ταινία σκηνοθέτησε ο Christopher Nolan με τον χαρακτήρα Cobb;",
+    "options": [
+      "Dunkirk",
+      "Tenet",
+      "Inception",
+      "Interstellar"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0059",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Σε ποια σειρά πρωταγωνιστεί ο Walter White;",
+    "options": [
+      "Dexter",
+      "Lost",
+      "House",
+      "Breaking Bad"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0060",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια ταινία διαδραματίζεται κυρίως στο διάστημα και περιλαμβάνει τον Cooper;",
+    "options": [
+      "Interstellar",
+      "Gravity",
+      "The Martian",
+      "Alien"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0061",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποιο συγκρότημα τραγούδησε το Bohemian Rhapsody;",
+    "options": [
+      "The Beatles",
+      "Queen",
+      "ABBA",
+      "U2"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0062",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποιος είναι γνωστός ως King of Pop;",
+    "options": [
+      "Prince",
+      "Elton John",
+      "Michael Jackson",
+      "Elvis Presley"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0063",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Πόσες χορδές έχει συνήθως μια κιθάρα;",
+    "options": [
+      "4",
+      "5",
+      "8",
+      "6"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0064",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιο συγκρότημα τραγούδησε το Dancing Queen;",
+    "options": [
+      "ABBA",
+      "Queen",
+      "Roxette",
+      "A-ha"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0065",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποιος συνέθεσε την 9η Συμφωνία;",
+    "options": [
+      "Σοπέν",
+      "Μπετόβεν",
+      "Μότσαρτ",
+      "Μπαχ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0066",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποιο όργανο έχει συνήθως 88 πλήκτρα;",
+    "options": [
+      "Κλαρινέτο",
+      "Τρομπέτα",
+      "Πιάνο",
+      "Βιολί"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0067",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιο συγκρότημα αποτελούσαν οι John, Paul, George και Ringo;",
+    "options": [
+      "The Rolling Stones",
+      "Queen",
+      "The Who",
+      "The Beatles"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0068",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποια τραγουδίστρια κυκλοφόρησε το άλμπουμ 21;",
+    "options": [
+      "Adele",
+      "Taylor Swift",
+      "Rihanna",
+      "Beyoncé"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0069",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιο ελληνικό όργανο συνδέεται έντονα με το ρεμπέτικο;",
+    "options": [
+      "Βιολί",
+      "Μπουζούκι",
+      "Κλαρίνο",
+      "Λαούτο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0070",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποιος ήταν ο τραγουδιστής των Queen;",
+    "options": [
+      "Roger Taylor",
+      "George Michael",
+      "Freddie Mercury",
+      "Brian May"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0071",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Πόσοι παίκτες έχει μια ομάδα ποδοσφαίρου μέσα στο γήπεδο;",
+    "options": [
+      "9",
+      "10",
+      "12",
+      "11"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0072",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Πόσους πόντους αξίζει ένα τρίποντο στο μπάσκετ;",
+    "options": [
+      "3",
+      "2",
+      "4",
+      "1"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0073",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Κάθε πόσα χρόνια γίνονται συνήθως οι Θερινοί Ολυμπιακοί Αγώνες;",
+    "options": [
+      "5",
+      "4",
+      "2",
+      "3"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0074",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Σε ποιο άθλημα χρησιμοποιείται το Wimbledon;",
+    "options": [
+      "Κρίκετ",
+      "Ράγκμπι",
+      "Τένις",
+      "Γκολφ"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0075",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Ποια χώρα έχει κατακτήσει τα περισσότερα Παγκόσμια Κύπελλα ποδοσφαίρου ανδρών;",
+    "options": [
+      "Γερμανία",
+      "Ιταλία",
+      "Αργεντινή",
+      "Βραζιλία"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0076",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Πόσα δαχτυλίδια έχει το Ολυμπιακό σύμβολο;",
+    "options": [
+      "5",
+      "4",
+      "6",
+      "7"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0077",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Σε ποιο άθλημα υπάρχει το slam dunk;",
+    "options": [
+      "Τένις",
+      "Μπάσκετ",
+      "Βόλεϊ",
+      "Χάντμπολ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0078",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Ποιος είναι ο μόνος αθλητής που έχει κερδίσει 8 χρυσά Ολυμπιακά μετάλλια στην κολύμβηση;",
+    "options": [
+      "Mark Spitz",
+      "Ryan Lochte",
+      "Michael Phelps",
+      "Usain Bolt"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0079",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Ποιο Grand Slam διεξάγεται στο Παρίσι;",
+    "options": [
+      "Wimbledon",
+      "US Open",
+      "Australian Open",
+      "Roland Garros"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0080",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Πόσοι παίκτες μιας ομάδας βρίσκονται ταυτόχρονα στο παρκέ στο μπάσκετ;",
+    "options": [
+      "5",
+      "6",
+      "7",
+      "4"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0081",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Από ποια χώρα προέρχεται η πίτσα;",
+    "options": [
+      "Ελλάδα",
+      "Ιταλία",
+      "Γαλλία",
+      "Ισπανία"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0082",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το βασικό συστατικό του χούμους;",
+    "options": [
+      "Φασόλια",
+      "Πατάτες",
+      "Ρεβίθια",
+      "Φακές"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0083",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Από ποιο φρούτο φτιάχνεται το κρασί;",
+    "options": [
+      "Μήλο",
+      "Κεράσι",
+      "Πορτοκάλι",
+      "Σταφύλι"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0084",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το βασικό συστατικό της guacamole;",
+    "options": [
+      "Αβοκάντο",
+      "Ντομάτα",
+      "Αγγούρι",
+      "Ελιά"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0085",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Ποιο τυρί χρησιμοποιείται παραδοσιακά στην αυθεντική carbonara;",
+    "options": [
+      "Parmesan μόνο",
+      "Pecorino Romano",
+      "Mozzarella",
+      "Feta"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0086",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Ποιο από τα παρακάτω είναι ελληνικό πιάτο;",
+    "options": [
+      "Paella",
+      "Tacos",
+      "Μουσακάς",
+      "Sushi"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0087",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο ιαπωνικό πιάτο βασίζεται κυρίως σε ρύζι και συχνά ωμό ψάρι;",
+    "options": [
+      "Ramen",
+      "Tempura",
+      "Udon",
+      "Sushi"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0088",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Ποιο μπαχαρικό προέρχεται από το άνθος του Crocus sativus;",
+    "options": [
+      "Κρόκος/σαφράν",
+      "Κανέλα",
+      "Κύμινο",
+      "Μοσχοκάρυδο"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0089",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο ελληνικό ποτό έχει χαρακτηριστική γεύση γλυκάνισου;",
+    "options": [
+      "Μαστίχα",
+      "Ούζο",
+      "Τσίπουρο",
+      "Κονιάκ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0090",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Από ποια χώρα προέρχεται το sushi;",
+    "options": [
+      "Κορέα",
+      "Ταϊλάνδη",
+      "Ιαπωνία",
+      "Κίνα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0091",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Πόσες ημέρες έχει ένα δίσεκτο έτος;",
+    "options": [
+      "365",
+      "364",
+      "367",
+      "366"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0092",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το μεγαλύτερο θηλαστικό;",
+    "options": [
+      "Γαλάζια φάλαινα",
+      "Ελέφαντας",
+      "Καμηλοπάρδαλη",
+      "Ιπποπόταμος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0093",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Πόσες πλευρές έχει ένα εξάγωνο;",
+    "options": [
+      "8",
+      "6",
+      "5",
+      "7"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0094",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το σύμβολο του 10 στους ρωμαϊκούς αριθμούς;",
+    "options": [
+      "L",
+      "C",
+      "X",
+      "V"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0095",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Ποιο ζώο είναι το ταχύτερο χερσαίο;",
+    "options": [
+      "Λιοντάρι",
+      "Άλογο",
+      "Λύκος",
+      "Τσίτα"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0096",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Πόσα λεπτά έχει μία ώρα;",
+    "options": [
+      "60",
+      "30",
+      "45",
+      "100"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0097",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποια γλώσσα έχει τους περισσότερους φυσικούς ομιλητές;",
+    "options": [
+      "Χίντι",
+      "Μανδαρινικά",
+      "Αγγλικά",
+      "Ισπανικά"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0098",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το πιο διαδεδομένο στοιχείο στην ανθρώπινη ατμόσφαιρα;",
+    "options": [
+      "Άργον",
+      "Διοξείδιο του άνθρακα",
+      "Άζωτο",
+      "Οξυγόνο"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0099",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποιο όργανο μετρά την ατμοσφαιρική πίεση;",
+    "options": [
+      "Θερμόμετρο",
+      "Υγρόμετρο",
+      "Ταχύμετρο",
+      "Βαρόμετρο"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0100",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Πόσες μοίρες έχει ένας πλήρης κύκλος;",
+    "options": [
+      "360",
+      "180",
+      "270",
+      "400"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0101",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποια είναι η δεύτερη μεγαλύτερη πόλη της Ελλάδας;",
+    "options": [
+      "Λάρισα",
+      "Θεσσαλονίκη",
+      "Πάτρα",
+      "Ηράκλειο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0102",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποιο νησί είναι γνωστό για το Παλάτι της Κνωσού;",
+    "options": [
+      "Κέρκυρα",
+      "Νάξος",
+      "Κρήτη",
+      "Ρόδος"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0103",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Σε ποια πόλη βρίσκεται το Αρχαίο Θέατρο της Επιδαύρου;",
+    "options": [
+      "Σπάρτη",
+      "Ναύπλιο",
+      "Τρίπολη",
+      "Επίδαυρος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0104",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το μεγαλύτερο νησί των Επτανήσων;",
+    "options": [
+      "Κεφαλονιά",
+      "Κέρκυρα",
+      "Ζάκυνθος",
+      "Λευκάδα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0105",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποια λίμνη μοιράζονται Ελλάδα και Αλβανία;",
+    "options": [
+      "Βόλβη",
+      "Μεγάλη Πρέσπα",
+      "Τριχωνίδα",
+      "Παμβώτιδα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0106",
+    "category": "Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποια πόλη είναι γνωστή ως η πόλη του Ναυαγίου;",
+    "options": [
+      "Κως",
+      "Σύρος",
+      "Ζάκυνθος",
+      "Ρόδος"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0107",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιο νησί ανήκει στις Κυκλάδες;",
+    "options": [
+      "Κέρκυρα",
+      "Ρόδος",
+      "Λέσβος",
+      "Μήλος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0108",
+    "category": "Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιος ποταμός είναι ο μεγαλύτερος σε μήκος που βρίσκεται εξ ολοκλήρου στην Ελλάδα;",
+    "options": [
+      "Αλιάκμονας",
+      "Αχελώος",
+      "Πηνειός",
+      "Έβρος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0109",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποια είναι η ψηλότερη κορυφή του Ολύμπου;",
+    "options": [
+      "Τούμπα",
+      "Μύτικας",
+      "Σκολιό",
+      "Στεφάνι"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0110",
+    "category": "Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποια πόλη υπήρξε πρωτεύουσα της Ελλάδας πριν από την Αθήνα;",
+    "options": [
+      "Κόρινθος",
+      "Άργος",
+      "Ναύπλιο",
+      "Πάτρα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0111",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο δάσκαλος του Μεγάλου Αλεξάνδρου;",
+    "options": [
+      "Πλάτων",
+      "Σωκράτης",
+      "Πυθαγόρας",
+      "Αριστοτέλης"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0112",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο πατέρας του Μεγάλου Αλεξάνδρου;",
+    "options": [
+      "Φίλιππος Β΄",
+      "Περικλής",
+      "Λεωνίδας",
+      "Μιλτιάδης"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0113",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιος φιλόσοφος ίδρυσε την Ακαδημία;",
+    "options": [
+      "Επίκουρος",
+      "Πλάτων",
+      "Αριστοτέλης",
+      "Σωκράτης"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0114",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιος φιλόσοφος ήταν δάσκαλος του Πλάτωνα;",
+    "options": [
+      "Θαλής",
+      "Δημόκριτος",
+      "Σωκράτης",
+      "Αριστοτέλης"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0115",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποια πόλη ήταν η σημαντικότερη αντίπαλος της Αθήνας στον Πελοποννησιακό Πόλεμο;",
+    "options": [
+      "Θήβα",
+      "Κόρινθος",
+      "Μίλητος",
+      "Σπάρτη"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0116",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο θεός του ήλιου;",
+    "options": [
+      "Απόλλων",
+      "Άρης",
+      "Ερμής",
+      "Ήφαιστος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0117",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποιος έγραψε την Ιλιάδα σύμφωνα με την παράδοση;",
+    "options": [
+      "Σοφοκλής",
+      "Όμηρος",
+      "Ηρόδοτος",
+      "Θουκυδίδης"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0118",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "medium",
+    "question": "Ποια πόλη ήταν γνωστή για τη στρατιωτική της αγωγή;",
+    "options": [
+      "Κόρινθος",
+      "Δελφοί",
+      "Σπάρτη",
+      "Αθήνα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0119",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποιος ήταν ο ιστορικός που αποκαλείται «πατέρας της Ιστορίας»;",
+    "options": [
+      "Θουκυδίδης",
+      "Ξενοφών",
+      "Πλούταρχος",
+      "Ηρόδοτος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0120",
+    "category": "Αρχαία Ελλάδα",
+    "difficulty": "hard",
+    "question": "Ποιος ναός στην Ακρόπολη είναι αφιερωμένος κυρίως στην Αθηνά;",
+    "options": [
+      "Παρθενώνας",
+      "Ερέχθειο",
+      "Ναός Αθηνάς Νίκης",
+      "Θησείο"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0121",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποια θεά ήταν θεά της σοφίας;",
+    "options": [
+      "Δήμητρα",
+      "Αθηνά",
+      "Ήρα",
+      "Αφροδίτη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0122",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποιος θεός κυβερνούσε τον Κάτω Κόσμο;",
+    "options": [
+      "Ποσειδώνας",
+      "Ερμής",
+      "Άδης",
+      "Δίας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0123",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιος ήρωας σκότωσε τη Μέδουσα;",
+    "options": [
+      "Θησέας",
+      "Ηρακλής",
+      "Ιάσονας",
+      "Περσέας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0124",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποια ήταν η σύζυγος του Μίνωα;",
+    "options": [
+      "Πασιφάη",
+      "Αριάδνη",
+      "Ευρυδίκη",
+      "Πηνελόπη"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0125",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποιος τιμωρήθηκε να σπρώχνει αιώνια έναν βράχο;",
+    "options": [
+      "Ιξίων",
+      "Σίσυφος",
+      "Τάνταλος",
+      "Προμηθέας"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0126",
+    "category": "Μυθολογία",
+    "difficulty": "easy",
+    "question": "Ποιος έκλεψε τη φωτιά από τους θεούς για τους ανθρώπους;",
+    "options": [
+      "Ήφαιστος",
+      "Δαίδαλος",
+      "Προμηθέας",
+      "Ερμής"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0127",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιο ήταν το πλοίο του Ιάσονα;",
+    "options": [
+      "Ναυτίλος",
+      "Αργοναύτης",
+      "Τρίαινα",
+      "Αργώ"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0128",
+    "category": "Μυθολογία",
+    "difficulty": "medium",
+    "question": "Ποιο τέρας φύλαγε τις πύλες του Άδη;",
+    "options": [
+      "Κέρβερος",
+      "Μινώταυρος",
+      "Χίμαιρα",
+      "Σκύλλα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0129",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποια θεά ήταν μητέρα της Περσεφόνης;",
+    "options": [
+      "Άρτεμις",
+      "Δήμητρα",
+      "Ήρα",
+      "Αθηνά"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0130",
+    "category": "Μυθολογία",
+    "difficulty": "hard",
+    "question": "Ποιος ήρωας φόρεσε πανοπλία που περιλάμβανε την ασπίδα του Αχιλλέα;",
+    "options": [
+      "Έκτορας",
+      "Αίας",
+      "Αχιλλέας",
+      "Οδυσσέας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0131",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο ηγέτης της Γαλλίας που ηττήθηκε στο Βατερλώ;",
+    "options": [
+      "Λουδοβίκος ΙΔ΄",
+      "Ροβεσπιέρος",
+      "Ντε Γκωλ",
+      "Ναπολέων"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0132",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποια χώρα συνδέεται με τους σαμουράι;",
+    "options": [
+      "Ιαπωνία",
+      "Κίνα",
+      "Κορέα",
+      "Ινδία"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0133",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποια αυτοκρατορία κυβέρνησε μεγάλο μέρος της Κεντρικής Αμερικής πριν την ισπανική κατάκτηση;",
+    "options": [
+      "Οθωμανοί",
+      "Αζτέκοι",
+      "Ρωμαίοι",
+      "Βίκινγκς"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0134",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποιος πολιτισμός δημιούργησε το Μάτσου Πίτσου;",
+    "options": [
+      "Αζτέκοι",
+      "Αιγύπτιοι",
+      "Ίνκας",
+      "Μάγια"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0135",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποια συνθήκη τερμάτισε επίσημα τον Α΄ Παγκόσμιο Πόλεμο με τη Γερμανία;",
+    "options": [
+      "Βιέννης",
+      "Τορντεσίγιας",
+      "Μάαστριχτ",
+      "Βερσαλλιών"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0136",
+    "category": "Ιστορία",
+    "difficulty": "easy",
+    "question": "Ποιος ήταν ο πρώτος άνθρωπος στο διάστημα;",
+    "options": [
+      "Γιούρι Γκαγκάριν",
+      "Νιλ Άρμστρονγκ",
+      "Άλαν Σέπαρντ",
+      "Μπαζ Όλντριν"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0137",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποια αυτοκρατορία κυβέρνησε από την Κωνσταντινούπολη μετά το 1453;",
+    "options": [
+      "Περσική",
+      "Οθωμανική",
+      "Βυζαντινή",
+      "Ρωμαϊκή"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0138",
+    "category": "Ιστορία",
+    "difficulty": "medium",
+    "question": "Ποια επανάσταση άρχισε το 1789;",
+    "options": [
+      "Βιομηχανική",
+      "Αμερικανική",
+      "Γαλλική",
+      "Ρωσική"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0139",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποιος πολιτισμός δημιούργησε το ημερολόγιο που συνδέεται με το 2012;",
+    "options": [
+      "Ίνκας",
+      "Αζτέκοι",
+      "Σουμέριοι",
+      "Μάγια"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0140",
+    "category": "Ιστορία",
+    "difficulty": "hard",
+    "question": "Ποια πόλη ήταν η πρωτεύουσα της αρχαίας Αιγύπτου στο Παλαιό Βασίλειο;",
+    "options": [
+      "Μέμφις",
+      "Θήβα",
+      "Αλεξάνδρεια",
+      "Γκίζα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0141",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια είναι η πρωτεύουσα της Ισπανίας;",
+    "options": [
+      "Βαλένθια",
+      "Μαδρίτη",
+      "Βαρκελώνη",
+      "Σεβίλλη"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0142",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια είναι η πρωτεύουσα του Καναδά;",
+    "options": [
+      "Μόντρεαλ",
+      "Βανκούβερ",
+      "Οτάβα",
+      "Τορόντο"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0143",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποιος ποταμός περνά από το Παρίσι;",
+    "options": [
+      "Τάμεσης",
+      "Ρήνος",
+      "Δούναβης",
+      "Σηκουάνας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0144",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποια χώρα έχει πρωτεύουσα το Μπουένος Άιρες;",
+    "options": [
+      "Αργεντινή",
+      "Χιλή",
+      "Ουρουγουάη",
+      "Παραγουάη"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0145",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποια χώρα βρίσκεται ανάμεσα στη Γαλλία και την Ισπανία στα Πυρηναία;",
+    "options": [
+      "Σλοβενία",
+      "Ανδόρα",
+      "Μονακό",
+      "Λουξεμβούργο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0146",
+    "category": "Γεωγραφία",
+    "difficulty": "easy",
+    "question": "Ποια ήπειρος έχει τις περισσότερες χώρες;",
+    "options": [
+      "Ευρώπη",
+      "Νότια Αμερική",
+      "Αφρική",
+      "Ασία"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0147",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποια θάλασσα βρίσκεται ανάμεσα στην Ευρώπη και την Αφρική;",
+    "options": [
+      "Καραϊβική",
+      "Βόρεια Θάλασσα",
+      "Βαλτική",
+      "Μεσόγειος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0148",
+    "category": "Γεωγραφία",
+    "difficulty": "medium",
+    "question": "Ποια χώρα έχει πρωτεύουσα τη Λισαβόνα;",
+    "options": [
+      "Πορτογαλία",
+      "Ισπανία",
+      "Ιταλία",
+      "Μάλτα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0149",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το μεγαλύτερο νησί στον κόσμο που δεν θεωρείται ήπειρος;",
+    "options": [
+      "Μαδαγασκάρη",
+      "Γροιλανδία",
+      "Νέα Γουινέα",
+      "Βόρνεο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0150",
+    "category": "Γεωγραφία",
+    "difficulty": "hard",
+    "question": "Ποια χώρα έχει τις περισσότερες λίμνες στον κόσμο;",
+    "options": [
+      "Φινλανδία",
+      "ΗΠΑ",
+      "Καναδάς",
+      "Ρωσία"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0151",
+    "category": "Ζώα",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το μεγαλύτερο χερσαίο ζώο;",
+    "options": [
+      "Ιπποπόταμος",
+      "Καμηλοπάρδαλη",
+      "Ρινόκερος",
+      "Αφρικανικός ελέφαντας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0152",
+    "category": "Ζώα",
+    "difficulty": "easy",
+    "question": "Ποιο ζώο είναι γνωστό για το ασπρόμαυρο σχέδιό του;",
+    "options": [
+      "Ζέβρα",
+      "Τίγρη",
+      "Πάντα",
+      "Λεμούριος"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0153",
+    "category": "Ζώα",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το μόνο θηλαστικό που μπορεί να πετάξει πραγματικά;",
+    "options": [
+      "Λεμούριος",
+      "Νυχτερίδα",
+      "Ιπτάμενος σκίουρος",
+      "Κολιμπρί"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0154",
+    "category": "Ζώα",
+    "difficulty": "medium",
+    "question": "Ποιο ζώο έχει τρεις καρδιές;",
+    "options": [
+      "Δελφίνι",
+      "Χελώνα",
+      "Χταπόδι",
+      "Καρχαρίας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0155",
+    "category": "Ζώα",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το ταχύτερο πουλί σε κατακόρυφη βουτιά;",
+    "options": [
+      "Αετός",
+      "Άλμπατρος",
+      "Γλάρος",
+      "Γεράκι πετρίτης"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0156",
+    "category": "Ζώα",
+    "difficulty": "easy",
+    "question": "Ποιο ζώο είναι γνωστό ως «βασιλιάς της ζούγκλας»;",
+    "options": [
+      "Λιοντάρι",
+      "Τίγρη",
+      "Ιαγουάρος",
+      "Λεοπάρδαλη"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0157",
+    "category": "Ζώα",
+    "difficulty": "medium",
+    "question": "Ποιο ζώο αλλάζει χρώμα για καμουφλάζ;",
+    "options": [
+      "Πάνθηρας",
+      "Χαμαιλέοντας",
+      "Κροκόδειλος",
+      "Ιγκουάνα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0158",
+    "category": "Ζώα",
+    "difficulty": "medium",
+    "question": "Ποιο θηλαστικό γεννά αυγά;",
+    "options": [
+      "Καγκουρό",
+      "Δελφίνι",
+      "Πλατύπους",
+      "Κοάλα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0159",
+    "category": "Ζώα",
+    "difficulty": "hard",
+    "question": "Ποιο ζώο έχει τη μεγαλύτερη διάρκεια ζωής μεταξύ των γνωστών σπονδυλωτών;",
+    "options": [
+      "Ελέφαντας",
+      "Φάλαινα",
+      "Χελώνα",
+      "Καρχαρίας της Γροιλανδίας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0160",
+    "category": "Ζώα",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το μεγαλύτερο είδος πιγκουίνου;",
+    "options": [
+      "Αυτοκρατορικός πιγκουίνος",
+      "Βασιλικός πιγκουίνος",
+      "Πιγκουίνος Adelie",
+      "Πιγκουίνος Gentoo"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0161",
+    "category": "Διάστημα",
+    "difficulty": "easy",
+    "question": "Ποιος είναι ο φυσικός δορυφόρος της Γης;",
+    "options": [
+      "Αφροδίτη",
+      "Σελήνη",
+      "Άρης",
+      "Ήλιος"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0162",
+    "category": "Διάστημα",
+    "difficulty": "easy",
+    "question": "Ποιος πλανήτης έχει τους πιο εμφανείς δακτυλίους;",
+    "options": [
+      "Ουρανός",
+      "Ποσειδώνας",
+      "Κρόνος",
+      "Δίας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0163",
+    "category": "Διάστημα",
+    "difficulty": "medium",
+    "question": "Ποιος πλανήτης είναι ο θερμότερος κατά μέση επιφανειακή θερμοκρασία;",
+    "options": [
+      "Ερμής",
+      "Άρης",
+      "Γη",
+      "Αφροδίτη"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0164",
+    "category": "Διάστημα",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο μεγαλύτερος δορυφόρος του Κρόνου;",
+    "options": [
+      "Τιτάνας",
+      "Ευρώπη",
+      "Γανυμήδης",
+      "Καλλιστώ"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0165",
+    "category": "Διάστημα",
+    "difficulty": "hard",
+    "question": "Ποιος είναι ο μεγαλύτερος δορυφόρος του ηλιακού συστήματος;",
+    "options": [
+      "Σελήνη",
+      "Γανυμήδης",
+      "Τιτάνας",
+      "Καλλιστώ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0166",
+    "category": "Διάστημα",
+    "difficulty": "easy",
+    "question": "Ποιος πλανήτης είναι γνωστός ως μπλε πλανήτης;",
+    "options": [
+      "Ουρανός",
+      "Αφροδίτη",
+      "Γη",
+      "Ποσειδώνας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0167",
+    "category": "Διάστημα",
+    "difficulty": "medium",
+    "question": "Πώς ονομάζεται ο γαλαξίας μας;",
+    "options": [
+      "Ανδρομέδα",
+      "Τρίγωνο",
+      "Μαγγελανικά Νέφη",
+      "Γαλαξίας Milky Way"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0168",
+    "category": "Διάστημα",
+    "difficulty": "medium",
+    "question": "Πόσο περίπου διαρκεί μια περιστροφή της Γης γύρω από τον άξονά της;",
+    "options": [
+      "24 ώρες",
+      "12 ώρες",
+      "48 ώρες",
+      "365 ημέρες"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0169",
+    "category": "Διάστημα",
+    "difficulty": "hard",
+    "question": "Ποιο διαστημικό τηλεσκόπιο εκτοξεύτηκε το 2021 και παρατηρεί κυρίως στο υπέρυθρο;",
+    "options": [
+      "Spitzer",
+      "James Webb",
+      "Hubble",
+      "Kepler"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0170",
+    "category": "Διάστημα",
+    "difficulty": "hard",
+    "question": "Ποιος πλανήτης έχει τη μεγαλύτερη διάρκεια ημέρας από τους οκτώ πλανήτες;",
+    "options": [
+      "Δίας",
+      "Κρόνος",
+      "Αφροδίτη",
+      "Ερμής"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0171",
+    "category": "Τεχνολογία",
+    "difficulty": "easy",
+    "question": "Τι σημαίνουν τα αρχικά CPU;",
+    "options": [
+      "Computer Personal Unit",
+      "Core Program Utility",
+      "Central Power User",
+      "Central Processing Unit"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0172",
+    "category": "Τεχνολογία",
+    "difficulty": "easy",
+    "question": "Ποια εταιρεία δημιούργησε το iPhone;",
+    "options": [
+      "Apple",
+      "Microsoft",
+      "Samsung",
+      "Nokia"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0173",
+    "category": "Τεχνολογία",
+    "difficulty": "medium",
+    "question": "Ποιο λειτουργικό σύστημα αναπτύχθηκε αρχικά από τη Google για smartphones;",
+    "options": [
+      "Linux",
+      "Android",
+      "Windows",
+      "macOS"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0174",
+    "category": "Τεχνολογία",
+    "difficulty": "medium",
+    "question": "Τι χρησιμοποιεί συνήθως ένας υπολογιστής για μόνιμη αποθήκευση αρχείων;",
+    "options": [
+      "CPU",
+      "GPU",
+      "SSD/HDD",
+      "RAM"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0175",
+    "category": "Τεχνολογία",
+    "difficulty": "hard",
+    "question": "Τι σημαίνει URL;",
+    "options": [
+      "Universal Remote Link",
+      "User Resource Language",
+      "Unified Routing List",
+      "Uniform Resource Locator"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0176",
+    "category": "Τεχνολογία",
+    "difficulty": "easy",
+    "question": "Ποια εταιρεία δημιούργησε τα Windows;",
+    "options": [
+      "Microsoft",
+      "Apple",
+      "IBM",
+      "Intel"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0177",
+    "category": "Τεχνολογία",
+    "difficulty": "medium",
+    "question": "Τι σημαίνει Wi‑Fi;",
+    "options": [
+      "Δορυφορική τηλεόραση",
+      "Ασύρματη δικτύωση",
+      "Οπτική ίνα",
+      "Κινητή τηλεφωνία"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0178",
+    "category": "Τεχνολογία",
+    "difficulty": "hard",
+    "question": "Ποια γλώσσα προγραμματισμού δημιούργησε ο Guido van Rossum;",
+    "options": [
+      "C++",
+      "Ruby",
+      "Python",
+      "Java"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0179",
+    "category": "Τεχνολογία",
+    "difficulty": "medium",
+    "question": "Ποια συσκευή χρησιμοποιείται για να μετατρέπει ψηφιακό σήμα σε εικόνα στην οθόνη;",
+    "options": [
+      "Router",
+      "Keyboard",
+      "Microphone",
+      "GPU"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0180",
+    "category": "Τεχνολογία",
+    "difficulty": "hard",
+    "question": "Ποια εταιρεία ανέπτυξε το λειτουργικό σύστημα Android αρχικά πριν εξαγοραστεί από την Google;",
+    "options": [
+      "Android Inc.",
+      "Netscape",
+      "Palm",
+      "Sun Microsystems"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0181",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποιος είναι ο πρωταγωνιστής της ταινίας Forrest Gump;",
+    "options": [
+      "Matt Damon",
+      "Tom Hanks",
+      "Tom Cruise",
+      "Brad Pitt"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0182",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Σε ποια ταινία υπάρχει ο χαρακτήρας Rocky Balboa;",
+    "options": [
+      "Rambo",
+      "Heat",
+      "Rocky",
+      "Creed"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0183",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποιος σκηνοθέτησε το Titanic;",
+    "options": [
+      "Steven Spielberg",
+      "Christopher Nolan",
+      "Ridley Scott",
+      "James Cameron"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0184",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια ταινία έχει τους χαρακτήρες Neo και Morpheus;",
+    "options": [
+      "The Matrix",
+      "Inception",
+      "Avatar",
+      "Terminator"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0185",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποιος σκηνοθέτησε το Pulp Fiction;",
+    "options": [
+      "David Fincher",
+      "Quentin Tarantino",
+      "Martin Scorsese",
+      "Francis Ford Coppola"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0186",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποιος χαρακτήρας λέει «May the Force be with you» στο σύμπαν του Star Wars;",
+    "options": [
+      "Μόνο ο Yoda",
+      "Μόνο ο Luke",
+      "Πολλοί χαρακτήρες",
+      "Μόνο ο Darth Vader"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0187",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποιος υποδύθηκε τον Jack Sparrow;",
+    "options": [
+      "Orlando Bloom",
+      "Jude Law",
+      "Colin Farrell",
+      "Johnny Depp"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0188",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια ταινία κέρδισε το Όσκαρ Καλύτερης Ταινίας το 1994;",
+    "options": [
+      "Forrest Gump",
+      "Pulp Fiction",
+      "The Shawshank Redemption",
+      "Four Weddings and a Funeral"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0189",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια ταινία περιλαμβάνει τον χαρακτήρα Hannibal Lecter;",
+    "options": [
+      "The Shining",
+      "The Silence of the Lambs",
+      "Se7en",
+      "Psycho"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0190",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποιος σκηνοθέτησε το The Godfather;",
+    "options": [
+      "Brian De Palma",
+      "Steven Spielberg",
+      "Francis Ford Coppola",
+      "Martin Scorsese"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0191",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποια σειρά ακολουθεί την οικογένεια Simpson;",
+    "options": [
+      "Family Guy",
+      "South Park",
+      "Futurama",
+      "The Simpsons"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0192",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Σε ποια σειρά βρίσκεται ο χαρακτήρας Sheldon Cooper;",
+    "options": [
+      "The Big Bang Theory",
+      "Friends",
+      "How I Met Your Mother",
+      "The Office"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0193",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια σειρά διαδραματίζεται στην πόλη Hawkins;",
+    "options": [
+      "Riverdale",
+      "Stranger Things",
+      "Dark",
+      "Wednesday"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0194",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια σειρά έχει τον χαρακτήρα Dexter Morgan;",
+    "options": [
+      "Hannibal",
+      "Sherlock",
+      "Dexter",
+      "You"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0195",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια σειρά βασίζεται στα βιβλία του George R. R. Martin;",
+    "options": [
+      "Vikings",
+      "The Witcher",
+      "Rome",
+      "Game of Thrones"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0196",
+    "category": "Ταινίες & TV",
+    "difficulty": "easy",
+    "question": "Ποια σειρά έχει ως κεντρικό χαρακτήρα τον Mr. Bean;",
+    "options": [
+      "Mr. Bean",
+      "Blackadder",
+      "The Office",
+      "Peaky Blinders"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0197",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο αρχηγός της ομάδας στο Money Heist με το ψευδώνυμο «Professor»;",
+    "options": [
+      "Ο Denver",
+      "Ο Sergio",
+      "Ο Berlin",
+      "Ο Rio"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0198",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια σειρά έχει τον Walter Bishop ως βασικό χαρακτήρα;",
+    "options": [
+      "House",
+      "Dark",
+      "Fringe",
+      "Lost"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0199",
+    "category": "Ταινίες & TV",
+    "difficulty": "medium",
+    "question": "Ποια σειρά διαδραματίζεται σε ένα γραφείο της εταιρείας Dunder Mifflin;",
+    "options": [
+      "Suits",
+      "Mad Men",
+      "Silicon Valley",
+      "The Office"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0200",
+    "category": "Ταινίες & TV",
+    "difficulty": "hard",
+    "question": "Ποια σειρά έχει ως κεντρικό θέμα έναν χημικό καθηγητή που κατασκευάζει μεθαμφεταμίνη;",
+    "options": [
+      "Breaking Bad",
+      "Ozark",
+      "Narcos",
+      "The Wire"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0201",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποιος τραγούδησε το Thriller;",
+    "options": [
+      "Stevie Wonder",
+      "Michael Jackson",
+      "Prince",
+      "Elvis Presley"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0202",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποια τραγουδίστρια είναι γνωστή για το τραγούδι Hello;",
+    "options": [
+      "Sia",
+      "Katy Perry",
+      "Adele",
+      "Rihanna"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0203",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιο συγκρότημα κυκλοφόρησε το άλμπουμ The Dark Side of the Moon;",
+    "options": [
+      "Queen",
+      "Led Zeppelin",
+      "The Beatles",
+      "Pink Floyd"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0204",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιος ήταν ο τραγουδιστής των Nirvana;",
+    "options": [
+      "Kurt Cobain",
+      "Eddie Vedder",
+      "Dave Grohl",
+      "Chris Cornell"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0205",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποιος συνθέτης έγραψε το Für Elise;",
+    "options": [
+      "Vivaldi",
+      "Ludwig van Beethoven",
+      "Mozart",
+      "Bach"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0206",
+    "category": "Μουσική",
+    "difficulty": "easy",
+    "question": "Ποιο όργανο έχει τέσσερις χορδές και παίζεται με δοξάρι;",
+    "options": [
+      "Πιάνο",
+      "Φλάουτο",
+      "Βιολί",
+      "Κιθάρα"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0207",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποια τραγουδίστρια κυκλοφόρησε το άλμπουμ Lemonade;",
+    "options": [
+      "Adele",
+      "Taylor Swift",
+      "Rihanna",
+      "Beyoncé"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0208",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποιος μουσικός ήταν γνωστός ως «The Boss»;",
+    "options": [
+      "Bruce Springsteen",
+      "Elton John",
+      "David Bowie",
+      "Billy Joel"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0209",
+    "category": "Μουσική",
+    "difficulty": "medium",
+    "question": "Ποιο συγκρότημα τραγούδησε το Smells Like Teen Spirit;",
+    "options": [
+      "Green Day",
+      "Nirvana",
+      "Pearl Jam",
+      "Metallica"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0210",
+    "category": "Μουσική",
+    "difficulty": "hard",
+    "question": "Ποιος συνθέτης έγραψε τις Τέσσερις Εποχές;",
+    "options": [
+      "Handel",
+      "Haydn",
+      "Antonio Vivaldi",
+      "Bach"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0211",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Πόσοι παίκτες ξεκινούν έναν αγώνα μπάσκετ για κάθε ομάδα στο παρκέ;",
+    "options": [
+      "6",
+      "7",
+      "4",
+      "5"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0212",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Σε ποιο άθλημα υπάρχει το Tour de France;",
+    "options": [
+      "Ποδηλασία",
+      "Στίβος",
+      "Κολύμβηση",
+      "Σκι"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0213",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Πόσα σετ χρειάζεται να κερδίσει ένας άνδρας για να πάρει συνήθως έναν αγώνα Grand Slam τένις;",
+    "options": [
+      "5",
+      "3",
+      "2",
+      "4"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0214",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Ποιο άθλημα χρησιμοποιεί τον όρο birdie;",
+    "options": [
+      "Μπάσκετ",
+      "Ποδόσφαιρο",
+      "Γκολφ",
+      "Τένις"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0215",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Ποιος αθλητής είναι γνωστός ως «Lightning Bolt»;",
+    "options": [
+      "Tyson Gay",
+      "Carl Lewis",
+      "Michael Johnson",
+      "Usain Bolt"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0216",
+    "category": "Αθλητισμός",
+    "difficulty": "easy",
+    "question": "Ποιο χρώμα κάρτας σημαίνει αποβολή στο ποδόσφαιρο;",
+    "options": [
+      "Κόκκινη",
+      "Κίτρινη",
+      "Μπλε",
+      "Πράσινη"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0217",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Πόσοι πόντοι αξίζει ένα touchdown στο αμερικανικό football πριν από την έξτρα προσπάθεια;",
+    "options": [
+      "2",
+      "6",
+      "3",
+      "7"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0218",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Ποια χώρα φιλοξένησε τους πρώτους σύγχρονους Ολυμπιακούς Αγώνες το 1896;",
+    "options": [
+      "ΗΠΑ",
+      "Ιταλία",
+      "Ελλάδα",
+      "Γαλλία"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0219",
+    "category": "Αθλητισμός",
+    "difficulty": "medium",
+    "question": "Πόσα λεπτά διαρκεί κανονικά ένας αγώνας ποδοσφαίρου χωρίς καθυστερήσεις;",
+    "options": [
+      "80",
+      "100",
+      "60",
+      "90"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0220",
+    "category": "Αθλητισμός",
+    "difficulty": "hard",
+    "question": "Σε ποιο άθλημα αγωνίζεται ο Max Verstappen;",
+    "options": [
+      "Formula 1",
+      "MotoGP",
+      "Rally",
+      "NASCAR"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0221",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Ποιο φρούτο χρησιμοποιείται για την παρασκευή του guacamole;",
+    "options": [
+      "Λάιμ",
+      "Αβοκάντο",
+      "Μάνγκο",
+      "Ανανάς"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0222",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Ποια χώρα συνδέεται με την paella;",
+    "options": [
+      "Πορτογαλία",
+      "Μεξικό",
+      "Ισπανία",
+      "Ιταλία"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0223",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο τυρί είναι βασικό σε μια κλασική ελληνική χωριάτικη σαλάτα;",
+    "options": [
+      "Γκούντα",
+      "Μοτσαρέλα",
+      "Ροκφόρ",
+      "Φέτα"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0224",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο ζυμαρικό έχει σχήμα μικρών κοχυλιών;",
+    "options": [
+      "Conchiglie",
+      "Penne",
+      "Fusilli",
+      "Linguine"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0225",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το βασικό συστατικό του miso;",
+    "options": [
+      "Φύκια",
+      "Σόγια",
+      "Ρύζι",
+      "Σουσάμι"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0226",
+    "category": "Φαγητό",
+    "difficulty": "easy",
+    "question": "Ποιο φρούτο είναι βασικό σε μια κλασική μηλόπιτα;",
+    "options": [
+      "Ροδάκινο",
+      "Κεράσι",
+      "Μήλο",
+      "Αχλάδι"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0227",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποια χώρα είναι γνωστή για το kimchi;",
+    "options": [
+      "Ιαπωνία",
+      "Κίνα",
+      "Βιετνάμ",
+      "Νότια Κορέα"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0228",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Ποιο μπαχαρικό είναι βασικό στο garam masala;",
+    "options": [
+      "Συνδυασμός μπαχαρικών",
+      "Μόνο πιπέρι",
+      "Μόνο κύμινο",
+      "Μόνο κανέλα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0229",
+    "category": "Φαγητό",
+    "difficulty": "medium",
+    "question": "Ποιο γλυκό φτιάχνεται συνήθως με φύλλο, ξηρούς καρπούς και σιρόπι;",
+    "options": [
+      "Μακαρόν",
+      "Μπακλαβάς",
+      "Τιραμισού",
+      "Πανακότα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0230",
+    "category": "Φαγητό",
+    "difficulty": "hard",
+    "question": "Ποια είναι η βασική πρώτη ύλη του tofu;",
+    "options": [
+      "Καλαμπόκι",
+      "Πατάτα",
+      "Σόγια",
+      "Ρύζι"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0231",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιο αέριο είναι απαραίτητο για την ανθρώπινη αναπνοή;",
+    "options": [
+      "Άζωτο",
+      "Ήλιο",
+      "Υδρογόνο",
+      "Οξυγόνο"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0232",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το χημικό σύμβολο του νερού;",
+    "options": [
+      "H₂O",
+      "CO₂",
+      "O₂",
+      "NaCl"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0233",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποια βιταμίνη παράγει το σώμα με την έκθεση στον ήλιο;",
+    "options": [
+      "Βιταμίνη K",
+      "Βιταμίνη D",
+      "Βιταμίνη C",
+      "Βιταμίνη B12"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0234",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το σκληρότερο φυσικό ορυκτό;",
+    "options": [
+      "Γραφίτης",
+      "Ασβεστίτης",
+      "Διαμάντι",
+      "Χαλαζίας"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0235",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Ποιο σωματίδιο έχει αρνητικό ηλεκτρικό φορτίο;",
+    "options": [
+      "Πρωτόνιο",
+      "Νετρόνιο",
+      "Φωτόνιο",
+      "Ηλεκτρόνιο"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0236",
+    "category": "Επιστήμη",
+    "difficulty": "easy",
+    "question": "Ποιο όργανο χρησιμοποιούμε κυρίως για την αναπνοή;",
+    "options": [
+      "Πνεύμονες",
+      "Ήπαρ",
+      "Νεφρά",
+      "Στομάχι"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0237",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποιο μέταλλο είναι υγρό σε θερμοκρασία δωματίου;",
+    "options": [
+      "Χαλκός",
+      "Υδράργυρος",
+      "Σίδηρος",
+      "Αλουμίνιο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0238",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Ποιος νόμος συνδέει τάση, ρεύμα και αντίσταση;",
+    "options": [
+      "Νόμος του Boyle",
+      "Νόμος του Pascal",
+      "Νόμος του Ohm",
+      "Νόμος του Hooke"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0239",
+    "category": "Επιστήμη",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το κέντρο του ατόμου;",
+    "options": [
+      "Ηλεκτρόνιο",
+      "Φωτόνιο",
+      "Ιόν",
+      "Πυρήνας"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0240",
+    "category": "Επιστήμη",
+    "difficulty": "hard",
+    "question": "Ποια είναι η μονάδα μέτρησης της ηλεκτρικής αντίστασης;",
+    "options": [
+      "Ωμ",
+      "Βολτ",
+      "Αμπέρ",
+      "Βατ"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0241",
+    "category": "Μαθηματικά",
+    "difficulty": "easy",
+    "question": "Πόσο κάνει 12 × 8;",
+    "options": [
+      "88",
+      "96",
+      "86",
+      "108"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0242",
+    "category": "Μαθηματικά",
+    "difficulty": "easy",
+    "question": "Πόσες μοίρες έχει ένα ορθογώνιο τρίγωνο συνολικά;",
+    "options": [
+      "360",
+      "270",
+      "180",
+      "90"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0243",
+    "category": "Μαθηματικά",
+    "difficulty": "medium",
+    "question": "Ποια είναι η τετραγωνική ρίζα του 144;",
+    "options": [
+      "14",
+      "10",
+      "16",
+      "12"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0244",
+    "category": "Μαθηματικά",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το 25% του 200;",
+    "options": [
+      "50",
+      "25",
+      "75",
+      "100"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0245",
+    "category": "Μαθηματικά",
+    "difficulty": "hard",
+    "question": "Ποιος είναι ο πρώτος αριθμός μετά το 97;",
+    "options": [
+      "103",
+      "101",
+      "99",
+      "100"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0246",
+    "category": "Μαθηματικά",
+    "difficulty": "easy",
+    "question": "Πόσες πλευρές έχει ένα οκτάγωνο;",
+    "options": [
+      "7",
+      "10",
+      "8",
+      "6"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0247",
+    "category": "Μαθηματικά",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το αποτέλεσμα του 7²;",
+    "options": [
+      "14",
+      "21",
+      "56",
+      "49"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0248",
+    "category": "Μαθηματικά",
+    "difficulty": "hard",
+    "question": "Πόσο είναι το 2³ × 2²;",
+    "options": [
+      "32",
+      "16",
+      "64",
+      "24"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0249",
+    "category": "Μαθηματικά",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο μέσος όρος των 10, 20 και 30;",
+    "options": [
+      "30",
+      "20",
+      "15",
+      "25"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0250",
+    "category": "Μαθηματικά",
+    "difficulty": "hard",
+    "question": "Ποια είναι η αξία του π στον πλησιέστερο ακέραιο;",
+    "options": [
+      "4",
+      "5",
+      "3",
+      "2"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0251",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Πόσες ημέρες έχει μία εβδομάδα;",
+    "options": [
+      "5",
+      "6",
+      "8",
+      "7"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0252",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Ποιο χρώμα προκύπτει από μπλε και κίτρινο;",
+    "options": [
+      "Πράσινο",
+      "Μωβ",
+      "Πορτοκαλί",
+      "Καφέ"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0253",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το μεγαλύτερο όργανο του ανθρώπινου σώματος;",
+    "options": [
+      "Καρδιά",
+      "Δέρμα",
+      "Ήπαρ",
+      "Πνεύμονες"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0254",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποιο μέταλλο έχει το χημικό σύμβολο Fe;",
+    "options": [
+      "Χρυσός",
+      "Άργυρος",
+      "Σίδηρος",
+      "Χαλκός"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0255",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το μοναδικό γράμμα που δεν εμφανίζεται στο όνομα καμίας πολιτείας των ΗΠΑ;",
+    "options": [
+      "X",
+      "Z",
+      "J",
+      "Q"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0256",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "easy",
+    "question": "Πόσοι μήνες έχουν 31 ημέρες;",
+    "options": [
+      "7",
+      "6",
+      "5",
+      "8"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0257",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Ποια είναι η επίσημη γλώσσα της Βραζιλίας;",
+    "options": [
+      "Γαλλικά",
+      "Πορτογαλικά",
+      "Ισπανικά",
+      "Αγγλικά"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0258",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το μόνο ηπειρωτικό κράτος που περιβάλλεται πλήρως από τη Νότια Αφρική;",
+    "options": [
+      "Μποτσουάνα",
+      "Ναμίμπια",
+      "Λεσότο",
+      "Εσουατίνι"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0259",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "medium",
+    "question": "Πόσες ζώνες ώρας έχει η Ρωσία;",
+    "options": [
+      "9",
+      "10",
+      "12",
+      "11"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0260",
+    "category": "Γενικές Γνώσεις",
+    "difficulty": "hard",
+    "question": "Ποια χώρα έχει πρωτεύουσα το Ουλάν Μπατόρ;",
+    "options": [
+      "Μογγολία",
+      "Καζακστάν",
+      "Κιργιστάν",
+      "Ουζμπεκιστάν"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0261",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "easy",
+    "question": "Ποια λέξη είναι συνώνυμη της λέξης «χαρούμενος»;",
+    "options": [
+      "Κουρασμένος",
+      "Ευτυχισμένος",
+      "Θλιμμένος",
+      "Ήρεμος"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0262",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το αντίθετο της λέξης «γρήγορος»;",
+    "options": [
+      "Μικρός",
+      "Ψηλός",
+      "Αργός",
+      "Δυνατός"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0263",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "medium",
+    "question": "Ποια από τις παρακάτω λέξεις είναι ουσιαστικό;",
+    "options": [
+      "Τρέχω",
+      "Όμορφος",
+      "Γρήγορα",
+      "Τραπέζι"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0264",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "hard",
+    "question": "Ποια λέξη είναι ομόηχη με το «λίρα» όταν αναφέρεται στο νόμισμα;",
+    "options": [
+      "Λίρρα",
+      "Λύρα",
+      "Λήρα",
+      "Λείρα"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0265",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "easy",
+    "question": "Πόσα φωνήεντα έχει το ελληνικό αλφάβητο;",
+    "options": [
+      "6",
+      "8",
+      "7",
+      "5"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0266",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "medium",
+    "question": "Ποιο από τα παρακάτω είναι επίθετο;",
+    "options": [
+      "Όμορφα",
+      "Ομορφιά",
+      "Ομορφαίνω",
+      "Όμορφος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0267",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "hard",
+    "question": "Ποια λέξη προέρχεται από τα αρχαία ελληνικά και σημαίνει «αγάπη για τη σοφία»;",
+    "options": [
+      "Φιλοσοφία",
+      "Δημοκρατία",
+      "Ρητορική",
+      "Λογική"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0268",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το αντίθετο του «σπάνιος»;",
+    "options": [
+      "Νέος",
+      "Συχνός",
+      "Μικρός",
+      "Αδύναμος"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0269",
+    "category": "Γλώσσα & Λέξεις",
+    "difficulty": "hard",
+    "question": "Ποια από τις παρακάτω είναι σύνθετη λέξη;",
+    "options": [
+      "Νερό",
+      "Δρόμος",
+      "Ηλιοβασίλεμα",
+      "Σπίτι"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0270",
+    "category": "Τέχνη",
+    "difficulty": "easy",
+    "question": "Ποιος ζωγράφισε τη Μόνα Λίζα;",
+    "options": [
+      "Πικάσο",
+      "Βαν Γκογκ",
+      "Μονέ",
+      "Λεονάρντο ντα Βίντσι"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0271",
+    "category": "Τέχνη",
+    "difficulty": "easy",
+    "question": "Ποιος ζωγράφισε την Έναστρη Νύχτα;",
+    "options": [
+      "Βαν Γκογκ",
+      "Ντα Βίντσι",
+      "Νταλί",
+      "Ρέμπραντ"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0272",
+    "category": "Τέχνη",
+    "difficulty": "medium",
+    "question": "Ποιος ζωγράφισε τη Γκουέρνικα;",
+    "options": [
+      "Ματίς",
+      "Πικάσο",
+      "Μονέ",
+      "Μανέ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0273",
+    "category": "Τέχνη",
+    "difficulty": "medium",
+    "question": "Σε ποια πόλη βρίσκεται το μουσείο Louvre;",
+    "options": [
+      "Λονδίνο",
+      "Βερολίνο",
+      "Παρίσι",
+      "Ρώμη"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0274",
+    "category": "Τέχνη",
+    "difficulty": "hard",
+    "question": "Ποιος καλλιτέχνης δημιούργησε το γλυπτό David στη Φλωρεντία;",
+    "options": [
+      "Ντονατέλο",
+      "Ροντέν",
+      "Μπερνίνι",
+      "Μιχαήλ Άγγελος"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0275",
+    "category": "Τέχνη",
+    "difficulty": "easy",
+    "question": "Ποιο χρώμα είναι βασικό μαζί με το κόκκινο και το μπλε στη ζωγραφική;",
+    "options": [
+      "Κίτρινο",
+      "Πράσινο",
+      "Μωβ",
+      "Πορτοκαλί"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0276",
+    "category": "Τέχνη",
+    "difficulty": "medium",
+    "question": "Ποιος καλλιτέχνης συνδέεται με τον ιμπρεσιονισμό και τα νούφαρα;",
+    "options": [
+      "Γκωγκέν",
+      "Κλοντ Μονέ",
+      "Πικάσο",
+      "Νταλί"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0277",
+    "category": "Τέχνη",
+    "difficulty": "hard",
+    "question": "Ποιος δημιούργησε το έργο The Persistence of Memory;",
+    "options": [
+      "Μιρό",
+      "Μαγκρίτ",
+      "Σαλβαδόρ Νταλί",
+      "Πικάσο"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0278",
+    "category": "Τέχνη",
+    "difficulty": "medium",
+    "question": "Ποια τεχνική χρησιμοποιεί μικρές κουκκίδες χρώματος;",
+    "options": [
+      "Κυβισμός",
+      "Σουρεαλισμός",
+      "Φωβισμός",
+      "Πουαντιγισμός"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0279",
+    "category": "Τέχνη",
+    "difficulty": "hard",
+    "question": "Ποιος ζωγράφος δημιούργησε τον πίνακα American Gothic;",
+    "options": [
+      "Grant Wood",
+      "Edward Hopper",
+      "Andy Warhol",
+      "Jackson Pollock"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0280",
+    "category": "Βιβλία",
+    "difficulty": "easy",
+    "question": "Ποιος έγραψε τον Harry Potter;",
+    "options": [
+      "Suzanne Collins",
+      "J.K. Rowling",
+      "J.R.R. Tolkien",
+      "Stephen King"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0281",
+    "category": "Βιβλία",
+    "difficulty": "easy",
+    "question": "Ποιος έγραψε τον Άρχοντα των Δαχτυλιδιών;",
+    "options": [
+      "George R.R. Martin",
+      "Philip Pullman",
+      "J.R.R. Tolkien",
+      "C.S. Lewis"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0282",
+    "category": "Βιβλία",
+    "difficulty": "medium",
+    "question": "Ποιος έγραψε τον Δον Κιχώτη;",
+    "options": [
+      "Βίκτωρ Ουγκό",
+      "Ντάνιελ Ντεφό",
+      "Ουίλιαμ Σαίξπηρ",
+      "Μιγκέλ ντε Θερβάντες"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0283",
+    "category": "Βιβλία",
+    "difficulty": "medium",
+    "question": "Ποιος έγραψε το 1984;",
+    "options": [
+      "George Orwell",
+      "Aldous Huxley",
+      "Ernest Hemingway",
+      "F. Scott Fitzgerald"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0284",
+    "category": "Βιβλία",
+    "difficulty": "hard",
+    "question": "Ποιος έγραψε το Έγκλημα και Τιμωρία;",
+    "options": [
+      "Τουργκένιεφ",
+      "Φιοντόρ Ντοστογιέφσκι",
+      "Τολστόι",
+      "Τσέχωφ"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0285",
+    "category": "Βιβλία",
+    "difficulty": "easy",
+    "question": "Ποιος είναι ο ήρωας του βιβλίου The Hobbit;",
+    "options": [
+      "Gandalf",
+      "Aragorn",
+      "Bilbo Baggins",
+      "Frodo Baggins"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0286",
+    "category": "Βιβλία",
+    "difficulty": "medium",
+    "question": "Ποιος έγραψε τον Μικρό Πρίγκιπα;",
+    "options": [
+      "Jules Verne",
+      "Victor Hugo",
+      "Albert Camus",
+      "Antoine de Saint-Exupéry"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0287",
+    "category": "Βιβλία",
+    "difficulty": "hard",
+    "question": "Ποιος έγραψε τον Οδυσσέα;",
+    "options": [
+      "James Joyce",
+      "Oscar Wilde",
+      "George Bernard Shaw",
+      "Samuel Beckett"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0288",
+    "category": "Βιβλία",
+    "difficulty": "medium",
+    "question": "Ποιος είναι ο συγγραφέας του Dracula;",
+    "options": [
+      "H.G. Wells",
+      "Bram Stoker",
+      "Mary Shelley",
+      "Robert Louis Stevenson"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0289",
+    "category": "Βιβλία",
+    "difficulty": "hard",
+    "question": "Ποιος έγραψε το Brave New World;",
+    "options": [
+      "Ray Bradbury",
+      "Isaac Asimov",
+      "Aldous Huxley",
+      "George Orwell"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0290",
+    "category": "Φύση",
+    "difficulty": "easy",
+    "question": "Ποιο είναι το ψηλότερο δέντρο στον κόσμο;",
+    "options": [
+      "Μπαομπάμπ",
+      "Κέδρος",
+      "Πεύκο",
+      "Παράκτια σεκόγια"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0291",
+    "category": "Φύση",
+    "difficulty": "easy",
+    "question": "Ποιο φυσικό φαινόμενο είναι η ηλεκτρική εκκένωση κατά τη διάρκεια καταιγίδας;",
+    "options": [
+      "Κεραυνός",
+      "Ουράνιο τόξο",
+      "Ομίχλη",
+      "Χιονοθύελλα"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0292",
+    "category": "Φύση",
+    "difficulty": "medium",
+    "question": "Πώς ονομάζεται η διαδικασία με την οποία τα φυτά μετατρέπουν το φως σε χημική ενέργεια;",
+    "options": [
+      "Ζύμωση",
+      "Φωτοσύνθεση",
+      "Αναπνοή",
+      "Εξάτμιση"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0293",
+    "category": "Φύση",
+    "difficulty": "medium",
+    "question": "Ποιο είναι το μεγαλύτερο τροπικό δάσος;",
+    "options": [
+      "Βόρνεο",
+      "Σουμάτρα",
+      "Αμαζόνιος",
+      "Κονγκό"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0294",
+    "category": "Φύση",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το βαθύτερο γνωστό σημείο των ωκεανών;",
+    "options": [
+      "Puerto Rico Trench",
+      "Java Trench",
+      "Tonga Trench",
+      "Challenger Deep"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0295",
+    "category": "Φύση",
+    "difficulty": "easy",
+    "question": "Τι πέφτει από τον ουρανό ως βροχή, χιόνι ή χαλάζι;",
+    "options": [
+      "Κατακρήμνιση",
+      "Άνεμος",
+      "Ομίχλη",
+      "Δροσιά"
+    ],
+    "correctIndex": 0
+  },
+  {
+    "id": "q0296",
+    "category": "Φύση",
+    "difficulty": "medium",
+    "question": "Ποιο αέριο απορροφούν τα φυτά για τη φωτοσύνθεση;",
+    "options": [
+      "Ήλιο",
+      "Διοξείδιο του άνθρακα",
+      "Οξυγόνο",
+      "Άζωτο"
+    ],
+    "correctIndex": 1
+  },
+  {
+    "id": "q0297",
+    "category": "Φύση",
+    "difficulty": "hard",
+    "question": "Ποιο είναι το μεγαλύτερο κοραλλιογενές σύστημα στον κόσμο;",
+    "options": [
+      "Red Sea Reef",
+      "New Caledonia Reef",
+      "Great Barrier Reef",
+      "Belize Barrier Reef"
+    ],
+    "correctIndex": 2
+  },
+  {
+    "id": "q0298",
+    "category": "Φύση",
+    "difficulty": "medium",
+    "question": "Ποια εποχή ακολουθεί το καλοκαίρι στο βόρειο ημισφαίριο;",
+    "options": [
+      "Χειμώνας",
+      "Άνοιξη",
+      "Μουσώνας",
+      "Φθινόπωρο"
+    ],
+    "correctIndex": 3
+  },
+  {
+    "id": "q0299",
+    "category": "Φύση",
+    "difficulty": "hard",
+    "question": "Ποιο φαινόμενο προκαλεί κυρίως την άμπωτη και την παλίρροια;",
+    "options": [
+      "Βαρύτητα Σελήνης και Ήλιου",
+      "Άνεμοι",
+      "Ηφαιστειακή δράση",
+      "Μαγνητισμός της Γης"
+    ],
+    "correctIndex": 0
+  }
+]
