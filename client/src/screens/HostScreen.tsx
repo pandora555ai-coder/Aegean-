@@ -12,9 +12,11 @@ import {
   type GameOverPayload,
   type GamePhase,
   type LobbyUpdatePayload,
+  type PausedPayload,
   type PhaseChangedPayload,
   type QuestionShowHostPayload,
   type QuestionShowPayload,
+  type ResumedPayload,
   type RevealHostPayload,
   type RevealShowPayload,
   type RoomCode,
@@ -49,12 +51,17 @@ export default function HostScreen() {
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
   const [scoreboardSecondsLeft, setScoreboardSecondsLeft] = useState(0);
   const [wakeLockFailed, setWakeLockFailed] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [pausedByName, setPausedByName] = useState<string | null>(null);
   // True from mount only when a stored room code exists - keeps the
   // "Create Room" button from flashing while a host:rejoin is in flight.
   const [isRejoining, setIsRejoining] = useState(() => !!getStoredHostRoomCode());
   // Mirrors `roomCode` for handlers registered once (empty dep array) that
   // still need the LATEST value - avoids a stale-closure read of `roomCode`.
   const roomCodeRef = useRef<RoomCode | null>(null);
+  // Mirrors `phase` for the SAME reason - game:resumed needs to know which
+  // of secondsLeft/revealSecondsLeft/scoreboardSecondsLeft to correct.
+  const phaseRef = useRef<GamePhase>('LOBBY');
   const audioCtxRef = useRef<AudioContext | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -89,6 +96,7 @@ export default function HostScreen() {
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       setPhase(payload.phase);
+      phaseRef.current = payload.phase;
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round view
         // so the lobby renders cleanly instead of a stale QUESTION/REVEAL/
@@ -98,6 +106,10 @@ export default function HostScreen() {
         setReveal(null);
         setScoreboard(null);
         setGameOver(null);
+        // Pause is impossible in LOBBY - reset defensively, in case a
+        // player somehow paused right as the room reset.
+        setPaused(false);
+        setPausedByName(null);
         // Re-arm recovery for game 2+: GAME_OVER clears the stored code
         // below, so a fresh "play again" round needs it set again for a
         // mid-game refresh to still auto-rejoin.
@@ -110,9 +122,14 @@ export default function HostScreen() {
     function handleQuestionShow(payload: QuestionShowPayload) {
       if (isQuestionShowHostPayload(payload)) {
         setQuestion(payload);
+        // A fresh question:show always means "just started" - nothing has
+        // elapsed yet, so the full duration IS the correct countdown start.
+        setSecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
         setAnswerProgress(null);
         setReveal(null);
         setScoreboard(null);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
       }
     }
 
@@ -123,11 +140,36 @@ export default function HostScreen() {
     function handleRevealShow(payload: RevealShowPayload) {
       if (isRevealHostPayload(payload)) {
         setReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
       }
     }
 
     function handleScoreboardShow(payload: ScoreboardPayload) {
       setScoreboard(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
+    function handleGamePaused(payload: PausedPayload) {
+      setPaused(true);
+      setPausedByName(payload.byName);
+    }
+
+    function handleGameResumed(payload: ResumedPayload) {
+      setPaused(false);
+      setPausedByName(null);
+      // Authoritative correction, not a guess - whichever countdown is
+      // currently on screen jumps to the server's real remaining time
+      // rather than trusting wherever the local interval happened to freeze.
+      const seconds = Math.ceil(payload.remainingMs / 1000);
+      if (phaseRef.current === 'QUESTION') {
+        setSecondsLeft(seconds);
+      } else if (phaseRef.current === 'REVEAL') {
+        setRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'SCOREBOARD') {
+        setScoreboardSecondsLeft(seconds);
+      }
     }
 
     function handleGameOver(payload: GameOverPayload) {
@@ -143,6 +185,7 @@ export default function HostScreen() {
     // code, or socket.io's own automatic reconnect after the TV wakes up).
     function handleStateSync(payload: StateSyncPayload) {
       setPhase(payload.phase);
+      phaseRef.current = payload.phase;
       setQuestion(null);
       setAnswerProgress(null);
       setReveal(null);
@@ -155,19 +198,28 @@ export default function HostScreen() {
           roomCodeRef.current = payload.code;
           setLobby({ code: payload.code, players: payload.players, canStart: payload.canStart, settings: payload.settings });
           setRoomSettings(payload.settings);
+          setPaused(false);
+          setPausedByName(null);
           break;
         case 'QUESTION':
           if (isQuestionShowHostPayload(payload)) {
             setQuestion(payload);
+            setSecondsLeft(Math.ceil(payload.remainingMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
           }
           break;
         case 'REVEAL':
           if (isRevealHostPayload(payload)) {
             setReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
           }
           break;
         case 'SCOREBOARD':
           setScoreboard(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
           break;
         case 'GAME_OVER':
           setGameOver(payload);
@@ -186,6 +238,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+    socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
+    socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
@@ -199,47 +253,66 @@ export default function HostScreen() {
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+      socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
+      socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
     };
   }, []);
 
+  // Ticks the QUESTION countdown every second while genuinely live - stops
+  // entirely while paused, freezing the displayed value exactly where it
+  // was (per-second reset to the full/authoritative value happens
+  // explicitly in handleQuestionShow/handleStateSync/handleGameResumed
+  // above, not here, so a reconnect mid-question or mid-pause never gets
+  // clobbered back to the full duration).
   useEffect(() => {
-    if (phase !== 'QUESTION' || !question) {
+    if (phase !== 'QUESTION' || !question || paused) {
       return;
     }
-    // The ROOM's configured per-question time, not a global default - a
-    // 10s room must count down from 10, not from whatever the app's
-    // hardcoded value used to be.
-    setSecondsLeft(Math.ceil(question.questionTimeMs / 1000));
     const interval = setInterval(() => {
       setSecondsLeft((current) => Math.max(0, current - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [phase, question?.questionIndex, question?.questionTimeMs]);
+  }, [phase, question?.questionIndex, paused]);
 
   // Local countdowns driving the REVEAL/SCOREBOARD progress bars - purely
   // cosmetic, so the moment doesn't feel abrupt. The server's own timers are
-  // what actually advance the game; these never have to be trusted.
+  // what actually advance the game; these never have to be trusted. Unlike
+  // QUESTION above, `reveal`/`scoreboard.autoAdvanceMs` is ALWAYS the live
+  // server-computed remaining time (fresh or reconnect alike), so resetting
+  // from it whenever the object itself changes is always correct.
   useEffect(() => {
     if (!reveal) {
       return;
     }
     setRevealSecondsLeft(Math.ceil(reveal.autoAdvanceMs / 1000));
+  }, [reveal]);
+
+  useEffect(() => {
+    if (!reveal || paused) {
+      return;
+    }
     const interval = setInterval(() => {
       setRevealSecondsLeft((current) => Math.max(0, current - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [reveal]);
+  }, [reveal, paused]);
 
   useEffect(() => {
     if (!scoreboard) {
       return;
     }
     setScoreboardSecondsLeft(Math.ceil(scoreboard.autoAdvanceMs / 1000));
+  }, [scoreboard]);
+
+  useEffect(() => {
+    if (!scoreboard || paused) {
+      return;
+    }
     const interval = setInterval(() => {
       setScoreboardSecondsLeft((current) => Math.max(0, current - 1));
     }, 1000);
     return () => clearInterval(interval);
-  }, [scoreboard]);
+  }, [scoreboard, paused]);
 
   // Screen wake lock - the TV/tablet must not sleep mid-game, or the
   // WebSocket freezes and the host connection drops. Tracks whether it
@@ -411,6 +484,12 @@ export default function HostScreen() {
             {roomCode}
           </div>
         )}
+        {paused && (
+          <div style={styles.pauseOverlay} data-testid="pause-overlay">
+            <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
+            <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
+          </div>
+        )}
         <div style={styles.progress}>
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
         </div>
@@ -464,6 +543,12 @@ export default function HostScreen() {
             {roomCode}
           </div>
         )}
+        {paused && (
+          <div style={styles.pauseOverlay} data-testid="pause-overlay">
+            <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
+            <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
+          </div>
+        )}
         <div style={styles.progress}>
           Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
         </div>
@@ -506,6 +591,12 @@ export default function HostScreen() {
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
+          </div>
+        )}
+        {paused && (
+          <div style={styles.pauseOverlay} data-testid="pause-overlay">
+            <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
+            <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
           </div>
         )}
         <div style={styles.timer} data-testid="countdown">
@@ -659,7 +750,32 @@ const styles: Record<string, CSSProperties> = {
     background: 'rgba(255,255,255,0.9)',
     padding: '0.35rem 0.75rem',
     borderRadius: '0.5rem',
-    zIndex: 10,
+    // Above the pause overlay - players may still need the room code while
+    // paused (e.g. someone new scanning the QR mid-break isn't possible,
+    // but the code itself must never be hidden).
+    zIndex: 50,
+  },
+  pauseOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(17, 24, 39, 0.85)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '1rem',
+    zIndex: 40,
+  },
+  pauseTitle: {
+    fontSize: '5rem',
+    fontWeight: 900,
+    color: 'white',
+    letterSpacing: '0.15em',
+  },
+  pauseSubtitle: {
+    fontSize: '1.75rem',
+    fontWeight: 600,
+    color: '#e5e7eb',
   },
   counter: {
     fontSize: '2.5rem',

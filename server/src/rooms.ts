@@ -33,6 +33,21 @@ export interface RevealSnapshot {
 // AND no connected players - for this long. Reattaching either cancels it.
 export const ROOM_TTL_MS = 300000; // 5 minutes
 
+// The ONE shared timer mechanism behind the question timer, the REVEAL
+// auto-advance, and the SCOREBOARD auto-advance - previously three ad-hoc
+// setTimeout fields. Whichever phase-advancing timer is currently running
+// (at most one at a time - a room is only ever in one phase) lives here.
+export interface ActiveTimer {
+  kind: 'QUESTION' | 'REVEAL' | 'SCOREBOARD';
+  handle: NodeJS.Timeout | null;
+  startedAt: number;
+  durationMs: number;
+  // Set only while paused: how much of `durationMs` was left when
+  // pauseActiveTimer() froze it. null whenever the timer is actually
+  // running (including right after a fresh arm).
+  remainingAtPause: number | null;
+}
+
 export interface Room {
   code: RoomCode;
   // null when no TV/display is currently attached (e.g. it went to sleep) -
@@ -45,15 +60,27 @@ export interface Room {
   questions: Question[];
   currentQuestionIndex: number; // -1 until the game starts
   answers: Map<string, RecordedAnswer>; // keyed by playerId, cleared every question
+  // The speed-bonus reference point - kept SEPARATE from activeTimer
+  // (which drives when the timer fires) because pausing adjusts these two
+  // differently: activeTimer restarts its clock fresh from the remaining
+  // duration, but questionStartedAt shifts FORWARD by the paused duration,
+  // so elapsed "thinking time" for scoring never includes the break.
   questionStartedAt: number;
-  questionTimer: NodeJS.Timeout | null;
-  // Auto-advance timer for REVEAL -> SCOREBOARD -> next question/GAME_OVER.
-  // Reused across both phases since a room is only ever in one at a time.
-  phaseTimer: NodeJS.Timeout | null;
-  phaseTimerStartedAt: number; // when the current phaseTimer was armed
+  // Whichever phase-advance timer (QUESTION/REVEAL/SCOREBOARD) is
+  // currently running or frozen - null only in LOBBY/GAME_OVER.
+  activeTimer: ActiveTimer | null;
   lastReveal: RevealSnapshot | null;
   settings: RoomSettings;
   vipPlayerId: string | null;
+  // A boolean flag, not a GamePhase - the phase itself stays QUESTION/
+  // REVEAL/SCOREBOARD throughout a pause, so no existing phase guard needs
+  // to change. Only ever true during those three phases.
+  paused: boolean;
+  pausedByName: string | null;
+  // Wall-clock moment the CURRENT pause began - needed to compute the
+  // pause's own duration on resume, distinct from remainingAtPause (which
+  // records how much of the TIMER was left, not how long the pause lasted).
+  pausedAt: number | null;
   // Armed only while the room is fully empty (see refreshRoomTtl); cleared
   // the instant anyone (host display or player) reattaches.
   emptyTtlTimer: NodeJS.Timeout | null;
@@ -93,12 +120,13 @@ export function createRoom(hostSocketId: string): Room {
     currentQuestionIndex: -1,
     answers: new Map(),
     questionStartedAt: 0,
-    questionTimer: null,
-    phaseTimer: null,
-    phaseTimerStartedAt: 0,
+    activeTimer: null,
     lastReveal: null,
     settings: { ...DEFAULT_ROOM_SETTINGS },
     vipPlayerId: null,
+    paused: false,
+    pausedByName: null,
+    pausedAt: null,
     emptyTtlTimer: null,
   };
 
@@ -114,11 +142,8 @@ export function deleteRoom(code: RoomCode): boolean {
   const room = rooms.get(code);
   if (room) {
     // No timer may fire against a room that no longer exists.
-    if (room.questionTimer) {
-      clearTimeout(room.questionTimer);
-    }
-    if (room.phaseTimer) {
-      clearTimeout(room.phaseTimer);
+    if (room.activeTimer?.handle) {
+      clearTimeout(room.activeTimer.handle);
     }
     if (room.emptyTtlTimer) {
       clearTimeout(room.emptyTtlTimer);
@@ -166,6 +191,84 @@ export function attachHostDisplay(room: Room, socketId: string): void {
 export function detachHostDisplay(room: Room): void {
   room.hostSocketId = null;
   refreshRoomTtl(room);
+}
+
+// Arms a fresh timer for `kind`, replacing whatever was active before (its
+// handle is cleared first, if any) - the ONE place any phase-advance timer
+// gets created, whether that's a brand-new phase starting or (via
+// resumeActiveTimer) a paused one picking back up.
+export function armActiveTimer(
+  room: Room,
+  kind: ActiveTimer['kind'],
+  durationMs: number,
+  onFire: () => void,
+): void {
+  if (room.activeTimer?.handle) {
+    clearTimeout(room.activeTimer.handle);
+  }
+  room.activeTimer = {
+    kind,
+    handle: setTimeout(onFire, durationMs),
+    startedAt: Date.now(),
+    durationMs,
+    remainingAtPause: null,
+  };
+}
+
+// Freezes the active timer without discarding it: clears the underlying
+// setTimeout and records exactly how much time was left, clamped at >= 0.
+// A no-op if there's no active timer.
+export function pauseActiveTimer(room: Room): void {
+  const timer = room.activeTimer;
+  if (!timer) {
+    return;
+  }
+  if (timer.handle) {
+    clearTimeout(timer.handle);
+    timer.handle = null;
+  }
+  const elapsed = Date.now() - timer.startedAt;
+  timer.remainingAtPause = Math.max(0, timer.durationMs - elapsed);
+}
+
+// Resumes a frozen timer for EXACTLY its remaining time - never the full
+// original duration. `onFire` must be the continuation appropriate for the
+// timer's `kind` (endQuestion / advanceFromReveal / advanceFromScoreboard)
+// - the caller picks it, since those live in index.ts and reach into `io`.
+// A no-op if there's no timer, or it isn't actually paused.
+export function resumeActiveTimer(room: Room, onFire: () => void): void {
+  const timer = room.activeTimer;
+  if (!timer || timer.remainingAtPause === null) {
+    return;
+  }
+  const remaining = timer.remainingAtPause;
+  timer.startedAt = Date.now();
+  timer.durationMs = remaining;
+  timer.remainingAtPause = null;
+  timer.handle = setTimeout(onFire, remaining);
+}
+
+// How much time is left on the active timer RIGHT NOW - the frozen value
+// while paused, or a live countdown against the server clock otherwise.
+// The ONE source of truth for every remainingMs/autoAdvanceMs a client
+// ever sees, replacing three separate ad-hoc computations (one each for
+// QUESTION/REVEAL/SCOREBOARD).
+export function remainingActiveTimerMs(room: Room): number {
+  const timer = room.activeTimer;
+  if (!timer) {
+    return 0;
+  }
+  if (timer.remainingAtPause !== null) {
+    return timer.remainingAtPause;
+  }
+  return Math.max(0, timer.durationMs - (Date.now() - timer.startedAt));
+}
+
+export function clearActiveTimer(room: Room): void {
+  if (room.activeTimer?.handle) {
+    clearTimeout(room.activeTimer.handle);
+  }
+  room.activeTimer = null;
 }
 
 // (Re)builds `room.questions` from the room's CURRENT settings - called on
@@ -307,15 +410,10 @@ export function resetRoomForNewGame(room: Room): void {
   room.phase = 'LOBBY';
   room.currentQuestionIndex = -1;
   room.answers.clear();
-  if (room.questionTimer) {
-    clearTimeout(room.questionTimer);
-    room.questionTimer = null;
-  }
-  if (room.phaseTimer) {
-    clearTimeout(room.phaseTimer);
-    room.phaseTimer = null;
-  }
-  room.phaseTimerStartedAt = 0;
+  clearActiveTimer(room);
+  room.paused = false;
+  room.pausedByName = null;
+  room.pausedAt = null;
   room.lastReveal = null;
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets

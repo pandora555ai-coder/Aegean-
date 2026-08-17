@@ -16,9 +16,11 @@ import {
   type GameOverStanding,
   type LobbyPlayer,
   type LobbyUpdatePayload,
+  type PausedPayload,
   type Player,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
+  type ResumedPayload,
   type RevealHostPayload,
   type RevealPlayerPayload,
   type RevealPlayerResult,
@@ -32,9 +34,11 @@ import {
 } from '@game/shared';
 import {
   addPlayer,
+  armActiveTimer,
   attachHostDisplay,
   buildRoomQuestions,
   claimVipIfVacant,
+  clearActiveTimer,
   createRoom,
   detachHostDisplay,
   getActiveRoomCount,
@@ -48,8 +52,11 @@ import {
   isVip,
   migrateVipAwayFrom,
   normalizePlayerName,
+  pauseActiveTimer,
   refreshRoomTtl,
+  remainingActiveTimerMs,
   resetRoomForNewGame,
+  resumeActiveTimer,
   updateRoomSettings,
   type Room,
 } from './rooms.js';
@@ -140,17 +147,13 @@ function computeCompetitionRanks<T>(
   return ranks;
 }
 
-// How much of the current REVEAL/SCOREBOARD auto-advance window is left,
-// computed from the server's own clock - used both for the fresh emission
-// (where it's ~the full duration) and for catching a reconnecting player up
-// via state:sync (where it's whatever's actually left).
-function remainingPhaseMs(room: Room, durationMs: number): number {
-  return Math.max(0, durationMs - (Date.now() - room.phaseTimerStartedAt));
-}
-
 // Reads room.lastReveal (set once, at the moment REVEAL begins) rather than
 // recomputing anything, so these can be reused identically for the fresh
-// broadcast and for a later state:sync catch-up.
+// broadcast and for a later state:sync catch-up. `paused`/`pausedByName`
+// and the autoAdvanceMs figure always read the room's CURRENT live state -
+// at the instant of a fresh broadcast that's always "not paused" (nothing
+// can pause a phase before it exists), and on a state:sync catch-up it's
+// whatever's actually true right now, both correct from one code path.
 function buildRevealHostPayload(room: Room): RevealHostPayload | null {
   if (!room.lastReveal) {
     return null;
@@ -160,7 +163,9 @@ function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     correctOption: room.lastReveal.correctOption,
     results: room.lastReveal.results,
     answerCounts: room.lastReveal.answerCounts,
-    autoAdvanceMs: remainingPhaseMs(room, REVEAL_DURATION_MS),
+    autoAdvanceMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
 }
 
@@ -168,7 +173,7 @@ function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPay
   if (!room.lastReveal) {
     return null;
   }
-  const autoAdvanceMs = remainingPhaseMs(room, REVEAL_DURATION_MS);
+  const autoAdvanceMs = remainingActiveTimerMs(room);
   const myResult = room.lastReveal.results.find((result) => result.playerId === playerId);
 
   if (myResult) {
@@ -186,6 +191,8 @@ function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPay
       totalScore: myResult.totalScore,
       rank: ranks.get(playerId) ?? room.lastReveal.results.length,
       autoAdvanceMs,
+      paused: room.paused,
+      pausedByName: room.pausedByName,
     };
   }
 
@@ -210,17 +217,16 @@ function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPay
     totalScore: player.score,
     rank: ranks.get(playerId) ?? room.players.size,
     autoAdvanceMs,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
 }
 
 function startQuestion(room: Room): void {
   room.answers.clear();
   room.questionStartedAt = Date.now();
-  if (room.questionTimer) {
-    clearTimeout(room.questionTimer);
-  }
   const questionTimeMs = room.settings.questionTimeMs;
-  room.questionTimer = setTimeout(() => endQuestion(room.code), questionTimeMs);
+  armActiveTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
 
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
@@ -232,6 +238,8 @@ function startQuestion(room: Room): void {
     options: question.options,
     category: question.category,
     questionTimeMs,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
@@ -243,6 +251,8 @@ function startQuestion(room: Room): void {
     options: question.options,
     category: question.category,
     questionTimeMs,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
   for (const player of getConnectedPlayers(room)) {
     io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
@@ -258,11 +268,6 @@ function endQuestion(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'QUESTION') {
     return;
-  }
-
-  if (room.questionTimer) {
-    clearTimeout(room.questionTimer);
-    room.questionTimer = null;
   }
 
   const question = room.questions[room.currentQuestionIndex];
@@ -298,9 +303,8 @@ function endQuestion(code: RoomCode): void {
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
-  // Snapshot + timestamp so a player who reconnects mid-REVEAL can be
-  // caught up via state:sync without recomputing (or re-scoring) anything.
-  room.phaseTimerStartedAt = Date.now();
+  // Snapshot so a player who reconnects mid-REVEAL can be caught up via
+  // state:sync without recomputing (or re-scoring) anything.
   room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts };
 
   const hostPayload = buildRevealHostPayload(room);
@@ -323,10 +327,7 @@ function endQuestion(code: RoomCode): void {
     `room ${room.code} question ${room.currentQuestionIndex + 1} revealed — correctIndex=${question.correctIndex} results: ${JSON.stringify(results)}`,
   );
 
-  if (room.phaseTimer) {
-    clearTimeout(room.phaseTimer);
-  }
-  room.phaseTimer = setTimeout(() => advanceFromReveal(room.code), REVEAL_DURATION_MS);
+  armActiveTimer(room, 'REVEAL', REVEAL_DURATION_MS, () => advanceFromReveal(room.code));
 }
 
 function buildScoreboard(room: Room): ScoreboardPayload {
@@ -352,7 +353,9 @@ function buildScoreboard(room: Room): ScoreboardPayload {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     isLastQuestion: room.currentQuestionIndex >= room.questions.length - 1,
-    autoAdvanceMs: remainingPhaseMs(room, SCOREBOARD_DURATION_MS),
+    autoAdvanceMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
 }
 
@@ -392,18 +395,12 @@ function advanceFromReveal(code: RoomCode): void {
     return;
   }
 
-  if (room.phaseTimer) {
-    clearTimeout(room.phaseTimer);
-    room.phaseTimer = null;
-  }
-
   room.phase = 'SCOREBOARD';
-  room.phaseTimerStartedAt = Date.now();
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
   console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
 
-  room.phaseTimer = setTimeout(() => advanceFromScoreboard(room.code), SCOREBOARD_DURATION_MS);
+  armActiveTimer(room, 'SCOREBOARD', SCOREBOARD_DURATION_MS, () => advanceFromScoreboard(room.code));
 }
 
 // Same one-shot discipline as advanceFromReveal.
@@ -413,14 +410,10 @@ function advanceFromScoreboard(code: RoomCode): void {
     return;
   }
 
-  if (room.phaseTimer) {
-    clearTimeout(room.phaseTimer);
-    room.phaseTimer = null;
-  }
-
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
   if (isLastQuestion) {
     room.phase = 'GAME_OVER';
+    clearActiveTimer(room); // no more phase-advance timer needed once the game is over
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     const gameOverPayload = buildGameOver(room);
     io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
@@ -431,7 +424,7 @@ function advanceFromScoreboard(code: RoomCode): void {
   room.currentQuestionIndex += 1;
   room.phase = 'QUESTION';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  startQuestion(room);
+  startQuestion(room); // arms its own QUESTION timer
 }
 
 // Catches a single player up to whatever's currently happening in the room -
@@ -441,7 +434,6 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
   switch (room.phase) {
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
-      const remainingMs = Math.max(0, room.questionStartedAt + room.settings.questionTimeMs - Date.now());
       const recorded = room.answers.get(playerId);
       return {
         phase: 'QUESTION',
@@ -450,8 +442,10 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
         options: question.options,
         category: question.category,
         questionTimeMs: room.settings.questionTimeMs,
-        remainingMs,
+        remainingMs: remainingActiveTimerMs(room),
         yourChoice: recorded ? recorded.choice : null,
+        paused: room.paused,
+        pausedByName: room.pausedByName,
       };
     }
     case 'REVEAL': {
@@ -479,7 +473,6 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     }
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
-      const remainingMs = Math.max(0, room.questionStartedAt + room.settings.questionTimeMs - Date.now());
       return {
         phase: 'QUESTION',
         questionIndex: room.currentQuestionIndex,
@@ -488,7 +481,9 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         options: question.options,
         category: question.category,
         questionTimeMs: room.settings.questionTimeMs,
-        remainingMs,
+        remainingMs: remainingActiveTimerMs(room),
+        paused: room.paused,
+        pausedByName: room.pausedByName,
       };
     }
     case 'REVEAL': {
@@ -528,6 +523,47 @@ function getVipRoomForSocket(
   }
 
   return room;
+}
+
+// Authorises a player:* event that ANY connected player may send (not just
+// the VIP) - pause/resume is deliberately open to everyone, since anyone
+// might need a break. Still requires a genuine connected player, never the
+// TV/host socket.
+function getPlayerRoomForSocket(
+  socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+  eventName: string,
+): { room: Room; playerId: string } | null {
+  const association = socketAssociationBySocketId.get(socket.id);
+  if (!association || association.role !== 'player') {
+    console.log(`rejected ${eventName} from ${socket.id}: not a player`);
+    return null;
+  }
+
+  const room = getRoom(association.code);
+  if (!room) {
+    console.log(`rejected ${eventName} from ${socket.id}: room ${association.code} not found`);
+    return null;
+  }
+
+  return { room, playerId: association.playerId };
+}
+
+// The continuation a resumed timer should fire once its remaining time
+// elapses - whichever function originally would have advanced the phase
+// that got paused. Lives here (not in rooms.ts) because it reaches into
+// endQuestion/advanceFromReveal/advanceFromScoreboard, which use `io`.
+function continuationForActiveTimer(room: Room): (() => void) | null {
+  if (!room.activeTimer) {
+    return null;
+  }
+  switch (room.activeTimer.kind) {
+    case 'QUESTION':
+      return () => endQuestion(room.code);
+    case 'REVEAL':
+      return () => advanceFromReveal(room.code);
+    case 'SCOREBOARD':
+      return () => advanceFromScoreboard(room.code);
+  }
 }
 
 io.on('connection', (socket) => {
@@ -668,6 +704,14 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Structurally unreachable today (pause requires QUESTION/REVEAL/
+    // SCOREBOARD, this requires LOBBY - the two can never overlap) - kept
+    // explicit anyway so the intent doesn't silently depend on that.
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: game is paused`);
+      return;
+    }
+
     buildRoomQuestions(room);
     room.phase = 'QUESTION';
     room.currentQuestionIndex = 0;
@@ -685,6 +729,13 @@ io.on('connection', (socket) => {
       console.log(
         `rejected ${ClientEvents.VIP_UPDATE_SETTINGS} for room ${room.code}: phase is ${room.phase}, not LOBBY - settings are locked once a game starts`,
       );
+      return;
+    }
+
+    // Structurally unreachable today (same reasoning as vip:start_game
+    // above) - kept explicit for the same reason.
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.VIP_UPDATE_SETTINGS} for room ${room.code}: game is paused`);
       return;
     }
 
@@ -713,6 +764,11 @@ io.on('connection', (socket) => {
 
     if (room.phase !== 'QUESTION') {
       console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} for room ${room.code}: phase is ${room.phase}, not QUESTION`);
+      return;
+    }
+
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} for room ${room.code}: game is paused`);
       return;
     }
 
@@ -756,6 +812,11 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: game is paused - no skipping past a pause`);
+      return;
+    }
+
     // "vip:next" is a manual SKIP of whichever auto-advance is pending -
     // both advanceFrom* functions already clear the pending timer before
     // doing anything else, so calling them directly here is exactly "cancel
@@ -786,10 +847,87 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Structurally unreachable today (same reasoning as vip:start_game) -
+    // kept explicit for the same reason.
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.VIP_PLAY_AGAIN} for room ${room.code}: game is paused`);
+      return;
+    }
+
     resetRoomForNewGame(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     broadcastLobbyUpdate(room.code);
     console.log(`room ${room.code} reset for a new game`);
+  });
+
+  // Deliberately open to ANY connected player, not just the VIP - anyone
+  // might need a break.
+  socket.on(ClientEvents.GAME_PAUSE, () => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.GAME_PAUSE);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+
+    if (room.phase === 'LOBBY' || room.phase === 'GAME_OVER') {
+      console.log(`rejected ${ClientEvents.GAME_PAUSE} for room ${room.code}: phase is ${room.phase}, nothing to pause`);
+      return;
+    }
+
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.GAME_PAUSE} for room ${room.code}: already paused`);
+      return;
+    }
+
+    const player = room.players.get(playerId);
+    if (!player) {
+      return;
+    }
+
+    room.paused = true;
+    room.pausedByName = player.name;
+    room.pausedAt = Date.now();
+    pauseActiveTimer(room);
+
+    const payload: PausedPayload = { byName: player.name };
+    io.to(room.code).emit(ServerEvents.GAME_PAUSED, payload);
+    console.log(`room ${room.code} paused by ${player.name}`);
+  });
+
+  socket.on(ClientEvents.GAME_RESUME, () => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.GAME_RESUME);
+    if (!result) {
+      return;
+    }
+    const { room } = result;
+
+    if (!room.paused) {
+      console.log(`rejected ${ClientEvents.GAME_RESUME} for room ${room.code}: not paused`);
+      return;
+    }
+
+    // Preserve real thinking time for the speed bonus - a pause must never
+    // count toward how fast someone answered. Only meaningful mid-QUESTION,
+    // but harmless to compute regardless (questionStartedAt goes unread
+    // outside that phase anyway).
+    const pausedDurationMs = room.pausedAt !== null ? Date.now() - room.pausedAt : 0;
+    if (room.phase === 'QUESTION') {
+      room.questionStartedAt += pausedDurationMs;
+    }
+
+    room.paused = false;
+    room.pausedByName = null;
+    room.pausedAt = null;
+
+    const onFire = continuationForActiveTimer(room);
+    if (onFire) {
+      resumeActiveTimer(room, onFire);
+    }
+
+    const remainingMs = remainingActiveTimerMs(room);
+    const payload: ResumedPayload = { remainingMs };
+    io.to(room.code).emit(ServerEvents.GAME_RESUMED, payload);
+    console.log(`room ${room.code} resumed, remainingMs=${remainingMs}`);
   });
 
   socket.on('disconnect', () => {

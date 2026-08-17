@@ -8,6 +8,8 @@ export const ClientEvents = {
   VIP_NEXT: 'vip:next',
   VIP_PLAY_AGAIN: 'vip:play_again',
   VIP_UPDATE_SETTINGS: 'vip:update_settings',
+  GAME_PAUSE: 'game:pause',
+  GAME_RESUME: 'game:resume',
 } as const;
 
 export const ServerEvents = {
@@ -27,6 +29,8 @@ export const ServerEvents = {
   STATE_SYNC: 'state:sync',
   VIP_CHANGED: 'vip:changed',
   SETTINGS_UPDATED: 'settings:updated',
+  GAME_PAUSED: 'game:paused',
+  GAME_RESUMED: 'game:resumed',
 } as const;
 
 export type RoomCode = string;
@@ -172,6 +176,11 @@ export interface QuestionShowHostPayload {
   options: string[];
   category: string;
   questionTimeMs: number; // the ROOM's configured per-question time, not a global
+  // Always false/null on a fresh question:show (a phase can't already be
+  // paused the instant it begins) - meaningful on the state:sync variant,
+  // which reuses this same shape, for a player/TV reconnecting mid-pause.
+  paused: boolean;
+  pausedByName: string | null;
 }
 
 export interface QuestionShowPlayerPayload {
@@ -180,6 +189,8 @@ export interface QuestionShowPlayerPayload {
   options: string[];
   category: string;
   questionTimeMs: number;
+  paused: boolean;
+  pausedByName: string | null;
 }
 
 export type QuestionShowPayload = QuestionShowHostPayload | QuestionShowPlayerPayload;
@@ -219,6 +230,8 @@ export interface RevealHostPayload {
   results: RevealPlayerResult[];
   answerCounts: number[]; // how many picked each option
   autoAdvanceMs: number; // so clients can render a progress bar
+  paused: boolean;
+  pausedByName: string | null;
 }
 
 export interface RevealPlayerPayload {
@@ -230,6 +243,8 @@ export interface RevealPlayerPayload {
   totalScore: number;
   rank: number; // current position, 1-based
   autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
 }
 
 export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
@@ -256,9 +271,25 @@ export interface ScoreboardPayload {
   totalQuestions: number;
   isLastQuestion: boolean;
   autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
 }
 
 export interface VipPlayAgainPayload {}
+
+// Pause is a boolean flag on the room, NOT a new GamePhase - the phase
+// stays QUESTION/REVEAL/SCOREBOARD throughout a pause, so every existing
+// phase guard keeps working unchanged; only `paused` changes.
+export interface GamePausePayload {}
+export interface GameResumePayload {}
+
+export interface PausedPayload {
+  byName: string;
+}
+
+export interface ResumedPayload {
+  remainingMs: number; // the frozen time, now ticking again - never a full reset
+}
 
 // Broadcast to the whole room whenever VIP moves - either the first player
 // claiming a vacant VIP slot, or a migration away from a disconnecting VIP.
@@ -337,6 +368,8 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
+  [ClientEvents.GAME_PAUSE]: (payload: GamePausePayload) => void;
+  [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -356,4 +389,6 @@ export type ServerToClientEvents = {
   [ServerEvents.STATE_SYNC]: (payload: StateSyncPayload) => void;
   [ServerEvents.VIP_CHANGED]: (payload: VipChangedPayload) => void;
   [ServerEvents.SETTINGS_UPDATED]: (payload: SettingsUpdatedPayload) => void;
+  [ServerEvents.GAME_PAUSED]: (payload: PausedPayload) => void;
+  [ServerEvents.GAME_RESUMED]: (payload: ResumedPayload) => void;
 };

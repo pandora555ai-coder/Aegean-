@@ -18,10 +18,12 @@ import {
   type GameOverPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
+  type PausedPayload,
   type PhaseChangedPayload,
   type PlayerJoinedPayload,
   type QuestionShowPayload,
   type QuestionShowPlayerPayload,
+  type ResumedPayload,
   type RevealPlayerPayload,
   type RevealShowPayload,
   type RoomSettings,
@@ -90,6 +92,38 @@ function SegmentedRow<T extends string | number>({
   );
 }
 
+// Available to EVERY player (not just the VIP) during QUESTION, REVEAL and
+// SCOREBOARD - deliberately not VIP-gated, since anyone might need a break.
+function PauseControl({
+  paused,
+  pausedByName,
+  onPause,
+  onResume,
+}: {
+  paused: boolean;
+  pausedByName: string | null;
+  onPause: () => void;
+  onResume: () => void;
+}) {
+  if (paused) {
+    return (
+      <>
+        <div style={styles.pausedNotice} data-testid="paused-notice">
+          Ο/Η {pausedByName} έκανε παύση
+        </div>
+        <button data-testid="resume-button" style={styles.button} type="button" onClick={onResume}>
+          Συνέχεια
+        </button>
+      </>
+    );
+  }
+  return (
+    <button data-testid="pause-button" style={styles.pauseButton} type="button" onClick={onPause}>
+      Παύση
+    </button>
+  );
+}
+
 export default function ControllerScreen() {
   const { connected } = useSocketConnection();
   const [playerId] = useState(() => getOrCreatePlayerId());
@@ -115,6 +149,8 @@ export default function ControllerScreen() {
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
+  const [paused, setPaused] = useState(false);
+  const [pausedByName, setPausedByName] = useState<string | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -133,6 +169,9 @@ export default function ControllerScreen() {
         setReveal(null);
         setScoreboard(null);
         setGameOver(null);
+        // Pause is impossible in LOBBY - reset defensively.
+        setPaused(false);
+        setPausedByName(null);
       }
     }
 
@@ -166,6 +205,8 @@ export default function ControllerScreen() {
         setAcceptedChoice(null);
         setReveal(null);
         setScoreboard(null);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
       }
     }
 
@@ -176,17 +217,33 @@ export default function ControllerScreen() {
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
       }
     }
 
     function handleScoreboardShow(payload: ScoreboardPayload) {
       setReveal(null);
       setScoreboard(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
     }
 
     function handleGameOver(payload: GameOverPayload) {
       setScoreboard(null);
       setGameOver(payload);
+    }
+
+    function handleGamePaused(payload: PausedPayload) {
+      setPaused(true);
+      setPausedByName(payload.byName);
+    }
+
+    // The phone doesn't render a countdown of its own (only the TV does),
+    // so unlike HostScreen there's no remainingMs correction to apply here.
+    function handleGameResumed(_payload: ResumedPayload) {
+      setPaused(false);
+      setPausedByName(null);
     }
 
     function handleStateSync(payload: StateSyncPayload) {
@@ -212,21 +269,29 @@ export default function ControllerScreen() {
               options: payload.options,
               category: payload.category,
               questionTimeMs: payload.questionTimeMs,
+              paused: payload.paused,
+              pausedByName: payload.pausedByName,
             });
             // Landed mid-question having already answered - go straight to
             // the SUBMITTED view instead of a fresh (re-tappable) one.
             if (payload.yourChoice !== null) {
               setAcceptedChoice(payload.yourChoice);
             }
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
           }
           break;
         case 'REVEAL':
           if (!isRevealHostPayload(payload)) {
             setReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
           }
           break;
         case 'SCOREBOARD':
           setScoreboard(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
           break;
         case 'GAME_OVER':
           setGameOver(payload);
@@ -246,6 +311,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+    socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
+    socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -260,6 +327,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+      socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
+      socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
     };
   }, []);
 
@@ -279,7 +348,7 @@ export default function ControllerScreen() {
   const isVip = vipPlayerId === playerId;
 
   function handleAnswerTap(index: number) {
-    if (pendingChoice !== null) {
+    if (pendingChoice !== null || paused) {
       return; // optimistic lock - first tap is final, no changing the answer
     }
     setPendingChoice(index);
@@ -300,6 +369,14 @@ export default function ControllerScreen() {
 
   function handleSettingChange(partial: Partial<RoomSettings>) {
     socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, partial);
+  }
+
+  function handlePause() {
+    socket.emit(ClientEvents.GAME_PAUSE, {});
+  }
+
+  function handleResume() {
+    socket.emit(ClientEvents.GAME_RESUME, {});
   }
 
   const estimatedMinutes = Math.round(
@@ -366,11 +443,12 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τη βαθμολογία</div>
-        {isVip && (
+        {isVip && !paused && (
           <button data-testid="next-button" style={styles.skipButton} type="button" onClick={handleNext}>
             Παράλειψη
           </button>
         )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -398,11 +476,12 @@ export default function ControllerScreen() {
         <div style={styles.revealRank} data-testid="reveal-rank">
           Θέση #{reveal.rank}
         </div>
-        {isVip && (
+        {isVip && !paused && (
           <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
             Παράλειψη
           </button>
         )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -422,6 +501,7 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv} data-testid="waiting-message">
           Περίμενε τους υπόλοιπους...
         </div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -442,15 +522,16 @@ export default function ControllerScreen() {
               key={index}
               type="button"
               data-testid="answer-button"
-              style={pendingChoice !== null ? styles.answerButtonDisabled : styles.answerButton}
+              style={pendingChoice !== null || paused ? styles.answerButtonDisabled : styles.answerButton}
               onClick={() => handleAnswerTap(index)}
-              disabled={pendingChoice !== null}
+              disabled={pendingChoice !== null || paused}
             >
               <span style={styles.answerLabel}>{OPTION_LABELS[index]}</span>
               <span>{option}</span>
             </button>
           ))}
         </div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -666,6 +747,26 @@ const styles: Record<string, CSSProperties> = {
     background: 'transparent',
     color: '#888',
     fontWeight: 600,
+  },
+  pauseButton: {
+    width: '100%',
+    fontSize: '1rem',
+    padding: '0.6rem 1rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #d1d5db',
+    background: 'transparent',
+    color: '#888',
+    fontWeight: 600,
+  },
+  pausedNotice: {
+    fontSize: '1rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: '#92400e',
+    background: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: '0.5rem',
+    padding: '0.6rem 1rem',
   },
   error: { color: '#dc2626', fontWeight: 600, textAlign: 'center' },
   category: {

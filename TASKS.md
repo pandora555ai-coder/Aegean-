@@ -371,6 +371,96 @@ Progress log for the party game build, task by task.
       the 1000 base). Production (`party-game.service`, port 3001) was
       never touched - all testing ran against an isolated dev instance on
       port 3099.
+- [x] **Task 17 — Pause and resume** — DONE (10/10 acceptance criteria).
+      Pause is a `paused: boolean` flag on the room, deliberately NOT a new
+      `GamePhase` - phase stays QUESTION/REVEAL/SCOREBOARD throughout, so
+      every existing phase guard keeps working unchanged. The three
+      previously-separate ad-hoc timers (`questionTimer`, and `phaseTimer`
+      reused for both REVEAL and SCOREBOARD) are gone, replaced by a single
+      `Room.activeTimer: { kind, handle, startedAt, durationMs,
+      remainingAtPause } | null` plus five small `rooms.ts` primitives -
+      `armActiveTimer` (the ONE place any phase timer gets created),
+      `pauseActiveTimer` (clears the handle, records
+      `remainingAtPause = durationMs - elapsed`, clamped >= 0),
+      `resumeActiveTimer` (schedules a fresh timer for EXACTLY
+      `remainingAtPause`, never the original duration),
+      `remainingActiveTimerMs` (the one source of truth for every
+      `remainingMs`/`autoAdvanceMs` a client ever sees - the frozen value
+      while paused, a live countdown otherwise), and `clearActiveTimer`.
+      `questionStartedAt` (the speed-bonus reference point) is
+      deliberately a SEPARATE field from `activeTimer`, because pause
+      adjusts them differently: the timer restarts its clock fresh from
+      the remaining duration, but `questionStartedAt` shifts FORWARD by
+      the pause's own wall-clock duration (tracked via a new
+      `Room.pausedAt`) on resume, so elapsed "thinking time" for scoring
+      never includes the break. `/shared` adds `game:pause`/`game:resume`
+      (client) and `game:paused`/`game:resumed` (server,
+      `{byName}`/`{remainingMs}`), plus `paused`/`pausedByName` on every
+      QUESTION/REVEAL/SCOREBOARD-shaped payload (live emits always read
+      the room's actual current value, which is trivially always
+      false/null the instant a phase begins - state:sync catch-up gets
+      the real value for free from the exact same builder functions, no
+      parallel code path). `/server` (`index.ts`): a new
+      `getPlayerRoomForSocket` helper (deliberately NOT the existing
+      VIP-gated one) authorises pause/resume for any connected player;
+      pause is rejected in LOBBY/GAME_OVER or if already paused, resume is
+      rejected if not currently paused; `player:submit_answer` and
+      `vip:next` gained explicit `room.paused` rejections (both apply
+      during genuinely pausable phases); `vip:start_game`/
+      `vip:update_settings`/`vip:play_again` gained the same check too,
+      even though it's structurally unreachable today (their required
+      phases and "paused" can never overlap) - kept explicit so the
+      guarantee doesn't silently depend on that. `/client`: `HostScreen`
+      shows a full-screen "ΠΑΥΣΗ" / "Ο/Η \<name\> έκανε παύση" overlay
+      (the corner room code sits at a higher z-index so it's never
+      hidden) and its three local countdown-tick effects each gained a
+      `paused` guard so the displayed number freezes exactly where it was
+      (a companion fix: the QUESTION countdown's reset-to-full-duration
+      logic was moved out of a `useEffect` and into the actual
+      `question:show`/`state:sync`/`game:resumed` handlers directly, since
+      the old effect would otherwise re-fire and clobber a reconnect's
+      correctly-computed frozen value back to the full duration).
+      `ControllerScreen` gained a `PauseControl` component (mirroring the
+      existing `SegmentedRow` pattern) rendering "Παύση"/"Συνέχεια" for
+      EVERY player - not VIP-gated - across the question (both answered
+      and unanswered sub-views), reveal, and scoreboard views, plus
+      disabling the answer buttons and showing who paused. Verified over
+      the wire: (2) paused 5s into a 20s question, waited 10 real
+      seconds, resumed - `game:resumed` reported `remainingMs: 14994`,
+      and `reveal:show` arrived exactly 14995ms after resume, not
+      instantly; (3) watched `reveal:show`/`phase:changed`/
+      `scoreboard:show`/`game:over` for a full 10s pause - zero fired;
+      (4) paused mid-REVEAL for 7s (longer than `REVEAL_DURATION_MS` =
+      6000ms) - no `scoreboard:show`, then it arrived exactly 6002ms after
+      resume; (5) same for SCOREBOARD - paused 9s (longer than
+      `SCOREBOARD_DURATION_MS` = 8000ms), no advance, then the next
+      question arrived exactly 8000ms after resume with the correct
+      incremented index; (6) a submission while paused produced no
+      `answer:accepted`, then the SAME player's next submission after
+      resume succeeded normally, proving the paused one was never
+      recorded, not just acked late; (7) covered all 4 answer choices
+      across 4 players in two separate rooms (`correctIndex` is
+      server-only) - a correct answer at ~1s in an unpaused control room
+      scored 1475, a correct answer at ~2s real thinking time around a
+      30-second pause scored 1450 - a 25-point difference, nowhere near
+      the "took 30+ seconds" territory that would result from the pause
+      counting against the speed bonus; (8) a player reconnecting mid-
+      pause received a `state:sync` frame with `phase: "QUESTION"`,
+      `paused: true`, `pausedByName: "VIP"`, and `remainingMs: 16996` (the
+      genuinely frozen value, not the full 20000ms duration); (9) a
+      NON-VIP player's `game:pause`/`game:resume` worked identically to a
+      VIP's, confirmed via `byName: "Bob"` in the broadcast; (10) three
+      consecutive pause/resume cycles within the same question reported
+      `remainingMs` of 17997 → 14993 → 12990 - correctly and monotonically
+      shrinking by roughly the live gap between each pair, with no drift
+      accumulating from the freeze/thaw cycle itself. A companion 3-tab
+      Playwright session confirmed the actual UI: the host's full-screen
+      overlay with the room code still visible on top, the non-VIP
+      player's own pause propagating to a VIP's "Συνέχεια" button +
+      disabled/greyed-out answer choices, and both clearing immediately on
+      resume. Production (`party-game.service`, port 3001) was never
+      touched - all testing ran against an isolated dev instance on port
+      3099.
 
 ## Known open items
 
