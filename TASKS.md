@@ -777,6 +777,97 @@ Progress log for the party game build, task by task.
       port 3001) was never touched - all testing ran against an isolated
       dev instance on port 3099.
 
+- [x] **Task 20 — Full host-screen audio cue set** — DONE (10/10 acceptance
+      criteria). Found in a real 7-player session: the countdown ticks work,
+      but by the time they fire the moment is nearly over - in a talkative
+      room people miss the start of a question entirely. Sound needed to
+      drive attention at every transition, not just the last 5 seconds. All
+      7 cues are HOST-ONLY (`HostScreen.tsx` - `ControllerScreen.tsx` has
+      zero audio code, confirmed by grep) and REUSE the exact same
+      keep-alive `AudioContext` from Task 14 - no second context, no audio
+      asset files, every tone generated with the Web Audio API. One
+      consistent key across the whole set: A major pentatonic (A-B-C#-E-F#)
+      - the Task 18 tick (880Hz) and expiry tone (220Hz), both left
+      byte-for-byte UNCHANGED, are already "A" two octaves apart, and every
+      new cue was picked from the same five-note family so the set reads as
+      one game, not seven unrelated beeps. `playTone` (the tick/expiry
+      function) gained exactly one line - a `mutedRef.current` check - and
+      is otherwise untouched; a new `playToneAt(frequency, delaySec,
+      durationMs, peakGain)` primitive schedules everything else using
+      `ctx.currentTime + delaySec`, so a whole motif built from several
+      calls in a row stays in time with itself on the AudioContext's own
+      clock regardless of JS execution time. The 7 cues: (1) QUESTION START
+      - a rising A4→C#5→F#5 motif (0/130/260ms), ~450ms total, fired from
+      `handleQuestionShow` on every LIVE `question:show` (first question and
+      every question after a scoreboard alike) - never on a `state:sync`
+      reconnect, which is a separate handler; (2) ANSWER RECEIVED - a very
+      quiet (peakGain 0.08, well under every other cue's 0.14-0.24), ~55ms
+      blip that climbs an 8-note scale with the running `answer:progress`
+      count, fired from `handleAnswerProgress`; (3)/(4) LAST 5 SECONDS /
+      TIME EXPIRED - unchanged; (5) REVEAL - an A4+C#5+E5 chord (all three
+      notes simultaneous, `delaySec=0`) struck together, unmistakably
+      distinct in TEXTURE from the single-tone expiry cue it often follows,
+      fired from `handleRevealShow` unconditionally (unlike the expiry
+      tone's `secondsLeftRef <= 1` gate, so it still plays when a question
+      ends early because everyone answered, per spec); (6) SCOREBOARD - a
+      brief C#5→E5 two-note transition (90ms apart), fired from
+      `handleScoreboardShow`; (7) GAME OVER - a ~1s ascending 4-note
+      flourish (A4→C#5→E5→F#5) resolving into a held A5+C#6+E6 chord, fired
+      from `handleGameOver`, timed to land with the Task 21 confetti/
+      light-rays entrance. `/client` gained a small `hostAudioPreference.ts`
+      (mirroring the existing `hostRoomCode.ts` pattern) for a `localStorage`-
+      backed mute flag, plus a `muted` state + `mutedRef` mirror (every cue
+      call site lives inside a handler registered once via an empty-
+      dependency `useEffect`, so a plain `useState` read would see a stale
+      value) and a `pausedRef` mirror for the same reason, gating the
+      answer-blip handler specifically. A new 🔊/🔇 `mute-toggle` chip sits
+      fixed top-left in LOBBY only, opposite the centred room code/QR
+      column. `handleToggleMuted` deliberately reads `!muted` as a plain
+      value and writes both `localStorage` and `setMuted` directly - NOT a
+      `setState` functional updater - the exact pattern whose side effects
+      React 18 StrictMode double-invokes in dev, which is what doubled the
+      Task 18 ticks in the first place; every new cue function was written
+      the same defensively-plain way from the start. Verified: (1) `npm run
+      typecheck` clean across all 3 workspaces; (2) a Task-18-style
+      instrumented `window.AudioContext` (extended to reconstruct each
+      note's TRUE scheduled wall-clock play time from `ctx.currentTime`,
+      not just when `.start()` was CALLED - multi-note cues call `.start()`
+      for every note back-to-back in the same JS tick, so the naive
+      Task-18-style capture would have shown a whole chord/motif at one
+      identical millisecond) recorded 117 oscillators across a full
+      3-player, 10-question game and every single one was accounted for by
+      an automated classifier matching each note-cluster's exact frequency+
+      timing shape to its designed cue, with zero leftover/unclassified
+      tones; (3) exactly 10 QUESTION START clusters across the 10-question
+      game (all 3 notes, correct 130/260ms stagger each time); (4) exactly
+      30 answer blips for 30 submitted answers (3 players × 10 questions),
+      landing 5-15ms after each real click and cycling E5→F#5→A5 in order
+      every single round, confirming the count-based pitch mapping resets
+      correctly each question; (5) 0 tones recorded across an 8s pause
+      window (snapshotting the tone count before/after, not clearing it, so
+      the check didn't also erase the tones needed for tests 2-4); (6) the
+      total oscillator count (117) exactly matched the mathematically
+      expected count - 10×(3+3+3+2) core notes + 7 fanfare notes = 117,
+      with 0 extras and 0 missing - definitively ruling out any StrictMode
+      double-fire anywhere in the set; (7) muting persisted the `🔇` icon
+      state and `localStorage`'s `hostMuted` key across an actual
+      `page.reload()`, and a full unanswered 10-second question + reveal
+      while muted (which would normally produce 5 ticks + 1 expiry + 1
+      reveal chord = 7 tones) produced exactly 0; (8) grepped
+      `ControllerScreen.tsx` for `AudioContext` - no matches - and
+      confirmed live via 3 separate instrumented phone contexts across the
+      full game: 0 tones, 0 AudioContext instances, all three; (9) exactly
+      1 `AudioContext` instance created across the entire game; (10) built
+      an in-page `MutationObserver` recording `Date.now()` from the SAME
+      process/clock as the audio timestamps (Playwright's own
+      `waitForSelector` was tried first and showed a misleading ~240ms gap
+      for one transition - purely CDP round-trip latency between the test
+      process and the browser, nothing to do with the app) - every one of
+      the 10 checkpoints measured landed within 3-18ms of its cue, far
+      inside the ~100ms budget. Production (`party-game.service`, port
+      3001) was never touched - all testing ran against an isolated dev
+      instance on port 3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

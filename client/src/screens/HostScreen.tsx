@@ -32,6 +32,7 @@ import QRCode from 'qrcode';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode } from '../hostRoomCode';
+import { getStoredHostMuted, setStoredHostMuted } from '../hostAudioPreference';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { AnswerShape } from '../components/AnswerShape';
 
@@ -73,6 +74,30 @@ type CSSVars = CSSProperties & Record<`--${string}`, string>;
 // clobber the glow ring.
 const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
 
+// One consistent key across every audio cue (Task 20) - A major pentatonic
+// (A, B, C#, E, F#) - so the whole set reads as one game, not seven
+// unrelated beeps. The Task 18 countdown tick (880Hz) and expiry tone
+// (220Hz) are BOTH already "A" in different octaves (A5, A3) and stay
+// unchanged; every new cue below was picked from the same five-note family.
+const NOTE = {
+  A3: 220.0,
+  A4: 440.0,
+  B4: 493.88,
+  CS5: 554.37,
+  E5: 659.25,
+  FS5: 739.99,
+  A5: 880.0,
+  B5: 987.77,
+  CS6: 1108.73,
+  E6: 1318.51,
+  FS6: 1479.98,
+  A6: 1760.0,
+} as const;
+
+// Answer-received blips climb this scale with the running answered-count
+// (1st answer = lowest note, 8th = highest) - up to MAX_PLAYERS entries.
+const ANSWER_BLIP_SCALE = [NOTE.E5, NOTE.FS5, NOTE.A5, NOTE.B5, NOTE.CS6, NOTE.E6, NOTE.FS6, NOTE.A6];
+
 export default function HostScreen() {
   const { connected } = useSocketConnection();
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
@@ -111,6 +136,17 @@ export default function HostScreen() {
   const secondsLeftRef = useRef(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const audioCtxRef = useRef<AudioContext | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Host-only mute toggle (Task 20) - LOBBY UI only, but every cue everywhere
+  // (including the Task 18 countdown ticks) checks this before playing.
+  const [muted, setMuted] = useState(() => getStoredHostMuted());
+  // Mirrors `muted` for the SAME reason as phaseRef/secondsLeftRef above -
+  // every cue-playing call site lives inside a handler registered once
+  // (empty-dependency-array useEffect) or a setInterval callback, neither of
+  // which would otherwise see a toggle flipped after they were created.
+  const mutedRef = useRef(muted);
+  // Mirrors `paused` - answer:progress cues must not play mid-pause, and the
+  // handler that receives them is registered once, same stale-closure issue.
+  const pausedRef = useRef(false);
 
   // Every call site that sets `secondsLeft` goes through this, so the ref
   // never drifts from the displayed value.
@@ -118,6 +154,24 @@ export default function HostScreen() {
     secondsLeftRef.current = value;
     setSecondsLeft(value);
   }
+
+  function handleToggleMuted() {
+    // A plain value read from this render's closure, not a setState
+    // functional updater - the same StrictMode double-invoke trap that
+    // doubled the Task 18 countdown ticks applies to ANY side effect
+    // (localStorage write included) placed inside one.
+    const next = !muted;
+    setStoredHostMuted(next);
+    setMuted(next);
+  }
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -184,11 +238,23 @@ export default function HostScreen() {
         setScoreboard(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
+        // The "look at the TV" cue - fires on EVERY live question:show
+        // (first question after Έναρξη, and every question after a
+        // scoreboard alike), never on a state:sync reconnect catching a
+        // host up to a question already in progress (that's a different
+        // handler, below). A fresh question is never already paused in
+        // practice, but the guard is here defensively either way.
+        if (!payload.paused) {
+          playQuestionStartCue();
+        }
       }
     }
 
     function handleAnswerProgress(payload: AnswerProgressPayload) {
       setAnswerProgress(payload);
+      if (!pausedRef.current) {
+        playAnswerBlip(payload.answered);
+      }
     }
 
     function handleRevealShow(payload: RevealShowPayload) {
@@ -208,6 +274,12 @@ export default function HostScreen() {
         if (secondsLeftRef.current <= 1) {
           playCountdownExpire();
         }
+        // Unlike the expire tone, the reveal cue plays REGARDLESS of how
+        // the question ended (timeout or everyone answering early) - per
+        // spec, REVEAL still plays even when the expiry tone doesn't.
+        if (!payload.paused) {
+          playRevealCue();
+        }
       }
     }
 
@@ -215,6 +287,9 @@ export default function HostScreen() {
       setScoreboard(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
+      if (!payload.paused) {
+        playScoreboardCue();
+      }
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -244,6 +319,9 @@ export default function HostScreen() {
       // unless/until "play again" makes the room live again (see
       // handlePhaseChanged's LOBBY branch, which re-arms this).
       clearStoredHostRoomCode();
+      // The game can't be paused once it's over, so this always plays -
+      // the finale, timed with the confetti/light-rays entrance.
+      playGameOverFanfare();
     }
 
     // Catches the TV display up to whatever's live right now - the normal
@@ -474,11 +552,15 @@ export default function HostScreen() {
   // Countdown sounds - REUSE the keep-alive AudioContext from above rather
   // than creating a second one; a brand-new oscillator+gain per beep is
   // cheap and routine for the Web Audio API, only the AudioContext itself
-  // is the thing worth not duplicating.
+  // is the thing worth not duplicating. UNCHANGED since Task 18 (frequency,
+  // duration, envelope) other than the mute gate, which every cue in this
+  // file needs - this is the one function both the old ticks/expire tone
+  // and (indirectly, see playToneAt below) every new Task 20 cue funnel
+  // audio-hardware access through.
   function playTone(frequency: number, durationMs: number) {
     const ctx = audioCtxRef.current;
-    if (!ctx) {
-      return; // no context (unsupported/blocked) - silently skip, best effort only
+    if (!ctx || mutedRef.current) {
+      return; // no context, or the host muted everything - silently skip
     }
     try {
       const oscillator = ctx.createOscillator();
@@ -505,6 +587,89 @@ export default function HostScreen() {
 
   function playCountdownExpire() {
     playTone(220, 160); // lower and slightly longer - clearly distinct "time's up"
+  }
+
+  // Low-level primitive for every OTHER cue (Task 20) - motifs and chords
+  // need several notes scheduled relative to one another, which a single
+  // immediate-start playTone() call can't express. `delaySec` schedules
+  // the note ahead on the SAME AudioContext clock (ctx.currentTime read
+  // once per call, same pattern as playTone), so a whole motif built from
+  // several playToneAt calls in a row stays perfectly in time with itself
+  // regardless of how long the calling function takes to run. Same mute/
+  // missing-context guard and try/catch as playTone.
+  function playToneAt(frequency: number, delaySec: number, durationMs: number, peakGain: number) {
+    const ctx = audioCtxRef.current;
+    if (!ctx || mutedRef.current) {
+      return;
+    }
+    try {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      const startAt = ctx.currentTime + delaySec;
+      const endAt = startAt + durationMs / 1000;
+      // A short attack (not an instant jump to peakGain like playTone's
+      // single notes use) avoids a click when several of these overlap to
+      // form a chord.
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(peakGain, startAt + Math.min(0.015, durationMs / 4000));
+      gain.gain.setValueAtTime(peakGain, Math.max(startAt, endAt - 0.02));
+      gain.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(startAt);
+      oscillator.stop(endAt + 0.02);
+    } catch {
+      // Best effort - the game continues silently either way.
+    }
+  }
+
+  // CUE 1 - QUESTION START, the most important cue: a rising 3-note motif
+  // through the scale, ~450ms total, clearly "look at the TV now". Fires
+  // once per LIVE question:show (handleQuestionShow below) - never on a
+  // state:sync reconnect catching a host up to a question already in
+  // progress, which would be a false "new question" cue.
+  function playQuestionStartCue() {
+    playToneAt(NOTE.A4, 0, 140, 0.22);
+    playToneAt(NOTE.CS5, 0.13, 140, 0.22);
+    playToneAt(NOTE.FS5, 0.26, 190, 0.24);
+  }
+
+  // CUE 2 - ANSWER RECEIVED: very short and quiet (peakGain 0.08, well
+  // under every other cue's 0.14-0.24) so 7 of these in a row read as a
+  // light patter, not noise. Rises with the running answered-count.
+  function playAnswerBlip(answeredCount: number) {
+    const index = Math.min(Math.max(answeredCount, 1), ANSWER_BLIP_SCALE.length) - 1;
+    playToneAt(ANSWER_BLIP_SCALE[index], 0, 55, 0.08);
+  }
+
+  // CUE 5 - REVEAL: an A-major triad struck together - a CHORD, not a
+  // single tone, so it's unmistakably distinct in texture from the low
+  // single-tone expiry cue it often lands right after.
+  function playRevealCue() {
+    playToneAt(NOTE.A4, 0, 380, 0.14);
+    playToneAt(NOTE.CS5, 0, 380, 0.12);
+    playToneAt(NOTE.E5, 0, 380, 0.12);
+  }
+
+  // CUE 6 - SCOREBOARD: a brief two-note transition - smaller than the
+  // question-start motif, since this means "moving on", not "look now".
+  function playScoreboardCue() {
+    playToneAt(NOTE.CS5, 0, 90, 0.16);
+    playToneAt(NOTE.E5, 0.09, 110, 0.16);
+  }
+
+  // CUE 7 - GAME OVER: the one cue allowed to be long (~1s) - an ascending
+  // 4-note flourish resolving into a held 3-note chord, clearly a finale.
+  function playGameOverFanfare() {
+    playToneAt(NOTE.A4, 0, 130, 0.2);
+    playToneAt(NOTE.CS5, 0.12, 130, 0.2);
+    playToneAt(NOTE.E5, 0.24, 130, 0.2);
+    playToneAt(NOTE.FS5, 0.36, 150, 0.22);
+    playToneAt(NOTE.A5, 0.5, 480, 0.2);
+    playToneAt(NOTE.CS6, 0.5, 480, 0.16);
+    playToneAt(NOTE.E6, 0.5, 480, 0.14);
   }
 
   // Auto-recovery: on EVERY successful connection - the very first one on
@@ -870,6 +1035,20 @@ export default function HostScreen() {
   return (
     <div style={styles.container}>
       <div className="stage-sweep" aria-hidden="true" />
+      {/* LOBBY only, per spec - a fixed top-left chip so it never competes
+          with the centred room code / QR column. Only shown once a room
+          actually exists (nothing to mute before then). */}
+      {roomCode !== null && (
+        <button
+          type="button"
+          data-testid="mute-toggle"
+          onClick={handleToggleMuted}
+          style={styles.muteToggle}
+          aria-label={muted ? 'Ενεργοποίηση ήχου' : 'Σίγαση ήχου'}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
+      )}
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
       {phase === 'LOBBY' && wakeLockFailed && (
         <div style={styles.wakeLockHint} data-testid="wake-lock-hint">
@@ -1005,6 +1184,20 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '1rem',
     lineHeight: 0,
+  },
+  muteToggle: {
+    position: 'fixed',
+    top: '1rem',
+    left: '1rem',
+    fontSize: '1.5rem',
+    lineHeight: 1,
+    background: 'var(--surface)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '999px',
+    padding: '0.5rem 0.7rem',
+    boxShadow: SURFACE_GLOW,
+    cursor: 'pointer',
+    zIndex: 50,
   },
   cornerRoomCode: {
     position: 'fixed',
