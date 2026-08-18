@@ -733,8 +733,7 @@ export default function HostScreen() {
     const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
 
     return (
-      <div style={styles.container}>
-        <div className="stage-sweep" aria-hidden="true" />
+      <div style={styles.container} className="screen-fade-in">
         {CONFETTI_PIECES.map((piece) => (
           <div key={piece.id} className="confetti-piece" aria-hidden="true" style={piece.style} />
         ))}
@@ -780,8 +779,7 @@ export default function HostScreen() {
 
   if (phase === 'REVEAL' && reveal && question) {
     return (
-      <div style={styles.container} key={question.questionIndex}>
-        <div className="stage-sweep" aria-hidden="true" />
+      <div style={styles.container} className="screen-fade-in" key={question.questionIndex}>
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -795,6 +793,21 @@ export default function HostScreen() {
         )}
         <div style={styles.progress}>
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
+        </div>
+        {/* Running standings stay glanceable during REVEAL - a compact strip,
+            not the full SCOREBOARD phase, so skipping SCOREBOARD (Task 22)
+            never loses information. Sorted client-side straight from
+            reveal.results, which already carries every connected player's
+            current totalScore - no extra server payload needed. */}
+        <div style={styles.revealStandingsStrip} data-testid="reveal-standings-strip">
+          {[...reveal.results]
+            .sort((a, b) => b.totalScore - a.totalScore)
+            .map((result, index) => (
+              <span key={result.playerId} style={styles.revealStandingsItem} data-testid="reveal-standings-item">
+                <span style={styles.revealStandingsRank}>{index + 1}.</span> {result.name}{' '}
+                <span style={styles.revealStandingsScore}>{result.totalScore}</span>
+              </span>
+            ))}
         </div>
         <div style={styles.optionsGrid}>
           {question.options.map((option, index) => {
@@ -887,8 +900,7 @@ export default function HostScreen() {
     const sortedStandings = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
 
     return (
-      <div style={styles.container} key={scoreboard.questionIndex}>
-        <div className="stage-sweep" aria-hidden="true" />
+      <div style={styles.container} className="screen-fade-in" key={scoreboard.questionIndex}>
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -954,8 +966,7 @@ export default function HostScreen() {
 
     const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
     return (
-      <div style={styles.container} key={question.questionIndex}>
-        <div className="stage-sweep" aria-hidden="true" />
+      <div style={styles.container} className="screen-fade-in" key={question.questionIndex}>
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -1033,8 +1044,7 @@ export default function HostScreen() {
   }
 
   return (
-    <div style={styles.container}>
-      <div className="stage-sweep" aria-hidden="true" />
+    <div style={styles.container} className="screen-fade-in">
       {/* LOBBY only, per spec - a fixed top-left chip so it never competes
           with the centred room code / QR column. Only shown once a room
           actually exists (nothing to mute before then). */}
@@ -1145,8 +1155,9 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     background: 'var(--bg)',
     color: 'var(--text)',
-    // Stacks above the fixed .stage-sweep / confetti / light-rays layers
-    // (all z-index: 0) regardless of DOM order.
+    // Stacks above the fixed .confetti-piece / .light-rays layers (both
+    // z-index: 0) regardless of DOM order. The light sweep this originally
+    // also stacked above was removed in Task 22.
     position: 'relative',
     zIndex: 1,
   },
@@ -1381,6 +1392,29 @@ const styles: Record<string, CSSProperties> = {
     marginLeft: 'auto',
     fontWeight: 800,
     color: 'var(--text-dim)',
+  },
+  revealStandingsStrip: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    gap: '0.5rem 1.25rem',
+    width: '100%',
+    maxWidth: '900px',
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+  },
+  revealStandingsItem: {
+    whiteSpace: 'nowrap',
+  },
+  revealStandingsRank: {
+    color: 'var(--gold)',
+    fontWeight: 800,
+  },
+  revealStandingsScore: {
+    fontFamily: 'monospace',
+    color: 'var(--text)',
   },
   resultsList: {
     display: 'flex',

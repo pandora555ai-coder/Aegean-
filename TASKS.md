@@ -868,6 +868,102 @@ Progress log for the party game build, task by task.
       3001) was never touched - all testing ran against an isolated dev
       instance on port 3099.
 
+- [x] **Task 22 — Fix pacing between questions; remove the light sweep** —
+      DONE (9/9 acceptance criteria). Found in a real 7-player session: two
+      separate complaints. **Problem 1 (dead time):** REVEAL (6s) + SCOREBOARD
+      (8s) ran after EVERY question - 14s of which the SCOREBOARD phase just
+      repeated what REVEAL (with per-player results, speed, and points) had
+      already shown, costing 2+ minutes of dead time over a 10-question game.
+      `shared/src/index.ts`: `SCOREBOARD_DURATION_MS` 8000 -> 4000, new
+      `SCOREBOARD_EVERY_N_QUESTIONS = 3` (REVEAL_DURATION_MS unchanged).
+      `server/src/index.ts`: new `shouldShowScoreboard(room)` - true when
+      `(questionNumber % 3 === 0) || isLastQuestion` - decides the branch
+      inside `advanceFromReveal`, which either arms the SCOREBOARD phase as
+      before, or (skip case) calls a new shared tail,
+      `advanceToNextQuestionOrGameOver(room)`, extracted verbatim from the
+      old `advanceFromScoreboard` body so BOTH the skip path and the normal
+      post-SCOREBOARD path funnel through the exact same
+      next-question-or-GAME_OVER logic - one code path, not two to keep in
+      sync. `shouldShowScoreboard` OR-ing `isLastQuestion` first guarantees
+      the final question always gets a SCOREBOARD (there's a stop right
+      before GAME_OVER, per spec) regardless of the modulus. Every existing
+      guard kept working unchanged BY CONSTRUCTION, not by re-auditing each
+      one by hand: `state:sync`'s phase builders just read `room.phase`
+      directly and were never aware SCOREBOARD was ever guaranteed to
+      follow REVEAL, so a client reconnecting into a post-skip QUESTION (or
+      mid-REVEAL about to skip) gets exactly the same correct catch-up it
+      always did; `continuationForActiveTimer` (pause/resume) maps
+      `activeTimer.kind: 'REVEAL'` to `advanceFromReveal` exactly as before,
+      which now makes the skip-or-show decision itself on resume too; and
+      `vip:next` still just calls `advanceFromReveal`/`advanceFromScoreboard`
+      directly (unchanged), so a manual skip from REVEAL now correctly
+      either jumps straight to the next question (skip case) or reveals
+      the SCOREBOARD it would have shown anyway (show case) - never
+      double-skips. `client/src/screens/HostScreen.tsx`: since REVEAL
+      already carries every connected player's current `totalScore`, a new
+      compact, sorted, single-line "standings strip" renders during REVEAL
+      itself (`reveal.results` sorted client-side by score, no new server
+      payload needed) so skipping SCOREBOARD never loses the "where do I
+      stand" information. Every one of the 5 phase containers
+      (LOBBY/QUESTION/REVEAL/SCOREBOARD/GAME_OVER) gained a `.screen-fade-in`
+      class (new, `theme.css`, 280ms opacity-only fade, `backwards` fill
+      mode) so the REVEAL -> QUESTION cut - abrupt on a skip round, since
+      there's no SCOREBOARD screen to visually "arrive" through anymore -
+      reads as a deliberate beat instead of a jump-cut, without adding any
+      real dead time. **Problem 2 (the light sweep):** disliked, removed
+      entirely - every `<div className="stage-sweep">` (5 render branches)
+      and its `@keyframes stage-sweep-move` + `.stage-sweep` rule deleted
+      outright. The deep blue-purple radial gradient background stays;
+      `--bg` gained a SECOND, purely static radial-gradient LAYER on top (CSS
+      background layers paint first-listed-closest-to-viewer) - a soft
+      vignette (transparent centre fading to `rgba(0,0,0,0.32)` at the
+      edges) for the "still deep, no motion" depth the task asked for.
+      GAME_OVER's confetti and light rays, every entrance/stagger animation,
+      the gold timer pulse, and the reveal burst are all completely
+      untouched. Verified: (1) `npm run typecheck` clean across all 3
+      workspaces; (2) a real 10-question game, ground-truthed via the actual
+      `question:show`/`phase:changed` payloads (not DOM text, which turned
+      out to have its own unrelated MutationObserver timing quirk under
+      fast back-to-back remounts) - SCOREBOARD showed after questions 3, 6,
+      9 and 10 (the final one), and questions 1, 2, 4, 5, 7, 8 went straight
+      from REVEAL to the next QUESTION; (3) REVEAL-start to next-QUESTION-
+      start measured 6000-6006ms for every skip case (exactly
+      REVEAL_DURATION_MS, scoreboard genuinely gone) and 10004-10008ms for
+      every scoreboard case (REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS,
+      back to back with no extra gap); (4) question 10 (the final one) was
+      followed by a SCOREBOARD before GAME_OVER in that same run, confirming
+      `shouldShowScoreboard`'s `isLastQuestion` OR; (5) an instrumented
+      `window.AudioContext` across that same full game found the QUESTION
+      START cue fired exactly 10 times (once per question, including all 6
+      skip rounds) and the SCOREBOARD cue fired exactly 4 times (only
+      questions 3/6/9/10) - both exact, zero extra, zero missing (the raw
+      tone count came out to 96, not the 95 "designed" cue notes - the 96th
+      was identified as the pre-existing, silent Task 14 keep-alive
+      oscillator, which never sets an explicit frequency and so defaults to
+      the Web Audio spec's 440Hz, coincidentally landing in the same pitch
+      class as several real cues - not a duplicate or a bug, and a good
+      reminder to always positively identify a stray tone rather than
+      assume); (6) closed a connected player's page mid-REVEAL on a skip
+      question, let the skip transition happen while they were disconnected,
+      then reopened a page in the SAME browser context (so their playerId
+      survived) - their `state:sync` reconnect landed cleanly on the new,
+      post-skip QUESTION with working answer buttons, never stuck; (7)
+      `vip:next` from REVEAL on a skip question jumped straight to the next
+      QUESTION (not through a phantom SCOREBOARD) in 37-58ms, `vip:next`
+      from REVEAL on a scoreboard question correctly showed SCOREBOARD (not
+      a double-skip past it), and `vip:next` from SCOREBOARD advanced
+      normally to the next question in ~40ms; (8) screenshotted the
+      QUESTION background (no `.stage-sweep` anywhere in the DOM) and ran
+      `document.getAnimations()` during QUESTION - only `pulse-scale`
+      (scoped to the timer ring element) and a one-shot `enter-rise`
+      (`iterations: 1`, not infinite) were running, no continuously-looping
+      full-background animation; (9) confirmed 24 `.confetti-piece`
+      elements and `.light-rays` still present and animating
+      (`confetti-fall`/`rotate-rays` both in the live animation list) at
+      GAME_OVER. Production (`party-game.service`, port 3001) was never
+      touched - all testing ran against an isolated dev instance on port
+      3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

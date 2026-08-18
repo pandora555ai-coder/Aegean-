@@ -42,7 +42,12 @@ export const MIN_PLAYERS = 2;
 export const BASE_POINTS = 1000;
 export const SPEED_BONUS_MAX = 500;
 export const REVEAL_DURATION_MS = 6000;
-export const SCOREBOARD_DURATION_MS = 8000;
+export const SCOREBOARD_DURATION_MS = 4000;
+// REVEAL already shows who answered what, how fast, and the points gained -
+// a separate SCOREBOARD phase after EVERY question just repeats it. Shown
+// only every Nth question (see shouldShowScoreboard in server/src/index.ts)
+// and always after the final question, right before GAME_OVER.
+export const SCOREBOARD_EVERY_N_QUESTIONS = 3;
 
 export interface ClientPingPayload {
   sentAt: number;

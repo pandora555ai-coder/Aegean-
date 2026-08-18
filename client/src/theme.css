@@ -2,11 +2,18 @@
   /* Deep blue-purple stage, not near-black - lighter at the centre (as if
      lit from above), darker toward the edges. `--bg` itself IS the gradient
      function, so every existing `background: var(--bg)` keeps working
-     unchanged. */
+     unchanged. Task 22 removed the animated light sweep that used to move
+     across this (disliked) and added a second, purely STATIC radial layer
+     on top - a soft vignette that darkens the corners a little further for
+     depth, with zero motion. CSS background layers paint in listed order
+     with the FIRST one closest to the viewer, so the vignette (transparent
+     centre, darker edge) sits over the base colour gradient beneath it. */
   --bg-edge: #0a0716;
   --bg-mid: #180f38;
   --bg-center: #2c1f5c;
-  --bg: radial-gradient(ellipse 120% 90% at 50% 28%, var(--bg-center) 0%, var(--bg-mid) 55%, var(--bg-edge) 100%);
+  --bg:
+    radial-gradient(ellipse 140% 100% at 50% 45%, transparent 45%, rgba(0, 0, 0, 0.32) 100%),
+    radial-gradient(ellipse 120% 90% at 50% 28%, var(--bg-center) 0%, var(--bg-mid) 55%, var(--bg-edge) 100%);
 
   --surface: #241a4a;
   --surface-strong: #3a2c6e;
@@ -163,6 +170,24 @@ input {
 
 /* ============================= entrances ============================= */
 
+/* A brief whole-screen fade-in on every phase container - makes even the
+   REVEAL -> QUESTION cut feel like a deliberate beat instead of an abrupt
+   swap when Task 22's scoreboard-skip logic jumps straight there, without
+   adding any real dead time (280ms, opacity only). */
+@keyframes screen-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.screen-fade-in {
+  opacity: 1;
+  animation: screen-fade-in 280ms ease-out backwards;
+}
+
 /* Question appears with a brief scale/fade entrance. The class's OWN base
    state (outside the keyframe) is already the fully-visible end state, so
    disabling the animation under prefers-reduced-motion below still renders
@@ -260,35 +285,6 @@ input {
   pointer-events: none;
 }
 
-/* ============================= stage sweep (TV only) ============================= */
-
-/* A slow, continuous, low-opacity spotlight sweeping across the background
-   - purely decorative, and (as a side effect) keeps the screen from being a
-   fully static image, which helps against TV screensavers. Rendered ONCE
-   per HostScreen view as a position:fixed element; never rendered on
-   ControllerScreen, which stays calm. Transform+opacity only. */
-@keyframes stage-sweep-move {
-  0%,
-  100% {
-    transform: translate3d(-12%, -6%, 0) scale(1);
-    opacity: 0.5;
-  }
-  50% {
-    transform: translate3d(12%, 8%, 0) scale(1.2);
-    opacity: 0.85;
-  }
-}
-
-.stage-sweep {
-  position: fixed;
-  inset: -15%;
-  background: radial-gradient(circle at 50% 35%, rgba(212, 175, 55, 0.14), transparent 55%);
-  animation: stage-sweep-move 18s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform, opacity;
-}
-
 /* ============================= game over celebration ============================= */
 
 @keyframes rotate-rays {
@@ -356,16 +352,13 @@ input {
 /* ============================= reduced motion ============================= */
 
 @media (prefers-reduced-motion: reduce) {
-  .stage-sweep {
-    animation: none;
-    opacity: 0.4;
-  }
   .light-rays {
     animation: none;
   }
   .confetti-piece {
     display: none;
   }
+  .screen-fade-in,
   .enter-pop,
   .enter-rise,
   .correct-pop {

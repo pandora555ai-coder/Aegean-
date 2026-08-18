@@ -9,6 +9,7 @@ import {
   MIN_PLAYERS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
+  SCOREBOARD_EVERY_N_QUESTIONS,
   ServerEvents,
   type AnswerProgressPayload,
   type ClientToServerEvents,
@@ -428,12 +429,32 @@ function buildGameOver(room: Room): GameOverPayload {
   };
 }
 
+// Whether the just-finished question should be followed by a SCOREBOARD -
+// every SCOREBOARD_EVERY_N_QUESTIONS questions, and ALWAYS after the final
+// question (so there's a stop right before GAME_OVER). REVEAL already shows
+// per-player results with animation; a scoreboard after every single
+// question just repeats it, hence the skip.
+function shouldShowScoreboard(room: Room): boolean {
+  const questionNumber = room.currentQuestionIndex + 1; // 1-based
+  const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
+  return isLastQuestion || questionNumber % SCOREBOARD_EVERY_N_QUESTIONS === 0;
+}
+
 // Ends REVEAL exactly once - guarded by the phase check, so whichever of
 // (the auto-advance timer firing) / (host clicking "skip") happens first
-// wins, and the timer is always cleared so it can never fire twice.
+// wins, and the timer is always cleared so it can never fire twice. Either
+// shows SCOREBOARD (arming its own timer) or - when this question doesn't
+// warrant one - skips straight to the next question/GAME_OVER, exactly as
+// if a SCOREBOARD had shown and immediately auto-advanced.
 function advanceFromReveal(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'REVEAL') {
+    return;
+  }
+
+  if (!shouldShowScoreboard(room)) {
+    console.log(`room ${room.code} skipping scoreboard after question ${room.currentQuestionIndex + 1}`);
+    advanceToNextQuestionOrGameOver(room);
     return;
   }
 
@@ -451,7 +472,15 @@ function advanceFromScoreboard(code: RoomCode): void {
   if (!room || room.phase !== 'SCOREBOARD') {
     return;
   }
+  advanceToNextQuestionOrGameOver(room);
+}
 
+// The shared tail of both advanceFromReveal (when it skips SCOREBOARD
+// entirely) and advanceFromScoreboard (once SCOREBOARD's own time is up) -
+// either the next question starts, or - on the final question, always
+// reached via SCOREBOARD since shouldShowScoreboard forces it - the game
+// ends.
+function advanceToNextQuestionOrGameOver(room: Room): void {
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
   if (isLastQuestion) {
     room.phase = 'GAME_OVER';
