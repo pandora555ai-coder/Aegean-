@@ -1,0 +1,96 @@
+:root {
+  --bg: #0b0d14;
+  --surface: #171b26;
+  --surface-hover: #1f2433;
+  --border: #2b3040;
+  --border-strong: #3c4359;
+  --text: #f5f6f8;
+  --text-dim: #b6bbc9;
+  --text-faint: #8890a1;
+  --gold: #f5b700;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+/* Subtle glow ring, colour supplied per-element via --glow-color. Used
+   sparingly - the room code, a selected answer, the celebrated correct
+   answer, the current leader - never more than one or two glowing elements
+   on screen at once. */
+.glow {
+  box-shadow:
+    0 0 0 2px var(--glow-color),
+    0 0 16px 2px var(--glow-color);
+}
+
+/* The QUESTION countdown intensifies in the last 5 seconds - pairs with the
+   Task 18 countdown sounds. Reuses --danger (== answer A's red), not a new
+   hue, so this never competes with the 4-colour answer palette. */
+@keyframes timer-critical {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.timer-critical {
+  animation: timer-critical 1s ease-in-out infinite;
+  color: var(--danger) !important;
+  text-shadow: 0 0 18px rgba(239, 68, 68, 0.65);
+}
+
+/* Gentle pulse for celebratory/leader moments (the winner, the fastest
+   correct answer) - restrained, not a light show. */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--glow-color),
+      0 0 14px 2px var(--glow-color);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--glow-color),
+      0 0 26px 6px var(--glow-color);
+  }
+}
+
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Static text glow for the room code and the final winner banner - no
+   animation, deliberately restrained. */
+.text-glow {
+  text-shadow: 0 0 18px rgba(245, 246, 248, 0.45);
+}
+
+.text-glow-gold {
+  text-shadow: 0 0 20px rgba(245, 183, 0, 0.55);
+}

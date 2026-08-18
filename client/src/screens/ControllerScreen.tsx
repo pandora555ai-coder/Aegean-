@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  ANSWER_IDENTITIES,
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
@@ -36,8 +37,12 @@ import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
+import { AnswerShape } from '../components/AnswerShape';
 
-const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
+// React's CSSProperties doesn't model CSS custom properties - this lets the
+// `--glow-color` variable the .glow-pulse class reads (see theme.css) be set
+// inline per-element, since each glow needs a different colour.
+type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
@@ -512,12 +517,21 @@ export default function ControllerScreen() {
             👑 VIP
           </div>
         )}
-        <div style={reveal.yourCorrect ? styles.revealCorrect : styles.revealWrong} data-testid="reveal-verdict">
-          {reveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
+        <div style={styles.revealVerdictRow}>
+          <AnswerShape index={reveal.correctIndex} sizeRem={2.75} />
+          <div style={reveal.yourCorrect ? styles.revealCorrect : styles.revealWrong} data-testid="reveal-verdict">
+            {reveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
+          </div>
         </div>
         <div style={styles.revealCorrectOption}>
-          Σωστή απάντηση: {reveal.correctOption}
+          Σωστή απάντηση: {ANSWER_IDENTITIES[reveal.correctIndex].letter}. {reveal.correctOption}
         </div>
+        {!reveal.yourCorrect && reveal.yourChoice !== null && (
+          <div style={styles.revealYourChoice} data-testid="reveal-your-choice">
+            <AnswerShape index={reveal.yourChoice} sizeRem={1.1} muted />
+            Η επιλογή σου: {ANSWER_IDENTITIES[reveal.yourChoice].letter}
+          </div>
+        )}
         <div style={styles.revealPoints} data-testid="reveal-points">
           +{reveal.pointsAwarded} πόντοι
         </div>
@@ -544,54 +558,72 @@ export default function ControllerScreen() {
     );
   }
 
-  if (question && acceptedChoice !== null) {
-    return (
-      <div style={styles.container}>
-        {isVip && (
-          <div style={styles.vipBadge} data-testid="vip-badge">
-            👑 VIP
-          </div>
-        )}
-        <div style={styles.category}>{question.category}</div>
-        <div style={styles.submittedChoice} data-testid="submitted-choice">
-          {OPTION_LABELS[acceptedChoice]}. {question.options[acceptedChoice]}
-        </div>
-        <div style={styles.lookAtTv} data-testid="waiting-message">
-          Περίμενε τους υπόλοιπους...
-        </div>
-        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
-        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
-      </div>
-    );
-  }
-
   if (question) {
+    // pendingChoice is the immediate local tap (set the instant a button is
+    // pressed, before the server even acks it); acceptedChoice only exists
+    // for a reconnect landing mid-question via state:sync, where the tap
+    // itself never happened on this page load. Either way, exactly one of
+    // the four buttons is "mine" and gets highlighted - the other three dim.
+    const myChoice = pendingChoice !== null ? pendingChoice : acceptedChoice;
+    const answered = myChoice !== null;
     return (
-      <div style={styles.container}>
+      <div style={styles.questionContainer}>
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
           </div>
         )}
-        <div style={styles.category}>{question.category}</div>
-        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
-        <div style={styles.answerGrid}>
-          {question.options.map((option, index) => (
-            <button
-              key={index}
-              type="button"
-              data-testid="answer-button"
-              style={pendingChoice !== null || paused ? styles.answerButtonDisabled : styles.answerButton}
-              onClick={() => handleAnswerTap(index)}
-              disabled={pendingChoice !== null || paused}
-            >
-              <span style={styles.answerLabel}>{OPTION_LABELS[index]}</span>
-              <span>{option}</span>
-            </button>
-          ))}
+        <div style={styles.questionHeader}>
+          <div style={styles.category}>{question.category}</div>
+          {answered ? (
+            <div style={styles.lookAtTv} data-testid="waiting-message">
+              Περίμενε τους υπόλοιπους...
+            </div>
+          ) : (
+            <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+          )}
         </div>
-        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
-        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+        <div style={styles.answerGrid}>
+          {question.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            const isMine = index === myChoice;
+            const dimmed = answered && !isMine;
+            const disabled = answered || paused;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-testid="answer-button"
+                data-selected={isMine}
+                className={isMine ? 'glow' : undefined}
+                style={
+                  dimmed
+                    ? { ...styles.answerButtonDim, borderColor: identity.color }
+                    : ({
+                        ...styles.answerButton,
+                        borderColor: identity.color,
+                        background: isMine ? `${identity.color}33` : 'var(--surface)',
+                        ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
+                      } as CSSVars)
+                }
+                onClick={() => handleAnswerTap(index)}
+                disabled={disabled}
+              >
+                <span style={styles.answerShapeRow}>
+                  <AnswerShape index={index} sizeRem={2.25} muted={dimmed} />
+                  <span style={{ ...styles.answerLabel, color: dimmed ? 'var(--text-faint)' : identity.color }}>
+                    {identity.letter}
+                  </span>
+                </span>
+                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={styles.questionFooter}>
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+        </div>
       </div>
     );
   }
@@ -701,19 +733,23 @@ const styles: Record<string, CSSProperties> = {
     padding: '2rem 1.25rem',
     maxWidth: '480px',
     margin: '0 auto',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    minHeight: '100dvh',
+    boxSizing: 'border-box',
   },
-  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center' },
-  status: { textAlign: 'center', color: '#666' },
-  subtitle: { fontSize: '1.1rem', color: '#555', textAlign: 'center' },
-  lobbyCount: { fontSize: '1rem', color: '#777', textAlign: 'center' },
+  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--text)' },
+  status: { textAlign: 'center', color: 'var(--text-faint)' },
+  subtitle: { fontSize: '1.1rem', color: 'var(--text-dim)', textAlign: 'center' },
+  lobbyCount: { fontSize: '1rem', color: 'var(--text-faint)', textAlign: 'center' },
   settingsPanel: {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.6rem',
     padding: '0.9rem',
     borderRadius: '0.75rem',
-    background: '#f8fafc',
-    border: '1px solid #e5e7eb',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
   },
   settingsRow: {
     display: 'flex',
@@ -724,12 +760,12 @@ const styles: Record<string, CSSProperties> = {
   settingsRowLabel: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: '#555',
+    color: 'var(--text-dim)',
   },
   settingsRowValue: {
     fontSize: '0.9rem',
     fontWeight: 700,
-    color: '#2563eb',
+    color: 'var(--gold)',
   },
   segmentedGroup: {
     display: 'flex',
@@ -740,23 +776,23 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '0.4rem 0.7rem',
     borderRadius: '0.5rem',
-    border: '2px solid #2563eb',
-    background: '#2563eb',
-    color: 'white',
+    border: '2px solid var(--gold)',
+    background: 'var(--gold)',
+    color: '#14161c',
   },
   segmentInactive: {
     fontSize: '0.85rem',
     fontWeight: 700,
     padding: '0.4rem 0.7rem',
     borderRadius: '0.5rem',
-    border: '2px solid #d1d5db',
-    background: 'white',
-    color: '#555',
+    border: '2px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text-dim)',
   },
   estimatedLength: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: '#999',
+    color: 'var(--text-faint)',
     textAlign: 'center',
   },
   input: {
@@ -765,7 +801,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.9rem 1rem',
     boxSizing: 'border-box',
     borderRadius: '0.5rem',
-    border: '1px solid #ccc',
+    border: '1px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
   },
   button: {
     width: '100%',
@@ -773,8 +811,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: '#2563eb',
-    color: 'white',
+    background: 'var(--gold)',
+    color: '#14161c',
     fontWeight: 600,
   },
   buttonDisabled: {
@@ -783,8 +821,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: '#9ca3af',
-    color: 'white',
+    background: 'var(--border)',
+    color: 'var(--text-faint)',
     fontWeight: 600,
     cursor: 'not-allowed',
   },
@@ -792,9 +830,8 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: 'center',
     fontSize: '1rem',
     fontWeight: 700,
-    color: '#92400e',
-    background: '#fef3c7',
-    border: '1px solid #f59e0b',
+    color: '#14161c',
+    background: 'var(--gold)',
     borderRadius: '999px',
     padding: '0.25rem 0.9rem',
   },
@@ -803,9 +840,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid #d1d5db',
+    border: '1px solid var(--border-strong)',
     background: 'transparent',
-    color: '#888',
+    color: 'var(--text-dim)',
     fontWeight: 600,
   },
   pauseButton: {
@@ -813,18 +850,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid #d1d5db',
+    border: '1px solid var(--border-strong)',
     background: 'transparent',
-    color: '#888',
+    color: 'var(--text-dim)',
     fontWeight: 600,
   },
   pausedNotice: {
     fontSize: '1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: '#92400e',
-    background: '#fef3c7',
-    border: '1px solid #f59e0b',
+    color: 'var(--gold)',
+    background: 'rgba(245, 183, 0, 0.12)',
+    border: '1px solid var(--gold)',
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
   },
@@ -833,9 +870,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.85rem',
     padding: '0.5rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid #fca5a5',
+    border: '1px solid var(--danger)',
     background: 'transparent',
-    color: '#dc2626',
+    color: 'var(--danger)',
     fontWeight: 600,
   },
   resetConfirmBox: {
@@ -844,13 +881,13 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.5rem',
     padding: '0.75rem',
     borderRadius: '0.5rem',
-    border: '1px solid #fca5a5',
-    background: '#fef2f2',
+    border: '1px solid var(--danger)',
+    background: 'rgba(239, 68, 68, 0.1)',
   },
   resetConfirmText: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: '#991b1b',
+    color: 'var(--text)',
     textAlign: 'center',
   },
   resetConfirmButtons: {
@@ -863,7 +900,7 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.5rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: '#dc2626',
+    background: 'var(--danger)',
     color: 'white',
     fontWeight: 700,
   },
@@ -872,16 +909,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.85rem',
     padding: '0.5rem',
     borderRadius: '0.5rem',
-    border: '1px solid #d1d5db',
-    background: 'white',
-    color: '#555',
+    border: '1px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text-dim)',
     fontWeight: 600,
   },
-  error: { color: '#dc2626', fontWeight: 600, textAlign: 'center' },
+  error: { color: 'var(--danger)', fontWeight: 600, textAlign: 'center' },
   category: {
     fontSize: '1rem',
     fontWeight: 600,
-    color: '#666',
+    color: 'var(--text-dim)',
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -890,124 +927,179 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: '#333',
+    color: 'var(--text)',
   },
-  submittedChoice: {
-    fontSize: '1.75rem',
-    fontWeight: 700,
-    textAlign: 'center',
-    padding: '1.5rem',
-    borderRadius: '0.75rem',
-    background: '#eff6ff',
-    border: '2px solid #2563eb',
-  },
-  answerGrid: {
+  questionContainer: {
     display: 'flex',
     flexDirection: 'column',
+    gap: '0.6rem',
+    padding: '1rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+    maxWidth: '480px',
+    margin: '0 auto',
+    height: '100dvh',
+    boxSizing: 'border-box',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+  },
+  questionHeader: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    flexShrink: 0,
+  },
+  questionFooter: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    flexShrink: 0,
+  },
+  answerGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gridTemplateRows: '1fr 1fr',
     gap: '0.75rem',
+    flex: 1,
+    minHeight: 0,
   },
   answerButton: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: '0.75rem',
+    justifyContent: 'center',
+    gap: '0.5rem',
     width: '100%',
-    fontSize: '1.25rem',
-    fontWeight: 600,
-    padding: '1.25rem 1rem',
-    borderRadius: '0.75rem',
-    border: '2px solid #2563eb',
-    background: 'white',
-    color: '#111',
-    textAlign: 'left',
+    height: '100%',
+    minHeight: '44px',
+    fontSize: '1.15rem',
+    fontWeight: 700,
+    padding: '0.75rem',
+    borderRadius: '1rem',
+    border: '3px solid',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    textAlign: 'center',
   },
-  answerButtonDisabled: {
+  answerButtonDim: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    width: '100%',
+    height: '100%',
+    minHeight: '44px',
+    fontSize: '1.15rem',
+    fontWeight: 700,
+    padding: '0.75rem',
+    borderRadius: '1rem',
+    border: '3px solid',
+    background: 'var(--surface)',
+    color: 'var(--text-faint)',
+    textAlign: 'center',
+    opacity: 0.35,
+    filter: 'grayscale(0.7)',
+  },
+  answerShapeRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem',
-    width: '100%',
-    fontSize: '1.25rem',
-    fontWeight: 600,
-    padding: '1.25rem 1rem',
-    borderRadius: '0.75rem',
-    border: '2px solid #d1d5db',
-    background: '#f3f4f6',
-    color: '#999',
-    textAlign: 'left',
-    opacity: 0.6,
+    gap: '0.5rem',
   },
   answerLabel: {
     fontWeight: 800,
-    color: '#2563eb',
-    minWidth: '1.5rem',
+  },
+  answerText: {
+    color: 'var(--text)',
+  },
+  answerTextDim: {
+    color: 'var(--text-faint)',
+  },
+  revealVerdictRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
   },
   revealCorrect: {
     fontSize: '2.5rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: '#16a34a',
+    color: 'var(--success)',
   },
   revealWrong: {
     fontSize: '2.5rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: '#dc2626',
+    color: 'var(--danger)',
   },
   revealCorrectOption: {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: '#333',
+    color: 'var(--text-dim)',
+  },
+  revealYourChoice: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.4rem',
+    fontSize: '1rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    color: 'var(--text-faint)',
   },
   revealPoints: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
+    color: 'var(--text)',
   },
   revealTotal: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: '#555',
+    color: 'var(--text-dim)',
   },
   revealRank: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: '#555',
+    color: 'var(--text-dim)',
   },
   revealSpeedRank: {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: '#f59e0b',
+    color: 'var(--gold)',
   },
   scoreboardRank: {
     fontSize: '3rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: '#2563eb',
+    color: 'var(--gold)',
   },
   scoreboardScore: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
+    color: 'var(--text)',
   },
   scoreboardGap: {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: '#555',
+    color: 'var(--text-dim)',
   },
   gameOverWon: {
     fontSize: '2rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: '#f59e0b',
+    color: 'var(--gold)',
   },
   gameOverLost: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: '#555',
+    color: 'var(--text-dim)',
   },
 };

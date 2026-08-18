@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
+  ANSWER_IDENTITIES,
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
   MAX_PLAYERS,
@@ -32,9 +33,14 @@ import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode } from '../hostRoomCode';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
+import { AnswerShape } from '../components/AnswerShape';
 
-const OPTION_LABELS = ['Α', 'Β', 'Γ', 'Δ'];
 const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
+
+// React's CSSProperties doesn't model CSS custom properties - this lets the
+// `--glow-color` variable the .glow/.glow-pulse classes read (see theme.css)
+// be set inline per-element, since each glow needs a different colour.
+type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -533,7 +539,7 @@ export default function HostScreen() {
     return (
       <div style={styles.container}>
         <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
-        <div style={styles.winnerBanner} data-testid="winner-banner">
+        <div className="text-glow-gold" style={styles.winnerBanner} data-testid="winner-banner">
           {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
           {gameOver.winnerName}
         </div>
@@ -542,7 +548,12 @@ export default function HostScreen() {
             <div
               key={standing.playerId}
               data-testid="final-standing-row"
-              style={standing.rank === 1 ? styles.standingRowWinner : styles.standingRow}
+              className={standing.rank === 1 ? 'glow-pulse' : undefined}
+              style={
+                standing.rank === 1
+                  ? ({ ...styles.standingRowWinner, '--glow-color': 'rgba(245, 183, 0, 0.45)' } as CSSVars)
+                  : styles.standingRow
+              }
             >
               <span style={styles.standingRank}>#{standing.rank}</span>
               <span style={styles.standingName}>{standing.name}</span>
@@ -572,20 +583,37 @@ export default function HostScreen() {
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
         </div>
         <div style={styles.optionsGrid}>
-          {question.options.map((option, index) => (
-            <div
-              key={index}
-              data-testid="reveal-option"
-              data-correct={index === reveal.correctIndex}
-              style={index === reveal.correctIndex ? styles.optionCardCorrect : styles.optionCard}
-            >
-              <span style={styles.optionLabel}>{OPTION_LABELS[index]}</span>
-              <span>{option}</span>
-              <span style={styles.answerCount} data-testid="answer-count">
-                {reveal.answerCounts[index]}
-              </span>
-            </div>
-          ))}
+          {question.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            const isCorrect = index === reveal.correctIndex;
+            return (
+              <div
+                key={index}
+                data-testid="reveal-option"
+                data-correct={isCorrect}
+                className={isCorrect ? 'glow-pulse' : undefined}
+                style={
+                  isCorrect
+                    ? ({
+                        ...styles.optionCardCorrect,
+                        borderColor: identity.color,
+                        background: `${identity.color}26`,
+                        '--glow-color': `${identity.color}80`,
+                      } as CSSVars)
+                    : { ...styles.optionCardWrong, borderColor: identity.color }
+                }
+              >
+                <AnswerShape index={index} sizeRem={1.75} muted={!isCorrect} />
+                <span style={{ ...styles.optionLabel, color: isCorrect ? identity.color : 'var(--text-faint)' }}>
+                  {identity.letter}
+                </span>
+                <span style={isCorrect ? undefined : styles.optionTextWrong}>{option}</span>
+                <span style={styles.answerCount} data-testid="answer-count">
+                  {reveal.answerCounts[index]}
+                </span>
+              </div>
+            );
+          })}
         </div>
         <div style={styles.resultsList}>
           {/* Rendered in the order the server sent them - correct-by-speed,
@@ -598,7 +626,12 @@ export default function HostScreen() {
               <Fragment key={result.playerId}>
                 {enteringWrongOrNoAnswer && <div style={styles.resultsDivider} data-testid="results-divider" />}
                 <div
-                  style={isFastest ? styles.resultRowFastest : styles.resultRow}
+                  className={isFastest ? 'glow-pulse' : undefined}
+                  style={
+                    isFastest
+                      ? ({ ...styles.resultRowFastest, '--glow-color': 'rgba(245, 183, 0, 0.35)' } as CSSVars)
+                      : styles.resultRow
+                  }
                   data-testid="reveal-result"
                   data-correct={result.correct}
                   data-answer-rank={result.answerRank ?? ''}
@@ -648,21 +681,31 @@ export default function HostScreen() {
           Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
         </div>
         <div style={styles.standingsList}>
-          {sortedStandings.map((standing) => (
-            <div
-              key={standing.playerId}
-              data-testid="standing-row"
-              data-connected={standing.connected}
-              style={standing.connected ? styles.standingRow : styles.standingRowDisconnected}
-            >
-              <span style={styles.standingRank}>#{standing.rank}</span>
-              <span style={styles.standingName}>
-                {standing.name}
-                {!standing.connected && ' (αποσυνδέθηκε)'}
-              </span>
-              <span style={styles.standingScore}>{standing.score}</span>
-            </div>
-          ))}
+          {sortedStandings.map((standing) => {
+            const isLeader = standing.rank === 1 && standing.connected;
+            return (
+              <div
+                key={standing.playerId}
+                data-testid="standing-row"
+                data-connected={standing.connected}
+                data-leader={isLeader}
+                style={
+                  !standing.connected
+                    ? styles.standingRowDisconnected
+                    : isLeader
+                      ? styles.standingRowLeader
+                      : styles.standingRow
+                }
+              >
+                <span style={styles.standingRank}>#{standing.rank}</span>
+                <span style={styles.standingName}>
+                  {standing.name}
+                  {!standing.connected && ' (αποσυνδέθηκε)'}
+                </span>
+                <span style={styles.standingScore}>{standing.score}</span>
+              </div>
+            );
+          })}
         </div>
         <div style={styles.progressBarTrack} data-testid="scoreboard-progress">
           <div
@@ -694,7 +737,11 @@ export default function HostScreen() {
             <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
           </div>
         )}
-        <div style={styles.timer} data-testid="countdown">
+        <div
+          className={!paused && secondsLeft <= 5 && secondsLeft > 0 ? 'timer-critical' : undefined}
+          style={styles.timer}
+          data-testid="countdown"
+        >
           {secondsLeft}
         </div>
         <div style={styles.category}>{question.category}</div>
@@ -705,12 +752,16 @@ export default function HostScreen() {
           {question.question}
         </div>
         <div style={styles.optionsGrid}>
-          {question.options.map((option, index) => (
-            <div key={index} style={styles.optionCard} data-testid="host-option">
-              <span style={styles.optionLabel}>{OPTION_LABELS[index]}</span>
-              <span>{option}</span>
-            </div>
-          ))}
+          {question.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            return (
+              <div key={index} style={{ ...styles.optionCard, borderColor: identity.color }} data-testid="host-option">
+                <AnswerShape index={index} sizeRem={1.75} />
+                <span style={{ ...styles.optionLabel, color: identity.color }}>{identity.letter}</span>
+                <span>{option}</span>
+              </div>
+            );
+          })}
         </div>
         <div style={styles.answerCounter} data-testid="answer-progress">
           {answeredCount}/{totalCount} απάντησαν
@@ -723,6 +774,7 @@ export default function HostScreen() {
               data-answered={answeredIds.has(player.playerId)}
               style={answeredIds.has(player.playerId) ? styles.nameAnswered : styles.nameNotAnswered}
             >
+              {answeredIds.has(player.playerId) ? '✓ ' : ''}
               {player.name}
             </span>
           ))}
@@ -746,13 +798,18 @@ export default function HostScreen() {
             Επανασύνδεση...
           </div>
         ) : (
-          <button style={styles.createButton} type="button" onClick={handleCreateRoom} disabled={!connected}>
+          <button
+            style={connected ? styles.createButton : styles.createButtonDisabled}
+            type="button"
+            onClick={handleCreateRoom}
+            disabled={!connected}
+          >
             Create Room
           </button>
         )
       ) : (
         <>
-          <div data-testid="room-code" style={styles.code}>
+          <div data-testid="room-code" className="text-glow" style={styles.code}>
             {roomCode.split('').join(' ')}
           </div>
 
@@ -820,15 +877,28 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: '1.5rem',
     padding: '3rem 2rem',
+    minHeight: '100vh',
+    width: '100%',
+    background: 'var(--bg)',
+    color: 'var(--text)',
   },
-  status: { fontSize: '1.25rem', color: '#666' },
+  status: { fontSize: '1.25rem', color: 'var(--text-faint)' },
   createButton: {
     fontSize: '2rem',
     padding: '1.5rem 3rem',
     borderRadius: '0.75rem',
     border: 'none',
-    background: '#2563eb',
-    color: 'white',
+    background: 'var(--gold)',
+    color: '#14161c',
+    fontWeight: 700,
+  },
+  createButtonDisabled: {
+    fontSize: '2rem',
+    padding: '1.5rem 3rem',
+    borderRadius: '0.75rem',
+    border: 'none',
+    background: 'var(--border)',
+    color: 'var(--text-faint)',
     fontWeight: 700,
   },
   code: {
@@ -836,6 +906,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.5em',
+    color: 'var(--text)',
   },
   qrWrapper: {
     // Explicit white background regardless of theme - QR scanning fails on
@@ -854,8 +925,9 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.15em',
-    color: '#888',
-    background: 'rgba(255,255,255,0.9)',
+    color: 'var(--text)',
+    background: 'var(--surface)',
+    border: '1px solid var(--border-strong)',
     padding: '0.35rem 0.75rem',
     borderRadius: '0.5rem',
     // Above the pause overlay - players may still need the room code while
@@ -866,7 +938,7 @@ const styles: Record<string, CSSProperties> = {
   pauseOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(17, 24, 39, 0.85)',
+    background: 'rgba(11, 13, 20, 0.92)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -877,17 +949,18 @@ const styles: Record<string, CSSProperties> = {
   pauseTitle: {
     fontSize: '5rem',
     fontWeight: 900,
-    color: 'white',
+    color: 'var(--text)',
     letterSpacing: '0.15em',
   },
   pauseSubtitle: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: '#e5e7eb',
+    color: 'var(--text-dim)',
   },
   counter: {
     fontSize: '2.5rem',
     fontWeight: 700,
+    color: 'var(--text)',
   },
   playerList: {
     display: 'flex',
@@ -899,32 +972,34 @@ const styles: Record<string, CSSProperties> = {
   },
   playerName: {
     fontWeight: 600,
+    color: 'var(--text)',
   },
   playerNameDisconnected: {
     fontWeight: 600,
-    opacity: 0.4,
+    color: 'var(--text-faint)',
+    opacity: 0.6,
   },
   waitingMessage: {
     fontSize: '2.5rem',
     fontWeight: 600,
-    color: '#999',
+    color: 'var(--text-dim)',
   },
   settingsSummary: {
     fontSize: '1.25rem',
     fontWeight: 600,
-    color: '#888',
+    color: 'var(--text-faint)',
   },
   category: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: '#666',
+    color: 'var(--text-dim)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
   progress: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: '#999',
+    color: 'var(--text-faint)',
   },
   questionText: {
     fontSize: '4rem',
@@ -932,6 +1007,7 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     lineHeight: 1.3,
     maxWidth: '90%',
+    color: 'var(--text)',
   },
   optionsGrid: {
     display: 'grid',
@@ -948,24 +1024,24 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     padding: '1.5rem 2rem',
     borderRadius: '1rem',
-    background: '#f3f4f6',
-    border: '3px solid #d1d5db',
+    background: 'var(--surface)',
+    border: '3px solid var(--border)',
+    color: 'var(--text)',
   },
   optionLabel: {
     fontWeight: 800,
-    color: '#2563eb',
     minWidth: '2rem',
   },
   timer: {
     fontSize: '3rem',
     fontWeight: 800,
     fontFamily: 'monospace',
-    color: '#dc2626',
+    color: 'var(--text)',
   },
   answerCounter: {
     fontSize: '2rem',
     fontWeight: 700,
-    color: '#16a34a',
+    color: 'var(--text-dim)',
   },
   answeredNames: {
     display: 'flex',
@@ -976,10 +1052,10 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
   },
   nameAnswered: {
-    color: '#16a34a',
+    color: 'var(--text)',
   },
   nameNotAnswered: {
-    color: '#bbb',
+    color: 'var(--text-faint)',
   },
   optionCardCorrect: {
     display: 'flex',
@@ -989,13 +1065,30 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1.5rem 2rem',
     borderRadius: '1rem',
-    background: '#dcfce7',
-    border: '3px solid #16a34a',
+    border: '3px solid',
+    color: 'var(--text)',
+  },
+  optionCardWrong: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    fontSize: '2.25rem',
+    fontWeight: 600,
+    padding: '1.5rem 2rem',
+    borderRadius: '1rem',
+    background: 'var(--surface)',
+    border: '3px solid',
+    color: 'var(--text-faint)',
+    opacity: 0.45,
+    filter: 'grayscale(0.6)',
+  },
+  optionTextWrong: {
+    color: 'var(--text-faint)',
   },
   answerCount: {
     marginLeft: 'auto',
     fontWeight: 800,
-    color: '#666',
+    color: 'var(--text-dim)',
   },
   resultsList: {
     display: 'flex',
@@ -1018,23 +1111,24 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     padding: '0.6rem 1.25rem',
     borderRadius: '0.75rem',
-    background: '#fef3c7',
-    border: '2px solid #f59e0b',
+    background: 'rgba(245, 183, 0, 0.12)',
+    border: '2px solid var(--gold)',
   },
   resultsDivider: {
     height: '1px',
-    background: '#e5e7eb',
+    background: 'var(--border)',
     margin: '0.4rem 0',
   },
   resultNameCorrect: {
-    color: '#16a34a',
+    color: 'var(--success)',
   },
   resultNameWrong: {
-    color: '#dc2626',
+    color: 'var(--danger)',
   },
   resultPoints: {
     fontFamily: 'monospace',
     fontWeight: 700,
+    color: 'var(--text)',
   },
   standingsList: {
     display: 'flex',
@@ -1051,7 +1145,8 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: '#f3f4f6',
+    background: 'var(--surface)',
+    color: 'var(--text)',
   },
   standingRowDisconnected: {
     display: 'flex',
@@ -1061,11 +1156,24 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: '#f3f4f6',
-    opacity: 0.4,
+    background: 'var(--surface)',
+    color: 'var(--text-faint)',
+    opacity: 0.5,
+  },
+  standingRowLeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.5rem',
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    padding: '1rem 1.5rem',
+    borderRadius: '0.75rem',
+    background: 'rgba(245, 183, 0, 0.1)',
+    border: '2px solid var(--gold)',
+    color: 'var(--text)',
   },
   standingRank: {
-    color: '#2563eb',
+    color: 'var(--text-dim)',
     minWidth: '3rem',
   },
   standingName: {
@@ -1077,12 +1185,12 @@ const styles: Record<string, CSSProperties> = {
   gameOverTitle: {
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: '#666',
+    color: 'var(--text-dim)',
   },
   winnerBanner: {
     fontSize: '3.5rem',
     fontWeight: 800,
-    color: '#f59e0b',
+    color: 'var(--gold)',
     textAlign: 'center',
   },
   standingRowWinner: {
@@ -1093,16 +1201,17 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: '#fef3c7',
-    border: '3px solid #f59e0b',
+    background: 'rgba(245, 183, 0, 0.14)',
+    border: '3px solid var(--gold)',
+    color: 'var(--text)',
   },
   wakeLockHint: {
     fontSize: '0.9rem',
-    color: '#999',
+    color: 'var(--text-faint)',
   },
   powerHint: {
     fontSize: '0.85rem',
-    color: '#aaa',
+    color: 'var(--text-faint)',
     textAlign: 'center',
     cursor: 'pointer',
     maxWidth: '32rem',
@@ -1115,12 +1224,12 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: '500px',
     height: '0.5rem',
     borderRadius: '999px',
-    background: '#e5e7eb',
+    background: 'var(--border)',
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    background: '#2563eb',
+    background: 'var(--gold)',
     borderRadius: '999px',
     transition: 'width 1s linear',
   },

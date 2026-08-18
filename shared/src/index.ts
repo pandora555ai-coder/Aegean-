@@ -121,6 +121,24 @@ export interface LobbyUpdatePayload {
 
 export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
 
+export interface AnswerIdentity {
+  letter: string; // Greek option letter - Α, Β, Γ, Δ
+  shape: string; // colour-blind-safe glyph, paired with the colour below
+  color: string; // accent hex - fixed per slot, never varies between questions
+}
+
+// FIXED colour+shape+letter identity for each of the 4 answer slots
+// (indexed 0-3), defined ONCE here so the TV and every phone read the exact
+// same mapping and can never visually drift apart. Colour is never the only
+// signal - it's always paired with a distinct shape, so this stays usable
+// for colour-blind players.
+export const ANSWER_IDENTITIES: readonly AnswerIdentity[] = [
+  { letter: 'Α', shape: '▲', color: '#ef4444' }, // red triangle
+  { letter: 'Β', shape: '◆', color: '#3b82f6' }, // blue diamond
+  { letter: 'Γ', shape: '●', color: '#eab308' }, // yellow circle
+  { letter: 'Δ', shape: '■', color: '#22c55e' }, // green square
+] as const;
+
 // A question's own intrinsic difficulty, as authored in the question bank.
 export type Difficulty = 'easy' | 'medium' | 'hard';
 

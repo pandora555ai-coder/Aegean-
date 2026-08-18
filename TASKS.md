@@ -566,6 +566,97 @@ Progress log for the party game build, task by task.
       port 3001) was never touched - all testing ran against an isolated
       dev instance on port 3099.
 
+- [x] **Task 19 — Visual redesign: dark gameshow aesthetic, colour/shape-coded
+      answers, consistent TV↔phone layout** — DONE (8/8 acceptance
+      criteria). Found during a real 7-player session: the TV showed answers
+      as a 2×2 grid (Α Β / Γ Δ) while phones showed a vertical list (Α Β Γ
+      Δ), so players had to mentally re-map position under time pressure,
+      causing mistaps. `/shared` gained ONE new exported constant,
+      `ANSWER_IDENTITIES: readonly AnswerIdentity[]` (`{letter, shape,
+      color}`), fixed forever at Α=red▲, Β=blue◆, Γ=yellow●, Δ=green■ - both
+      `HostScreen` and `ControllerScreen` import it directly (no local
+      `OPTION_LABELS` arrays left in either file), so the two views cannot
+      drift apart. Colour is never the sole signal anywhere: every answer
+      slot always renders its shape glyph AND its Greek letter alongside
+      colour, verified by literally rendering a full REVEAL screen (TV and
+      phone) through a `filter: grayscale(1)` and confirming the shape +
+      bold/dim weighting + numbered-rank text still communicate
+      correct/wrong with zero colour information. A tiny shared
+      `client/src/components/AnswerShape.tsx` renders just the coloured
+      glyph so the TV and every phone use the literal same element, not two
+      hand-copied lookalikes. `ControllerScreen`'s answer view was
+      restructured from a vertical `flex-column` list into a `display:grid;
+      grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr` matching
+      the TV's own grid exactly, inside a new `height: 100dvh` flex
+      container (`questionContainer`) so the 4 buttons fill all available
+      vertical space with zero scrolling on a real phone - measured at
+      390×844 (iPhone 12/13 size), each button rendered at 173×312px, far
+      past the 44px touch-height floor. The old two-screen flow (a live
+      tappable grid, then a totally different "submitted choice" text
+      screen once accepted) was collapsed into ONE view: tapping a button
+      sets local `pendingChoice` immediately (no waiting on the server ack)
+      and that same button gets a coloured background + a static
+      `.glow` ring in its own identity colour, while the other three drop
+      to `opacity: 0.35` + `grayscale(0.7)` - exactly the "stays highlighted
+      while the others dim" behaviour the task asked for, confirmed via
+      Playwright reading each button's `data-selected` attribute and
+      computed opacity after a tap. The REVEAL verdict on the phone
+      ("Σωστά!"/"Λάθος") now always renders the correct answer's shape next
+      to the text, and - only when wrong - a second muted line showing the
+      shape+letter of what they actually picked, so the verdict is legible
+      from shape+text alone, not just red/green. A new `client/src/theme.css`
+      (plain CSS, no framework - imported once from `main.tsx`) defines the
+      dark palette as CSS custom properties (`--bg: #0b0d14`, `--surface:
+      #171b26`, `--text: #f5f6f8`, etc.) plus three small, deliberately
+      restrained effects: `.text-glow`/`.text-glow-gold` (static text-shadow,
+      no animation - the room code and the final winner banner),
+      `.glow`/`.glow-pulse` (a box-shadow ring driven by a per-element
+      `--glow-color` CSS variable, since each answer's glow needs a
+      different colour - `CSSVars = CSSProperties &
+      Record<`--${string}`, string>` is the small local type that lets that
+      variable be set from an inline `style` object in TypeScript), and
+      `.timer-critical` (the QUESTION countdown scales up + turns red +
+      gets a text-shadow glow for `secondsLeft <= 5 && !paused`, pairing
+      visually with the Task 18 countdown ticks - deliberately reuses
+      `--danger`, the SAME hex as answer A's red, rather than inventing a
+      5th accent). On HostScreen's REVEAL grid, the correct card gets a
+      colour-tinted background + border + `.glow-pulse` in its own identity
+      colour; the three wrong cards drop to `opacity: 0.45` +
+      `grayscale(0.6)`. On the SCOREBOARD (both the live per-round view and
+      the final GAME_OVER standings), whichever row is rank 1 gets a static
+      gold border+tint (live view) or the full animated gold `.glow-pulse`
+      (GAME_OVER only - reserved for the one truly final moment, so the
+      glow doesn't fire every single round). The QR code's wrapper keeps an
+      explicit hardcoded `#ffffff` background regardless of theme (unchanged
+      from Task 15) - confirmed still actually scannable, not just visually
+      light, by extracting the live canvas's raw pixel data via Playwright
+      and decoding it with `jsQR` in Node, which read back the exact
+      `http://localhost:5199/play?code=XXXX` URL. Contrast was verified
+      numerically (WCAG relative-luminance formula, not eyeballed) for every
+      text/background pairing actually used: main body text `#f5f6f8` on
+      `#0b0d14` is 17.95:1, on card surface `#171b26` is 15.90:1; the
+      faintest tier, `--text-faint` (`#8890a1`) on the page background, is
+      6.05:1; the coloured answer letters against the answer card surface
+      ranged from 4.57:1 (red, the tightest) to 8.97:1 (yellow) - every
+      single pairing clears the 4.5:1 AA-normal-text floor, none flagged.
+      Verified: (1) `npm run typecheck` clean across all 3 workspaces; (2)
+      grepped both `HostScreen.tsx` and `ControllerScreen.tsx` to confirm
+      neither defines its own answer-colour table anymore, both import
+      `ANSWER_IDENTITIES` from `@game/shared`; (3) TV and phone screenshotted
+      side-by-side mid-question - `getBoundingClientRect()` on all 8 cards
+      confirmed both grids read top-left/top-right/bottom-left/bottom-right
+      in the identical Α-Β-Γ-Δ DOM order; (4) phone screenshots at 390×844
+      showed all 4 buttons with zero scrolling (`document.scrollHeight ===
+      844 === window.innerHeight`), each button 173×312px; (5) contrast
+      ratios above, computed programmatically, not estimated; (6) QR
+      decoded programmatically via jsQR as above; (7) TV screenshots
+      captured for LOBBY, QUESTION, REVEAL, SCOREBOARD and GAME_OVER, all in
+      the new dark theme; (8) a full REVEAL screen (TV and phone) rendered
+      through CSS `grayscale(1)` and screenshotted - correct/wrong stayed
+      fully legible from shape + weight/border + text alone. Production
+      (`party-game.service`, port 3001) was never touched - all testing ran
+      against an isolated dev instance on port 3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED
