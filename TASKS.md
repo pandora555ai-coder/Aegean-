@@ -657,6 +657,126 @@ Progress log for the party game build, task by task.
       (`party-game.service`, port 3001) was never touched - all testing ran
       against an isolated dev instance on port 3099.
 
+- [x] **Task 21 — Gameshow stage theme: deep blue-purple + gold, theatrical
+      lighting** — DONE (9/9 acceptance criteria). Task 19's dark theme read
+      as "tech dark mode" - near-black, quiet, flat. This replaces the
+      palette and adds the theatrical effects explicitly asked for, while
+      re-measuring every contrast ratio Task 19 established, since a
+      lighter background changes all of them. `client/src/theme.css`:
+      `--bg` is no longer a flat colour - it's now a `radial-gradient`
+      value baked directly into the custom property (`radial-gradient(
+      ellipse 120% 90% at 50% 28%, var(--bg-center) 0%, var(--bg-mid) 55%,
+      var(--bg-edge) 100%)`), so every existing `background: var(--bg)` in
+      both screens picked up the gradient with zero changes to those call
+      sites. `--gold: #d4af37` is the new primary "this matters" accent
+      (room code, timer ring, winner, leader) - the four ANSWER_IDENTITIES
+      hex values in `shared/src/index.ts` are completely untouched, exactly
+      per spec. Found a real contrast regression along the way: on the
+      lighter stage background, red (answer A) and blue (answer B) BOTH
+      drop under 4.5:1 as small text (4.22/4.32 on the old dark-mode
+      surface tone, worse - 3.83/3.92 - directly on the new lighter centre)
+      - Task 19 had rendered the option letter and reveal-verdict text
+      directly in the identity colour, which no longer holds up. Fixed by
+      never filling actual text with an identity/danger colour again: the
+      answer letter is always `var(--text)` now (colour still pops via the
+      shape glyph + full-strength border), and three new tokens -
+      `--danger-text: #f87171` (5.2-5.7:1, for readable red body text),
+      `--danger-strong: #b91c1c` (6.5:1 for white-on-red button fills,
+      catching a LATENT pre-existing gap - white on raw `--danger` was only
+      3.76:1 even back in Task 19, just never measured) - cover every
+      remaining red UI text (error messages, wrong-answer names, the
+      "Λάθος" verdict, the reset-to-lobby button). Also found and fixed a
+      SECOND-order issue while verifying: an identity-coloured background
+      TINT behind a full-strength shape glyph of the same hue crushes the
+      shape's own contrast against its own card (same hue family, just
+      different alpha) - dropped the live QUESTION cards' tint entirely
+      (plain `var(--surface)`, full-colour border still pops clearly) and
+      cut the REVEAL correct-card's and phone's selected-button tint alpha
+      down, measurably raising the shape glyphs from 3.49-3.67:1 to
+      3.96-4.20:1 (red/blue) and 6.78-7.99:1 (yellow/green) against their
+      own card. Theatrical effects (`theme.css`, all GPU-cheap by design -
+      see the property audit below): `.stage-sweep` - a fixed, full-
+      viewport low-opacity gold radial gradient, slowly drifting via
+      `transform: translate3d/scale` + `opacity`, 18s loop, rendered ONLY
+      on `HostScreen` (one `<div className="stage-sweep">` per phase
+      branch - never on `ControllerScreen`, which stays "calmer" per spec);
+      `.timer-ring` - a static gold box-shadow ring around the QUESTION
+      countdown digit with a gentle `transform: scale` breathing pulse,
+      swapping to `.timer-ring-critical` (red, faster pulse) in the last 5
+      seconds, paired with the existing Task 18 countdown ticks;
+      `.enter-pop`/`.enter-rise` - scale/fade and rise/fade entrances
+      (`transform` + `opacity` only), the question block using the former,
+      the 4 answer cards and every scoreboard/standings row staggering in
+      via the latter's `--i`-indexed `animation-delay: calc(var(--i) *
+      60ms)`; `.correct-pop` + `.glow-pulse` - the REVEAL's correct card
+      does a one-shot scale-pop burst then settles into a continuous GOLD
+      glow-pulse (deliberately gold now, not the identity colour, per
+      spec's "bursts with a gold glow"), while the 3 wrong cards dim
+      (opacity 0.45) and desaturate (`filter: grayscale(0.6)`);
+      `.leader-shimmer` - a `::after` pseudo-element sized to the leader's
+      row, translated across it on a loop (`transform` only, the gradient
+      itself is static) for a light-sweep shimmer; `.light-rays` +
+      `.confetti-piece` (GAME_OVER only) - a slowly-rotating (`transform:
+      rotate`) gold conic-gradient behind the winner banner, plus 24
+      module-level (not per-render-random) confetti pieces cycling through
+      gold + the 4 answer colours, falling via `transform: translate3d` +
+      `opacity`. Every one of these was DESIGNED to avoid animating
+      box-shadow/text-shadow values directly (glows are STATIC box-shadow/
+      text-shadow, set once; only `transform`/`opacity` animate on top of
+      them) - confirmed, not assumed: `document.getAnimations()` was
+      queried live at 5 different moments (LOBBY, QUESTION-just-shown,
+      REVEAL-just-shown, SCOREBOARD-just-shown, GAME_OVER-just-shown) and
+      the UNION of every CSS property touched by every keyframe across all
+      of them was exactly `["transform", "opacity"]` - nothing else.
+      `prefers-reduced-motion: reduce` sets `animation: none` on every one
+      of the above (the entrance classes' own BASE, non-keyframe styles are
+      already the fully-visible end state, so disabling the animation
+      never leaves anything stuck invisible) and hides confetti entirely
+      via `display: none`; the stagger's `animation-delay` uses fill-mode
+      `backwards` (deliberately not `forwards`/`both`) specifically so a
+      disconnected standing row's own inline `opacity: 0.5` isn't
+      permanently clobbered by the animation holding its final `opacity: 1`
+      keyframe forever after completing. Verified: (1) `npm run typecheck`
+      clean across all 3 workspaces; (2) screenshotted LOBBY, QUESTION,
+      REVEAL, SCOREBOARD and GAME_OVER on the TV, all in the new theme; (3)
+      re-measured every ratio via REAL rendered pixels (Playwright
+      screenshot -> `pngjs` decode -> WCAG relative-luminance formula, not
+      hand-picked hex math) - room code (gold) 8.06:1, body/counter text
+      17.07:1, question text 15.92:1, the neutral answer-letter text
+      13.88-14.40:1 across all 4 slots - all comfortably clear of 4.5:1;
+      the identity-coloured SHAPE GLYPHS (decorative iconography, not body
+      text - the actual textual identification is the neutral letter,
+      already 13.88+) land at 3.96/4.20:1 for red/blue and 6.78/7.99:1 for
+      yellow/green against their own card, clearing the WCAG large-text/
+      graphical-object 3:1 floor; (4) the blue card's full-strength border
+      measured 4.79:1 against the page background, plus the border itself
+      is a completely distinct, saturated hue against the desaturated
+      purple backdrop - clearly separable on sight, not just by the
+      numbers; (5) the REVEAL screen rendered through CSS `grayscale(1)` -
+      the correct card still reads instantly via its bright border/glow +
+      bold white text + distinct shape, wrong answers via dimming +
+      distinct shapes + "✗"/"–" markers, nothing lost; (6) the QR canvas's
+      raw pixels were extracted and decoded with `jsQR` in Node, reading
+      back the exact join URL with the live room code, background sampled
+      at literal `rgb(255, 255, 255)`; (7) clicked an answer button 56-64ms
+      after the question appeared (the ~540ms stagger sequence was still
+      actively running) and it was accepted immediately - the entrance
+      animation never touches `pointer-events`; (8) `page.emulateMedia({
+      reducedMotion: 'reduce' })` on GAME_OVER - confetti count stayed 24
+      in the DOM but every piece computed `display: none`, the stage-sweep
+      and light-rays both computed `animationName: 'none'`, and
+      `document.getAnimations().length` was 0 - screenshotted, layout
+      fully intact, nothing stuck invisible or broken; (9) covered above -
+      the live `document.getAnimations()` audit's property union was
+      exactly `transform`/`opacity`, confirmed at 5 separate live moments
+      instead of asserted from reading the CSS alone. A companion phone
+      pass confirmed `ControllerScreen` never renders `.stage-sweep` or any
+      `.confetti-piece` and that the 4 answer buttons - full-colour borders
+      and shapes against the same muted gradient - are visibly the
+      brightest thing on the screen. Production (`party-game.service`,
+      port 3001) was never touched - all testing ran against an isolated
+      dev instance on port 3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

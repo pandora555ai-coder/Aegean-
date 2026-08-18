@@ -44,6 +44,12 @@ import { AnswerShape } from '../components/AnswerShape';
 // inline per-element, since each glow needs a different colour.
 type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
+// "Slightly lighter panels with a subtle inner glow, so cards feel lit
+// rather than painted on." Never combined with an element that also uses
+// the .glow/.glow-pulse classes - an inline boxShadow always wins over a
+// CSS class's boxShadow and would silently clobber the glow ring.
+const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
+
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
   NAME_TAKEN: 'Το όνομα χρησιμοποιείται ήδη',
@@ -600,9 +606,14 @@ export default function ControllerScreen() {
                   dimmed
                     ? { ...styles.answerButtonDim, borderColor: identity.color }
                     : ({
+                        // Plain --surface when not selected - a same-hue
+                        // wash behind a full-strength shape crushes its own
+                        // contrast against its background; the full-colour
+                        // border already reads clearly.
                         ...styles.answerButton,
                         borderColor: identity.color,
-                        background: isMine ? `${identity.color}33` : 'var(--surface)',
+                        background: isMine ? `${identity.color}1a` : 'var(--surface)',
+                        boxShadow: isMine ? undefined : SURFACE_GLOW,
                         ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
                       } as CSSVars)
                 }
@@ -611,9 +622,12 @@ export default function ControllerScreen() {
               >
                 <span style={styles.answerShapeRow}>
                   <AnswerShape index={index} sizeRem={2.25} muted={dimmed} />
-                  <span style={{ ...styles.answerLabel, color: dimmed ? 'var(--text-faint)' : identity.color }}>
-                    {identity.letter}
-                  </span>
+                  {/* Letter stays neutral, never the identity colour - red
+                      and blue drop under 4.5:1 as small text on this
+                      lighter stage background. The identity colour still
+                      pops via the shape, the full border, and the tinted
+                      background. */}
+                  <span style={styles.answerLabel}>{identity.letter}</span>
                 </span>
                 <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
               </button>
@@ -750,6 +764,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     background: 'var(--surface)',
     border: '1px solid var(--border)',
+    boxShadow: SURFACE_GLOW,
   },
   settingsRow: {
     display: 'flex',
@@ -860,7 +875,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     color: 'var(--gold)',
-    background: 'rgba(245, 183, 0, 0.12)',
+    background: 'rgba(212, 175, 55, 0.12)',
     border: '1px solid var(--gold)',
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
@@ -872,7 +887,11 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: '1px solid var(--danger)',
     background: 'transparent',
-    color: 'var(--danger)',
+    // --danger-text, not --danger - the raw red hex drops under 4.5:1 as
+    // small text on the new, lighter stage background. The border can stay
+    // the stronger --danger since border colour isn't held to text-contrast
+    // rules.
+    color: 'var(--danger-text)',
     fontWeight: 600,
   },
   resetConfirmBox: {
@@ -900,7 +919,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.5rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: 'var(--danger)',
+    // --danger-strong, not --danger - white text on the raw #ef4444 fill
+    // measures 3.76:1; the deeper red clears 4.5:1 with room to spare.
+    background: 'var(--danger-strong)',
     color: 'white',
     fontWeight: 700,
   },
@@ -914,7 +935,7 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--text-dim)',
     fontWeight: 600,
   },
-  error: { color: 'var(--danger)', fontWeight: 600, textAlign: 'center' },
+  error: { color: 'var(--danger-text)', fontWeight: 600, textAlign: 'center' },
   category: {
     fontSize: '1rem',
     fontWeight: 600,
@@ -1030,7 +1051,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '2.5rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--danger)',
+    // --danger-text, not --danger - the raw red hex is under 4.5:1 here.
+    color: 'var(--danger-text)',
   },
   revealCorrectOption: {
     fontSize: '1.1rem',

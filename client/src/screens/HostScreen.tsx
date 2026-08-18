@@ -37,10 +37,41 @@ import { AnswerShape } from '../components/AnswerShape';
 
 const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 
+// Confetti pieces for the GAME_OVER celebration - a fixed module-level list
+// (computed once, not per render) so remounts don't reshuffle it. Colours
+// cycle through gold plus the 4 answer identities, tying the celebration
+// back to the same palette instead of introducing new hues. Deterministic
+// (index-derived, not Math.random) purely so a screenshot/test run is
+// reproducible - there's no gameplay reason it needs to be.
+const CONFETTI_COLORS = ['#d4af37', '#ef4444', '#3b82f6', '#eab308', '#22c55e'];
+const CONFETTI_PIECES = Array.from({ length: 24 }, (_, i) => {
+  const left = (i * 41.3) % 100;
+  const drift = ((i * 17) % 60) - 30;
+  const duration = 4.5 + ((i * 7) % 30) / 10;
+  const delay = -((i * 3.1) % duration); // negative delay -> already mid-fall on first paint
+  return {
+    id: i,
+    style: {
+      left: `${left}%`,
+      backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      animationDuration: `${duration}s`,
+      animationDelay: `${delay}s`,
+      '--drift': `${drift}px`,
+    } as CSSProperties & Record<'--drift', string>,
+  };
+});
+
 // React's CSSProperties doesn't model CSS custom properties - this lets the
 // `--glow-color` variable the .glow/.glow-pulse classes read (see theme.css)
 // be set inline per-element, since each glow needs a different colour.
 type CSSVars = CSSProperties & Record<`--${string}`, string>;
+
+// "Slightly lighter panels with a subtle inner glow, so cards feel lit
+// rather than painted on." Applied to every plain surface panel EXCEPT ones
+// that also use the .glow/.glow-pulse classes - an inline boxShadow always
+// wins over a CSS class's boxShadow, so combining the two would silently
+// clobber the glow ring.
+const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -538,21 +569,38 @@ export default function HostScreen() {
 
     return (
       <div style={styles.container}>
-        <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
-        <div className="text-glow-gold" style={styles.winnerBanner} data-testid="winner-banner">
-          {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
-          {gameOver.winnerName}
+        <div className="stage-sweep" aria-hidden="true" />
+        {CONFETTI_PIECES.map((piece) => (
+          <div key={piece.id} className="confetti-piece" aria-hidden="true" style={piece.style} />
+        ))}
+        <div style={styles.gameOverTitleWrap}>
+          <div className="light-rays" aria-hidden="true" />
+          <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
+          <div
+            className="text-glow-gold gold-pulse enter-pop"
+            style={styles.winnerBanner}
+            data-testid="winner-banner"
+          >
+            {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
+            {gameOver.winnerName}
+          </div>
         </div>
         <div style={styles.standingsList}>
-          {sortedFinalStandings.map((standing) => (
+          {sortedFinalStandings.map((standing, index) => (
             <div
               key={standing.playerId}
               data-testid="final-standing-row"
-              className={standing.rank === 1 ? 'glow-pulse' : undefined}
+              className={
+                standing.rank === 1 ? 'glow-pulse leader-shimmer enter-rise' : 'enter-rise'
+              }
               style={
                 standing.rank === 1
-                  ? ({ ...styles.standingRowWinner, '--glow-color': 'rgba(245, 183, 0, 0.45)' } as CSSVars)
-                  : styles.standingRow
+                  ? ({
+                      ...styles.standingRowWinner,
+                      '--glow-color': 'rgba(212, 175, 55, 0.5)',
+                      '--i': String(index),
+                    } as CSSVars)
+                  : ({ ...styles.standingRow, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
               }
             >
               <span style={styles.standingRank}>#{standing.rank}</span>
@@ -567,7 +615,8 @@ export default function HostScreen() {
 
   if (phase === 'REVEAL' && reveal && question) {
     return (
-      <div style={styles.container}>
+      <div style={styles.container} key={question.questionIndex}>
+        <div className="stage-sweep" aria-hidden="true" />
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -591,22 +640,30 @@ export default function HostScreen() {
                 key={index}
                 data-testid="reveal-option"
                 data-correct={isCorrect}
-                className={isCorrect ? 'glow-pulse' : undefined}
+                className={isCorrect ? 'glow-pulse correct-pop' : undefined}
                 style={
                   isCorrect
                     ? ({
                         ...styles.optionCardCorrect,
                         borderColor: identity.color,
-                        background: `${identity.color}26`,
-                        '--glow-color': `${identity.color}80`,
+                        background: `${identity.color}14`,
+                        // The burst glow is GOLD (not the identity colour) -
+                        // gold means "this matters", and it's what makes the
+                        // correct card read as CELEBRATED rather than just
+                        // "still coloured like it was during the question".
+                        '--glow-color': 'rgba(212, 175, 55, 0.55)',
                       } as CSSVars)
-                    : { ...styles.optionCardWrong, borderColor: identity.color }
+                    : { ...styles.optionCardWrong, borderColor: identity.color, boxShadow: SURFACE_GLOW }
                 }
               >
                 <AnswerShape index={index} sizeRem={1.75} muted={!isCorrect} />
-                <span style={{ ...styles.optionLabel, color: isCorrect ? identity.color : 'var(--text-faint)' }}>
-                  {identity.letter}
-                </span>
+                {/* Letter text is always neutral, never the identity colour -
+                    red/blue as small TEXT drop under 4.5:1 on this lighter
+                    stage background (see theme.css's --danger-text comment).
+                    The identity colour still pops via the shape, the full
+                    border, and (when correct) the tinted background + gold
+                    glow. */}
+                <span style={styles.optionLabel}>{identity.letter}</span>
                 <span style={isCorrect ? undefined : styles.optionTextWrong}>{option}</span>
                 <span style={styles.answerCount} data-testid="answer-count">
                   {reveal.answerCounts[index]}
@@ -629,7 +686,7 @@ export default function HostScreen() {
                   className={isFastest ? 'glow-pulse' : undefined}
                   style={
                     isFastest
-                      ? ({ ...styles.resultRowFastest, '--glow-color': 'rgba(245, 183, 0, 0.35)' } as CSSVars)
+                      ? ({ ...styles.resultRowFastest, '--glow-color': 'rgba(212, 175, 55, 0.35)' } as CSSVars)
                       : styles.resultRow
                   }
                   data-testid="reveal-result"
@@ -665,7 +722,8 @@ export default function HostScreen() {
     const sortedStandings = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
 
     return (
-      <div style={styles.container}>
+      <div style={styles.container} key={scoreboard.questionIndex}>
+        <div className="stage-sweep" aria-hidden="true" />
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -681,20 +739,25 @@ export default function HostScreen() {
           Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
         </div>
         <div style={styles.standingsList}>
-          {sortedStandings.map((standing) => {
+          {/* Rows are already in rank order (leader first) - the stagger
+              delay below (--i = row position) makes them visibly slide in
+              "from the leader down". */}
+          {sortedStandings.map((standing, index) => {
             const isLeader = standing.rank === 1 && standing.connected;
+            const rowClassName = isLeader ? 'enter-rise leader-shimmer' : 'enter-rise';
             return (
               <div
                 key={standing.playerId}
                 data-testid="standing-row"
                 data-connected={standing.connected}
                 data-leader={isLeader}
+                className={rowClassName}
                 style={
                   !standing.connected
-                    ? styles.standingRowDisconnected
+                    ? ({ ...styles.standingRowDisconnected, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
                     : isLeader
-                      ? styles.standingRowLeader
-                      : styles.standingRow
+                      ? ({ ...styles.standingRowLeader, '--i': String(index) } as CSSVars)
+                      : ({ ...styles.standingRow, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
                 }
               >
                 <span style={styles.standingRank}>#{standing.rank}</span>
@@ -724,8 +787,10 @@ export default function HostScreen() {
     const answeredCount = answerProgress?.answered ?? 0;
     const totalCount = answerProgress?.total ?? connectedCount;
 
+    const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
     return (
-      <div style={styles.container}>
+      <div style={styles.container} key={question.questionIndex}>
+        <div className="stage-sweep" aria-hidden="true" />
         {roomCode && (
           <div style={styles.cornerRoomCode} data-testid="corner-room-code">
             {roomCode}
@@ -737,27 +802,46 @@ export default function HostScreen() {
             <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
           </div>
         )}
-        <div
-          className={!paused && secondsLeft <= 5 && secondsLeft > 0 ? 'timer-critical' : undefined}
-          style={styles.timer}
-          data-testid="countdown"
-        >
-          {secondsLeft}
+        <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
+          <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="countdown">
+            {secondsLeft}
+          </div>
         </div>
-        <div style={styles.category}>{question.category}</div>
-        <div style={styles.progress} data-testid="question-progress">
-          Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
-        </div>
-        <div style={styles.questionText} data-testid="question-text">
-          {question.question}
+        <div className="enter-pop">
+          <div style={styles.category}>{question.category}</div>
+          <div style={styles.progress} data-testid="question-progress">
+            Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
+          </div>
+          <div style={styles.questionText} data-testid="question-text">
+            {question.question}
+          </div>
         </div>
         <div style={styles.optionsGrid}>
           {question.options.map((option, index) => {
             const identity = ANSWER_IDENTITIES[index];
             return (
-              <div key={index} style={{ ...styles.optionCard, borderColor: identity.color }} data-testid="host-option">
+              <div
+                key={index}
+                className="enter-rise"
+                style={
+                  {
+                    // Plain --surface, deliberately NOT tinted by the
+                    // identity colour - a same-hue wash behind a
+                    // full-strength shape/border crushes their contrast
+                    // against each other. The full-strength colour border
+                    // already reads clearly as "lit in its own colour".
+                    ...styles.optionCard,
+                    borderColor: identity.color,
+                    boxShadow: SURFACE_GLOW,
+                    '--i': String(index),
+                  } as CSSVars
+                }
+                data-testid="host-option"
+              >
                 <AnswerShape index={index} sizeRem={1.75} />
-                <span style={{ ...styles.optionLabel, color: identity.color }}>{identity.letter}</span>
+                {/* Neutral letter text - see the matching comment in the
+                    REVEAL view for why identity colour never fills text. */}
+                <span style={styles.optionLabel}>{identity.letter}</span>
                 <span>{option}</span>
               </div>
             );
@@ -785,6 +869,7 @@ export default function HostScreen() {
 
   return (
     <div style={styles.container}>
+      <div className="stage-sweep" aria-hidden="true" />
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
       {phase === 'LOBBY' && wakeLockFailed && (
         <div style={styles.wakeLockHint} data-testid="wake-lock-hint">
@@ -809,7 +894,7 @@ export default function HostScreen() {
         )
       ) : (
         <>
-          <div data-testid="room-code" className="text-glow" style={styles.code}>
+          <div data-testid="room-code" className="text-glow-gold gold-pulse" style={styles.code}>
             {roomCode.split('').join(' ')}
           </div>
 
@@ -881,6 +966,10 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     background: 'var(--bg)',
     color: 'var(--text)',
+    // Stacks above the fixed .stage-sweep / confetti / light-rays layers
+    // (all z-index: 0) regardless of DOM order.
+    position: 'relative',
+    zIndex: 1,
   },
   status: { fontSize: '1.25rem', color: 'var(--text-faint)' },
   createButton: {
@@ -906,7 +995,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.5em',
-    color: 'var(--text)',
+    color: 'var(--gold)',
   },
   qrWrapper: {
     // Explicit white background regardless of theme - QR scanning fails on
@@ -930,6 +1019,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid var(--border-strong)',
     padding: '0.35rem 0.75rem',
     borderRadius: '0.5rem',
+    boxShadow: SURFACE_GLOW,
     // Above the pause overlay - players may still need the room code while
     // paused (e.g. someone new scanning the QR mid-break isn't possible,
     // but the code itself must never be hidden).
@@ -938,7 +1028,7 @@ const styles: Record<string, CSSProperties> = {
   pauseOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(11, 13, 20, 0.92)',
+    background: 'rgba(10, 7, 22, 0.92)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -1032,11 +1122,20 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     minWidth: '2rem',
   },
+  timerRingWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '7rem',
+    height: '7rem',
+    borderRadius: '50%',
+    background: 'var(--surface)',
+  },
   timer: {
     fontSize: '3rem',
     fontWeight: 800,
     fontFamily: 'monospace',
-    color: 'var(--text)',
+    color: 'var(--gold)',
   },
   answerCounter: {
     fontSize: '2rem',
@@ -1111,7 +1210,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     padding: '0.6rem 1.25rem',
     borderRadius: '0.75rem',
-    background: 'rgba(245, 183, 0, 0.12)',
+    background: 'rgba(212, 175, 55, 0.12)',
     border: '2px solid var(--gold)',
   },
   resultsDivider: {
@@ -1123,7 +1222,9 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--success)',
   },
   resultNameWrong: {
-    color: 'var(--danger)',
+    // --danger-text, not --danger - the raw answer-A red hex drops under
+    // 4.5:1 as small text on the new, lighter stage background.
+    color: 'var(--danger-text)',
   },
   resultPoints: {
     fontFamily: 'monospace',
@@ -1168,7 +1269,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'rgba(245, 183, 0, 0.1)',
+    background: 'rgba(212, 175, 55, 0.1)',
     border: '2px solid var(--gold)',
     color: 'var(--text)',
   },
@@ -1182,12 +1283,27 @@ const styles: Record<string, CSSProperties> = {
   standingScore: {
     fontFamily: 'monospace',
   },
+  gameOverTitleWrap: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '1.5rem 0',
+    // Contains the absolutely-positioned .light-rays layer, which is
+    // clipped to this box rather than sprawling across the whole page.
+    overflow: 'hidden',
+  },
   gameOverTitle: {
+    position: 'relative',
+    zIndex: 1,
     fontSize: '2.5rem',
     fontWeight: 700,
     color: 'var(--text-dim)',
   },
   winnerBanner: {
+    position: 'relative',
+    zIndex: 1,
     fontSize: '3.5rem',
     fontWeight: 800,
     color: 'var(--gold)',
@@ -1201,7 +1317,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'rgba(245, 183, 0, 0.14)',
+    background: 'rgba(212, 175, 55, 0.14)',
     border: '3px solid var(--gold)',
     color: 'var(--text)',
   },
