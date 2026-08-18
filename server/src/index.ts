@@ -147,6 +147,37 @@ function computeCompetitionRanks<T>(
   return ranks;
 }
 
+// Sorts `results` IN PLACE: correct answers first (fastest first), then
+// wrong answers, then players who didn't answer at all go last. With 7
+// players in a room, insertion (join) order reads as completely random -
+// this is the order the reveal is actually meant to be read in. Also
+// fills in each result's `answerRank`: the 1-based position among CORRECT
+// answers only, by speed - left null for wrong/no-answer.
+function sortAndRankResults(results: RevealPlayerResult[]): void {
+  results.sort((a, b) => {
+    const aAnswered = a.timeMs !== null;
+    const bAnswered = b.timeMs !== null;
+    if (aAnswered !== bAnswered) {
+      return aAnswered ? -1 : 1; // answered before non-answerers
+    }
+    if (!aAnswered) {
+      return 0; // both non-answerers - relative order doesn't matter
+    }
+    if (a.correct !== b.correct) {
+      return a.correct ? -1 : 1; // correct before incorrect
+    }
+    return (a.timeMs as number) - (b.timeMs as number); // faster first
+  });
+
+  let rank = 0;
+  for (const result of results) {
+    if (result.correct) {
+      rank += 1;
+      result.answerRank = rank;
+    }
+  }
+}
+
 // Reads room.lastReveal (set once, at the moment REVEAL begins) rather than
 // recomputing anything, so these can be reused identically for the fresh
 // broadcast and for a later state:sync catch-up. `paused`/`pausedByName`
@@ -193,6 +224,8 @@ function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPay
       autoAdvanceMs,
       paused: room.paused,
       pausedByName: room.pausedByName,
+      yourTimeMs: myResult.timeMs,
+      yourAnswerRank: myResult.answerRank,
     };
   }
 
@@ -219,6 +252,8 @@ function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPay
     autoAdvanceMs,
     paused: room.paused,
     pausedByName: room.pausedByName,
+    yourTimeMs: null,
+    yourAnswerRank: null,
   };
 }
 
@@ -288,8 +323,15 @@ function endQuestion(code: RoomCode): void {
       correct,
       pointsAwarded,
       totalScore: player.score,
+      timeMs: recorded ? recorded.timeMs : null,
+      answerRank: null, // filled in by sortAndRankResults below
     };
   });
+
+  // Correct-by-speed first, then wrong, then non-answerers last - insertion
+  // (join) order made no sense to anyone once there were 7 players in the
+  // room. Also fills in each correct answer's 1-based speed rank.
+  sortAndRankResults(results);
 
   const answerCounts = [0, 0, 0, 0];
   for (const result of results) {
@@ -858,6 +900,29 @@ io.on('connection', (socket) => {
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     broadcastLobbyUpdate(room.code);
     console.log(`room ${room.code} reset for a new game`);
+  });
+
+  // Lets the VIP abandon an in-progress game (e.g. it was started before
+  // everyone had joined) and go straight back to LOBBY - unlike
+  // vip:play_again, this is reachable from QUESTION/REVEAL/SCOREBOARD, not
+  // just GAME_OVER. Deliberately NOT blocked by `room.paused`: resetting
+  // must work even mid-pause, and resetRoomForNewGame clears the pause
+  // state itself so the fresh LOBBY is never left frozen.
+  socket.on(ClientEvents.VIP_RESET_TO_LOBBY, () => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_RESET_TO_LOBBY);
+    if (!room) {
+      return;
+    }
+
+    if (room.phase === 'LOBBY') {
+      console.log(`rejected ${ClientEvents.VIP_RESET_TO_LOBBY} for room ${room.code}: already in LOBBY`);
+      return;
+    }
+
+    resetRoomForNewGame(room);
+    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    broadcastLobbyUpdate(room.code);
+    console.log(`room ${room.code} reset to lobby by VIP`);
   });
 
   // Deliberately open to ANY connected player, not just the VIP - anyone

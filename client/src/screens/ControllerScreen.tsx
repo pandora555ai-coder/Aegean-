@@ -124,6 +124,52 @@ function PauseControl({
   );
 }
 
+// VIP-only, available during QUESTION/REVEAL/SCOREBOARD. Requires a second
+// confirming tap - it wipes every score, so a single accidental tap must
+// never trigger it. Confirm state is local to this component instance, so
+// it naturally resets whenever the surrounding view unmounts (e.g. the
+// phase actually changes) without any extra plumbing.
+function ResetToLobbyControl({ onConfirm }: { onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div style={styles.resetConfirmBox}>
+        <div style={styles.resetConfirmText}>Σίγουρα; Θα μηδενιστούν όλοι οι βαθμοί.</div>
+        <div style={styles.resetConfirmButtons}>
+          <button
+            data-testid="reset-confirm-button"
+            style={styles.resetConfirmButton}
+            type="button"
+            onClick={onConfirm}
+          >
+            Ναι, επιστροφή
+          </button>
+          <button
+            data-testid="reset-cancel-button"
+            style={styles.resetCancelButton}
+            type="button"
+            onClick={() => setConfirming(false)}
+          >
+            Άκυρο
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      data-testid="reset-to-lobby-button"
+      style={styles.resetToLobbyButton}
+      type="button"
+      onClick={() => setConfirming(true)}
+    >
+      Επιστροφή στο lobby
+    </button>
+  );
+}
+
 export default function ControllerScreen() {
   const { connected } = useSocketConnection();
   const [playerId] = useState(() => getOrCreatePlayerId());
@@ -379,6 +425,10 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.GAME_RESUME, {});
   }
 
+  function handleResetToLobby() {
+    socket.emit(ClientEvents.VIP_RESET_TO_LOBBY, {});
+  }
+
   const estimatedMinutes = Math.round(
     (roomSettings.questionCount * (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) / 60000,
   );
@@ -449,6 +499,7 @@ export default function ControllerScreen() {
           </button>
         )}
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
   }
@@ -476,12 +527,19 @@ export default function ControllerScreen() {
         <div style={styles.revealRank} data-testid="reveal-rank">
           Θέση #{reveal.rank}
         </div>
+        {reveal.yourCorrect && reveal.yourAnswerRank !== null && (
+          <div style={styles.revealSpeedRank} data-testid="reveal-answer-rank">
+            Ταχύτητα: #{reveal.yourAnswerRank}
+            {reveal.yourTimeMs !== null && ` — ${(reveal.yourTimeMs / 1000).toFixed(1)}΄΄`}
+          </div>
+        )}
         {isVip && !paused && (
           <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
             Παράλειψη
           </button>
         )}
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
   }
@@ -502,6 +560,7 @@ export default function ControllerScreen() {
           Περίμενε τους υπόλοιπους...
         </div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
   }
@@ -532,6 +591,7 @@ export default function ControllerScreen() {
           ))}
         </div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
   }
@@ -768,6 +828,55 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
   },
+  resetToLobbyButton: {
+    width: '100%',
+    fontSize: '0.85rem',
+    padding: '0.5rem 1rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #fca5a5',
+    background: 'transparent',
+    color: '#dc2626',
+    fontWeight: 600,
+  },
+  resetConfirmBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.75rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #fca5a5',
+    background: '#fef2f2',
+  },
+  resetConfirmText: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: '#991b1b',
+    textAlign: 'center',
+  },
+  resetConfirmButtons: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  resetConfirmButton: {
+    flex: 1,
+    fontSize: '0.85rem',
+    padding: '0.5rem',
+    borderRadius: '0.5rem',
+    border: 'none',
+    background: '#dc2626',
+    color: 'white',
+    fontWeight: 700,
+  },
+  resetCancelButton: {
+    flex: 1,
+    fontSize: '0.85rem',
+    padding: '0.5rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #d1d5db',
+    background: 'white',
+    color: '#555',
+    fontWeight: 600,
+  },
   error: { color: '#dc2626', fontWeight: 600, textAlign: 'center' },
   category: {
     fontSize: '1rem',
@@ -865,6 +974,12 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     textAlign: 'center',
     color: '#555',
+  },
+  revealSpeedRank: {
+    fontSize: '1.1rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: '#f59e0b',
   },
   scoreboardRank: {
     fontSize: '3rem',

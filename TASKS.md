@@ -462,6 +462,110 @@ Progress log for the party game build, task by task.
       touched - all testing ran against an isolated dev instance on port
       3099.
 
+- [x] **Task 18 — Fix reveal ordering, add countdown sounds, VIP reset to
+      lobby, and a TV power-saving hint** — DONE (10/10 acceptance
+      criteria). Four independent fixes found during a real 7-player
+      session. **FIX 1 (real bug):** `RevealHostPayload.results` was built
+      straight from `connectedPlayers.map(...)`, i.e. room-join order -
+      with 7 players that read as random. Added a `sortAndRankResults()`
+      helper in `server/src/index.ts` that sorts IN PLACE: answered before
+      non-answered, correct before incorrect, then ascending `timeMs`
+      (fastest first) - and in the same pass fills in each correct
+      result's `answerRank` (1-based among correct answers only, by
+      speed). Called once in `endQuestion()` right after `results` is
+      built, before `answerCounts` is computed. `results[i].timeMs` is now
+      populated (previously absent). `/shared`'s `RevealPlayerResult`
+      gained `timeMs`/`answerRank`, and `RevealPlayerPayload` gained
+      `yourTimeMs`/`yourAnswerRank`, both filled from the same sorted
+      array in `buildRevealPlayerPayload()`. `HostScreen`'s REVEAL view no
+      longer re-sorts (`sortedResults` computed via
+      `[...reveal.results].sort(...)` is gone) - it renders
+      `reveal.results` exactly as received, formats correct rows as
+      `"1. Νίκος — 2.1΄΄ — +1450 (total)"`, wrong/no-answer rows as
+      `"✗ name"`/`"– name"`, gives `answerRank === 1` a gold highlight
+      style, and inserts a thin divider `<div>` the instant the mapped
+      array crosses from a correct row into the first wrong/no-answer row.
+      `ControllerScreen`'s REVEAL view shows the player their own
+      `"Ταχύτητα: #N — X.X΄΄"` line whenever `yourCorrect &&
+      yourAnswerRank !== null`. **FIX 2:** countdown tones via the Web
+      Audio API, HostScreen only, REUSING the existing Task 14 keep-alive
+      `AudioContext` (`audioCtxRef`) - never a second context. A tick
+      (880Hz, 80ms) at each of the last 5 seconds, a distinct lower expire
+      tone (220Hz, 160ms) when time runs out; both wrapped in try/catch,
+      silently skipped if `audioCtxRef.current` is null. Hit and fixed a
+      real bug along the way: the first version put the tone calls inside
+      `setSecondsLeft((current) => {...})`'s functional-updater body -
+      React 18 StrictMode deliberately double-invokes that function in dev
+      to catch impure updaters, so every tick played twice. Fixed by
+      adding a `secondsLeftRef` mirror of `secondsLeft` (a plain ref
+      mutation, not subject to the double-invoke) that the ticking
+      interval now reads/writes directly, calling `setSecondsLeft(next)`
+      with a plain value and firing the tone calls from the interval's own
+      body, outside any updater - all 3 other `setSecondsLeft` call sites
+      (`handleQuestionShow`, `handleGameResumed`,
+      `handleStateSync`'s QUESTION case) route through a new
+      `applySecondsLeft()` helper so the ref never drifts from the
+      displayed value. Second issue found via the same browser test: the
+      expire tone almost never fired, because the server ends the round on
+      its OWN clock, and that authoritative `reveal:show` routinely beat
+      the client's local "seconds -> 0" tick across the network - the
+      interval's final tick (and its would-be expire tone) got cancelled
+      by the effect's cleanup (phase leaving QUESTION) before it ran.
+      Fixed by moving the expire-tone decision into `handleRevealShow`
+      itself: if `secondsLeftRef.current <= 1` when reveal arrives, time
+      genuinely ran out and the tone plays there instead; a still-high
+      leftover count means everyone answered early, and per spec no tone
+      plays for that case. **FIX 3:** new `/shared` event
+      `vip:reset_to_lobby` (empty payload). Server handler (right after
+      `vip:play_again`) is VIP-gated via `getVipRoomForSocket`, rejects if
+      `room.phase === 'LOBBY'` already, and otherwise just calls the
+      SAME `resetRoomForNewGame()` used by play_again (phase -> LOBBY,
+      `currentQuestionIndex = -1`, answers cleared, `clearActiveTimer` +
+      pause state cleared, every score zeroed, players and settings kept)
+      before broadcasting `phase:changed` and `lobby:update` - deliberately
+      NOT blocked by `room.paused`, since resetting must work mid-pause and
+      `resetRoomForNewGame` clears that state itself. `ControllerScreen`
+      gained a VIP-only `ResetToLobbyControl` component rendered right
+      after every `PauseControl` (question-answered, question-unanswered,
+      reveal, scoreboard views) - a first tap shows a confirm box
+      ("Σίγουρα; Θα μηδενιστούν όλοι οι βαθμοί.") with Ναι/Άκυρο buttons,
+      only the confirm button actually emits `vip:reset_to_lobby`; the
+      confirm state is local to the component instance so it resets for
+      free on any real phase change. **FIX 4:** a small dismissible
+      LOBBY-only hint on `HostScreen` - "Αν σβήνει η οθόνη: Ρυθμίσεις TV →
+      Eco / Εξοικονόμηση ενέργειας → Απενεργοποίηση" - gated by a
+      `powerHintDismissed` state flag, rendered after the existing waiting
+      message so it never competes with the room code or QR for
+      attention. Verified: (2/3) 5 staggered players (fastest-correct,
+      2nd, 3rd, wrong, never-answered) produced `results` in exactly
+      correct-by-speed → wrong → non-answered order with `answerRank`
+      1/2/3/null/null; (4) the player-facing payload carried
+      `yourAnswerRank`/`yourTimeMs` and no other player's data; (5) a
+      Playwright test instrumenting `window.AudioContext` (recording every
+      oscillator's frequency + start time) over a full 10s question
+      captured exactly 5 ticks at ~5.0/6.0/7.0/8.0/9.0s in and 1 expire
+      tone at ~10.0s, all after the StrictMode + race fixes above, plus
+      confirmed only 1 `AudioContext` instance ever gets created (the
+      reused keep-alive one); (6) zero tones recorded across an 8s pause
+      window, ticks resumed correctly after resume, and zero tones for a
+      question both players answered within under a second; (7) VIP
+      `vip:reset_to_lobby` mid-QUESTION returned both players to LOBBY
+      with scores back at 0 (confirmed via each player's next-round
+      `totalScore` equalling just that round's own points), both players
+      still present, settings preserved; (8) a non-VIP's
+      `vip:reset_to_lobby` was rejected (room state unchanged); (9) a
+      reset issued while `paused` produced a LOBBY that started and played
+      a normal, unfrozen new question immediately; (10) a full 10-question
+      game after a reset completed with zero stray events from the
+      abandoned game's old timers. A companion Playwright pass confirmed
+      the UI directly: the LOBBY power hint renders and dismisses on tap,
+      the reset control is VIP-only in every phase it should appear in and
+      invisible to non-VIP players throughout, a single tap opens the
+      confirm box without resetting anything, and confirming actually
+      returns the host screen to LOBBY. Production (`party-game.service`,
+      port 3001) was never touched - all testing ran against an isolated
+      dev instance on port 3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

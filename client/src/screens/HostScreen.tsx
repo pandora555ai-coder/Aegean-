@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
@@ -53,6 +53,10 @@ export default function HostScreen() {
   const [wakeLockFailed, setWakeLockFailed] = useState(false);
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
+  // A one-time dismissible hint, not tied to server state - purely local
+  // UI. Both Samsung and LG TVs sleep mid-game regardless of Wake Lock
+  // succeeding; the only real fix is a one-time TV setting.
+  const [powerHintDismissed, setPowerHintDismissed] = useState(false);
   // True from mount only when a stored room code exists - keeps the
   // "Create Room" button from flashing while a host:rejoin is in flight.
   const [isRejoining, setIsRejoining] = useState(() => !!getStoredHostRoomCode());
@@ -62,8 +66,21 @@ export default function HostScreen() {
   // Mirrors `phase` for the SAME reason - game:resumed needs to know which
   // of secondsLeft/revealSecondsLeft/scoreboardSecondsLeft to correct.
   const phaseRef = useRef<GamePhase>('LOBBY');
+  // Mirrors `secondsLeft` so the countdown-sound decision can be made from
+  // a plain setInterval callback instead of inside setSecondsLeft's
+  // functional updater - React 18 StrictMode deliberately double-invokes
+  // updater functions in dev to catch impure ones, which would double-fire
+  // any side effect (like playing a tone) placed inside one.
+  const secondsLeftRef = useRef(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const audioCtxRef = useRef<AudioContext | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Every call site that sets `secondsLeft` goes through this, so the ref
+  // never drifts from the displayed value.
+  function applySecondsLeft(value: number) {
+    secondsLeftRef.current = value;
+    setSecondsLeft(value);
+  }
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -124,7 +141,7 @@ export default function HostScreen() {
         setQuestion(payload);
         // A fresh question:show always means "just started" - nothing has
         // elapsed yet, so the full duration IS the correct countdown start.
-        setSecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
+        applySecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
         setAnswerProgress(null);
         setReveal(null);
         setScoreboard(null);
@@ -142,6 +159,18 @@ export default function HostScreen() {
         setReveal(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
+        // The expire tone can't safely be decided from inside the QUESTION
+        // countdown interval: the server ends the round on its OWN clock,
+        // and that authoritative end routinely beats the client's local
+        // "seconds -> 0" tick across the network, so the interval's final
+        // tick is often cancelled (its cleanup runs on this very phase
+        // change) before it gets a chance to fire. Deciding it here instead
+        // - a low leftover local count means time genuinely ran out; a
+        // still-high count means everyone answered early, and per spec no
+        // tone should play for that case.
+        if (secondsLeftRef.current <= 1) {
+          playCountdownExpire();
+        }
       }
     }
 
@@ -164,7 +193,7 @@ export default function HostScreen() {
       // rather than trusting wherever the local interval happened to freeze.
       const seconds = Math.ceil(payload.remainingMs / 1000);
       if (phaseRef.current === 'QUESTION') {
-        setSecondsLeft(seconds);
+        applySecondsLeft(seconds);
       } else if (phaseRef.current === 'REVEAL') {
         setRevealSecondsLeft(seconds);
       } else if (phaseRef.current === 'SCOREBOARD') {
@@ -204,7 +233,7 @@ export default function HostScreen() {
         case 'QUESTION':
           if (isQuestionShowHostPayload(payload)) {
             setQuestion(payload);
-            setSecondsLeft(Math.ceil(payload.remainingMs / 1000));
+            applySecondsLeft(Math.ceil(payload.remainingMs / 1000));
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -263,13 +292,28 @@ export default function HostScreen() {
   // was (per-second reset to the full/authoritative value happens
   // explicitly in handleQuestionShow/handleStateSync/handleGameResumed
   // above, not here, so a reconnect mid-question or mid-pause never gets
-  // clobbered back to the full duration).
+  // clobbered back to the full duration). Also drives the per-second tick
+  // sound: since this interval only runs while live (not paused) and stops
+  // the instant the phase changes away from QUESTION, a tick can only ever
+  // fire for a second that was genuinely, live-ly reached. The expire tone
+  // is handled separately in handleRevealShow (see its comment).
   useEffect(() => {
     if (phase !== 'QUESTION' || !question || paused) {
       return;
     }
     const interval = setInterval(() => {
-      setSecondsLeft((current) => Math.max(0, current - 1));
+      // Decrement via the ref, not a setState functional updater - React 18
+      // StrictMode double-invokes updater functions in dev to catch impure
+      // ones, which would double-fire the tone side effects below.
+      const current = secondsLeftRef.current;
+      const next = Math.max(0, current - 1);
+      secondsLeftRef.current = next;
+      setSecondsLeft(next); // plain value, immune to the double-invoke
+      // The expire tone is NOT fired from here - see the comment in
+      // handleRevealShow for why that decision lives there instead.
+      if (next >= 1 && next <= 5) {
+        playCountdownTick();
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, question?.questionIndex, paused]);
@@ -390,6 +434,42 @@ export default function HostScreen() {
     }
   }
 
+  // Countdown sounds - REUSE the keep-alive AudioContext from above rather
+  // than creating a second one; a brand-new oscillator+gain per beep is
+  // cheap and routine for the Web Audio API, only the AudioContext itself
+  // is the thing worth not duplicating.
+  function playTone(frequency: number, durationMs: number) {
+    const ctx = audioCtxRef.current;
+    if (!ctx) {
+      return; // no context (unsupported/blocked) - silently skip, best effort only
+    }
+    try {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      // Clearly audible but not harsh, and ramped out (not cut off) so it
+      // doesn't click.
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + durationMs / 1000);
+    } catch {
+      // Best effort - the game continues silently either way.
+    }
+  }
+
+  function playCountdownTick() {
+    playTone(880, 80); // short, high tick for each of the last 5 seconds
+  }
+
+  function playCountdownExpire() {
+    playTone(220, 160); // lower and slightly longer - clearly distinct "time's up"
+  }
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -475,8 +555,6 @@ export default function HostScreen() {
   }
 
   if (phase === 'REVEAL' && reveal && question) {
-    const sortedResults = [...reveal.results].sort((a, b) => b.totalScore - a.totalScore);
-
     return (
       <div style={styles.container}>
         {roomCode && (
@@ -510,16 +588,33 @@ export default function HostScreen() {
           ))}
         </div>
         <div style={styles.resultsList}>
-          {sortedResults.map((result) => (
-            <div key={result.playerId} style={styles.resultRow} data-testid="reveal-result">
-              <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
-                {result.correct ? '✓' : '✗'} {result.name}
-              </span>
-              <span style={styles.resultPoints}>
-                +{result.pointsAwarded} ({result.totalScore})
-              </span>
-            </div>
-          ))}
+          {/* Rendered in the order the server sent them - correct-by-speed,
+              then wrong, then non-answerers. Never re-sorted here. */}
+          {reveal.results.map((result, index) => {
+            const previous = reveal.results[index - 1];
+            const enteringWrongOrNoAnswer = !result.correct && (previous === undefined || previous.correct);
+            const isFastest = result.answerRank === 1;
+            return (
+              <Fragment key={result.playerId}>
+                {enteringWrongOrNoAnswer && <div style={styles.resultsDivider} data-testid="results-divider" />}
+                <div
+                  style={isFastest ? styles.resultRowFastest : styles.resultRow}
+                  data-testid="reveal-result"
+                  data-correct={result.correct}
+                  data-answer-rank={result.answerRank ?? ''}
+                >
+                  <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
+                    {result.correct
+                      ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`
+                      : `${result.timeMs !== null ? '✗' : '–'} ${result.name}`}
+                  </span>
+                  <span style={styles.resultPoints}>
+                    +{result.pointsAwarded} ({result.totalScore})
+                  </span>
+                </div>
+              </Fragment>
+            );
+          })}
         </div>
         <div style={styles.progressBarTrack} data-testid="reveal-progress">
           <div
@@ -697,6 +792,19 @@ export default function HostScreen() {
           ) : (
             <div data-testid="waiting-message" style={styles.waitingMessage}>
               Περιμένουμε παίκτες...
+            </div>
+          )}
+
+          {!powerHintDismissed && (
+            <div
+              style={styles.powerHint}
+              data-testid="power-hint"
+              onClick={() => setPowerHintDismissed(true)}
+              role="button"
+              tabIndex={0}
+            >
+              Αν σβήνει η οθόνη: Ρυθμίσεις TV → Eco / Εξοικονόμηση ενέργειας → Απενεργοποίηση{' '}
+              <span style={styles.powerHintDismiss}>✕</span>
             </div>
           )}
         </>
@@ -903,6 +1011,21 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     padding: '0.5rem 1rem',
   },
+  resultRowFastest: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '1.9rem',
+    fontWeight: 800,
+    padding: '0.6rem 1.25rem',
+    borderRadius: '0.75rem',
+    background: '#fef3c7',
+    border: '2px solid #f59e0b',
+  },
+  resultsDivider: {
+    height: '1px',
+    background: '#e5e7eb',
+    margin: '0.4rem 0',
+  },
   resultNameCorrect: {
     color: '#16a34a',
   },
@@ -976,6 +1099,16 @@ const styles: Record<string, CSSProperties> = {
   wakeLockHint: {
     fontSize: '0.9rem',
     color: '#999',
+  },
+  powerHint: {
+    fontSize: '0.85rem',
+    color: '#aaa',
+    textAlign: 'center',
+    cursor: 'pointer',
+    maxWidth: '32rem',
+  },
+  powerHintDismiss: {
+    fontWeight: 700,
   },
   progressBarTrack: {
     width: '100%',

@@ -10,6 +10,7 @@ export const ClientEvents = {
   VIP_UPDATE_SETTINGS: 'vip:update_settings',
   GAME_PAUSE: 'game:pause',
   GAME_RESUME: 'game:resume',
+  VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
 } as const;
 
 export const ServerEvents = {
@@ -220,6 +221,8 @@ export interface RevealPlayerResult {
   correct: boolean;
   pointsAwarded: number;
   totalScore: number;
+  timeMs: number | null; // their actual answer time - null if they didn't answer
+  answerRank: number | null; // 1-based position among CORRECT answers only, fastest first - null if wrong or no answer
 }
 
 // 'reveal:show' is asymmetric, like 'question:show': the host sees every
@@ -245,6 +248,8 @@ export interface RevealPlayerPayload {
   autoAdvanceMs: number;
   paused: boolean;
   pausedByName: string | null;
+  yourTimeMs: number | null;
+  yourAnswerRank: number | null; // 1-based among correct answers only - null if wrong or no answer
 }
 
 export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
@@ -290,6 +295,11 @@ export interface PausedPayload {
 export interface ResumedPayload {
   remainingMs: number; // the frozen time, now ticking again - never a full reset
 }
+
+// Sends everyone back to LOBBY mid-game (or from GAME_OVER) - reuses the
+// exact same reset as vip:play_again (scores to 0, fresh question set,
+// every timer and the pause state cleared), just triggerable earlier.
+export interface VipResetToLobbyPayload {}
 
 // Broadcast to the whole room whenever VIP moves - either the first player
 // claiming a vacant VIP slot, or a migration away from a disconnecting VIP.
@@ -370,6 +380,7 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
   [ClientEvents.GAME_PAUSE]: (payload: GamePausePayload) => void;
   [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
+  [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
 };
 
 export type ServerToClientEvents = {
