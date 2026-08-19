@@ -44,22 +44,75 @@ const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 // back to the same palette instead of introducing new hues. Deterministic
 // (index-derived, not Math.random) purely so a screenshot/test run is
 // reproducible - there's no gameplay reason it needs to be.
+//
+// Task 23: roughly tripled (24 -> 72) and given real variety - size,
+// rotation SPEED (not just a shared 540deg spin), and fall duration all
+// vary per piece now, not just horizontal position. A POSITIVE, short
+// stagger (0-1.1s, not the old negative "already mid-fall" trick) makes it
+// read as a launched BURST rather than an ambient drizzle that was already
+// running before you looked. Finite iteration count (2-3 falls) per piece
+// so it settles rather than raining for the entire GAME_OVER screen.
 const CONFETTI_COLORS = ['#d4af37', '#ef4444', '#3b82f6', '#eab308', '#22c55e'];
-const CONFETTI_PIECES = Array.from({ length: 24 }, (_, i) => {
-  const left = (i * 41.3) % 100;
-  const drift = ((i * 17) % 60) - 30;
-  const duration = 4.5 + ((i * 7) % 30) / 10;
-  const delay = -((i * 3.1) % duration); // negative delay -> already mid-fall on first paint
+const CONFETTI_COUNT = 72;
+const CONFETTI_PIECES = Array.from({ length: CONFETTI_COUNT }, (_, i) => {
+  const left = (i * 13.7) % 100;
+  const drift = ((i * 23) % 140) - 70;
+  const duration = 3.6 + ((i * 11) % 28) / 10; // 3.6s-6.4s
+  const delay = ((i * 47) % 110) / 100; // 0-1.09s - staggered burst-in
+  const spin = 320 + ((i * 67) % 760); // 320-1080deg, some spin much faster than others
+  const width = 0.45 + ((i * 7) % 6) / 10; // 0.45rem-1.05rem
+  const height = width * (1.3 + ((i * 3) % 4) / 10); // varied aspect ratio
+  const iterations = 2 + (i % 3); // 2-4 falls, then it settles
   return {
     id: i,
     style: {
       left: `${left}%`,
       backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      animationDuration: `${duration}s`,
-      animationDelay: `${delay}s`,
+      '--w': `${width}rem`,
+      '--h': `${height}rem`,
       '--drift': `${drift}px`,
-    } as CSSProperties & Record<'--drift', string>,
+      '--spin': `${spin}deg`,
+      '--duration': `${duration}s`,
+      '--delay': `${delay}s`,
+      '--iterations': String(iterations),
+    } as CSSVars,
   };
+});
+
+// Firework bursts for GAME_OVER - several radial particle bursts, staggered
+// across the first ~1.6s, positioned in the screen's side margins (never
+// the centred title/name/standings column) so they frame the winner
+// without ever obscuring it. Each particle's outward offset is computed
+// once here (its angle around the burst circle * a radius), not left to
+// CSS to guess - a plain radial spread, cheapest possible way to get a
+// convincing "burst" from a single shared @keyframes.
+const FIREWORK_ORIGINS = [
+  { x: 12, y: 22 },
+  { x: 88, y: 22 },
+  { x: 15, y: 62 },
+  { x: 85, y: 62 },
+];
+const PARTICLES_PER_BURST = 10;
+const FIREWORK_PARTICLES = FIREWORK_ORIGINS.flatMap((origin, burstIndex) => {
+  const burstDelay = burstIndex * 0.4; // 4 bursts, 400ms apart - all done within ~2.1s
+  return Array.from({ length: PARTICLES_PER_BURST }, (_, p) => {
+    const angle = (p / PARTICLES_PER_BURST) * 2 * Math.PI;
+    const radius = 85 + ((burstIndex + p) % 3) * 25; // px - a little size variety per particle
+    const fx = Math.cos(angle) * radius;
+    const fy = Math.sin(angle) * radius;
+    return {
+      id: `${burstIndex}-${p}`,
+      style: {
+        left: `${origin.x}%`,
+        top: `${origin.y}%`,
+        backgroundColor: CONFETTI_COLORS[(burstIndex + p) % CONFETTI_COLORS.length],
+        boxShadow: `0 0 6px 1px ${CONFETTI_COLORS[(burstIndex + p) % CONFETTI_COLORS.length]}`,
+        '--fx': `${fx}px`,
+        '--fy': `${fy}px`,
+        '--delay': `${burstDelay}s`,
+      } as CSSVars,
+    };
+  });
 });
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
@@ -320,7 +373,7 @@ export default function HostScreen() {
       // handlePhaseChanged's LOBBY branch, which re-arms this).
       clearStoredHostRoomCode();
       // The game can't be paused once it's over, so this always plays -
-      // the finale, timed with the confetti/light-rays entrance.
+      // the finale, timed with the confetti/firework entrance.
       playGameOverFanfare();
     }
 
@@ -737,8 +790,10 @@ export default function HostScreen() {
         {CONFETTI_PIECES.map((piece) => (
           <div key={piece.id} className="confetti-piece" aria-hidden="true" style={piece.style} />
         ))}
+        {FIREWORK_PARTICLES.map((particle) => (
+          <div key={particle.id} className="firework-particle" aria-hidden="true" style={particle.style} />
+        ))}
         <div style={styles.gameOverTitleWrap}>
-          <div className="light-rays" aria-hidden="true" />
           <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
           <div
             className="text-glow-gold gold-pulse enter-pop"
@@ -754,9 +809,7 @@ export default function HostScreen() {
             <div
               key={standing.playerId}
               data-testid="final-standing-row"
-              className={
-                standing.rank === 1 ? 'glow-pulse leader-shimmer enter-rise' : 'enter-rise'
-              }
+              className={standing.rank === 1 ? 'glow-pulse enter-rise' : 'enter-rise'}
               style={
                 standing.rank === 1
                   ? ({
@@ -921,14 +974,13 @@ export default function HostScreen() {
               "from the leader down". */}
           {sortedStandings.map((standing, index) => {
             const isLeader = standing.rank === 1 && standing.connected;
-            const rowClassName = isLeader ? 'enter-rise leader-shimmer' : 'enter-rise';
             return (
               <div
                 key={standing.playerId}
                 data-testid="standing-row"
                 data-connected={standing.connected}
                 data-leader={isLeader}
-                className={rowClassName}
+                className="enter-rise"
                 style={
                   !standing.connected
                     ? ({ ...styles.standingRowDisconnected, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
@@ -1155,9 +1207,10 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     background: 'var(--bg)',
     color: 'var(--text)',
-    // Stacks above the fixed .confetti-piece / .light-rays layers (both
-    // z-index: 0) regardless of DOM order. The light sweep this originally
-    // also stacked above was removed in Task 22.
+    // Stacks above the fixed .confetti-piece / .firework-particle layers
+    // (both z-index: 0) regardless of DOM order. The background light
+    // sweep this originally also stacked above (Task 21) was removed in
+    // Task 22; the GAME_OVER light rays (Task 21) were removed in Task 23.
     position: 'relative',
     zIndex: 1,
   },
@@ -1511,15 +1564,11 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: 'monospace',
   },
   gameOverTitleWrap: {
-    position: 'relative',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '1rem',
     padding: '1.5rem 0',
-    // Contains the absolutely-positioned .light-rays layer, which is
-    // clipped to this box rather than sprawling across the whole page.
-    overflow: 'hidden',
   },
   gameOverTitle: {
     position: 'relative',

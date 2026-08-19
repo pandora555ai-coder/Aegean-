@@ -964,6 +964,90 @@ Progress log for the party game build, task by task.
       touched - all testing ran against an isolated dev instance on port
       3099.
 
+- [x] **Task 23 — Fix the skip button's destination; bigger GAME_OVER
+      celebration** — DONE (10/10 acceptance criteria). **FIX 1:** described
+      as a bug ("Παράλειψη" from REVEAL always landing on SCOREBOARD, even
+      on questions the automatic pacing would have skipped it for) - live
+      re-verification found this ALREADY correct as of Task 22:
+      `server/src/index.ts`'s `advanceFromReveal` already makes the
+      skip-or-show decision via the single `shouldShowScoreboard(room)`
+      function, and `vip:next`'s REVEAL branch already calls
+      `advanceFromReveal(room.code)` directly - the exact same entry point
+      the REVEAL auto-advance timer uses
+      (`armActiveTimer(room, 'REVEAL', REVEAL_DURATION_MS, () =>
+      advanceFromReveal(room.code))`) - so the two literally cannot
+      disagree; there is only one code path. No server changes were made
+      for FIX 1 since none were needed; the acceptance criteria below were
+      still verified fresh rather than assumed. **FIX 2:** the GAME_OVER
+      light rays (Task 21) - not liked - removed outright, along with a
+      SECOND light-sweep effect the task's broader "remove any remaining
+      light-beam/sweep effects anywhere in the app" wording also caught:
+      `.leader-shimmer` (Task 21's scoreboard/game-over leader-row light
+      sweep), which its own code comment already described as "a soft
+      light sweep" - both `@keyframes rotate-rays`/`.light-rays` and
+      `@keyframes shimmer-sweep`/`.leader-shimmer` deleted from
+      `theme.css`, and every JSX usage (GAME_OVER's winner row, SCOREBOARD's
+      live leader row) dropped the class - the leader still reads clearly
+      via its EXISTING static gold border/background tint (and, for the
+      final winner only, the non-sweep `glow-pulse` breathing ring), so
+      nothing about "the leader stands out" was lost, only the moving beam.
+      Confetti (`client/src/screens/HostScreen.tsx`): count roughly tripled
+      (24 -> 72, `CONFETTI_COUNT`), and every piece now varies independently
+      in size (`--w`/`--h`, 0.45-1.05rem), rotation SPEED (`--spin`,
+      320-1080deg - previously every piece spun the same fixed 540deg),
+      and fall duration (3.6-6.4s) via inline CSS custom properties read by
+      ONE shared `@keyframes confetti-fall`. The old "negative animation-
+      delay so it's already mid-fall on first paint" trick (built for an
+      AMBIENT drizzle) was replaced with a short POSITIVE stagger (0-1.09s)
+      so pieces genuinely burst in together rather than looking like they'd
+      already been falling before the screen even appeared. Each piece now
+      has a FINITE `animation-iteration-count` (2-4, varied per piece so
+      they don't all stop in lockstep) with `animation-fill-mode: both` -
+      settles into its own already-`opacity:0` end state cleanly instead of
+      looping forever or freezing visible. New: `FIREWORK_PARTICLES` - 4
+      radial bursts (`FIREWORK_ORIGINS`, 10 particles each = 40 total),
+      positioned in the screen's left/right MARGINS at two heights, never
+      the centred title/name/standings column, so they frame the winner
+      without any chance of overlapping it. Each particle's outward
+      offset (`--fx`/`--fy`) is plain trigonometry computed once per
+      particle (angle = its position around the burst circle, radius
+      85-135px) - a `@keyframes firework-particle` animates from the
+      shared origin out to that offset while shrinking/fading, `1 forwards`
+      (one-shot, holds invisible after) - genuinely finite, never loops.
+      Bursts stagger 400ms apart so all 4 finish within ~2.1s of GAME_OVER,
+      "the first few seconds" per spec. Total simultaneous elements: 72
+      confetti + 40 firework = 112, under the ~120 cap the task set.
+      Verified: (1) `npm run typecheck` clean across all 3 workspaces; (2)
+      cited above - `shouldShowScoreboard` is the one function, called from
+      both `armActiveTimer(..., () => advanceFromReveal(...))` and
+      `vip:next`'s REVEAL branch; (3) skipped from REVEAL on questions 1,
+      2, 4, 5, 7, 8 (every non-scoreboard question in a 10-question game) -
+      every one landed directly on the next QUESTION, no scoreboard; (4)
+      skipped from REVEAL on questions 3, 6, 9, and the final question 10 -
+      every one landed on SCOREBOARD (10 additionally required a second
+      skip, from SCOREBOARD, to confirm it still reaches GAME_OVER
+      correctly afterward); (5) an instrumented `window.AudioContext`
+      confirmed the QUESTION START cue fired EXACTLY once on the
+      skipped-into question for all 9 skip transitions checked; (6)
+      grepped the whole client source for `light-rays`/`leader-shimmer`/
+      `shimmer-sweep`/`rotate-rays`/"light beam" - zero matches anywhere -
+      and confirmed `document.querySelectorAll('.light-rays' /
+      '.leader-shimmer').length === 0` live at GAME_OVER; (7) screenshotted
+      GAME_OVER - enlarged, varied confetti mid-burst, a firework's fading
+      tail visible, winner name and both final-standings rows fully legible
+      throughout; (8) peak simultaneous animating elements: 112 (72
+      confetti + 40 firework), and the union of every CSS property touched
+      by every currently-running animation was exactly `["transform",
+      "opacity"]`; (9) all 40 firework-particle animations reported
+      `iterations: 1` (Web Animations API `effect.getTiming()`), and all 72
+      confetti-fall animations reported finite iteration counts (2-4, never
+      `Infinity`); (10) `page.emulateMedia({reducedMotion: 'reduce'})` -
+      confetti and firework elements both computed `display: none`,
+      `document.getAnimations().length` was 0, and the winner banner +
+      standings stayed fully present and readable, screenshotted.
+      Production (`party-game.service`, port 3001) was never touched - all
+      testing ran against an isolated dev instance on port 3099.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED
