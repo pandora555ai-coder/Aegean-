@@ -205,6 +205,11 @@ export interface QuestionShowHostPayload {
   // which reuses this same shape, for a player/TV reconnecting mid-pause.
   paused: boolean;
   pausedByName: string | null;
+  // Game Master (Task 24) - HOST ONLY, the phones never show commentary.
+  // A short, one-off line shown briefly as the question appears, then
+  // fades - never delays the question/answer buttons. null on rare games
+  // where every applicable line pool happened to already be exhausted.
+  gmIntro: string | null;
 }
 
 export interface QuestionShowPlayerPayload {
@@ -258,6 +263,12 @@ export interface RevealHostPayload {
   autoAdvanceMs: number; // so clients can render a progress bar
   paused: boolean;
   pausedByName: string | null;
+  // Game Master (Task 24) - HOST ONLY, the phones never show commentary.
+  // The single highest-priority "moment" line for this round, already
+  // rendered (placeholders substituted, player names sanitised/truncated
+  // server-side). null on rare games where every applicable line pool
+  // happened to already be exhausted.
+  gmLine: string | null;
 }
 
 export interface RevealPlayerPayload {

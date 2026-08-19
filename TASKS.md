@@ -1048,6 +1048,74 @@ Progress log for the party game build, task by task.
       Production (`party-game.service`, port 3001) was never touched - all
       testing ran against an isolated dev instance on port 3099.
 
+- [x] **Task 24 — Game Master: a teasing commentator that reacts to what
+      actually happens in the game** — DONE (10/10 acceptance criteria).
+      New module `server/src/gamemaster.ts`, fully synchronous and
+      side-effect-free, tracks per-player/per-room state (correctStreak,
+      wrongStreak, fastestAnswerCount, previousRank, timesInLast,
+      noAnswerCount, totalCorrect, totalRounds) and detects 23 total
+      "moments" - 19 fired after scoring each question (7 HIGH:
+      EVERYONE_WRONG, ONLY_ONE_CORRECT, EVERYONE_CORRECT, BIG_COMEBACK,
+      LEAD_CHANGE, HOT_STREAK_5, PERFECT_GAME_PACE; 9 MEDIUM:
+      HOT_STREAK_3, STREAK_BROKEN, SPEED_DEMON, EASY_MISS, HARD_HIT,
+      COLD_STREAK_3, NO_ANSWER, STUCK_IN_LAST, plus the floor
+      GENERIC_TRANSITION at LOW alongside FASTEST_THIS_ROUND,
+      CLOSE_SCORES, RUNAWAY_LEAD) and 4 fired right as a question appears
+      (FINAL_QUESTION, HALFWAY_POINT, CATEGORY_CALLOUT, GENERIC_INTRO).
+      146 Greek lines total (≥6 per moment), selected via a priority-sorted
+      candidate list with a 3-question-per-player targeting cooldown (HIGH
+      priority bypasses it) and a whole-game never-repeat `Set`.
+      Player names are sanitized (`<>&` stripped) and truncated to 12 chars
+      before substitution - defense-in-depth, since the join layer already
+      enforces `MAX_NAME_LENGTH=12`. `gmIntro`/`gmLine` were added to
+      `QuestionShowHostPayload`/`RevealHostPayload` only (shared/src/index.ts)
+      - the pre-existing host/player asymmetry pattern (Task 11) extends
+      unchanged, so phones never receive these fields at all, not just
+      `null`. **Bug found and fixed during testing:** a fresh player's
+      `lastTargetedAtQuestionIndex` initialized to `-1`, so at
+      `questionIndex` 0 or 1, `questionIndex - (-1) < 3` was always true -
+      every never-yet-targeted player looked like they were already on
+      cooldown, silently suppressing every MEDIUM/LOW moment for the first
+      two questions of every game. Fixed by initializing to `-Infinity`.
+      Verified: (1) `npm run typecheck` clean across all 3 workspaces; (2)
+      23 moments implemented, 146 lines written, every moment confirmed
+      with ≥6 lines via a script iterating the exported `LINES`/
+      `INTRO_LINES` pools; (3) a simulated 10-question/4-player game
+      produced 10 varied, correctly-toned `gmLine`/`gmIntro` values -
+      pasted in full during review; (4) each of the 7 HIGH moments forced
+      individually via hand-built scenarios careful to avoid accidentally
+      also satisfying a DIFFERENT same-priority HIGH moment (e.g. a
+      BIG_COMEBACK scenario with only 1 correct answer that round would
+      also trigger ONLY_ONE_CORRECT, which wins the same-priority tie by
+      insertion order) - all 7 produced their own distinct, correct line;
+      (5) a 20-question/4-player run produced zero duplicate lines; (6) a
+      player stuck in last place every single round was targeted by name
+      in only 2 of 12 rounds (cooldown working; ≤4 possible with a
+      3-question gate); (7) live Socket.IO test against an isolated dev
+      instance (port 3099/5199) - a player's captured `question:show`/
+      `reveal:show` payloads were pasted showing `gmIntro`/`gmLine` are
+      structurally ABSENT keys (`'gmIntro' in payload` / `'gmLine' in
+      payload` both `false`), not merely `null`; (8) longest rendered line
+      across every moment with worst-case 12-char names: 73 characters,
+      under the 90 limit; (9) live-measured phase durations: QUESTION
+      phase (`question:show` -> `reveal:show`) matched the configured
+      `questionTimeMs` (10000ms) to within ~10ms jitter across 6 questions;
+      REVEAL phase (`reveal:show` -> next `question:show`) matched
+      `REVEAL_DURATION_MS` (6000ms) to within ~10ms on every question
+      except the one where Task 22's pre-existing periodic SCOREBOARD
+      (`SCOREBOARD_EVERY_N_QUESTIONS`) interposed, adding its own
+      pre-existing `SCOREBOARD_DURATION_MS` (4000ms) - accounted for, not
+      a new Game-Master-induced delay; (10) a player joined live with the
+      name `<script>xx` and deliberately never answered (triggering
+      NO_ANSWER); the resulting host-only `gmLine` read
+      `"scriptxx αποφάσισε να μην παίξει καθόλου. Θάρρος."` - `<`/`>`
+      stripped, no raw tag anywhere in the line, name well under the
+      12-char cap so truncation itself was separately confirmed via a
+      pure-logic unit run with a 27-char name (rendered output did not
+      contain the untruncated name). Production (`party-game.service`,
+      port 3001) was never touched - all live testing ran against an
+      isolated dev instance on port 3099/5199.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

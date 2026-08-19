@@ -847,6 +847,18 @@ export default function HostScreen() {
         <div style={styles.progress}>
           Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
         </div>
+        {/* Game Master (Task 24) - HOST ONLY. Plain block flow, not an
+            overlay, so it can never cover the results or the correct
+            answer - it just takes its own line, pushing the rest down a
+            little. Conditionally rendered (not a fixed-height placeholder)
+            so a null gmLine (rare - only if every applicable line pool
+            happened to already be exhausted this game) leaves no empty
+            gap; in normal play gmLine is essentially always present. */}
+        {reveal.gmLine && (
+          <div className="enter-pop" style={styles.gmLineBanner} data-testid="gm-line">
+            {reveal.gmLine}
+          </div>
+        )}
         {/* Running standings stay glanceable during REVEAL - a compact strip,
             not the full SCOREBOARD phase, so skipping SCOREBOARD (Task 22)
             never loses information. Sorted client-side straight from
@@ -1028,6 +1040,18 @@ export default function HostScreen() {
           <div style={styles.pauseOverlay} data-testid="pause-overlay">
             <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
             <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
+          </div>
+        )}
+        {/* Game Master (Task 24) - HOST ONLY, briefly shown then fades on
+            its own via CSS (gm-intro-fade, see theme.css) - no JS timer, so
+            it can never delay anything else on this screen. The player
+            side's answer buttons are unaffected regardless, since gmIntro
+            is never even sent in the player payload. Conditionally
+            rendered, same reasoning as gmLine on REVEAL - no gap when
+            null. */}
+        {question.gmIntro && (
+          <div className="gm-intro-fade" style={styles.gmIntroBanner} data-testid="gm-intro">
+            {question.gmIntro}
           </div>
         )}
         <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
@@ -1445,6 +1469,33 @@ const styles: Record<string, CSSProperties> = {
     marginLeft: 'auto',
     fontWeight: 800,
     color: 'var(--text-dim)',
+  },
+  gmLineBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '0.6rem 1.5rem',
+    borderRadius: '0.75rem',
+    background: 'rgba(212, 175, 55, 0.12)',
+    border: '2px solid var(--gold)',
+    color: 'var(--gold)',
+    fontSize: '1.35rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    width: '100%',
+    maxWidth: '900px',
+  },
+  gmIntroBanner: {
+    padding: '0.5rem 1.25rem',
+    borderRadius: '0.75rem',
+    background: 'rgba(212, 175, 55, 0.12)',
+    border: '2px solid var(--gold)',
+    color: 'var(--gold)',
+    fontSize: '1.15rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    maxWidth: '700px',
   },
   revealStandingsStrip: {
     display: 'flex',

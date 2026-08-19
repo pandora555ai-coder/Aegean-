@@ -62,6 +62,7 @@ import {
   type Room,
 } from './rooms.js';
 import { calculatePoints } from './scoring.js';
+import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,6 +199,7 @@ function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
+    gmLine: room.lastReveal.gmLine,
   };
 }
 
@@ -267,6 +269,14 @@ function startQuestion(room: Room): void {
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
 
+  // Game Master (Task 24): pure/synchronous, so this can never delay the
+  // question or answer buttons appearing. Host-only, per spec.
+  const gmIntro = pickQuestionIntro(room.gameMaster, {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions,
+    category: question.category,
+  });
+
   const hostPayload: QuestionShowHostPayload = {
     questionIndex: room.currentQuestionIndex,
     totalQuestions,
@@ -276,6 +286,7 @@ function startQuestion(room: Room): void {
     questionTimeMs,
     paused: room.paused,
     pausedByName: room.pausedByName,
+    gmIntro,
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
@@ -310,12 +321,28 @@ function endQuestion(code: RoomCode): void {
   const connectedPlayers = getConnectedPlayers(room);
   const questionTimeMs = room.settings.questionTimeMs;
 
+  // Game Master (Task 24) needs scoreBefore/scoreAfter and whether they
+  // answered at all - built alongside `results` (same loop, same source
+  // data) rather than recomputed from it afterward.
+  const gmInputs: GmPlayerRoundInput[] = [];
+
   const results: RevealPlayerResult[] = connectedPlayers.map((player) => {
     const recorded = room.answers.get(player.playerId);
     const choice = recorded ? recorded.choice : null;
     const correct = choice === question.correctIndex;
     const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs);
+    const scoreBefore = player.score;
     player.score += pointsAwarded;
+
+    gmInputs.push({
+      playerId: player.playerId,
+      name: player.name,
+      answered: choice !== null,
+      correct,
+      answerRank: null, // filled in below, once sortAndRankResults has computed it
+      scoreBefore,
+      scoreAfter: player.score,
+    });
 
     return {
       playerId: player.playerId,
@@ -333,6 +360,10 @@ function endQuestion(code: RoomCode): void {
   // (join) order made no sense to anyone once there were 7 players in the
   // room. Also fills in each correct answer's 1-based speed rank.
   sortAndRankResults(results);
+  const answerRankByPlayerId = new Map(results.map((result) => [result.playerId, result.answerRank]));
+  for (const gmInput of gmInputs) {
+    gmInput.answerRank = answerRankByPlayerId.get(gmInput.playerId) ?? null;
+  }
 
   const answerCounts = [0, 0, 0, 0];
   for (const result of results) {
@@ -343,12 +374,19 @@ function endQuestion(code: RoomCode): void {
 
   const correctOption = question.options[question.correctIndex];
 
+  // Pure/synchronous - can never delay the REVEAL broadcast that follows.
+  const gmLine = recordRoundAndPickLine(room.gameMaster, gmInputs, {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    difficulty: question.difficulty,
+  });
+
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
   // Snapshot so a player who reconnects mid-REVEAL can be caught up via
   // state:sync without recomputing (or re-scoring) anything.
-  room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts };
+  room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts, gmLine };
 
   const hostPayload = buildRevealHostPayload(room);
   if (hostPayload && room.hostSocketId) {
@@ -555,6 +593,12 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         remainingMs: remainingActiveTimerMs(room),
         paused: room.paused,
         pausedByName: room.pausedByName,
+        // Never re-picked here - the intro's whole reason to exist is the
+        // ENTRANCE as the question first appears, which a reconnecting
+        // host already missed. The REVEAL commentary below, by contrast,
+        // DOES persist and catch a reconnect up (it reuses
+        // buildRevealHostPayload, same as the live broadcast).
+        gmIntro: null,
       };
     }
     case 'REVEAL': {

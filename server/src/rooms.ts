@@ -13,6 +13,7 @@ import {
   QUESTION_TIME_OPTIONS_MS,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
+import { createGameMasterState, resetGameMasterState, type GameMasterState } from './gamemaster.js';
 
 export interface RecordedAnswer {
   choice: number;
@@ -27,6 +28,10 @@ export interface RevealSnapshot {
   correctOption: string;
   results: RevealPlayerResult[];
   answerCounts: number[];
+  // Game Master (Task 24) - computed once, alongside the rest of this
+  // snapshot, at the moment REVEAL begins - so a reconnecting host gets the
+  // SAME line via state:sync, never a freshly (and differently) picked one.
+  gmLine: string | null;
 }
 
 // A room is deleted only once it's been fully empty - no host/TV display
@@ -84,6 +89,10 @@ export interface Room {
   // Armed only while the room is fully empty (see refreshRoomTtl); cleared
   // the instant anyone (host display or player) reattaches.
   emptyTtlTimer: NodeJS.Timeout | null;
+  // Game Master (Task 24) - per-player streak/rank/cooldown tracking plus
+  // every line already used this game, so commentary never repeats itself
+  // and never roasts the same player every single round.
+  gameMaster: GameMasterState;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -128,6 +137,7 @@ export function createRoom(hostSocketId: string): Room {
     pausedByName: null,
     pausedAt: null,
     emptyTtlTimer: null,
+    gameMaster: createGameMasterState(),
   };
 
   rooms.set(code, room);
@@ -415,6 +425,9 @@ export function resetRoomForNewGame(room: Room): void {
   room.pausedByName = null;
   room.pausedAt = null;
   room.lastReveal = null;
+  // A fresh game means fresh commentary too - no streaks/cooldowns/used
+  // lines carried over from the game that just ended.
+  resetGameMasterState(room.gameMaster);
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).
