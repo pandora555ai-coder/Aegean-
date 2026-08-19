@@ -11,6 +11,7 @@ export const ClientEvents = {
   GAME_PAUSE: 'game:pause',
   GAME_RESUME: 'game:resume',
   VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
+  ROOM_PEEK: 'room:peek',
 } as const;
 
 export const ServerEvents = {
@@ -32,6 +33,7 @@ export const ServerEvents = {
   SETTINGS_UPDATED: 'settings:updated',
   GAME_PAUSED: 'game:paused',
   GAME_RESUMED: 'game:resumed',
+  ROOM_PEEK_RESULT: 'room:peek_result',
 } as const;
 
 export type RoomCode = string;
@@ -39,6 +41,97 @@ export type RoomCode = string;
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
 export const MIN_PLAYERS = 2;
+
+// ~150 common Greek first names, roughly balanced masculine/feminine,
+// including short forms people actually go by (Μάκης, Τάκης, Ρούλα,
+// Τούλα). Offered as a scrollable/searchable preset list in the join flow
+// (Task 26) - "Άλλο όνομα" falls back to free text for anyone not on it.
+// A name is considered "preset" (see Player.isPresetName) iff it appears
+// here verbatim - computed server-side, never trusted from the client.
+export const PRESET_NAMES: readonly string[] = [
+  // masculine
+  'Γιώργος', 'Νίκος', 'Δημήτρης', 'Γιάννης', 'Κώστας', 'Χρήστος', 'Βασίλης', 'Παναγιώτης',
+  'Μιχάλης', 'Θανάσης', 'Ανδρέας', 'Αντώνης', 'Σπύρος', 'Θόδωρος', 'Στέλιος', 'Στέφανος',
+  'Άγγελος', 'Αλέξανδρος', 'Απόστολος', 'Αριστείδης', 'Γρηγόρης', 'Δημοσθένης', 'Ελευθέριος',
+  'Εμμανουήλ', 'Ευάγγελος', 'Ζήσης', 'Ηλίας', 'Θεόδωρος', 'Ιάσονας', 'Ιωάννης', 'Κλέαρχος',
+  'Κυριάκος', 'Λάμπρος', 'Λεωνίδας', 'Μάριος', 'Μενέλαος', 'Νεκτάριος', 'Ξενοφών', 'Οδυσσέας',
+  'Ορέστης', 'Παναγής', 'Παύλος', 'Περικλής', 'Πέτρος', 'Πλάτωνας', 'Πολύκαρπος', 'Σάββας',
+  'Σεραφείμ', 'Σίμος', 'Σταμάτης', 'Σωτήρης', 'Τάσος', 'Τρύφωνας', 'Φίλιππος', 'Φώτης',
+  'Χαράλαμπος', 'Ιάκωβος', 'Ματθαίος', 'Μάρκος', 'Λουκάς', 'Ραφαήλ', 'Γαβριήλ', 'Μιλτιάδης',
+  'Αχιλλέας', 'Διονύσης', 'Νικηφόρος', 'Θεοφάνης', 'Ευστάθιος', 'Κοσμάς', 'Παρασκευάς',
+  'Μάκης', 'Τάκης', 'Πάνος', 'Γιωργάκης', 'Δημητράκης', 'Βαγγέλης', 'Θύμιος', 'Λευτέρης',
+  'Μανώλης', 'Ορφέας',
+  // feminine
+  'Μαρία', 'Ελένη', 'Κατερίνα', 'Σοφία', 'Άννα', 'Βασιλική', 'Δήμητρα', 'Ειρήνη', 'Αικατερίνη',
+  'Παναγιώτα', 'Γεωργία', 'Χριστίνα', 'Αγγελική', 'Αναστασία', 'Ευαγγελία', 'Θεοδώρα', 'Ιωάννα',
+  'Κωνσταντίνα', 'Μαργαρίτα', 'Νικολέτα', 'Ξένια', 'Ολυμπία', 'Παρασκευή', 'Ρωξάνη', 'Σταματία',
+  'Φωτεινή', 'Χαρίκλεια', 'Ζωή', 'Ηλέκτρα', 'Θάλεια', 'Ιουλία', 'Καλλιόπη', 'Λαμπρινή', 'Μελίνα',
+  'Μυρτώ', 'Νεφέλη', 'Ουρανία', 'Πηνελόπη', 'Ραφαέλα', 'Στέλλα', 'Τατιάνα', 'Φιλίτσα', 'Αφροδίτη',
+  'Άρτεμις', 'Δανάη', 'Ελισάβετ', 'Ζωίτσα', 'Θεανώ', 'Κυριακή', 'Λυδία', 'Μαρίνα', 'Ναταλία',
+  'Πολυξένη', 'Ρέα', 'Σεβαστή', 'Τερψιχόρη', 'Υπατία', 'Φανή', 'Χρυσή', 'Άλκηστη', 'Βέρα',
+  'Γιώτα', 'Δέσποινα', 'Ελπίδα', 'Ζαχαρούλα', 'Ρούλα', 'Τούλα', 'Λένα', 'Νίκη', 'Μάρω', 'Λίνα',
+  'Βίκυ', 'Ντίνα', 'Ζωζώ', 'Φρόσω', 'Ασπασία', 'Ασημίνα', 'Ερασμία', 'Θεοδοσία', 'Καλλιρόη',
+  'Μαρκέλλα', 'Ξανθίππη', 'Παρθένα', 'Σμαράγδα', 'Χρυσάνθη',
+];
+
+export interface AvatarDefinition {
+  id: string;
+  filename: string; // relative to /avatars/ - lowercase PNG
+  name: string; // Greek display name
+}
+
+// The FULL mythological creature catalogue (Task 26) - every entry the
+// design calls for, whether or not its image file has actually landed in
+// client/public/avatars/ yet. This list never needs to grow when an image
+// is added; it only grows when a genuinely NEW creature is designed. See
+// server/src/avatars.ts (AVAILABLE_AVATAR_IDS) and
+// client/src/hooks/useAvailableAvatars.ts for the two independent,
+// filesystem/image-probe-driven mechanisms that narrow this catalogue down
+// to "actually offerable right now" without either of THEM ever needing a
+// code change either, as more files land.
+export const AVATAR_CATALOGUE: readonly AvatarDefinition[] = [
+  { id: 'minotaur', filename: 'minotaur.png', name: 'Μινώταυρος' },
+  { id: 'medusa', filename: 'medusa.png', name: 'Μέδουσα' },
+  { id: 'cyclops', filename: 'cyclops.png', name: 'Κύκλωπας' },
+  { id: 'centaur', filename: 'centaur.png', name: 'Κένταυρος' },
+  { id: 'sphinx', filename: 'sphinx.png', name: 'Σφίγγα' },
+  { id: 'pegasus', filename: 'pegasus.png', name: 'Πήγασος' },
+  { id: 'cerberus', filename: 'cerberus.png', name: 'Κέρβερος' },
+  { id: 'satyr', filename: 'satyr.png', name: 'Σάτυρος' },
+  { id: 'siren', filename: 'siren.png', name: 'Σειρήνα' },
+  { id: 'chimera', filename: 'chimera.png', name: 'Χίμαιρα' },
+  { id: 'hydra', filename: 'hydra.png', name: 'Ύδρα' },
+  { id: 'griffin', filename: 'griffin.png', name: 'Γρύπας' },
+  { id: 'phoenix', filename: 'phoenix.png', name: 'Φοίνικας' },
+  { id: 'triton', filename: 'triton.png', name: 'Τρίτωνας' },
+  { id: 'nymph', filename: 'nymph.png', name: 'Νύμφη' },
+  { id: 'titan', filename: 'titan.png', name: 'Τιτάνας' },
+  { id: 'charon', filename: 'charon.png', name: 'Χάρων' },
+  { id: 'harpy', filename: 'harpy.png', name: 'Άρπυια' },
+  { id: 'dryad', filename: 'dryad.png', name: 'Δρυάδα' },
+  { id: 'nereid', filename: 'nereid.png', name: 'Νηρηίδα' },
+  { id: 'gorgon', filename: 'gorgon.png', name: 'Γοργόνα' },
+  { id: 'lamia', filename: 'lamia.png', name: 'Λάμια' },
+  { id: 'kallikantzaros', filename: 'kallikantzaros.png', name: 'Καλλικάντζαρος' },
+  { id: 'drakos', filename: 'drakos.png', name: 'Δράκος' },
+] as const;
+
+// The ONLY free-text field in the whole app (a custom player name - every
+// other piece of player identity is a pick from a closed list). Strips
+// anything that isn't a Greek/Latin letter or whitespace via the Unicode
+// Script property (catches digits, emoji, punctuation, HTML-tag-like
+// characters, everything), collapses repeated whitespace, trims, and caps
+// at MAX_NAME_LENGTH. Both the client (as-you-type) and the server
+// (defense in depth - never trust the client) call this exact function,
+// so the two can never drift apart on what counts as "clean".
+const CUSTOM_NAME_STRIP_PATTERN = /[^\p{Script=Greek}\p{Script=Latin}\s]/gu;
+export function sanitizeCustomName(input: string): string {
+  return input
+    .replace(CUSTOM_NAME_STRIP_PATTERN, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME_LENGTH);
+}
 export const BASE_POINTS = 1000;
 export const SPEED_BONUS_MAX = 500;
 export const REVEAL_DURATION_MS = 6000;
@@ -79,18 +172,42 @@ export interface HostRejoinPayload {
   code: RoomCode;
 }
 
-export type JoinRejectedReason = 'ROOM_NOT_FOUND' | 'NAME_TAKEN' | 'ROOM_FULL' | 'INVALID_NAME';
+// NAME_TAKEN is gone (Task 26) - names may repeat now that identity is
+// name+avatar together, not name alone. AVATAR_TAKEN/INVALID_AVATAR cover
+// the new uniqueness/validity checks on the other half of that pair.
+export type JoinRejectedReason = 'ROOM_NOT_FOUND' | 'ROOM_FULL' | 'INVALID_NAME' | 'INVALID_AVATAR' | 'AVATAR_TAKEN';
+
+// A read-only "is this room joinable, and which avatars are already
+// claimed" lookup - fired from the room-code step of the join flow, BEFORE
+// player:join, so the avatar grid can grey out taken creatures up front
+// instead of only discovering a clash via JOIN_REJECTED after the fact.
+// Deliberately minimal (no player list, no settings) - this socket hasn't
+// joined the room yet and isn't owed anything beyond "can I join, and with
+// which avatar". The eventual player:join is still the sole source of
+// truth (this is a best-effort UI hint, not a reservation).
+export interface RoomPeekPayload {
+  code: RoomCode;
+}
+
+export interface RoomPeekResultPayload {
+  code: RoomCode;
+  found: boolean;
+  takenAvatarIds: string[];
+}
 
 export interface PlayerJoinPayload {
   code: RoomCode;
   name: string;
   playerId: string;
+  avatarId: string;
 }
 
 export interface PlayerJoinedPayload {
   playerId: string;
   name: string;
   code: RoomCode;
+  avatarId: string;
+  isPresetName: boolean;
 }
 
 export interface JoinRejectedPayload {
@@ -107,6 +224,12 @@ export interface Player {
   score: number;
   /** Tied to playerId, not socketId - survives reconnects/refreshes. */
   isVip: boolean;
+  /** One of AVATAR_CATALOGUE's ids - unique per room, kept across reconnects. */
+  avatarId: string;
+  /** True iff `name` came verbatim from PRESET_NAMES - computed server-side
+   *  at join time, never trusted from the client. Task 25 (TTS) will use
+   *  this to pick pre-generated audio vs. live synthesis for spoken names. */
+  isPresetName: boolean;
 }
 
 /** Player as seen by clients - never includes socketId, which is server-internal only. */
@@ -115,6 +238,7 @@ export interface LobbyPlayer {
   name: string;
   connected: boolean;
   isVip: boolean;
+  avatarId: string;
 }
 
 export interface LobbyUpdatePayload {
@@ -245,6 +369,7 @@ export interface AnswerProgressPayload {
 export interface RevealPlayerResult {
   playerId: string;
   name: string;
+  avatarId: string;
   choice: number | null; // null = did not answer
   correct: boolean;
   pointsAwarded: number;
@@ -297,6 +422,7 @@ export interface VipNextPayload {}
 export interface ScoreboardStanding {
   playerId: string;
   name: string;
+  avatarId: string;
   score: number;
   rank: number; // tied scores share the same rank (1,1,3 - not 1,2,3)
   connected: boolean;
@@ -345,6 +471,7 @@ export interface VipChangedPayload {
 export interface GameOverStanding {
   playerId: string;
   name: string;
+  avatarId: string;
   score: number;
   rank: number;
 }
@@ -415,6 +542,7 @@ export type ClientToServerEvents = {
   [ClientEvents.GAME_PAUSE]: (payload: GamePausePayload) => void;
   [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
   [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
+  [ClientEvents.ROOM_PEEK]: (payload: RoomPeekPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -436,4 +564,5 @@ export type ServerToClientEvents = {
   [ServerEvents.SETTINGS_UPDATED]: (payload: SettingsUpdatedPayload) => void;
   [ServerEvents.GAME_PAUSED]: (payload: PausedPayload) => void;
   [ServerEvents.GAME_RESUMED]: (payload: ResumedPayload) => void;
+  [ServerEvents.ROOM_PEEK_RESULT]: (payload: RoomPeekResultPayload) => void;
 };

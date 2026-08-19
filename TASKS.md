@@ -1116,6 +1116,97 @@ Progress log for the party game build, task by task.
       port 3001) was never touched - all live testing ran against an
       isolated dev instance on port 3099/5199.
 
+- [x] **Task 26 — Player identity: preset Greek names, custom name
+      fallback, mythological avatars** — DONE (10/10 acceptance criteria).
+      `shared/src/index.ts` gained `PRESET_NAMES` (165 common Greek first
+      names, masculine/feminine balanced, including short forms like
+      Μάκης/Τάκης/Ρούλα/Τούλα), `AVATAR_CATALOGUE` (all 24 designed
+      creatures - id/filename/Greek name), and `sanitizeCustomName()` (the
+      ONE free-text validator, used identically by both client-as-you-type
+      and server defense-in-depth: strips anything outside
+      `\p{Script=Greek}`/`\p{Script=Latin}`/whitespace via a Unicode
+      Script-property regex, collapses whitespace, trims, caps at
+      `MAX_NAME_LENGTH`). `Player` gained `avatarId` and `isPresetName`
+      (computed server-side via `PRESET_NAMES.includes(...)`, never
+      trusted from the client - prep for Task 25's TTS voice/pre-generated
+      split). Names may now repeat (`NAME_TAKEN` removed); avatars may
+      not, enforced via new `AVATAR_TAKEN`/`INVALID_AVATAR` rejections.
+      **Availability, not a hardcoded list:** only 7 of 24 avatar images
+      exist yet - `server/src/avatars.ts` computes `AVAILABLE_AVATAR_IDS`
+      by `fs.readdirSync`-ing the real avatars directory once at startup
+      and cross-referencing the catalogue, and the client's
+      `useAvailableAvatars()` hook independently probes each catalogue
+      image via a plain `<img>` load. Neither mechanism needs a code
+      change as more files land - only a redeploy (client rebuild /
+      server restart), exactly the same tradeoff already accepted
+      elsewhere in this app for "drop a file in, no code edit." A new
+      minimal `room:peek` query lets the join flow grey out already-taken
+      avatars BEFORE actually attempting to join (server remains sole
+      authority regardless - this is a best-effort UI hint). **Pool
+      exhaustion handled gracefully:** `allAvailableAvatarsTaken()`
+      relaxes strict uniqueness once every available avatar is claimed,
+      so an 8th player (MAX_PLAYERS=8, only 7 images today) can still
+      join with a duplicate rather than getting stuck. New
+      `client/src/components/Avatar.tsx` (circular-cropped via fixed
+      size + object-fit: cover, `flexShrink: 0` so it never gets squeezed,
+      onError falls back to a plain "?" glyph instead of a broken-image
+      icon) is used everywhere a player appears: LOBBY player list,
+      QUESTION answered-progress row, REVEAL standings strip + result
+      rows, SCOREBOARD standings, GAME_OVER (large, gold-ringed,
+      glow-pulsing winner avatar(s) above the banner, plus one per
+      standing row) and the phone's own fixed-corner badge across every
+      phase. Every accompanying name label got `overflow: hidden` +
+      `textOverflow: ellipsis` + `minWidth: 0` so a long name can never
+      push an avatar out of frame or vice versa. **Bug found and fixed
+      during testing:** the custom-name `<input>` had a native
+      `maxLength={12}` HTML attribute, which counts RAW keystrokes before
+      sanitization strips junk - typing `Zorbas99<script>` (17 raw chars,
+      5 of them digits/symbols) got silently truncated by the browser to
+      the first 12 raw characters BEFORE stripping ran, yielding only
+      `Zorbasscr` (9 real letters) instead of the full 12-letter budget a
+      player is entitled to. Fixed by raising the native attribute to a
+      generous 40-char typing buffer and leaving the TRUE 12-char cap
+      entirely to `sanitizeCustomName`'s own post-strip `.slice()`.
+      Verified: (1) `npm run typecheck` clean across all 3 workspaces; (2)
+      165 unique preset names (script-checked for duplicates), longest 11
+      chars; (3) live-confirmed exactly the 7 shipped avatars
+      (minotaur/medusa/cyclops/centaur/sphinx/pegasus/cerberus) are ever
+      offered or accepted - adding the remaining 17 PNGs to
+      `client/public/avatars/` and redeploying (client rebuild + server
+      restart) is the entire remaining step, no code/catalogue edit; (4)
+      two sockets fired `player:join` back-to-back with the SAME
+      `avatarId` and no `await` between them - Node's single-threaded
+      event loop processes them strictly in order with no async gap in
+      the handler, so this can never actually race; live-proven: player A
+      got `player:joined`, player B got `join:rejected` with
+      `AVATAR_TAKEN`, every time; (5) live-joined with `"Bob123"` ->
+      stored as `"Bob"`, `"Bob😀🔥"` -> `"Bob"`, `"<script>alert(1)</script>"`
+      -> `"scriptalerts"` - all non-empty, all accepted; (6) Playwright
+      screenshots at 390×844 of the name step (searchable preset list +
+      "Άλλο όνομα"), avatar step (7-avatar grid, live preview), and the
+      gold-ringed preview immediately before Join, all pasted during
+      review; (7) Playwright screenshots of LOBBY (avatars beside names +
+      VIP crown), QUESTION (small avatars in the answered-progress row),
+      REVEAL (avatars in both the standings strip and full results list,
+      GM commentary from Task 24 unaffected), SCOREBOARD (avatar per
+      standing), and GAME_OVER (large celebrated winner avatar(s) plus
+      one per final-standing row) - no broken images, no layout overflow
+      anywhere, pasted during review; (8) live-reconnected a player whose
+      second `player:join` deliberately resent a DIFFERENT name and
+      avatar than their first - the server ignored both and the
+      `player:joined` echo confirmed the ORIGINAL name (`Νίκος`) and
+      avatar (`pegasus`) were preserved; (9) live-confirmed
+      `isPresetName: true` for a preset pick (`Νίκος`) and `false` for
+      every custom-name case in (5) above; (10) live-joined 7 players
+      with all 7 available avatars, then an 8th requesting a DUPLICATE of
+      an already-taken avatar - accepted, not rejected (graceful, per
+      spec); a control case confirmed a genuinely INVALID avatarId is
+      still correctly rejected (`INVALID_AVATAR`) whenever the room isn't
+      already full, so pool-exhaustion only relaxes the TAKEN check, never
+      the VALID one. Production (`party-game.service`, port 3001) was
+      never touched - all live testing ran against an isolated dev
+      instance on port 3099/5199.
+
 ## Known open items
 
 - [x] Verify only ONE `client connected` log fires per page load. — CONFIRMED

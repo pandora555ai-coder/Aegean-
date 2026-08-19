@@ -35,6 +35,7 @@ import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode }
 import { getStoredHostMuted, setStoredHostMuted } from '../hostAudioPreference';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { AnswerShape } from '../components/AnswerShape';
+import { Avatar } from '../components/Avatar';
 
 const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 
@@ -784,6 +785,7 @@ export default function HostScreen() {
 
   if (phase === 'GAME_OVER' && gameOver) {
     const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
+    const winners = sortedFinalStandings.filter((standing) => standing.rank === 1);
 
     return (
       <div style={styles.container} className="screen-fade-in">
@@ -795,6 +797,13 @@ export default function HostScreen() {
         ))}
         <div style={styles.gameOverTitleWrap}>
           <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
+          <div style={styles.winnerAvatarRow} data-testid="winner-avatars">
+            {winners.map((winner) => (
+              <div key={winner.playerId} className="glow-pulse gold-pulse" style={{ '--glow-color': 'rgba(212, 175, 55, 0.6)' } as CSSVars}>
+                <Avatar avatarId={winner.avatarId} sizeRem={6} ringColor="var(--gold)" />
+              </div>
+            ))}
+          </div>
           <div
             className="text-glow-gold gold-pulse enter-pop"
             style={styles.winnerBanner}
@@ -821,6 +830,7 @@ export default function HostScreen() {
               }
             >
               <span style={styles.standingRank}>#{standing.rank}</span>
+              <Avatar avatarId={standing.avatarId} sizeRem={2.25} ringColor={standing.rank === 1 ? 'var(--gold)' : undefined} />
               <span style={styles.standingName}>{standing.name}</span>
               <span style={styles.standingScore}>{standing.score}</span>
             </div>
@@ -869,7 +879,9 @@ export default function HostScreen() {
             .sort((a, b) => b.totalScore - a.totalScore)
             .map((result, index) => (
               <span key={result.playerId} style={styles.revealStandingsItem} data-testid="reveal-standings-item">
-                <span style={styles.revealStandingsRank}>{index + 1}.</span> {result.name}{' '}
+                <span style={styles.revealStandingsRank}>{index + 1}.</span>
+                <Avatar avatarId={result.avatarId} sizeRem={1.4} />
+                <span style={styles.revealStandingsName}>{result.name}</span>
                 <span style={styles.revealStandingsScore}>{result.totalScore}</span>
               </span>
             ))}
@@ -937,9 +949,12 @@ export default function HostScreen() {
                   data-answer-rank={result.answerRank ?? ''}
                 >
                   <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
-                    {result.correct
-                      ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`
-                      : `${result.timeMs !== null ? '✗' : '–'} ${result.name}`}
+                    <Avatar avatarId={result.avatarId} sizeRem={1.75} />
+                    <span style={styles.resultNameText}>
+                      {result.correct
+                        ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`
+                        : `${result.timeMs !== null ? '✗' : '–'} ${result.name}`}
+                    </span>
                   </span>
                   <span style={styles.resultPoints}>
                     +{result.pointsAwarded} ({result.totalScore})
@@ -1002,6 +1017,7 @@ export default function HostScreen() {
                 }
               >
                 <span style={styles.standingRank}>#{standing.rank}</span>
+                <Avatar avatarId={standing.avatarId} sizeRem={2.25} ringColor={isLeader ? 'var(--gold)' : undefined} />
                 <span style={styles.standingName}>
                   {standing.name}
                   {!standing.connected && ' (αποσυνδέθηκε)'}
@@ -1103,17 +1119,21 @@ export default function HostScreen() {
           {answeredCount}/{totalCount} απάντησαν
         </div>
         <div style={styles.answeredNames}>
-          {players.map((player) => (
-            <span
-              key={player.playerId}
-              data-testid="answered-marker"
-              data-answered={answeredIds.has(player.playerId)}
-              style={answeredIds.has(player.playerId) ? styles.nameAnswered : styles.nameNotAnswered}
-            >
-              {answeredIds.has(player.playerId) ? '✓ ' : ''}
-              {player.name}
-            </span>
-          ))}
+          {players.map((player) => {
+            const answered = answeredIds.has(player.playerId);
+            return (
+              <span
+                key={player.playerId}
+                data-testid="answered-marker"
+                data-answered={answered}
+                style={answered ? styles.nameAnswered : styles.nameNotAnswered}
+              >
+                <Avatar avatarId={player.avatarId} sizeRem={1.5} ringColor={answered ? 'var(--success)' : undefined} />
+                {answered ? '✓ ' : ''}
+                {player.name}
+              </span>
+            );
+          })}
         </div>
       </div>
     );
@@ -1178,11 +1198,14 @@ export default function HostScreen() {
                 data-testid="player-row"
                 data-connected={player.connected}
                 data-vip={player.isVip}
-                style={player.connected ? styles.playerName : styles.playerNameDisconnected}
+                style={styles.playerRow}
               >
-                {player.isVip && '👑 '}
-                {player.name}
-                {!player.connected && ' (αποσυνδέθηκε)'}
+                <Avatar avatarId={player.avatarId} sizeRem={2.75} />
+                <span style={player.connected ? styles.playerName : styles.playerNameDisconnected}>
+                  {player.isVip && '👑 '}
+                  {player.name}
+                  {!player.connected && ' (αποσυνδέθηκε)'}
+                </span>
               </div>
             ))}
           </div>
@@ -1336,18 +1359,34 @@ const styles: Record<string, CSSProperties> = {
   playerList: {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: '0.5rem',
     fontSize: '2.5rem',
     minHeight: '3rem',
+    width: '100%',
+    maxWidth: '640px',
+  },
+  playerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.75rem',
   },
   playerName: {
     fontWeight: 600,
     color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
   },
   playerNameDisconnected: {
     fontWeight: 600,
     color: 'var(--text-faint)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
     opacity: 0.6,
   },
   waitingMessage: {
@@ -1432,9 +1471,15 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
   },
   nameAnswered: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
     color: 'var(--text)',
   },
   nameNotAnswered: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
     color: 'var(--text-faint)',
   },
   optionCardCorrect: {
@@ -1510,11 +1555,20 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--text-dim)',
   },
   revealStandingsItem: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.4rem',
     whiteSpace: 'nowrap',
   },
   revealStandingsRank: {
     color: 'var(--gold)',
     fontWeight: 800,
+  },
+  revealStandingsName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: '10rem',
   },
   revealStandingsScore: {
     fontFamily: 'monospace',
@@ -1529,14 +1583,18 @@ const styles: Record<string, CSSProperties> = {
   },
   resultRow: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: '0.75rem',
     fontSize: '1.75rem',
     fontWeight: 600,
     padding: '0.5rem 1rem',
   },
   resultRowFastest: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: '0.75rem',
     fontSize: '1.9rem',
     fontWeight: 800,
     padding: '0.6rem 1.25rem',
@@ -1550,14 +1608,31 @@ const styles: Record<string, CSSProperties> = {
     margin: '0.4rem 0',
   },
   resultNameCorrect: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    flex: 1,
+    minWidth: 0,
     color: 'var(--success)',
   },
   resultNameWrong: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    flex: 1,
+    minWidth: 0,
     // --danger-text, not --danger - the raw answer-A red hex drops under
     // 4.5:1 as small text on the new, lighter stage background.
     color: 'var(--danger-text)',
   },
+  resultNameText: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+  },
   resultPoints: {
+    flexShrink: 0,
     fontFamily: 'monospace',
     fontWeight: 700,
     color: 'var(--text)',
@@ -1610,8 +1685,13 @@ const styles: Record<string, CSSProperties> = {
   },
   standingName: {
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   standingScore: {
+    flexShrink: 0,
     fontFamily: 'monospace',
   },
   gameOverTitleWrap: {
@@ -1620,6 +1700,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: '1rem',
     padding: '1.5rem 0',
+  },
+  winnerAvatarRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '1.5rem',
   },
   gameOverTitle: {
     position: 'relative',

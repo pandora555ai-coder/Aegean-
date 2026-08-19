@@ -1,12 +1,13 @@
-import { useEffect, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ANSWER_IDENTITIES,
+  AVATAR_CATALOGUE,
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
-  MAX_NAME_LENGTH,
   MIN_PLAYERS,
+  PRESET_NAMES,
   QUESTION_COUNT_OPTIONS,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
@@ -14,6 +15,7 @@ import {
   ServerEvents,
   isQuestionShowHostPayload,
   isRevealHostPayload,
+  sanitizeCustomName,
   type AnswerAcceptedPayload,
   type DifficultyMix,
   type GameOverPayload,
@@ -27,6 +29,7 @@ import {
   type ResumedPayload,
   type RevealPlayerPayload,
   type RevealShowPayload,
+  type RoomPeekResultPayload,
   type RoomSettings,
   type ScoreboardPayload,
   type SettingsUpdatedPayload,
@@ -38,6 +41,8 @@ import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { AnswerShape } from '../components/AnswerShape';
+import { Avatar } from '../components/Avatar';
+import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
 // `--glow-color` variable the .glow-pulse class reads (see theme.css) be set
@@ -52,9 +57,10 @@ const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(
 
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
-  NAME_TAKEN: 'Το όνομα χρησιμοποιείται ήδη',
   ROOM_FULL: 'Το δωμάτιο είναι γεμάτο',
   INVALID_NAME: 'Μη έγκυρο όνομα',
+  INVALID_AVATAR: 'Μη έγκυρος χαρακτήρας',
+  AVATAR_TAKEN: 'Ο χαρακτήρας μόλις πιάστηκε από άλλον παίκτη',
 };
 
 // One row of the VIP settings panel - either a row of tappable segmented
@@ -193,7 +199,28 @@ export default function ControllerScreen() {
     const param = searchParams.get('code');
     return param && /^\d{4}$/.test(param) ? param : '';
   });
-  const [name, setName] = useState('');
+  // The identity picker (Task 26) - NAME then AVATAR, each one tap (or one
+  // typed line + confirm for a custom name) to move on, ending on a preview
+  // + the actual Join button, all on the avatar step - never a third
+  // screen. `selectedName` is the committed choice (preset tap OR a
+  // confirmed custom entry); `customDraft` is only the in-progress text
+  // field's own value, kept separate so switching back to the preset list
+  // never loses what was typed.
+  const [joinStep, setJoinStep] = useState<'name' | 'avatar'>('name');
+  const [nameFilter, setNameFilter] = useState('');
+  const [customNameMode, setCustomNameMode] = useState(false);
+  const [customDraft, setCustomDraft] = useState('');
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+  // Best-effort UI hint only (see room:peek's doc comment in shared) - the
+  // real, race-proof check happens server-side at the actual join attempt.
+  const [peekedTakenAvatarIds, setPeekedTakenAvatarIds] = useState<string[]>([]);
+  const availableAvatars = useAvailableAvatars();
+  // The main socket-listener effect below is registered ONCE (empty deps,
+  // same convention as the rest of this file) - `code` changes as the user
+  // types, so handleRoomPeekResult needs a ref to read its LATEST value
+  // rather than closing over the value from mount.
+  const codeRef = useRef(code);
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
@@ -234,6 +261,19 @@ export default function ControllerScreen() {
 
     function handleRejected(payload: JoinRejectedPayload) {
       setError(REJECTION_MESSAGES[payload.reason]);
+      if (payload.reason === 'AVATAR_TAKEN' || payload.reason === 'INVALID_AVATAR') {
+        // Someone else just claimed it (or it disappeared) - drop the pick
+        // and let them choose again from the grid, which a fresh peek below
+        // will also re-grey.
+        setSelectedAvatarId(null);
+        setJoinStep('avatar');
+      }
+    }
+
+    function handleRoomPeekResult(payload: RoomPeekResultPayload) {
+      if (payload.code === codeRef.current) {
+        setPeekedTakenAvatarIds(payload.takenAvatarIds);
+      }
     }
 
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
@@ -370,6 +410,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
     socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
+    socket.on(ServerEvents.ROOM_PEEK_RESULT, handleRoomPeekResult);
 
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
@@ -386,22 +427,80 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
       socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
       socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
+      socket.off(ServerEvents.ROOM_PEEK_RESULT, handleRoomPeekResult);
     };
   }, []);
+
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
+
+  // Fires a fresh room:peek whenever the code reaches a complete 4 digits -
+  // covers both "just finished typing" and "came back to fix a typo", so
+  // the avatar grid's grey-outs never silently go stale mid-flow.
+  useEffect(() => {
+    if (connected && code.length === 4) {
+      socket.emit(ClientEvents.ROOM_PEEK, { code });
+    }
+  }, [connected, code]);
 
   function handleCodeChange(event: ChangeEvent<HTMLInputElement>) {
     setCode(event.target.value.replace(/\D/g, '').slice(0, 4));
   }
 
-  function handleNameChange(event: ChangeEvent<HTMLInputElement>) {
-    setName(event.target.value.slice(0, MAX_NAME_LENGTH));
+  function handleCustomDraftChange(event: ChangeEvent<HTMLInputElement>) {
+    // Strip as-you-type - the same sanitizer the server re-runs, so what's
+    // on screen is always exactly what would be stored.
+    setCustomDraft(sanitizeCustomName(event.target.value));
+  }
+
+  function handleSelectPresetName(presetName: string) {
+    setSelectedName(presetName);
+    setCustomNameMode(false);
+    setJoinStep('avatar');
+  }
+
+  function handleConfirmCustomName() {
+    const cleaned = sanitizeCustomName(customDraft);
+    if (cleaned.length === 0) {
+      return;
+    }
+    setSelectedName(cleaned);
+    setJoinStep('avatar');
+  }
+
+  function handleBackToName() {
+    setJoinStep('name');
+  }
+
+  function handleSelectAvatar(avatarId: string) {
+    setSelectedAvatarId(avatarId);
   }
 
   function handleJoin() {
-    socket.emit(ClientEvents.PLAYER_JOIN, { code, name, playerId });
+    if (!selectedName || !selectedAvatarId) {
+      return;
+    }
+    setError(null);
+    socket.emit(ClientEvents.PLAYER_JOIN, { code, name: selectedName, playerId, avatarId: selectedAvatarId });
   }
 
-  const canJoin = connected && code.length === 4 && name.trim().length > 0;
+  const filteredPresetNames = useMemo(() => {
+    const query = nameFilter.trim().toLocaleLowerCase('el');
+    if (query.length === 0) {
+      return PRESET_NAMES;
+    }
+    return PRESET_NAMES.filter((presetName) => presetName.toLocaleLowerCase('el').startsWith(query));
+  }, [nameFilter]);
+
+  // Once every AVAILABLE avatar is already taken (see allAvailableAvatarsTaken
+  // server-side), the grid stops graying anything out - an Nth player past
+  // the shipped-avatar count must still be able to finish joining, just
+  // with a duplicate, rather than getting stuck with nothing tappable.
+  const poolExhausted =
+    availableAvatars.length > 0 && availableAvatars.every((avatar) => peekedTakenAvatarIds.includes(avatar.id));
+
+  const canJoin = connected && code.length === 4 && selectedName !== null && selectedAvatarId !== null;
   const isVip = vipPlayerId === playerId;
 
   function handleAnswerTap(index: number) {
@@ -450,6 +549,11 @@ export default function ControllerScreen() {
 
     return (
       <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
@@ -483,6 +587,11 @@ export default function ControllerScreen() {
 
     return (
       <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
@@ -518,6 +627,11 @@ export default function ControllerScreen() {
   if (reveal) {
     return (
       <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
@@ -574,6 +688,11 @@ export default function ControllerScreen() {
     const answered = myChoice !== null;
     return (
       <div style={styles.questionContainer}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
@@ -647,6 +766,11 @@ export default function ControllerScreen() {
     const canStart = lobby?.canStart ?? false;
     return (
       <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
         {isVip && (
           <div style={styles.vipBadge} data-testid="vip-badge">
             👑 VIP
@@ -721,17 +845,137 @@ export default function ControllerScreen() {
         placeholder="Κωδικός"
         value={code}
         onChange={handleCodeChange}
+        data-testid="code-input"
       />
-      <input
-        style={styles.input}
-        maxLength={MAX_NAME_LENGTH}
-        placeholder="Όνομα"
-        value={name}
-        onChange={handleNameChange}
-      />
-      <button style={styles.button} type="button" onClick={handleJoin} disabled={!canJoin}>
-        Join
-      </button>
+
+      {joinStep === 'name' &&
+        (!customNameMode ? (
+          <>
+            <input
+              style={styles.input}
+              placeholder="Αναζήτηση ονόματος"
+              value={nameFilter}
+              onChange={(event) => setNameFilter(event.target.value)}
+              data-testid="name-search"
+            />
+            <div style={styles.nameList} data-testid="name-list">
+              {filteredPresetNames.map((presetName) => (
+                <button
+                  key={presetName}
+                  type="button"
+                  style={styles.nameOption}
+                  data-testid="preset-name-option"
+                  onClick={() => handleSelectPresetName(presetName)}
+                >
+                  {presetName}
+                </button>
+              ))}
+              {filteredPresetNames.length === 0 && (
+                <div style={styles.nameListEmpty}>Κανένα όνομα δεν ταιριάζει</div>
+              )}
+            </div>
+            <button
+              type="button"
+              style={styles.customNameButton}
+              data-testid="custom-name-toggle"
+              onClick={() => setCustomNameMode(true)}
+            >
+              Άλλο όνομα
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              style={styles.input}
+              // NOT MAX_NAME_LENGTH - that cap belongs on the SANITIZED
+              // result (sanitizeCustomName's own .slice), applied AFTER
+              // stripping. A native maxLength here would count raw
+              // keystrokes BEFORE stripping, so typed junk (digits,
+              // symbols) would eat into the letter budget - e.g. typing
+              // 17 raw characters where 5 are digits/symbols would cap at
+              // the first 12 raw chars, leaving only 9 real letters after
+              // stripping, instead of the full 12 the player is entitled
+              // to. This is just a generous paste/typing buffer.
+              maxLength={40}
+              placeholder="Το όνομά σου"
+              value={customDraft}
+              onChange={handleCustomDraftChange}
+              data-testid="custom-name-input"
+              autoFocus
+            />
+            <button
+              style={customDraft.trim().length > 0 ? styles.button : styles.buttonDisabled}
+              type="button"
+              onClick={handleConfirmCustomName}
+              disabled={customDraft.trim().length === 0}
+              data-testid="custom-name-confirm"
+            >
+              Επόμενο
+            </button>
+            <button
+              type="button"
+              style={styles.skipButton}
+              data-testid="custom-name-cancel"
+              onClick={() => setCustomNameMode(false)}
+            >
+              ‹ Πίσω στη λίστα
+            </button>
+          </>
+        ))}
+
+      {joinStep === 'avatar' && (
+        <>
+          <div style={styles.previewRow} data-testid="join-preview">
+            {selectedAvatarId ? (
+              <Avatar avatarId={selectedAvatarId} sizeRem={4.5} ringColor="var(--gold)" />
+            ) : (
+              <div style={styles.avatarPlaceholder}>?</div>
+            )}
+            <div style={styles.previewName} data-testid="join-preview-name">
+              {selectedName}
+            </div>
+          </div>
+          <div style={styles.avatarGrid} data-testid="avatar-grid">
+            {availableAvatars.map((avatar) => {
+              const taken = !poolExhausted && avatar.id !== selectedAvatarId && peekedTakenAvatarIds.includes(avatar.id);
+              const selected = avatar.id === selectedAvatarId;
+              return (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  data-testid="avatar-option"
+                  data-taken={taken}
+                  data-selected={selected}
+                  disabled={taken}
+                  style={taken ? styles.avatarOptionTaken : selected ? styles.avatarOptionSelected : styles.avatarOption}
+                  onClick={() => handleSelectAvatar(avatar.id)}
+                >
+                  <Avatar avatarId={avatar.id} sizeRem={3} />
+                  <span style={styles.avatarLabel}>{avatar.name}</span>
+                </button>
+              );
+            })}
+            {availableAvatars.length === 0 && <div style={styles.nameListEmpty}>Φόρτωση χαρακτήρων...</div>}
+          </div>
+          <button
+            type="button"
+            style={styles.skipButton}
+            data-testid="back-to-name"
+            onClick={handleBackToName}
+          >
+            ‹ Πίσω στο όνομα
+          </button>
+          <button
+            style={canJoin ? styles.button : styles.buttonDisabled}
+            type="button"
+            onClick={handleJoin}
+            disabled={!canJoin}
+            data-testid="join-button"
+          >
+            Join
+          </button>
+        </>
+      )}
 
       {error && <div style={styles.error}>{error}</div>}
     </div>
@@ -849,6 +1093,130 @@ const styles: Record<string, CSSProperties> = {
     background: 'var(--gold)',
     borderRadius: '999px',
     padding: '0.25rem 0.9rem',
+  },
+  avatarCorner: {
+    position: 'fixed',
+    top: '0.75rem',
+    left: '0.75rem',
+    zIndex: 5,
+  },
+  nameList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    maxHeight: '38vh',
+    overflowY: 'auto',
+    padding: '0.4rem',
+    borderRadius: '0.5rem',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+  },
+  nameOption: {
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    padding: '0.65rem 0.9rem',
+    borderRadius: '0.5rem',
+    border: '1px solid var(--border-strong)',
+    background: 'var(--surface-strong)',
+    color: 'var(--text)',
+    textAlign: 'left',
+  },
+  nameListEmpty: {
+    padding: '0.75rem',
+    textAlign: 'center',
+    color: 'var(--text-faint)',
+    fontWeight: 600,
+  },
+  customNameButton: {
+    width: '100%',
+    fontSize: '1rem',
+    padding: '0.7rem',
+    borderRadius: '0.5rem',
+    border: '1px dashed var(--border-strong)',
+    background: 'transparent',
+    color: 'var(--text-dim)',
+    fontWeight: 600,
+  },
+  previewRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '0.75rem',
+    borderRadius: '0.75rem',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+  },
+  previewName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: '1.4rem',
+    fontWeight: 700,
+    color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  avatarPlaceholder: {
+    width: '4.5rem',
+    height: '4.5rem',
+    minWidth: '4.5rem',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--surface-strong)',
+    color: 'var(--text-faint)',
+    fontSize: '1.75rem',
+    fontWeight: 700,
+  },
+  avatarGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '0.6rem',
+  },
+  avatarOption: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    padding: '0.5rem',
+    borderRadius: '0.75rem',
+    border: '2px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text-dim)',
+  },
+  avatarOptionSelected: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    padding: '0.5rem',
+    borderRadius: '0.75rem',
+    border: '2px solid var(--gold)',
+    background: 'rgba(212, 175, 55, 0.12)',
+    color: 'var(--text)',
+  },
+  avatarOptionTaken: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    padding: '0.5rem',
+    borderRadius: '0.75rem',
+    border: '2px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--text-faint)',
+    opacity: 0.35,
+    filter: 'grayscale(0.7)',
+  },
+  avatarLabel: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxWidth: '100%',
   },
   skipButton: {
     width: '100%',

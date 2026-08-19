@@ -7,13 +7,14 @@ import {
   type RoomSettings,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
-  MAX_NAME_LENGTH,
   MAX_PLAYERS,
   QUESTION_COUNT_OPTIONS,
   QUESTION_TIME_OPTIONS_MS,
+  sanitizeCustomName,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
 import { createGameMasterState, resetGameMasterState, type GameMasterState } from './gamemaster.js';
+import { AVAILABLE_AVATAR_IDS } from './avatars.js';
 
 export interface RecordedAnswer {
   choice: number;
@@ -313,27 +314,59 @@ export function getActiveRoomCount(): number {
   return rooms.size;
 }
 
+// A preset-list pick already IS clean Greek text, so running it through the
+// same sanitizer as a free-typed name is a no-op for it - this is
+// deliberately the ONE validation path for both, never trusting a client
+// claim of "this came from the preset list" over what the string actually
+// contains.
 export function normalizePlayerName(name: string): string {
-  return name.trim();
+  return sanitizeCustomName(name);
 }
 
 export function isValidPlayerName(name: string): boolean {
-  const trimmed = normalizePlayerName(name);
-  return trimmed.length > 0 && trimmed.length <= MAX_NAME_LENGTH;
+  return normalizePlayerName(name).length > 0;
 }
 
-export function isNameTaken(room: Room, name: string): boolean {
-  const normalized = normalizePlayerName(name).toLowerCase();
+export function isRoomFull(room: Room): boolean {
+  return room.players.size >= MAX_PLAYERS;
+}
+
+// Avatars are unique PER ROOM, checked against every player who has ever
+// occupied a seat (connected or not) - not just currently-connected ones,
+// so a disconnected player's avatar can never be stolen out from under them
+// while they're offline (they keep it on reconnect, per spec).
+// `excludePlayerId` lets a reconnecting player's OWN existing seat be
+// ignored when re-validating (irrelevant today, since reconnects never
+// re-run this check at all - see player:join in index.ts - but keeps this
+// helper correct/reusable regardless of caller).
+export function isAvatarTaken(room: Room, avatarId: string, excludePlayerId?: string): boolean {
   for (const player of room.players.values()) {
-    if (player.name.toLowerCase() === normalized) {
+    if (player.playerId !== excludePlayerId && player.avatarId === avatarId) {
       return true;
     }
   }
   return false;
 }
 
-export function isRoomFull(room: Room): boolean {
-  return room.players.size >= MAX_PLAYERS;
+// True once every AVAILABLE avatar (see server/src/avatars.ts) is already
+// claimed by someone in this room - the signal used to relax strict
+// uniqueness (see player:join in index.ts) so an Nth player past the
+// available-avatar count is never blocked from joining, just handed a
+// duplicate. With MAX_PLAYERS=8 and only 7 avatar images shipped so far,
+// this is the room's normal, expected 8th-player state, not an edge case.
+export function allAvailableAvatarsTaken(room: Room, excludePlayerId?: string): boolean {
+  const taken = new Set<string>();
+  for (const player of room.players.values()) {
+    if (player.playerId !== excludePlayerId) {
+      taken.add(player.avatarId);
+    }
+  }
+  for (const id of AVAILABLE_AVATAR_IDS) {
+    if (!taken.has(id)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function getConnectedPlayers(room: Room): Player[] {

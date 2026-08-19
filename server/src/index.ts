@@ -7,6 +7,7 @@ import { Server, type Socket } from 'socket.io';
 import {
   ClientEvents,
   MIN_PLAYERS,
+  PRESET_NAMES,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
@@ -35,6 +36,7 @@ import {
 } from '@game/shared';
 import {
   addPlayer,
+  allAvailableAvatarsTaken,
   armActiveTimer,
   attachHostDisplay,
   buildRoomQuestions,
@@ -47,7 +49,7 @@ import {
   haveAllConnectedPlayersAnswered,
   getPlayer,
   getRoom,
-  isNameTaken,
+  isAvatarTaken,
   isRoomFull,
   isValidPlayerName,
   isVip,
@@ -61,6 +63,7 @@ import {
   updateRoomSettings,
   type Room,
 } from './rooms.js';
+import { isValidAvatarId } from './avatars.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
 
@@ -114,6 +117,7 @@ function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
     name: player.name,
     connected: player.connected,
     isVip: player.playerId === room.vipPlayerId,
+    avatarId: player.avatarId,
   }));
   const canStart = players.filter((player) => player.connected).length >= MIN_PLAYERS;
 
@@ -347,6 +351,7 @@ function endQuestion(code: RoomCode): void {
     return {
       playerId: player.playerId,
       name: player.name,
+      avatarId: player.avatarId,
       choice,
       correct,
       pointsAwarded,
@@ -424,6 +429,7 @@ function buildScoreboard(room: Room): ScoreboardPayload {
     .map((player) => ({
       playerId: player.playerId,
       name: player.name,
+      avatarId: player.avatarId,
       score: player.score,
       rank: ranks.get(player.playerId) ?? players.length,
       connected: player.connected,
@@ -453,6 +459,7 @@ function buildGameOver(room: Room): GameOverPayload {
     .map((player) => ({
       playerId: player.playerId,
       name: player.name,
+      avatarId: player.avatarId,
       score: player.score,
       rank: ranks.get(player.playerId) ?? players.length,
     }));
@@ -723,8 +730,24 @@ io.on('connection', (socket) => {
     console.log(`room ${room.code} host display reattached by ${socket.id} (phase=${room.phase})`);
   });
 
+  // A read-only lookup for the join flow's avatar step - lets it grey out
+  // already-taken creatures BEFORE the player actually attempts to join.
+  // Doesn't join the socket to the room or touch any state; player:join
+  // remains the sole authority (this is a best-effort UI hint only, since
+  // another player could still claim the same avatar in between).
+  socket.on(ClientEvents.ROOM_PEEK, (payload) => {
+    const { code } = payload;
+    const room = getRoom(code);
+    if (!room) {
+      socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: false, takenAvatarIds: [] });
+      return;
+    }
+    const takenAvatarIds = Array.from(new Set(Array.from(room.players.values()).map((player) => player.avatarId)));
+    socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: true, takenAvatarIds });
+  });
+
   socket.on(ClientEvents.PLAYER_JOIN, (payload) => {
-    const { code, name, playerId } = payload;
+    const { code, name, playerId, avatarId } = payload;
 
     const room = getRoom(code);
     if (!room) {
@@ -737,9 +760,12 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Same playerId already in this room -> reconnect, not a new join.
-    // The original name is kept, and this bypasses ROOM_FULL / NAME_TAKEN:
-    // the player already occupies a seat and can't clash with their own name.
+    // Same playerId already in this room -> reconnect, not a new join. The
+    // original name AND avatar are both kept - whatever the client resubmits
+    // for either (its picker always re-runs on a fresh page load) is
+    // discarded in favour of what's already on record, and this bypasses
+    // ROOM_FULL / AVATAR_TAKEN entirely: the player already occupies a seat
+    // and can't clash with themselves.
     const existingPlayer = getPlayer(code, playerId);
     if (existingPlayer) {
       existingPlayer.socketId = socket.id;
@@ -752,7 +778,13 @@ io.on('connection', (socket) => {
       refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
       socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
       socket.join(code);
-      socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: existingPlayer.name, code });
+      socket.emit(ServerEvents.PLAYER_JOINED, {
+        playerId,
+        name: existingPlayer.name,
+        code,
+        avatarId: existingPlayer.avatarId,
+        isPresetName: existingPlayer.isPresetName,
+      });
       console.log(`player ${existingPlayer.name} reconnected to room ${code}`);
       broadcastLobbyUpdate(code);
       if (room.phase !== 'LOBBY') {
@@ -769,12 +801,22 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (isNameTaken(room, name)) {
-      socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'NAME_TAKEN' });
+    if (!isValidAvatarId(avatarId)) {
+      socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'INVALID_AVATAR' });
+      return;
+    }
+
+    // Strict uniqueness UNLESS the whole available pool is already claimed
+    // (e.g. an 8th player joining while only 7 avatar images exist yet) -
+    // then a duplicate is allowed rather than blocking the join. See
+    // allAvailableAvatarsTaken's doc comment in rooms.ts.
+    if (isAvatarTaken(room, avatarId) && !allAvailableAvatarsTaken(room)) {
+      socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'AVATAR_TAKEN' });
       return;
     }
 
     const trimmedName = normalizePlayerName(name);
+    const isPresetName = (PRESET_NAMES as readonly string[]).includes(trimmedName);
     const player: Player = {
       playerId,
       name: trimmedName,
@@ -782,6 +824,8 @@ io.on('connection', (socket) => {
       connected: true,
       score: 0,
       isVip: false,
+      avatarId,
+      isPresetName,
     };
     addPlayer(code, player);
     // The first player to ever join a room becomes VIP; a no-op otherwise.
@@ -789,8 +833,8 @@ io.on('connection', (socket) => {
     refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
-    socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code });
-    console.log(`player ${trimmedName} (${playerId}) joined room ${code}`);
+    socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code, avatarId, isPresetName });
+    console.log(`player ${trimmedName} (${playerId}) joined room ${code} as ${avatarId}`);
     broadcastLobbyUpdate(code);
     if (room.phase !== 'LOBBY') {
       const syncPayload = buildStateSyncForPlayer(room, playerId);
