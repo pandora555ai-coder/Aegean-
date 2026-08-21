@@ -49,6 +49,7 @@ import {
   type Room,
 } from './state.js';
 import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
+import { pauseCrowdTensionTimer, resumeCrowdTensionTimer } from './crowd.js';
 import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
@@ -349,6 +350,10 @@ io.on('connection', (socket) => {
     if (syncPayload) {
       socket.emit(ServerEvents.STATE_SYNC, syncPayload);
     }
+    // Crowd mood (Task 35) - sent right alongside state:sync so a reattaching
+    // TV lands on the right mood instead of defaulting to 'calm' until the
+    // next transition.
+    socket.emit(ServerEvents.CROWD_MOOD, { mood: room.crowdMood });
 
     console.log(`room ${room.code} host display reattached by ${socket.id} (phase=${room.phase})`);
   });
@@ -925,6 +930,9 @@ io.on('connection', (socket) => {
     room.pausedByName = player.name;
     room.pausedAt = Date.now();
     pauseActiveTimer(room);
+    // Crowd mood (Task 35) - `paused` doesn't itself change the mood, but the
+    // mid-QUESTION tension switch is a separate timer and must freeze too.
+    pauseCrowdTensionTimer(room);
 
     const payload: PausedPayload = { byName: player.name };
     io.to(room.code).emit(ServerEvents.GAME_PAUSED, payload);
@@ -960,6 +968,7 @@ io.on('connection', (socket) => {
     if (onFire) {
       resumeActiveTimer(room, onFire);
     }
+    resumeCrowdTensionTimer(room); // no-op outside QUESTION
 
     const remainingMs = remainingActiveTimerMs(room);
     const payload: ResumedPayload = { remainingMs };

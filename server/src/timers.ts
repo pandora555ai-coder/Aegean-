@@ -99,3 +99,52 @@ export function clearActiveTimer(room: TimedRoom): void {
   }
   room.activeTimer = null;
 }
+
+// A second, independent pause-aware timer (Task 35's crowd-mood tension
+// switch runs alongside the QUESTION timer, not in place of it, so it can't
+// live in the single activeTimer slot above). Same arm/pause/resume/clear
+// shape as ActiveTimer, minus `kind` - callers own wherever they store the
+// returned SimpleTimer and are responsible for calling pause/resume on it
+// alongside the room's activeTimer.
+export interface SimpleTimer {
+  handle: NodeJS.Timeout | null;
+  startedAt: number;
+  durationMs: number;
+  remainingAtPause: number | null;
+}
+
+export function armSimpleTimer(durationMs: number, onFire: () => void): SimpleTimer {
+  return {
+    handle: setTimeout(onFire, durationMs),
+    startedAt: Date.now(),
+    durationMs,
+    remainingAtPause: null,
+  };
+}
+
+export function pauseSimpleTimer(timer: SimpleTimer | null): void {
+  if (!timer || !timer.handle) {
+    return;
+  }
+  clearTimeout(timer.handle);
+  timer.handle = null;
+  const elapsed = Date.now() - timer.startedAt;
+  timer.remainingAtPause = Math.max(0, timer.durationMs - elapsed);
+}
+
+export function resumeSimpleTimer(timer: SimpleTimer | null, onFire: () => void): void {
+  if (!timer || timer.remainingAtPause === null) {
+    return;
+  }
+  const remaining = timer.remainingAtPause;
+  timer.startedAt = Date.now();
+  timer.durationMs = remaining;
+  timer.remainingAtPause = null;
+  timer.handle = setTimeout(onFire, remaining);
+}
+
+export function clearSimpleTimer(timer: SimpleTimer | null): void {
+  if (timer?.handle) {
+    clearTimeout(timer.handle);
+  }
+}

@@ -15,6 +15,7 @@ import {
 } from '@game/shared';
 import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
+import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
 import { activeSabotagesFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
@@ -87,6 +88,8 @@ function announceStageIfChanged(room: Room): boolean {
   // the announcement freezes it and a reconnecting TV is told the real
   // remaining time instead of a fresh full duration.
   armActiveTimer(room, 'STAGE_ANNOUNCE', STAGE_ANNOUNCE_DURATION_MS, () => endStageAnnounce(room.code));
+  // Crowd mood (Task 35) - calm for the announcement card, same as LOBBY.
+  setCrowdMood(room, 'calm');
 
   // Card BEFORE the phase change, deliberately: the TV renders the card as
   // the STAGE_ANNOUNCE phase's whole view, so it must already hold it when
@@ -150,6 +153,8 @@ export function startPowerUp(room: Room): void {
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
   armActiveTimer(room, 'POWER_UP', POWER_UP_DURATION_MS, () => endPowerUp(room.code));
+  // Crowd mood (Task 35) - the whole power-up phase is tension.
+  setCrowdMood(room, 'tension');
 
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_SHOW, buildPowerUpHostPayload(room));
@@ -200,6 +205,10 @@ export function startQuestion(room: Room): void {
   room.questionStartedAt = Date.now();
   const questionTimeMs = room.settings.questionTimeMs;
   armActiveTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
+  // Crowd mood (Task 35) - calm to start, switching to tension for the last
+  // third of the timer via its own pause-aware SimpleTimer (see crowd.ts).
+  setCrowdMood(room, 'calm');
+  armCrowdTensionTimer(room, questionTimeMs);
 
   // Sabotage (Task 28b): anything announced at the last REVEAL lands NOW, on
   // the same clock as the question timer just armed above. Deliberately
@@ -336,6 +345,16 @@ export function endQuestion(code: RoomCode): void {
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
+  // Crowd mood (Task 35) - must be cleared here regardless of whether it
+  // already fired: a question that ends early (everyone answered before the
+  // last third) would otherwise leave it armed to fire LATE, into REVEAL,
+  // and stomp the cheer/boo this reveal is about to set.
+  clearCrowdTensionTimer(room);
+  const correctCount = results.filter((result) => result.correct).length;
+  if (results.length > 0) {
+    setCrowdMood(room, correctCount * 2 > results.length ? 'cheer' : 'boo');
+  }
+
   // Sabotage (Task 28a): whatever was cast during this question, hidden
   // until now, becomes this round's announcement - and stays pending
   // against each victim (keyed by targetPlayerId) for their next question.
@@ -435,6 +454,8 @@ function startStealIfEligible(room: Room): boolean {
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
   armActiveTimer(room, 'STEAL', STEAL_DURATION_MS, () => resolveSteal(room.code, null));
+  // Crowd mood (Task 35) - the whole steal phase is tension, until it resolves.
+  setCrowdMood(room, 'tension');
 
   broadcastSteal(room);
   console.log(
@@ -475,6 +496,8 @@ export function resolveSteal(code: RoomCode, victimPlayerId: string | null): voi
   steal.resolved = applySteal(room, steal, victimPlayerId);
 
   armActiveTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
+  // Crowd mood (Task 35) - a steal resolving is always a boo, win or not.
+  setCrowdMood(room, 'boo');
 
   // Public and symmetric, unlike the picker above - the theft is over, so
   // everyone (TV included) gets the same figures.
@@ -513,6 +536,8 @@ function continueAfterReveal(room: Room): void {
 
   room.phase = 'SCOREBOARD';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd mood (Task 35) - not one of the tension/cheer/boo phases, back to calm.
+  setCrowdMood(room, 'calm');
   io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
   console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
 
@@ -539,6 +564,7 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
     room.phase = 'GAME_OVER';
     clearActiveTimer(room); // no more phase-advance timer needed once the game is over
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    setCrowdMood(room, 'calm');
     const gameOverPayload = buildGameOver(room);
     io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
     console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);

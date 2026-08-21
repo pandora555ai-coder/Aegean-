@@ -1,4 +1,5 @@
 import {
+  type CrowdMood,
   type GamePhase,
   type Player,
   type PowerUpEffect,
@@ -20,7 +21,7 @@ import {
 import { getQuestionSet } from './questions.js';
 import { createGameMasterState, resetGameMasterState, type GameMasterState } from './gamemaster.js';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
-import { clearActiveTimer, type ActiveTimer } from './timers.js';
+import { clearActiveTimer, clearSimpleTimer, type ActiveTimer, type SimpleTimer } from './timers.js';
 
 export interface RecordedAnswer {
   choice: number;
@@ -195,6 +196,13 @@ export interface Room {
   // Set by startSteal, read by every steal payload builder, cleared the
   // moment the phase is left.
   steal: StealState | null;
+  // Crowd mood (Task 35) - server-derived, HOST ONLY. See server/src/crowd.ts.
+  crowdMood: CrowdMood;
+  // The mid-QUESTION timer that switches crowdMood to 'tension' for the last
+  // third of the question - runs ALONGSIDE activeTimer (which stays 'QUESTION'
+  // the whole time), so it has its own SimpleTimer rather than sharing the
+  // room's single activeTimer slot. null outside QUESTION.
+  crowdTensionTimer: SimpleTimer | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -249,6 +257,8 @@ export function createRoom(hostSocketId: string): Room {
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
     steal: null,
+    crowdMood: 'calm',
+    crowdTensionTimer: null,
   };
 
   rooms.set(code, room);
@@ -269,6 +279,7 @@ export function deleteRoom(code: RoomCode): boolean {
     if (room.emptyTtlTimer) {
       clearTimeout(room.emptyTtlTimer);
     }
+    clearSimpleTimer(room.crowdTensionTimer);
   }
   return rooms.delete(code);
 }
@@ -518,6 +529,11 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingPowerUpByTarget.clear();
   // No half-finished theft survives into the next game.
   room.steal = null;
+  // Fresh game, fresh crowd - back to calm, and no leftover tension timer
+  // from whatever question was in flight when this reset was triggered.
+  room.crowdMood = 'calm';
+  clearSimpleTimer(room.crowdTensionTimer);
+  room.crowdTensionTimer = null;
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

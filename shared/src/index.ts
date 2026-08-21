@@ -44,6 +44,7 @@ export const ServerEvents = {
   STAGE_ANNOUNCE: 'stage:announce',
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
+  CROWD_MOOD: 'crowd:mood',
 } as const;
 
 export type RoomCode = string;
@@ -270,6 +271,18 @@ export type GamePhase =
   | 'STEAL'
   | 'SCOREBOARD'
   | 'GAME_OVER';
+
+// Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
+// host-only too). Never computed by any client. 'calm' is the default -
+// LOBBY, STAGE_ANNOUNCE, and the early part of QUESTION; 'tension' covers the
+// last third of the QUESTION timer plus the whole POWER_UP and STEAL phases;
+// 'cheer'/'boo' fire at REVEAL depending on whether most connected players
+// answered correctly, and 'boo' fires again whenever a STEAL resolves.
+export type CrowdMood = 'calm' | 'tension' | 'cheer' | 'boo';
+
+export interface CrowdMoodPayload {
+  mood: CrowdMood;
+}
 
 // ---------------------------------------------------------------------------
 // Stages (Task 31a)
@@ -1045,4 +1058,5 @@ export type ServerToClientEvents = {
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
+  [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
 };
