@@ -5,7 +5,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { styles } from './hostStyles';
+import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
 interface QuestionViewProps {
   question: QuestionShowHostPayload;
@@ -81,7 +81,7 @@ export function QuestionView({
       <div style={styles.answerCounter} data-testid="answer-progress">
         {answeredCount}/{totalCount} απάντησαν
       </div>
-      <div style={styles.answeredNames}>
+      <div style={{ ...styles.answeredNames, ...answeredNamesSizeStyle(players.length) }}>
         {players.map((player) => {
           const answered = answeredIds.has(player.playerId);
           return (
@@ -91,7 +91,11 @@ export function QuestionView({
               data-answered={answered}
               style={answered ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar avatarId={player.avatarId} sizeRem={1.5} ringColor={answered ? 'var(--success)' : undefined} />
+              <Avatar
+                avatarId={player.avatarId}
+                sizeRem={answeredAvatarSize(players.length)}
+                ringColor={answered ? 'var(--success)' : undefined}
+              />
               {answered ? '✓ ' : ''}
               {player.name}
             </span>

@@ -1,6 +1,13 @@
 import type { GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { SURFACE_GLOW, styles, type CSSVars } from './hostStyles';
+import {
+  SURFACE_GLOW,
+  standingAvatarSize,
+  standingRowSizeStyle,
+  standingsListGap,
+  styles,
+  type CSSVars,
+} from './hostStyles';
 
 // Confetti pieces for the GAME_OVER celebration - a fixed module-level list
 // (computed once, not per render) so remounts don't reshuffle it. Colours
@@ -86,6 +93,8 @@ interface GameOverViewProps {
 export function GameOverView({ gameOver }: GameOverViewProps) {
   const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
   const winners = sortedFinalStandings.filter((standing) => standing.rank === 1);
+  const count = sortedFinalStandings.length;
+  const rowSize = standingRowSizeStyle(count);
 
   return (
     <div style={styles.container} className="screen-fade-in">
@@ -113,7 +122,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
           {gameOver.winnerName}
         </div>
       </div>
-      <div style={styles.standingsList}>
+      <div style={{ ...styles.standingsList, gap: standingsListGap(count) }}>
         {sortedFinalStandings.map((standing, index) => (
           <div
             key={standing.playerId}
@@ -123,14 +132,15 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
               standing.rank === 1
                 ? ({
                     ...styles.standingRowWinner,
+                    ...rowSize,
                     '--glow-color': 'rgba(212, 175, 55, 0.5)',
                     '--i': String(index),
                   } as CSSVars)
-                : ({ ...styles.standingRow, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
+                : ({ ...styles.standingRow, ...rowSize, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
             }
           >
             <span style={styles.standingRank}>#{standing.rank}</span>
-            <Avatar avatarId={standing.avatarId} sizeRem={2.25} ringColor={standing.rank === 1 ? 'var(--gold)' : undefined} />
+            <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={standing.rank === 1 ? 'var(--gold)' : undefined} />
             <span style={styles.standingName}>{standing.name}</span>
             <span style={styles.standingScore}>{standing.score}</span>
           </div>

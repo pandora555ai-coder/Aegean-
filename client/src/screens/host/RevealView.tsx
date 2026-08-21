@@ -8,7 +8,17 @@ import {
 } from '@game/shared';
 import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
-import { SURFACE_GLOW, styles, type CSSVars } from './hostStyles';
+import {
+  SURFACE_GLOW,
+  containerGap,
+  resultAvatarSize,
+  resultRowSizeStyle,
+  resultsListGap,
+  revealStandingsAvatarSize,
+  revealStandingsStripSizeStyle,
+  styles,
+  type CSSVars,
+} from './hostStyles';
 
 interface RevealViewProps {
   reveal: RevealHostPayload;
@@ -20,8 +30,12 @@ interface RevealViewProps {
 }
 
 export function RevealView({ reveal, question, roomCode, paused, pausedByName, revealSecondsLeft }: RevealViewProps) {
+  const count = reveal.results.length;
+  const standingsStripStyle = revealStandingsStripSizeStyle(count);
+  const standingsAvatar = revealStandingsAvatarSize(count);
+
   return (
-    <div style={styles.container} className="screen-fade-in" key={question.questionIndex}>
+    <div style={{ ...styles.container, gap: containerGap(count) }} className="screen-fade-in" key={question.questionIndex}>
       {roomCode && (
         <div style={styles.cornerRoomCode} data-testid="corner-room-code">
           {roomCode}
@@ -53,13 +67,13 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           never loses information. Sorted client-side straight from
           reveal.results, which already carries every connected player's
           current totalScore - no extra server payload needed. */}
-      <div style={styles.revealStandingsStrip} data-testid="reveal-standings-strip">
+      <div style={{ ...styles.revealStandingsStrip, ...standingsStripStyle }} data-testid="reveal-standings-strip">
         {[...reveal.results]
           .sort((a, b) => b.totalScore - a.totalScore)
           .map((result, index) => (
             <span key={result.playerId} style={styles.revealStandingsItem} data-testid="reveal-standings-item">
               <span style={styles.revealStandingsRank}>{index + 1}.</span>
-              <Avatar avatarId={result.avatarId} sizeRem={1.4} />
+              <Avatar avatarId={result.avatarId} sizeRem={standingsAvatar} />
               <span style={styles.revealStandingsName}>{result.name}</span>
               <span style={styles.revealStandingsScore}>{result.totalScore}</span>
             </span>
@@ -106,7 +120,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           );
         })}
       </div>
-      <div style={styles.resultsList}>
+      <div style={{ ...styles.resultsList, gap: resultsListGap(count) }}>
         {/* Rendered in the order the server sent them - correct-by-speed,
             then wrong, then non-answerers. Never re-sorted here. */}
         {reveal.results.map((result, index) => {
@@ -120,15 +134,19 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                 className={isFastest ? 'glow-pulse' : undefined}
                 style={
                   isFastest
-                    ? ({ ...styles.resultRowFastest, '--glow-color': 'rgba(212, 175, 55, 0.35)' } as CSSVars)
-                    : styles.resultRow
+                    ? ({
+                        ...styles.resultRowFastest,
+                        ...resultRowSizeStyle(count, true),
+                        '--glow-color': 'rgba(212, 175, 55, 0.35)',
+                      } as CSSVars)
+                    : { ...styles.resultRow, ...resultRowSizeStyle(count, false) }
                 }
                 data-testid="reveal-result"
                 data-correct={result.correct}
                 data-answer-rank={result.answerRank ?? ''}
               >
                 <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
-                  <Avatar avatarId={result.avatarId} sizeRem={1.75} />
+                  <Avatar avatarId={result.avatarId} sizeRem={resultAvatarSize(count)} />
                   <span style={styles.resultNameText}>
                     {result.correct
                       ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`

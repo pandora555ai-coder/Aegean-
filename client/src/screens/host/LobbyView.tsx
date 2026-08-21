@@ -10,7 +10,7 @@ import {
 } from '@game/shared';
 import { DIFFICULTY_MIX_LABELS } from '../../difficultyLabels';
 import { Avatar } from '../../components/Avatar';
-import { QR_SIZE_PX, styles } from './hostStyles';
+import { QR_SIZE_PX, lobbyAvatarSize, lobbyPlayerListStyle, styles } from './hostStyles';
 
 interface LobbyViewProps {
   connected: boolean;
@@ -99,7 +99,7 @@ export function LobbyView({
             {connectedCount}/{MAX_PLAYERS} παίκτες
           </div>
 
-          <div style={styles.playerList}>
+          <div style={lobbyPlayerListStyle(players.length)}>
             {players.map((player) => (
               <div
                 key={player.playerId}
@@ -108,7 +108,7 @@ export function LobbyView({
                 data-vip={player.isVip}
                 style={styles.playerRow}
               >
-                <Avatar avatarId={player.avatarId} sizeRem={2.75} />
+                <Avatar avatarId={player.avatarId} sizeRem={lobbyAvatarSize(players.length)} />
                 <span style={player.connected ? styles.playerName : styles.playerNameDisconnected}>
                   {player.isVip && '👑 '}
                   {player.name}

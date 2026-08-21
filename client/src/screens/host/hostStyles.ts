@@ -14,6 +14,116 @@ export type CSSVars = CSSProperties & Record<`--${string}`, string>;
 // clobber the glow ring.
 export const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
 
+// TV overflow fix: every list whose height grows with player count (up to
+// MAX_PLAYERS = 8) has to still fit inside the fixed 100vh container above.
+// A TV audience only ever sees one of a handful of counts, so a few
+// hand-picked steps read cleanly at each one instead of an unpredictable
+// continuous shrink via clamp(). Index = densityStep(count).
+const DENSITY_SCALE = [1, 0.82, 0.68, 0.56];
+
+function densityStep(count: number): number {
+  if (count <= 3) return 0;
+  if (count <= 5) return 1;
+  if (count <= 6) return 2;
+  return 3; // 7-8
+}
+
+export function densityScale(count: number): number {
+  return DENSITY_SCALE[densityStep(count)];
+}
+
+// The outer container's own gap between phase sections - REVEAL and
+// SCOREBOARD stack several sections above the player list/results, so this
+// shrinks too at high counts to give the list the room it needs.
+export function containerGap(count: number): string {
+  return `${(1.5 * densityScale(count)).toFixed(2)}rem`;
+}
+
+// LOBBY's player list - the one place "columns" (not just size) helps: past
+// 4 players a single column runs too tall, so it switches to two.
+export function lobbyPlayerListStyle(count: number): CSSProperties {
+  const twoColumn = count > 4;
+  const scale = count <= 4 ? 1 : count <= 6 ? 0.78 : 0.62;
+  return {
+    display: 'grid',
+    gridTemplateColumns: twoColumn ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+    columnGap: '2rem',
+    rowGap: `${(0.5 * scale).toFixed(2)}rem`,
+    fontSize: `${(2.5 * scale).toFixed(2)}rem`,
+    width: '100%',
+    maxWidth: twoColumn ? '900px' : '640px',
+  };
+}
+
+export function lobbyAvatarSize(count: number): number {
+  return count <= 4 ? 2.75 : count <= 6 ? 2.15 : 1.7;
+}
+
+// SCOREBOARD/GAME_OVER standings rows.
+export function standingRowSizeStyle(count: number): CSSProperties {
+  const s = densityScale(count);
+  return {
+    gap: `${(1.5 * s).toFixed(2)}rem`,
+    fontSize: `${(2.25 * s).toFixed(2)}rem`,
+    padding: `${(1 * s).toFixed(2)}rem ${(1.5 * s).toFixed(2)}rem`,
+  };
+}
+
+export function standingAvatarSize(count: number): number {
+  return 2.25 * densityScale(count);
+}
+
+export function standingsListGap(count: number): string {
+  return `${(0.75 * densityScale(count)).toFixed(2)}rem`;
+}
+
+// REVEAL's per-player results list - the tallest, most player-count-sensitive
+// section on that screen (up to 8 rows + a divider), so it gets the most
+// aggressive shrink.
+export function resultRowSizeStyle(count: number, fastest: boolean): CSSProperties {
+  const s = densityScale(count);
+  const baseFont = fastest ? 1.9 : 1.75;
+  const padY = fastest ? 0.6 : 0.5;
+  const padX = fastest ? 1.25 : 1;
+  return {
+    fontSize: `${(baseFont * s).toFixed(2)}rem`,
+    padding: `${(padY * s).toFixed(2)}rem ${(padX * s).toFixed(2)}rem`,
+    gap: `${(0.75 * s).toFixed(2)}rem`,
+  };
+}
+
+export function resultAvatarSize(count: number): number {
+  return 1.75 * densityScale(count);
+}
+
+export function resultsListGap(count: number): string {
+  return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
+}
+
+export function revealStandingsStripSizeStyle(count: number): CSSProperties {
+  const s = densityScale(count);
+  return {
+    fontSize: `${(1.1 * s).toFixed(2)}rem`,
+  };
+}
+
+export function revealStandingsAvatarSize(count: number): number {
+  return 1.4 * densityScale(count);
+}
+
+// QUESTION/POWER_UP's per-player "who's answered" strip.
+export function answeredNamesSizeStyle(count: number): CSSProperties {
+  const s = densityScale(count);
+  return {
+    fontSize: `${(1.5 * s).toFixed(2)}rem`,
+    gap: `${(0.75 * s).toFixed(2)}rem`,
+  };
+}
+
+export function answeredAvatarSize(count: number): number {
+  return 1.5 * densityScale(count);
+}
+
 export const styles: Record<string, CSSProperties> = {
   container: {
     display: 'flex',
@@ -21,7 +131,12 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: '1.5rem',
     padding: '3rem 2rem',
-    minHeight: '100vh',
+    // Fixed to the viewport, not just a floor - every host view must fit
+    // within 100vh at up to MAX_PLAYERS (8) players with no scrollbar,
+    // since nobody can scroll a TV. The 3rem/2rem padding IS the overscan
+    // safe margin (content never sits flush to a real TV's clipped edge).
+    height: '100vh',
+    overflow: 'hidden',
     width: '100%',
     background: 'var(--bg)',
     color: 'var(--text)',

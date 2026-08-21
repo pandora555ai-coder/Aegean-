@@ -5,7 +5,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { styles } from './hostStyles';
+import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
 interface PowerUpViewProps {
   powerUp: PowerUpShowHostPayload;
@@ -68,7 +68,7 @@ export function PowerUpView({
       <div style={styles.answerCounter} data-testid="power-up-progress">
         {chosenCount}/{totalCount} διάλεξαν
       </div>
-      <div style={styles.answeredNames}>
+      <div style={{ ...styles.answeredNames, ...answeredNamesSizeStyle(players.length) }}>
         {players.map((player) => {
           const chosen = chosenIds.has(player.playerId);
           return (
@@ -78,7 +78,11 @@ export function PowerUpView({
               data-chosen={chosen}
               style={chosen ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar avatarId={player.avatarId} sizeRem={1.5} ringColor={chosen ? 'var(--success)' : undefined} />
+              <Avatar
+                avatarId={player.avatarId}
+                sizeRem={answeredAvatarSize(players.length)}
+                ringColor={chosen ? 'var(--success)' : undefined}
+              />
               {chosen ? '🔒 ' : ''}
               {player.name}
             </span>

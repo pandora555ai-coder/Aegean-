@@ -1,6 +1,14 @@
 import { SCOREBOARD_DURATION_MS, type RoomCode, type ScoreboardPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { SURFACE_GLOW, styles, type CSSVars } from './hostStyles';
+import {
+  SURFACE_GLOW,
+  containerGap,
+  standingAvatarSize,
+  standingRowSizeStyle,
+  standingsListGap,
+  styles,
+  type CSSVars,
+} from './hostStyles';
 
 interface ScoreboardViewProps {
   scoreboard: ScoreboardPayload;
@@ -12,9 +20,15 @@ interface ScoreboardViewProps {
 
 export function ScoreboardView({ scoreboard, roomCode, paused, pausedByName, scoreboardSecondsLeft }: ScoreboardViewProps) {
   const sortedStandings = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
+  const count = sortedStandings.length;
+  const rowSize = standingRowSizeStyle(count);
 
   return (
-    <div style={styles.container} className="screen-fade-in" key={scoreboard.questionIndex}>
+    <div
+      style={{ ...styles.container, gap: containerGap(count) }}
+      className="screen-fade-in"
+      key={scoreboard.questionIndex}
+    >
       {roomCode && (
         <div style={styles.cornerRoomCode} data-testid="corner-room-code">
           {roomCode}
@@ -29,7 +43,7 @@ export function ScoreboardView({ scoreboard, roomCode, paused, pausedByName, sco
       <div style={styles.progress}>
         Ερώτηση {scoreboard.questionIndex + 1}/{scoreboard.totalQuestions} ολοκληρώθηκε
       </div>
-      <div style={styles.standingsList}>
+      <div style={{ ...styles.standingsList, gap: standingsListGap(count) }}>
         {/* Rows are already in rank order (leader first) - the stagger
             delay below (--i = row position) makes them visibly slide in
             "from the leader down". */}
@@ -44,14 +58,19 @@ export function ScoreboardView({ scoreboard, roomCode, paused, pausedByName, sco
               className="enter-rise"
               style={
                 !standing.connected
-                  ? ({ ...styles.standingRowDisconnected, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
+                  ? ({
+                      ...styles.standingRowDisconnected,
+                      ...rowSize,
+                      boxShadow: SURFACE_GLOW,
+                      '--i': String(index),
+                    } as CSSVars)
                   : isLeader
-                    ? ({ ...styles.standingRowLeader, '--i': String(index) } as CSSVars)
-                    : ({ ...styles.standingRow, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
+                    ? ({ ...styles.standingRowLeader, ...rowSize, '--i': String(index) } as CSSVars)
+                    : ({ ...styles.standingRow, ...rowSize, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
               }
             >
               <span style={styles.standingRank}>#{standing.rank}</span>
-              <Avatar avatarId={standing.avatarId} sizeRem={2.25} ringColor={isLeader ? 'var(--gold)' : undefined} />
+              <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={isLeader ? 'var(--gold)' : undefined} />
               <span style={styles.standingName}>
                 {standing.name}
                 {!standing.connected && ' (αποσυνδέθηκε)'}
