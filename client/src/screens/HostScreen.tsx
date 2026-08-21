@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
-  STAGE_ANNOUNCE_DURATION_MS,
   ServerEvents,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
@@ -77,10 +76,11 @@ export default function HostScreen() {
   // the same object rather than a second screen's worth of state.
   const [steal, setSteal] = useState<StealShowHostPayload | null>(null);
   const [stealSecondsLeft, setStealSecondsLeft] = useState(0);
-  // Stage announcement (Task 31a) - the TV is the only screen that shows it.
-  // Set by stage:announce (which the server emits exactly once per stage) and
-  // cleared purely locally after STAGE_ANNOUNCE_DURATION_MS; nothing on the
-  // server waits for it, so the phase underneath is already live.
+  // Stage announcement (Task 31a, Task 35) - the TV is the only screen that
+  // shows it. Set by stage:announce (which the server emits exactly once per
+  // stage, just before the STAGE_ANNOUNCE phase it belongs to) and dropped by
+  // the server ending that phase - never on a timer of our own, so the card
+  // can never outlive its beat or vanish while the game is still holding.
   const [stageAnnounce, setStageAnnounce] = useState<StageAnnouncePayload | null>(null);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
@@ -366,8 +366,15 @@ export default function HostScreen() {
       setPowerUp(null);
       setPowerUpProgress(null);
       setSteal(null);
+      setStageAnnounce(null);
 
       switch (payload.phase) {
+        case 'STAGE_ANNOUNCE':
+          // Unlike the Game Master's question intro, this one DOES catch a
+          // reconnect up: the game is genuinely holding on it, so a TV that
+          // reattaches mid-beat must show the card, not the next view early.
+          setStageAnnounce(payload);
+          break;
         case 'LOBBY':
           setRoomCode(payload.code);
           roomCodeRef.current = payload.code;
@@ -577,18 +584,6 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [scoreboard, paused]);
 
-  // Drops the stage card after its own fixed lifetime (Task 31a). Purely
-  // local and purely cosmetic: the game never waited for it, and a TV that
-  // reconnects mid-stage simply doesn't get one - the announcement is an
-  // ENTRANCE, exactly like the Game Master's question intro.
-  useEffect(() => {
-    if (!stageAnnounce) {
-      return;
-    }
-    const handle = setTimeout(() => setStageAnnounce(null), STAGE_ANNOUNCE_DURATION_MS);
-    return () => clearTimeout(handle);
-  }, [stageAnnounce]);
-
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -646,10 +641,14 @@ export default function HostScreen() {
   const connectedCount = players.filter((player) => player.connected).length;
   const vip = players.find((player) => player.isVip) ?? null;
 
-  // The phase view, unchanged - lifted into a function of its own (Task 31a)
-  // only so the stage card below can overlay ANY of them from one place
-  // instead of every branch having to remember to render it.
   function renderPhaseView() {
+    // The announcement is a phase of its own (Task 35), so it renders ALONE:
+    // the question it precedes hasn't started server-side yet, and nothing
+    // else may be on screen underneath it.
+    if (phase === 'STAGE_ANNOUNCE' && stageAnnounce) {
+      return <StageAnnounceOverlay announce={stageAnnounce} />;
+    }
+
     if (phase === 'GAME_OVER' && gameOver) {
       return <GameOverView gameOver={gameOver} />;
     }
@@ -763,7 +762,6 @@ export default function HostScreen() {
         </button>
       )}
       {renderPhaseView()}
-      {stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
     </>
   );
 }

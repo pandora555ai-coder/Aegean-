@@ -261,7 +261,15 @@ export interface LobbyUpdatePayload {
 // POWER_UP (Task 30a) is a real phase, not a flag, so every existing phase
 // guard keeps rejecting answers/casts while it's up. WHEN it runs is decided
 // by the stage table below (Task 31a), not by this type.
-export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'SCOREBOARD' | 'GAME_OVER';
+export type GamePhase =
+  | 'LOBBY'
+  | 'STAGE_ANNOUNCE'
+  | 'POWER_UP'
+  | 'QUESTION'
+  | 'REVEAL'
+  | 'STEAL'
+  | 'SCOREBOARD'
+  | 'GAME_OVER';
 
 // ---------------------------------------------------------------------------
 // Stages (Task 31a)
@@ -380,9 +388,10 @@ export interface StageAnnouncePayload {
   totalQuestions: number;
 }
 
-// How long the TV keeps the announcement overlay up. Purely cosmetic and
-// entirely client-side: no server timer is involved, the game does NOT wait
-// for it, and the question/POWER_UP underneath is already live.
+// How long the STAGE_ANNOUNCE phase lasts. A real beat, not a cosmetic
+// overlay: the server holds here on the shared timer (so a pause freezes it)
+// and only then enters the question/POWER_UP, which is what keeps the
+// announcement and the question from ever being on screen at once.
 export const STAGE_ANNOUNCE_DURATION_MS = 3500;
 
 // Each player may cast ONE of these per game, at a target of their choosing;
@@ -908,6 +917,14 @@ export interface StateSyncLobbyPayload {
   settings: RoomSettings;
 }
 
+// The announcement beat is a phase of its own now, so a TV reattaching
+// mid-beat gets the same card the live event carried, plus what's left of
+// the hold (frozen if the room is paused, like every other remainingMs).
+export type StateSyncStageAnnouncePayload = StageAnnouncePayload & {
+  phase: 'STAGE_ANNOUNCE';
+  remainingMs: number;
+};
+
 export type StateSyncPowerUpHostPayload = PowerUpShowHostPayload & {
   phase: 'POWER_UP';
   remainingMs: number;
@@ -952,6 +969,7 @@ export interface StateSyncGameOverPayload extends GameOverPayload {
 
 export type StateSyncPayload =
   | StateSyncLobbyPayload
+  | StateSyncStageAnnouncePayload
   | StateSyncPowerUpHostPayload
   | StateSyncPowerUpPlayerPayload
   | StateSyncQuestionHostPayload

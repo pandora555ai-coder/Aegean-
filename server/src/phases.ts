@@ -3,17 +3,15 @@ import {
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
+  STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
   ServerEvents,
-  firstQuestionIndexOfStage,
   stageForQuestionIndex,
-  stagesForLength,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
   type RoomCode,
-  type StageAnnouncePayload,
 } from '@game/shared';
 import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
@@ -28,6 +26,7 @@ import {
   buildRevealPlayerPayload,
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
+  buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
   buildScoreboard,
@@ -65,32 +64,49 @@ function sortAndRankResults(results: RevealPlayerResult[]): void {
   }
 }
 
-// Stages (Task 31a). Brings room.stage in line with whatever question is
-// about to be entered, and announces the stage on the TV the ONE time it
-// actually changes. Called from the single gate below, so "each stage is
+// Stages (Task 31a, Task 35). Brings room.stage in line with whatever
+// question is about to be entered, and when it actually changes, HOLDS the
+// game in a STAGE_ANNOUNCE phase for the announcement's own duration before
+// anything else starts. Called from the single gate below, so "each stage is
 // announced exactly once, as it begins" is structural rather than something
 // each caller has to remember - and a pause, a reconnect or a re-broadcast
 // can never re-announce, since none of them move currentQuestionIndex.
-function syncStage(room: Room): void {
+// Returns whether the beat began, so the gate knows to wait rather than
+// starting the round itself: nothing else may run while the TV is showing
+// the card, which is what keeps the announcement and the question from
+// rendering on top of each other.
+function announceStageIfChanged(room: Room): boolean {
   const definition = stageForQuestionIndex(room.currentQuestionIndex);
   if (room.stage === definition.stage) {
-    return;
+    return false;
   }
   room.stage = definition.stage;
 
-  const payload: StageAnnouncePayload = {
-    stage: definition.stage,
-    totalStages: stagesForLength(room.settings.gameLength).length,
-    title: definition.title,
-    tagline: definition.tagline,
-    questionCount: definition.questionCount,
-    firstQuestionIndex: firstQuestionIndexOfStage(definition.stage),
-    totalQuestions: room.questions.length,
-  };
+  room.phase = 'STAGE_ANNOUNCE';
+  // The shared helper, exactly like every other phase - so pausing during
+  // the announcement freezes it and a reconnecting TV is told the real
+  // remaining time instead of a fresh full duration.
+  armActiveTimer(room, 'STAGE_ANNOUNCE', STAGE_ANNOUNCE_DURATION_MS, () => endStageAnnounce(room.code));
+
+  // Card BEFORE the phase change, deliberately: the TV renders the card as
+  // the STAGE_ANNOUNCE phase's whole view, so it must already hold it when
+  // it learns the phase - otherwise there's a frame with a phase and no card.
   // Room-wide, but only the TV renders it: the phones are controllers and
   // are about to be busy with a power-up choice or an answer.
-  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, payload);
+  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, buildStageAnnounce(room));
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   console.log(`room ${room.code} entering stage ${definition.stage} — ${definition.title}`);
+  return true;
+}
+
+// Ends the announcement beat exactly once - guarded by the phase check, the
+// same one-shot discipline as every other advanceFrom*.
+export function endStageAnnounce(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'STAGE_ANNOUNCE') {
+    return;
+  }
+  beginRound(room);
 }
 
 // The ONLY way any question is ever entered - vip:start_game and every
@@ -99,14 +115,22 @@ function syncStage(room: Room): void {
 // stage announces itself once" structural rather than something each caller
 // has to remember.
 export function enterQuestionOrPowerUp(room: Room): void {
-  syncStage(room);
+  if (announceStageIfChanged(room)) {
+    return; // endStageAnnounce starts the round once the beat is over
+  }
+  beginRound(room);
+}
+
+// Everything the gate does once any stage announcement is out of the way -
+// reached either directly (mid-stage) or from endStageAnnounce.
+function beginRound(room: Room): void {
   if (stageForQuestionIndex(room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
     startPowerUp(room);
     return;
   }
   room.phase = 'QUESTION';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  startQuestion(room);
+  startQuestion(room); // arms the question timer HERE, as the question appears
 }
 
 // Power-up (Task 30a). Runs on its OWN 10s timer through the shared helper,
@@ -535,6 +559,8 @@ export function continuationForActiveTimer(room: Room): (() => void) | null {
     return null;
   }
   switch (room.activeTimer.kind) {
+    case 'STAGE_ANNOUNCE':
+      return () => endStageAnnounce(room.code);
     case 'POWER_UP':
       return () => endPowerUp(room.code);
     case 'QUESTION':

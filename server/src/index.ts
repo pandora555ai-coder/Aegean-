@@ -66,6 +66,7 @@ import {
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
   buildPowerUpProgress,
+  buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
   buildScoreboard,
@@ -216,6 +217,11 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
       const lobbyPayload = buildLobbyUpdate(room.code);
       return lobbyPayload ? { ...lobbyPayload, phase: 'LOBBY' } : null;
     }
+    // The announcement is a held phase now, so a TV reattaching mid-beat
+    // gets the card back plus what's actually left of the hold (frozen if
+    // the room is paused) - never a fresh full duration.
+    case 'STAGE_ANNOUNCE':
+      return { ...buildStageAnnounce(room), phase: 'STAGE_ANNOUNCE', remainingMs: remainingActiveTimerMs(room) };
     case 'POWER_UP':
       return { ...buildPowerUpHostPayload(room), phase: 'POWER_UP', remainingMs: remainingActiveTimerMs(room) };
     case 'QUESTION': {

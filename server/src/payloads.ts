@@ -1,5 +1,8 @@
 import {
   POWER_UP_EFFECTS,
+  firstQuestionIndexOfStage,
+  stageForQuestionIndex,
+  stagesForLength,
   type GameOverPayload,
   type GameOverStanding,
   type PowerUpProgressPayload,
@@ -10,12 +13,29 @@ import {
   type RevealPlayerPayload,
   type ScoreboardPayload,
   type ScoreboardStanding,
+  type StageAnnouncePayload,
   type StealShowHostPayload,
   type StealShowPlayerPayload,
   type StealTarget,
 } from '@game/shared';
 import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
+
+// The stage card the TV shows during the STAGE_ANNOUNCE beat. Derived
+// entirely from room.currentQuestionIndex, so the live emit and a
+// mid-announcement state:sync can never disagree.
+export function buildStageAnnounce(room: Room): StageAnnouncePayload {
+  const definition = stageForQuestionIndex(room.currentQuestionIndex);
+  return {
+    stage: definition.stage,
+    totalStages: stagesForLength(room.settings.gameLength).length,
+    title: definition.title,
+    tagline: definition.tagline,
+    questionCount: definition.questionCount,
+    firstQuestionIndex: firstQuestionIndexOfStage(definition.stage),
+    totalQuestions: room.questions.length,
+  };
+}
 
 // Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
 // ranking" convention, where a rank equals 1 + the number of players

@@ -5,12 +5,11 @@ interface StageAnnounceOverlayProps {
   announce: StageAnnouncePayload;
 }
 
-// Task 31a - the TV's "here comes stage N" card. Deliberately an OVERLAY on
-// top of whatever phase view is already live rather than a phase of its own:
-// the server never waits for it, so the question (or the POWER_UP phase in
-// front of it) is already running underneath and its timer is untouched.
-// Shown once per stage - HostScreen drops it on a timer of its own, and the
-// server only ever emits stage:announce on a real stage change.
+// Task 31a/35 - the TV's "here comes stage N" card, and the whole view of
+// the STAGE_ANNOUNCE phase: the server HOLDS there for the announcement's
+// duration, so nothing renders underneath and the question that follows
+// hasn't started (nor has its timer). Shown once per stage - the server only
+// emits stage:announce on a real stage change, and ends the phase itself.
 export function StageAnnounceOverlay({ announce }: StageAnnounceOverlayProps) {
   const lastQuestionNumber = announce.firstQuestionIndex + announce.questionCount;
   return (

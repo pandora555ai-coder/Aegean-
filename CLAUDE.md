@@ -40,8 +40,10 @@ client/src/theme.css     Gameshow theme
 - React StrictMode double-invokes effects in dev — guard anything that fires once.
 
 ## Phases
-LOBBY -> QUESTION -> REVEAL -> (STEAL) -> (SCOREBOARD every 3rd + final) -> GAME_OVER
+LOBBY -> (STAGE_ANNOUNCE) -> QUESTION -> REVEAL -> (STEAL) -> (SCOREBOARD every 3rd + final) -> GAME_OVER
 Every question is entered via enterQuestionOrPowerUp() — the only gate.
+STAGE_ANNOUNCE is a real held phase on the shared timer: the TV shows the
+stage card ALONE and the question (and its timer) only start after it.
 continueAfterReveal() is the one function deciding what follows a REVEAL/STEAL.
 `paused` is a boolean flag, NOT a phase.
 
