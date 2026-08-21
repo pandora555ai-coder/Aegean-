@@ -14,6 +14,7 @@ export const ClientEvents = {
   ROOM_PEEK: 'room:peek',
   SABOTAGE_CAST: 'player:sabotage_cast',
   POWER_UP_CHOOSE: 'player:power_up_choose',
+  STEAL_CHOOSE: 'player:steal_choose',
 } as const;
 
 export const ServerEvents = {
@@ -41,6 +42,8 @@ export const ServerEvents = {
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
   POWER_UP_PROGRESS: 'power_up:progress',
   STAGE_ANNOUNCE: 'stage:announce',
+  STEAL_SHOW: 'steal:show',
+  STEAL_RESOLVED: 'steal:resolved',
 } as const;
 
 export type RoomCode = string;
@@ -258,7 +261,7 @@ export interface LobbyUpdatePayload {
 // POWER_UP (Task 30a) is a real phase, not a flag, so every existing phase
 // guard keeps rejecting answers/casts while it's up. WHEN it runs is decided
 // by the stage table below (Task 31a), not by this type.
-export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
+export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'SCOREBOARD' | 'GAME_OVER';
 
 // ---------------------------------------------------------------------------
 // Stages (Task 31a)
@@ -278,6 +281,11 @@ export interface StageDefinition {
   // economy and nothing is held over: a power-up is chosen and spent inside
   // the same stage-question boundary.
   powerUpBeforeEveryQuestion: boolean;
+  // When true, EVERY question of this stage is FOLLOWED (after its REVEAL,
+  // before any SCOREBOARD) by a STEAL phase in which the fastest correct
+  // answerer takes points off one other player. Skipped entirely on a
+  // question nobody got right - see startStealIfEligible in phases.ts.
+  stealAfterEveryQuestion: boolean;
   title: string; // Greek, announced on the TV as the stage begins
   tagline: string; // Greek, one line under the title
 }
@@ -287,6 +295,7 @@ export const STAGES: readonly StageDefinition[] = [
     stage: 1,
     questionCount: 3,
     powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
     title: 'Στάδιο 1 — Καθαρές Ερωτήσεις',
     tagline: 'Χωρίς κόλπα. Μόνο ταχύτητα και γνώση.',
   },
@@ -294,8 +303,17 @@ export const STAGES: readonly StageDefinition[] = [
     stage: 2,
     questionCount: 5,
     powerUpBeforeEveryQuestion: true,
+    stealAfterEveryQuestion: false,
     title: 'Στάδιο 2 — Σαμποτάζ',
     tagline: 'Πριν από ΚΑΘΕ ερώτηση διαλέγετε όπλο. Και τα όπλα στοιβάζονται.',
+  },
+  {
+    stage: 3,
+    questionCount: 4,
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: true,
+    title: 'Στάδιο 3 — Κλοπή Πόντων',
+    tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον θέλει.',
   },
 ] as const;
 
@@ -504,6 +522,102 @@ export interface PowerUpProgressPayload {
   chosenCount: number;
   totalPlayers: number;
   chosenPlayerIds: string[];
+}
+
+// ---------------------------------------------------------------------------
+// STEAL phase (Task 32)
+// ---------------------------------------------------------------------------
+
+// The thief's own countdown, run through the SHARED timer helper exactly like
+// every other phase's, so a pause freezes it identically. Once the theft
+// RESOLVES (a pick, or this running out), the phase stays up for a second,
+// shorter beat so the TV can actually announce what happened before the game
+// moves on.
+export const STEAL_DURATION_MS = 8000;
+export const STEAL_ANNOUNCE_DURATION_MS = 4000;
+
+// How much the fastest correct answerer may take, scaled by how fast they
+// were: an instant answer steals STEAL_MAX_AMOUNT, one landing right on the
+// buzzer steals STEAL_MIN_AMOUNT. Always CLAMPED to the victim's current
+// score at resolution time, so nobody is ever pushed below zero and the thief
+// gains exactly what was actually removed.
+export const STEAL_MIN_AMOUNT = 200;
+export const STEAL_MAX_AMOUNT = 400;
+
+// A player the thief may rob - every OTHER connected player. `score` is
+// included because the amount is clamped to it: the picker shows what is
+// really on the table for each target rather than a flat promise.
+export interface StealTarget {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  score: number;
+}
+
+export interface StealChoosePayload {
+  targetPlayerId: string;
+}
+
+// Public, symmetric, and only ever sent AFTER the theft has been applied -
+// the whole room (TV included) sees the same figures. `victimPlayerId` is
+// null when nothing was stolen at all, which happens when the thief let the
+// clock run out. `stolenAmount` is the amount that ACTUALLY moved (clamped to
+// what the victim had); `attemptedAmount` is what the thief's speed had
+// earned them, kept so the TV can show "wanted 400, got 150".
+export interface StealResolvedPayload {
+  thiefPlayerId: string;
+  thiefName: string;
+  thiefAvatarId: string;
+  victimPlayerId: string | null;
+  victimName: string | null;
+  victimAvatarId: string | null;
+  attemptedAmount: number;
+  stolenAmount: number;
+  thiefScore: number;
+  victimScore: number | null;
+}
+
+// 'steal:show' is asymmetric like question:show / power_up:show, and doubly
+// so: only ONE phone - the thief's - gets a target list at all. Everyone
+// else, and the TV, gets a watching view naming the thief.
+export interface StealShowHostPayload {
+  questionIndex: number; // the question this steal follows, 0-based
+  totalQuestions: number;
+  durationMs: number;
+  thiefPlayerId: string;
+  thiefName: string;
+  thiefAvatarId: string;
+  amount: number; // what their speed earned them, before the victim clamp
+  // null while the thief is still choosing; set once the theft has resolved,
+  // which is what the TV announces.
+  resolved: StealResolvedPayload | null;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export interface StealShowPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  durationMs: number;
+  thiefName: string;
+  thiefAvatarId: string;
+  // The ONE bit that makes this phone the picker rather than a spectator.
+  youAreThief: boolean;
+  amount: number;
+  // Non-empty ONLY for the thief - no other phone is even offered a list.
+  targets: StealTarget[];
+  // Always null on a fresh steal:show; only the state:sync variant can carry
+  // a real value, for a thief reconnecting after already picking.
+  yourChoice: StealChoosePayload | null;
+  resolved: StealResolvedPayload | null;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type StealShowPayload = StealShowHostPayload | StealShowPlayerPayload;
+
+export function isStealHostPayload(payload: StealShowPayload): payload is StealShowHostPayload {
+  return 'thiefPlayerId' in payload;
 }
 
 export interface AnswerIdentity {
@@ -795,6 +909,16 @@ export type StateSyncQuestionPlayerPayload = QuestionShowPlayerPayload & {
 export type StateSyncRevealHostPayload = RevealHostPayload & { phase: 'REVEAL' };
 export type StateSyncRevealPlayerPayload = RevealPlayerPayload & { phase: 'REVEAL' };
 
+export type StateSyncStealHostPayload = StealShowHostPayload & {
+  phase: 'STEAL';
+  remainingMs: number;
+};
+
+export type StateSyncStealPlayerPayload = StealShowPlayerPayload & {
+  phase: 'STEAL';
+  remainingMs: number;
+};
+
 export interface StateSyncScoreboardPayload extends ScoreboardPayload {
   phase: 'SCOREBOARD';
 }
@@ -811,6 +935,8 @@ export type StateSyncPayload =
   | StateSyncQuestionPlayerPayload
   | StateSyncRevealHostPayload
   | StateSyncRevealPlayerPayload
+  | StateSyncStealHostPayload
+  | StateSyncStealPlayerPayload
   | StateSyncScoreboardPayload
   | StateSyncGameOverPayload;
 
@@ -830,6 +956,7 @@ export type ClientToServerEvents = {
   [ClientEvents.ROOM_PEEK]: (payload: RoomPeekPayload) => void;
   [ClientEvents.SABOTAGE_CAST]: (payload: SabotageCastPayload) => void;
   [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
+  [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -857,4 +984,6 @@ export type ServerToClientEvents = {
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
   [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
+  [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
+  [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
 };

@@ -586,4 +586,46 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: '999px',
     transition: 'width 1s linear',
   },
+  // Steal (Task 32) - the TV during and after a theft.
+  stealThiefRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.25rem',
+    fontSize: '3rem',
+    fontWeight: 800,
+    color: 'var(--gold)',
+  },
+  stealAmount: {
+    fontSize: '2.25rem',
+    fontWeight: 700,
+    color: 'var(--text-dim)',
+  },
+  stealVictimRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.25rem',
+    fontSize: '2.5rem',
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  stealMovedAmount: {
+    fontSize: 'clamp(4rem, 7vw, 7rem)',
+    fontWeight: 800,
+    color: 'var(--gold)',
+  },
+  stealNothing: {
+    fontSize: '3rem',
+    fontWeight: 700,
+    color: 'var(--text-faint)',
+  },
+  stealClampNote: {
+    fontSize: '1.5rem',
+    fontWeight: 600,
+    color: 'var(--text-faint)',
+  },
+  stealScoreLine: {
+    fontSize: '1.75rem',
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+  },
 };

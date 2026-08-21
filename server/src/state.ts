@@ -8,6 +8,7 @@ import {
   type RoomSettings,
   type SabotageAnnouncement,
   type SabotageEffect,
+  type StealResolvedPayload,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   MAX_PLAYERS,
@@ -57,6 +58,23 @@ export interface PowerUpChoice {
   targetPlayerId: string;
   targetName: string;
   effect: PowerUpEffect;
+}
+
+// The STEAL phase in flight (Task 32) - null outside it. Everything a
+// steal:show/state:sync needs lives here, so a reconnecting phone is told
+// whether IT is the thief straight from server state rather than from
+// anything the client remembered. `resolved` is what turns the phase from
+// "the thief is picking" into "the TV is announcing the theft"; it is set
+// exactly once, by resolveSteal, which is also what moves the points.
+export interface StealState {
+  thiefPlayerId: string;
+  thiefName: string;
+  thiefAvatarId: string;
+  // Earned by the thief's answer SPEED, computed once when the phase begins -
+  // the attempt, before the clamp to whatever the victim actually has.
+  amount: number;
+  chosenTargetPlayerId: string | null;
+  resolved: StealResolvedPayload | null;
 }
 
 // A snapshot of the last computed reveal, kept around so a player who
@@ -172,6 +190,10 @@ export interface Room {
   // victim is the normal case and every one of them must STACK rather than
   // the last one silently winning.
   pendingPowerUpByTarget: Map<string, PowerUpChoice[]>;
+  // Steal (Task 32) - the STEAL phase currently in flight, null outside it.
+  // Set by startSteal, read by every steal payload builder, cleared the
+  // moment the phase is left.
+  steal: StealState | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -225,6 +247,7 @@ export function createRoom(hostSocketId: string): Room {
     shuffledOptionsByTarget: new Map(),
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
+    steal: null,
   };
 
   rooms.set(code, room);
@@ -489,6 +512,8 @@ export function resetRoomForNewGame(room: Room): void {
   // No unspent power-up choice carries over from the game that just ended.
   room.powerUpChoices.clear();
   room.pendingPowerUpByTarget.clear();
+  // No half-finished theft survives into the next game.
+  room.steal = null;
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

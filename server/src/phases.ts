@@ -4,6 +4,8 @@ import {
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
   STAGES,
+  STEAL_ANNOUNCE_DURATION_MS,
+  STEAL_DURATION_MS,
   ServerEvents,
   firstQuestionIndexOfStage,
   stageForQuestionIndex,
@@ -19,12 +21,15 @@ import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
 import { activeSabotagesFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
+import { applySteal, buildStealState } from './steal.js';
 import { io } from './realtime.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
+  buildStealHostPayload,
+  buildStealPlayerPayload,
   buildScoreboard,
   buildGameOver,
 } from './payloads.js';
@@ -369,16 +374,113 @@ function shouldShowScoreboard(room: Room): boolean {
 
 // Ends REVEAL exactly once - guarded by the phase check, so whichever of
 // (the auto-advance timer firing) / (host clicking "skip") happens first
-// wins, and the timer is always cleared so it can never fire twice. Either
-// shows SCOREBOARD (arming its own timer) or - when this question doesn't
-// warrant one - skips straight to the next question/GAME_OVER, exactly as
-// if a SCOREBOARD had shown and immediately auto-advanced.
+// wins, and the timer is always cleared so it can never fire twice. In a
+// stealing stage the STEAL phase goes HERE, between REVEAL and any
+// SCOREBOARD, so the standings a scoreboard shows are always post-theft.
 export function advanceFromReveal(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'REVEAL') {
     return;
   }
 
+  if (startStealIfEligible(room)) {
+    return; // the steal runs its own timers and calls continueAfterReveal itself
+  }
+  continueAfterReveal(room);
+}
+
+// Steal (Task 32). Starts the phase only when the STAGE calls for one AND
+// this particular round produced a thief - "nobody answered correctly" (and
+// the other no-thief cases in buildStealState) simply skips it entirely.
+// Returns whether the phase actually began, so the caller knows whether to
+// carry on to SCOREBOARD/next question itself.
+function startStealIfEligible(room: Room): boolean {
+  if (!stageForQuestionIndex(room.currentQuestionIndex).stealAfterEveryQuestion) {
+    return false;
+  }
+  const steal = buildStealState(room);
+  if (!steal) {
+    console.log(`room ${room.code} skipping steal after question ${room.currentQuestionIndex + 1} — no eligible thief`);
+    return false;
+  }
+
+  room.steal = steal;
+  room.phase = 'STEAL';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+
+  // Armed BEFORE the payloads are built - they report the timer's remaining
+  // time, so it has to exist first.
+  armActiveTimer(room, 'STEAL', STEAL_DURATION_MS, () => resolveSteal(room.code, null));
+
+  broadcastSteal(room);
+  console.log(
+    `room ${room.code} steal phase — ${steal.thiefName} may take up to ${steal.amount} ` +
+      `(after question ${room.currentQuestionIndex + 1})`,
+  );
+  return true;
+}
+
+// Per phone, never built once and reused: only the THIEF's payload carries a
+// target list, and `youAreThief` is what turns their phone into the picker.
+function broadcastSteal(room: Room): void {
+  const hostPayload = buildStealHostPayload(room);
+  if (hostPayload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.STEAL_SHOW, hostPayload);
+  }
+  for (const player of getConnectedPlayers(room)) {
+    const playerPayload = buildStealPlayerPayload(room, player.playerId);
+    if (playerPayload) {
+      io.to(player.socketId).emit(ServerEvents.STEAL_SHOW, playerPayload);
+    }
+  }
+}
+
+// Resolves the theft exactly once - guarded by both the phase check and
+// `resolved`, so whichever of (the thief picks) / (the 8s timer fires)
+// happens first wins. `victimPlayerId` null means the thief never chose, and
+// per spec nothing is stolen. The phase does NOT end here: it stays up for a
+// short announcement beat on its own timer, which is what the TV shows.
+export function resolveSteal(code: RoomCode, victimPlayerId: string | null): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'STEAL' || !room.steal || room.steal.resolved) {
+    return;
+  }
+
+  const steal = room.steal;
+  steal.chosenTargetPlayerId = victimPlayerId;
+  steal.resolved = applySteal(room, steal, victimPlayerId);
+
+  armActiveTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
+
+  // Public and symmetric, unlike the picker above - the theft is over, so
+  // everyone (TV included) gets the same figures.
+  io.to(room.code).emit(ServerEvents.STEAL_RESOLVED, steal.resolved);
+  // Followed by a fresh steal:show so a phone that was mid-picker switches to
+  // the announcement view from the same state the server holds.
+  broadcastSteal(room);
+
+  console.log(
+    `room ${room.code} steal resolved — ${steal.resolved.thiefName} took ${steal.resolved.stolenAmount} ` +
+      `of ${steal.resolved.attemptedAmount} from ${steal.resolved.victimName ?? 'nobody'}`,
+  );
+}
+
+// Same one-shot discipline as advanceFromReveal - ends the announcement beat
+// and hands back to the normal post-REVEAL path.
+export function advanceFromSteal(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'STEAL') {
+    return;
+  }
+  room.steal = null;
+  continueAfterReveal(room);
+}
+
+// What follows a REVEAL once any STEAL is done with: either SCOREBOARD
+// (arming its own timer) or - when this question doesn't warrant one - the
+// next question/GAME_OVER, exactly as if a SCOREBOARD had shown and
+// immediately auto-advanced.
+function continueAfterReveal(room: Room): void {
   if (!shouldShowScoreboard(room)) {
     console.log(`room ${room.code} skipping scoreboard after question ${room.currentQuestionIndex + 1}`);
     advanceToNextQuestionOrGameOver(room);
@@ -439,6 +541,10 @@ export function continuationForActiveTimer(room: Room): (() => void) | null {
       return () => endQuestion(room.code);
     case 'REVEAL':
       return () => advanceFromReveal(room.code);
+    case 'STEAL':
+      return () => resolveSteal(room.code, null);
+    case 'STEAL_ANNOUNCE':
+      return () => advanceFromSteal(room.code);
     case 'SCOREBOARD':
       return () => advanceFromScoreboard(room.code);
   }

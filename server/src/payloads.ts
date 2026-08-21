@@ -10,6 +10,9 @@ import {
   type RevealPlayerPayload,
   type ScoreboardPayload,
   type ScoreboardStanding,
+  type StealShowHostPayload,
+  type StealShowPlayerPayload,
+  type StealTarget,
 } from '@game/shared';
 import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
@@ -171,6 +174,74 @@ export function buildPowerUpProgress(room: Room): PowerUpProgressPayload {
     chosenCount: room.powerUpChoices.size,
     totalPlayers: getConnectedPlayers(room).length,
     chosenPlayerIds: Array.from(room.powerUpChoices.keys()),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// STEAL (Task 32)
+// ---------------------------------------------------------------------------
+
+// Every OTHER connected player, with the score the steal will be clamped to.
+// Built fresh on each send, so a target who left between the phase starting
+// and a reconnect simply isn't offered any more.
+export function stealTargetsFor(room: Room, thiefPlayerId: string): StealTarget[] {
+  return getConnectedPlayers(room)
+    .filter((player) => player.playerId !== thiefPlayerId)
+    .map((player) => ({
+      playerId: player.playerId,
+      name: player.name,
+      avatarId: player.avatarId,
+      score: player.score,
+    }));
+}
+
+// Built fresh from room state on every send - live broadcast and state:sync
+// catch-up therefore share one code path, and `durationMs` is the time STILL
+// LEFT (frozen while paused, since it comes from the shared timer helper).
+export function buildStealHostPayload(room: Room): StealShowHostPayload | null {
+  const steal = room.steal;
+  if (!steal) {
+    return null;
+  }
+  return {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    durationMs: remainingActiveTimerMs(room),
+    thiefPlayerId: steal.thiefPlayerId,
+    thiefName: steal.thiefName,
+    thiefAvatarId: steal.thiefAvatarId,
+    amount: steal.amount,
+    resolved: steal.resolved,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+// Per phone, never built once and reused: `youAreThief` and the target list
+// are exactly what differ, and only the thief's phone is ever handed a list
+// to pick from. Everyone else gets a spectator view naming the thief.
+export function buildStealPlayerPayload(room: Room, playerId: string): StealShowPlayerPayload | null {
+  const steal = room.steal;
+  if (!steal) {
+    return null;
+  }
+  const youAreThief = steal.thiefPlayerId === playerId;
+  return {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    durationMs: remainingActiveTimerMs(room),
+    thiefName: steal.thiefName,
+    thiefAvatarId: steal.thiefAvatarId,
+    youAreThief,
+    amount: steal.amount,
+    targets: youAreThief ? stealTargetsFor(room, playerId) : [],
+    yourChoice:
+      youAreThief && steal.chosenTargetPlayerId !== null
+        ? { targetPlayerId: steal.chosenTargetPlayerId }
+        : null,
+    resolved: steal.resolved,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
 }
 

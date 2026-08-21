@@ -17,6 +17,7 @@ import {
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
+  isStealHostPayload,
   sanitizeCustomName,
   type ActiveSabotage,
   type AnswerAcceptedPayload,
@@ -43,6 +44,10 @@ import {
   type ScoreboardPayload,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
+  type StealChoosePayload,
+  type StealResolvedPayload,
+  type StealShowPayload,
+  type StealShowPlayerPayload,
   type VipChangedPayload,
 } from '@game/shared';
 import { socket } from '../socket';
@@ -277,6 +282,13 @@ export default function ControllerScreen() {
   // the server would log a rejected duplicate. Reset only when a NEW phase's
   // power_up:show arrives, so going back to step 1 can never re-open it.
   const powerUpSentRef = useRef(false);
+  // Steal (Task 32). ONE piece of state for the whole phase: `youAreThief`
+  // decides whether this phone is the picker or a spectator, and `resolved`
+  // turns either of them into the announcement. Both come from the server on
+  // every send, so a reconnect never has to be told twice which one this is.
+  const [steal, setSteal] = useState<StealShowPlayerPayload | null>(null);
+  // The one-send guard, a ref for the same reason as powerUpSentRef above.
+  const stealSentRef = useRef(false);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -295,6 +307,15 @@ export default function ControllerScreen() {
       powerUpSentRef.current = payload?.yourChoice != null;
     }
 
+    // Steal (Task 32) - set together for the same reason applyPowerUp is: the
+    // picker, the send guard and the announcement can never disagree about
+    // what this phone has already done. `yourChoice` is only ever real on a
+    // state:sync catching a thief up after they already picked.
+    function applySteal(payload: StealShowPlayerPayload | null) {
+      setSteal(payload);
+      stealSentRef.current = payload?.yourChoice != null || payload?.resolved != null;
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -307,6 +328,7 @@ export default function ControllerScreen() {
         setScoreboard(null);
         setGameOver(null);
         applyPowerUp(null);
+        applySteal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -369,6 +391,7 @@ export default function ControllerScreen() {
         // POWER_UP flows straight into the question it preceded - whatever
         // was chosen is now the server's business, and lands right here.
         applyPowerUp(null);
+        applySteal(null); // any steal belonged to the previous question
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         applySabotages(payload.yourSabotages);
@@ -398,6 +421,32 @@ export default function ControllerScreen() {
       setPowerUpChoice({ effect: payload.effect, targetPlayerId: payload.targetPlayerId });
     }
 
+    // Steal (Task 32) - the player branch of an asymmetric event. Only ONE
+    // phone in the room gets a payload with `youAreThief: true` and a target
+    // list; the rest get a spectator view naming the thief.
+    function handleStealShow(payload: StealShowPayload) {
+      if (!isStealHostPayload(payload)) {
+        setQuestion(null);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
+        setReveal(null); // the steal replaces the reveal it followed
+        setScoreboard(null);
+        applySabotages([]);
+        applyPowerUp(null);
+        applySteal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public - the points have already moved. The steal:show that follows
+    // carries the same object; merging here too means the announcement lands
+    // even if that one is missed.
+    function handleStealResolved(payload: StealResolvedPayload) {
+      stealSentRef.current = true;
+      setSteal((current) => (current ? { ...current, resolved: payload } : current));
+    }
+
     function handleAnswerAccepted(payload: AnswerAcceptedPayload) {
       setAcceptedChoice(payload.choice);
     }
@@ -408,6 +457,7 @@ export default function ControllerScreen() {
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         applySabotages([]); // the question it belonged to is over
+        applySteal(null); // as is any steal from the round before it
       }
     }
 
@@ -417,12 +467,14 @@ export default function ControllerScreen() {
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
       applySabotages([]);
+      applySteal(null);
     }
 
     function handleGameOver(payload: GameOverPayload) {
       setScoreboard(null);
       setGameOver(payload);
       applySabotages([]);
+      applySteal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -448,6 +500,7 @@ export default function ControllerScreen() {
       setGameOver(null);
       applySabotages([]);
       applyPowerUp(null);
+      applySteal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -497,6 +550,16 @@ export default function ControllerScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
+        case 'STEAL':
+          // The reconnect case that matters: the server says whether THIS
+          // phone is the thief, whether it already picked, and how much time
+          // is really left - none of which the client is trusted to remember.
+          if (!isStealHostPayload(payload)) {
+            applySteal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
         case 'SCOREBOARD':
           setScoreboard(payload);
           setPaused(payload.paused);
@@ -516,6 +579,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.POWER_UP_CHOICE_ACCEPTED, handlePowerUpChoiceAccepted);
+    socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
+    socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -535,6 +600,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.POWER_UP_CHOICE_ACCEPTED, handlePowerUpChoiceAccepted);
+      socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
+      socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -708,6 +775,20 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.POWER_UP_CHOOSE, choice);
   }
 
+  // Steal (Task 32). One tap, one send, and it resolves server-side
+  // immediately - there is no second step and no taking it back. Guarded by a
+  // ref rather than the state it sets, so a double tap can't slip a second
+  // player:steal_choose through the gap before React re-renders.
+  function handleStealPick(targetPlayerId: string) {
+    if (stealSentRef.current || paused) {
+      return;
+    }
+    stealSentRef.current = true;
+    const choice: StealChoosePayload = { targetPlayerId };
+    setSteal((current) => (current ? { ...current, yourChoice: choice } : current));
+    socket.emit(ClientEvents.STEAL_CHOOSE, choice);
+  }
+
   function handleStartGame() {
     socket.emit(ClientEvents.VIP_START_GAME, {});
   }
@@ -817,6 +898,104 @@ export default function ControllerScreen() {
             Παράλειψη
           </button>
         )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Steal (Task 32). Three views out of ONE payload: the thief gets a picker,
+  // everyone else gets a "they're choosing" wait, and once `resolved` arrives
+  // all of them get the outcome - phrased from this phone's own side, so the
+  // victim reads "σου έκλεψε" and the thief "έκλεψες".
+  if (steal) {
+    const resolved = steal.resolved;
+    const iAmThief = resolved ? resolved.thiefPlayerId === playerId : steal.youAreThief;
+    const iAmVictim = resolved?.victimPlayerId === playerId;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.title}>Κλοπή πόντων</div>
+
+        {resolved ? (
+          <div style={styles.powerUpLocked} data-testid="steal-outcome">
+            <div style={styles.powerUpLockedIcon}>{resolved.victimName === null ? '⌛' : '💰'}</div>
+            <div style={styles.powerUpLockedTitle}>
+              {resolved.victimName === null
+                ? 'Χάθηκε η ευκαιρία'
+                : iAmThief
+                  ? `+${resolved.stolenAmount}`
+                  : iAmVictim
+                    ? `−${resolved.stolenAmount}`
+                    : 'Κλοπή!'}
+            </div>
+            <div style={styles.powerUpLockedDetail} data-testid="steal-outcome-detail">
+              {resolved.victimName === null
+                ? iAmThief
+                  ? 'Δεν πρόλαβες να διαλέξεις'
+                  : `Ο/Η ${resolved.thiefName} δεν πρόλαβε να διαλέξει`
+                : iAmThief
+                  ? `Έκλεψες ${resolved.stolenAmount} από τον/την ${resolved.victimName}`
+                  : iAmVictim
+                    ? `Ο/Η ${resolved.thiefName} σου έκλεψε ${resolved.stolenAmount}`
+                    : `Ο/Η ${resolved.thiefName} έκλεψε ${resolved.stolenAmount} από τον/την ${resolved.victimName}`}
+            </div>
+            {(iAmThief || iAmVictim) && (
+              <div style={styles.powerUpLockedHint} data-testid="steal-outcome-total">
+                Σύνολο: {iAmThief ? resolved.thiefScore : resolved.victimScore}
+              </div>
+            )}
+          </div>
+        ) : steal.youAreThief ? (
+          <>
+            <div style={styles.subtitle} data-testid="steal-step">
+              Ήσουν ο πιο γρήγορος! Κλέψε {steal.amount} πόντους από:
+            </div>
+            <div style={styles.powerUpTargetList} data-testid="steal-target-list">
+              {steal.targets.map((target) => (
+                <button
+                  key={target.playerId}
+                  type="button"
+                  data-testid="steal-target-option"
+                  style={styles.powerUpTargetButton}
+                  onClick={() => handleStealPick(target.playerId)}
+                  disabled={paused || steal.yourChoice !== null}
+                >
+                  <Avatar avatarId={target.avatarId} sizeRem={2.4} />
+                  <span style={styles.powerUpTargetName}>{target.name}</span>
+                  {/* What is actually on the table for this target - the
+                      amount is clamped to it, so a 150-point player can only
+                      ever lose 150 no matter how fast the thief was. */}
+                  <span style={styles.stealTargetScore}>
+                    {Math.min(steal.amount, Math.max(0, target.score))}
+                  </span>
+                </button>
+              ))}
+              {steal.targets.length === 0 && (
+                <div style={styles.nameListEmpty}>Κανένας άλλος παίκτης συνδεδεμένος</div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={styles.powerUpLocked} data-testid="steal-waiting">
+            <div style={styles.powerUpLockedIcon}>
+              <Avatar avatarId={steal.thiefAvatarId} sizeRem={3} />
+            </div>
+            <div style={styles.powerUpLockedDetail}>Ο/Η {steal.thiefName} διαλέγει θύμα...</div>
+            <div style={styles.powerUpLockedHint}>Μπορεί να είσαι εσύ</div>
+          </div>
+        )}
+
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1911,6 +2090,13 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     color: 'var(--text-dim)',
     textAlign: 'center',
+  },
+  // Steal (Task 32) - what this target actually stands to lose, already
+  // clamped to their score, shown on the right of each picker row.
+  stealTargetScore: {
+    fontSize: '1.2rem',
+    fontWeight: 800,
+    color: 'var(--gold)',
   },
   gameOverWon: {
     fontSize: '2rem',

@@ -56,6 +56,8 @@ import {
   enterQuestionOrPowerUp,
   advanceFromReveal,
   advanceFromScoreboard,
+  advanceFromSteal,
+  resolveSteal,
   continuationForActiveTimer,
 } from './phases.js';
 import {
@@ -64,6 +66,8 @@ import {
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
   buildPowerUpProgress,
+  buildStealHostPayload,
+  buildStealPlayerPayload,
   buildScoreboard,
   buildGameOver,
 } from './payloads.js';
@@ -185,6 +189,14 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildRevealPlayerPayload(room, playerId);
       return payload ? { ...payload, phase: 'REVEAL' } : null;
     }
+    // Steal (Task 32): the phase's REMAINING time (frozen if the room is
+    // paused, since it comes from the shared timer helper) plus - the bit that
+    // matters on a reconnect - whether THIS phone is the thief, and whether it
+    // already picked. Both read live from room state, never from the client.
+    case 'STEAL': {
+      const payload = buildStealPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'STEAL', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
     case 'SCOREBOARD':
       return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
     case 'GAME_OVER':
@@ -230,6 +242,10 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'REVEAL': {
       const payload = buildRevealHostPayload(room);
       return payload ? { ...payload, phase: 'REVEAL' } : null;
+    }
+    case 'STEAL': {
+      const payload = buildStealHostPayload(room);
+      return payload ? { ...payload, phase: 'STEAL', remainingMs: remainingActiveTimerMs(room) } : null;
     }
     case 'SCOREBOARD':
       return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
@@ -398,6 +414,15 @@ io.on('connection', (socket) => {
       // (and the one the phase is waiting on), so re-tick the host.
       if (room.phase === 'POWER_UP' && room.hostSocketId) {
         io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
+      }
+      // A reconnect mid-STEAL adds a name back to the thief's target list -
+      // re-send it, so they can rob someone who just walked back in.
+      if (room.phase === 'STEAL' && room.steal && !room.steal.resolved) {
+        const thief = room.players.get(room.steal.thiefPlayerId);
+        const thiefPayload = thief?.connected ? buildStealPlayerPayload(room, thief.playerId) : null;
+        if (thief && thiefPayload) {
+          io.to(thief.socketId).emit(ServerEvents.STEAL_SHOW, thiefPayload);
+        }
       }
       return;
     }
@@ -724,6 +749,58 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Steal (Task 32): only ONE socket in the room may send this - the thief's,
+  // which the server decided at REVEAL from the fastest correct answer. Every
+  // other phone is a spectator and is rejected here even if it forges the
+  // event, since `room.steal.thiefPlayerId` is the only thing consulted.
+  socket.on(ClientEvents.STEAL_CHOOSE, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.STEAL_CHOOSE);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+
+    if (room.phase !== 'STEAL' || !room.steal) {
+      console.log(`rejected ${ClientEvents.STEAL_CHOOSE} for room ${room.code}: phase is ${room.phase}, not STEAL`);
+      return;
+    }
+
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.STEAL_CHOOSE} for room ${room.code}: game is paused`);
+      return;
+    }
+
+    if (room.steal.thiefPlayerId !== playerId) {
+      console.log(`rejected ${ClientEvents.STEAL_CHOOSE} from player ${playerId}: not the thief`);
+      return;
+    }
+
+    // resolveSteal is itself one-shot (it checks `resolved`), but rejecting
+    // here too keeps a duplicate tap out of the logs entirely.
+    if (room.steal.resolved) {
+      console.log(`rejected ${ClientEvents.STEAL_CHOOSE} from player ${playerId}: already resolved`);
+      return;
+    }
+
+    const { targetPlayerId } = payload;
+    if (targetPlayerId === playerId) {
+      console.log(`rejected ${ClientEvents.STEAL_CHOOSE} from player ${playerId}: cannot steal from self`);
+      return;
+    }
+
+    const target = room.players.get(targetPlayerId);
+    if (!target || !target.connected) {
+      console.log(
+        `rejected ${ClientEvents.STEAL_CHOOSE} from player ${playerId}: invalid or disconnected target ${targetPlayerId}`,
+      );
+      return;
+    }
+
+    // Resolves immediately - the points move now, and the phase switches to
+    // its announcement beat rather than sitting on the rest of the 8s.
+    resolveSteal(room.code, targetPlayerId);
+  });
+
   socket.on(ClientEvents.VIP_NEXT, () => {
     const room = getVipRoomForSocket(socket, ClientEvents.VIP_NEXT);
     if (!room) {
@@ -748,6 +825,19 @@ io.on('connection', (socket) => {
     if (room.phase === 'SCOREBOARD') {
       console.log(`room ${room.code} skipped past scoreboard (VIP)`);
       advanceFromScoreboard(room.code);
+      return;
+    }
+
+    // A STEAL may only be skipped once it has RESOLVED - i.e. the VIP is
+    // cutting the announcement short, never the thief's own thinking time
+    // (which would silently rob them of the pick they're entitled to).
+    if (room.phase === 'STEAL') {
+      if (room.steal?.resolved) {
+        console.log(`room ${room.code} skipped past steal announcement (VIP)`);
+        advanceFromSteal(room.code);
+      } else {
+        console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: the thief is still choosing`);
+      }
       return;
     }
 
@@ -942,6 +1032,21 @@ io.on('connection', (socket) => {
         }
         if (haveAllConnectedPlayersChosenPowerUp(room)) {
           endPowerUp(room.code);
+        }
+      }
+
+      // Steal (Task 32): once there is nobody left to rob, the picker has
+      // nothing to offer - resolve to "nothing stolen" now rather than making
+      // everyone sit out the rest of the 8s. The THIEF dropping is
+      // deliberately NOT resolved early: a phone that blips is expected to
+      // reconnect straight back into its own picker (state:sync re-derives
+      // `youAreThief` from room state), and if it doesn't, the timer already
+      // ends the phase with nothing stolen.
+      if (room && room.phase === 'STEAL' && room.steal && !room.steal.resolved) {
+        const thiefPlayerId = room.steal.thiefPlayerId;
+        const victimsLeft = getConnectedPlayers(room).some((player) => player.playerId !== thiefPlayerId);
+        if (!victimsLeft) {
+          resolveSteal(room.code, null);
         }
       }
     }

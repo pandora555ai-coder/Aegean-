@@ -3,7 +3,9 @@
 // setTimeout fields. Whichever phase-advancing timer is currently running
 // (at most one at a time - a room is only ever in one phase) lives here.
 export interface ActiveTimer {
-  kind: 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD';
+  // STEAL runs TWO of these back to back: 'STEAL' while the thief is picking,
+  // then 'STEAL_ANNOUNCE' for the beat the TV spends announcing the result.
+  kind: 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE' | 'SCOREBOARD';
   handle: NodeJS.Timeout | null;
   startedAt: number;
   durationMs: number;

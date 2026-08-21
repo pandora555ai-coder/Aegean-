@@ -14,6 +14,7 @@ server/src/index.ts      Socket handlers (LARGE)
 server/src/phases.ts     Phase machine: startQuestion/endQuestion/advanceFrom*/startPowerUp
 server/src/payloads.ts   POWER_UP/REVEAL/SCOREBOARD/GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
+server/src/steal.ts      STEAL thief selection + the clamped point transfer
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
@@ -39,13 +40,16 @@ client/src/theme.css     Gameshow theme
 - React StrictMode double-invokes effects in dev — guard anything that fires once.
 
 ## Phases
-LOBBY -> QUESTION -> REVEAL -> (SCOREBOARD every 3rd + final) -> GAME_OVER
+LOBBY -> QUESTION -> REVEAL -> (STEAL) -> (SCOREBOARD every 3rd + final) -> GAME_OVER
 Every question is entered via enterQuestionOrPowerUp() — the only gate.
+continueAfterReveal() is the one function deciding what follows a REVEAL/STEAL.
 `paused` is a boolean flag, NOT a phase.
 
 ## Stages
 STAGES in shared owns the game's shape: stage 1 = 3 plain questions,
-stage 2 = 5 questions each preceded by POWER_UP. Question count is NOT a
+stage 2 = 5 questions each preceded by POWER_UP, stage 3 = 4 questions each
+FOLLOWED by a STEAL (fastest correct answerer robs one other player, 200-400
+scaled by speed, clamped to the victim's score). Question count is NOT a
 setting — it's the sum of the stages. room.stage is server-side; the TV
 announces each stage once, on entry.
 Landed effects STACK per target: ice in duration (10s cap), ink in

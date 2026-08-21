@@ -7,6 +7,7 @@ import {
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
+  isStealHostPayload,
   type AnswerProgressPayload,
   type GameOverPayload,
   type GamePhase,
@@ -29,6 +30,9 @@ import {
   type SettingsUpdatedPayload,
   type StageAnnouncePayload,
   type StateSyncPayload,
+  type StealResolvedPayload,
+  type StealShowHostPayload,
+  type StealShowPayload,
 } from '@game/shared';
 import QRCode from 'qrcode';
 import { socket } from '../socket';
@@ -39,6 +43,7 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import { QR_SIZE_PX } from './host/hostStyles';
 import { LobbyView } from './host/LobbyView';
 import { PowerUpView } from './host/PowerUpView';
+import { StealView } from './host/StealView';
 import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
@@ -66,6 +71,11 @@ export default function HostScreen() {
   const [powerUp, setPowerUp] = useState<PowerUpShowHostPayload | null>(null);
   const [powerUpProgress, setPowerUpProgress] = useState<PowerUpProgressPayload | null>(null);
   const [powerUpSecondsLeft, setPowerUpSecondsLeft] = useState(0);
+  // Steal (Task 32) - ONE piece of state for both beats of the phase: the
+  // payload carries `resolved`, so the announcement is just a later version of
+  // the same object rather than a second screen's worth of state.
+  const [steal, setSteal] = useState<StealShowHostPayload | null>(null);
+  const [stealSecondsLeft, setStealSecondsLeft] = useState(0);
   // Stage announcement (Task 31a) - the TV is the only screen that shows it.
   // Set by stage:announce (which the server emits exactly once per stage) and
   // cleared purely locally after STAGE_ANNOUNCE_DURATION_MS; nothing on the
@@ -164,6 +174,7 @@ export default function HostScreen() {
         setGameOver(null);
         setPowerUp(null);
         setPowerUpProgress(null);
+        setSteal(null);
         setStageAnnounce(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
@@ -191,6 +202,8 @@ export default function HostScreen() {
         // phase ends - drop its view rather than leaving it behind.
         setPowerUp(null);
         setPowerUpProgress(null);
+        // A steal belonged to the PREVIOUS question - it's over by now.
+        setSteal(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         // The "look at the TV" cue - fires on EVERY live question:show
@@ -230,6 +243,33 @@ export default function HostScreen() {
 
     function handlePowerUpProgress(payload: PowerUpProgressPayload) {
       setPowerUpProgress(payload);
+    }
+
+    // Steal (Task 32) - the host branch of an asymmetric event. The thief's
+    // target list is never sent to the TV at all, so there is nothing here
+    // that could give the pick away before it happens.
+    function handleStealShow(payload: StealShowPayload) {
+      if (isStealHostPayload(payload)) {
+        setQuestion(null);
+        setAnswerProgress(null);
+        setReveal(null);
+        setScoreboard(null);
+        setPowerUp(null);
+        setPowerUpProgress(null);
+        setSteal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric - the points have already moved server-side. The
+    // steal:show that follows carries the same `resolved` object; merging it
+    // in here too means the announcement lands even if that one is missed.
+    function handleStealResolved(payload: StealResolvedPayload) {
+      setSteal((current) => (current ? { ...current, resolved: payload } : current));
+      if (!pausedRef.current) {
+        playRevealCue();
+      }
     }
 
     function handleAnswerProgress(payload: AnswerProgressPayload) {
@@ -294,6 +334,8 @@ export default function HostScreen() {
         setScoreboardSecondsLeft(seconds);
       } else if (phaseRef.current === 'POWER_UP') {
         setPowerUpSecondsLeft(seconds);
+      } else if (phaseRef.current === 'STEAL') {
+        setStealSecondsLeft(seconds);
       }
     }
 
@@ -321,6 +363,7 @@ export default function HostScreen() {
       setGameOver(null);
       setPowerUp(null);
       setPowerUpProgress(null);
+      setSteal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -357,6 +400,16 @@ export default function HostScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
+        case 'STEAL':
+          // durationMs is already the time STILL LEFT on whichever of the
+          // phase's two timers is running, so the countdown below picks up
+          // mid-phase; `resolved` decides which of the two views is shown.
+          if (isStealHostPayload(payload)) {
+            setSteal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
         case 'SCOREBOARD':
           setScoreboard(payload);
           setPaused(payload.paused);
@@ -377,6 +430,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
     socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
+    socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
+    socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -395,6 +450,8 @@ export default function HostScreen() {
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
       socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
+      socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
+      socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -487,6 +544,26 @@ export default function HostScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [powerUp, paused]);
+
+  // STEAL's own countdown (Task 32) - same pattern as POWER_UP's above. Only
+  // the picking beat shows it; once `resolved` is set the view is an
+  // announcement, and the (shorter) timer underneath is nobody's business.
+  useEffect(() => {
+    if (!steal) {
+      return;
+    }
+    setStealSecondsLeft(Math.ceil(steal.durationMs / 1000));
+  }, [steal]);
+
+  useEffect(() => {
+    if (!steal || steal.resolved || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setStealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [steal, paused]);
 
   useEffect(() => {
     if (!scoreboard || paused) {
@@ -584,6 +661,18 @@ export default function HostScreen() {
           paused={paused}
           pausedByName={pausedByName}
           revealSecondsLeft={revealSecondsLeft}
+        />
+      );
+    }
+
+    if (phase === 'STEAL' && steal) {
+      return (
+        <StealView
+          steal={steal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={stealSecondsLeft}
         />
       );
     }
