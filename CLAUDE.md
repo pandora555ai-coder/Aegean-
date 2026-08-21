@@ -10,8 +10,12 @@ Client: Vite + React, two routes: / (landing), /host (TV), /play (phone)
 
 ## Where things live
 shared/src/index.ts      Event names, payload types, all constants. THE contract.
-server/src/index.ts      Socket handlers, phase machine, timers (LARGE)
-server/src/rooms.ts      Room store, players, codes
+server/src/index.ts      Socket handlers (LARGE)
+server/src/phases.ts     Phase machine: startQuestion/endQuestion/advanceFrom*
+server/src/payloads.ts   REVEAL/SCOREBOARD/GAME_OVER payload builders
+server/src/realtime.ts   Socket.IO server instance (io, httpServer)
+server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
+server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering
 server/src/gamemaster.ts Moment detection + Greek commentary lines
 server/src/scoring.ts    Pure scoring function

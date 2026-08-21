@@ -1,34 +1,21 @@
-import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
-import { Server, type Socket } from 'socket.io';
+import type { Socket } from 'socket.io';
 import {
   ClientEvents,
   MIN_PLAYERS,
   PRESET_NAMES,
-  REVEAL_DURATION_MS,
-  SCOREBOARD_DURATION_MS,
-  SCOREBOARD_EVERY_N_QUESTIONS,
   ServerEvents,
   type AnswerProgressPayload,
   type ClientToServerEvents,
-  type GameOverPayload,
-  type GameOverStanding,
   type LobbyPlayer,
   type LobbyUpdatePayload,
   type PausedPayload,
   type Player,
-  type QuestionShowHostPayload,
-  type QuestionShowPlayerPayload,
   type ResumedPayload,
-  type RevealHostPayload,
-  type RevealPlayerPayload,
-  type RevealPlayerResult,
   type RoomCode,
-  type ScoreboardPayload,
-  type ScoreboardStanding,
   type ServerToClientEvents,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
@@ -37,11 +24,9 @@ import {
 import {
   addPlayer,
   allAvailableAvatarsTaken,
-  armActiveTimer,
   attachHostDisplay,
   buildRoomQuestions,
   claimVipIfVacant,
-  clearActiveTimer,
   createRoom,
   detachHostDisplay,
   getActiveRoomCount,
@@ -55,17 +40,16 @@ import {
   isVip,
   migrateVipAwayFrom,
   normalizePlayerName,
-  pauseActiveTimer,
   refreshRoomTtl,
-  remainingActiveTimerMs,
   resetRoomForNewGame,
-  resumeActiveTimer,
   updateRoomSettings,
   type Room,
-} from './rooms.js';
+} from './state.js';
+import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
 import { isValidAvatarId } from './avatars.js';
-import { calculatePoints } from './scoring.js';
-import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
+import { startQuestion, endQuestion, advanceFromReveal, advanceFromScoreboard, continuationForActiveTimer } from './phases.js';
+import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
+import { initRealtime, io, httpServer } from './realtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -93,10 +77,7 @@ if (isProduction) {
   });
 }
 
-const httpServer = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: corsOptions,
-});
+initRealtime(app, corsOptions);
 
 // socket.id -> the single room/role a socket is currently associated with
 // (either hosting a room, or joined as a player in one).
@@ -129,418 +110,6 @@ function broadcastLobbyUpdate(code: RoomCode): void {
   if (payload) {
     io.to(code).emit(ServerEvents.LOBBY_UPDATE, payload);
   }
-}
-
-// Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
-// ranking" convention, where a rank equals 1 + the number of players
-// strictly ahead of it.
-function computeCompetitionRanks<T>(
-  items: T[],
-  getScore: (item: T) => number,
-  getId: (item: T) => string,
-): Map<string, number> {
-  const sorted = [...items].sort((a, b) => getScore(b) - getScore(a));
-  const ranks = new Map<string, number>();
-  let previousScore: number | null = null;
-  let previousRank = 0;
-  sorted.forEach((item, index) => {
-    const score = getScore(item);
-    const rank = score === previousScore ? previousRank : index + 1;
-    ranks.set(getId(item), rank);
-    previousScore = score;
-    previousRank = rank;
-  });
-  return ranks;
-}
-
-// Sorts `results` IN PLACE: correct answers first (fastest first), then
-// wrong answers, then players who didn't answer at all go last. With 7
-// players in a room, insertion (join) order reads as completely random -
-// this is the order the reveal is actually meant to be read in. Also
-// fills in each result's `answerRank`: the 1-based position among CORRECT
-// answers only, by speed - left null for wrong/no-answer.
-function sortAndRankResults(results: RevealPlayerResult[]): void {
-  results.sort((a, b) => {
-    const aAnswered = a.timeMs !== null;
-    const bAnswered = b.timeMs !== null;
-    if (aAnswered !== bAnswered) {
-      return aAnswered ? -1 : 1; // answered before non-answerers
-    }
-    if (!aAnswered) {
-      return 0; // both non-answerers - relative order doesn't matter
-    }
-    if (a.correct !== b.correct) {
-      return a.correct ? -1 : 1; // correct before incorrect
-    }
-    return (a.timeMs as number) - (b.timeMs as number); // faster first
-  });
-
-  let rank = 0;
-  for (const result of results) {
-    if (result.correct) {
-      rank += 1;
-      result.answerRank = rank;
-    }
-  }
-}
-
-// Reads room.lastReveal (set once, at the moment REVEAL begins) rather than
-// recomputing anything, so these can be reused identically for the fresh
-// broadcast and for a later state:sync catch-up. `paused`/`pausedByName`
-// and the autoAdvanceMs figure always read the room's CURRENT live state -
-// at the instant of a fresh broadcast that's always "not paused" (nothing
-// can pause a phase before it exists), and on a state:sync catch-up it's
-// whatever's actually true right now, both correct from one code path.
-function buildRevealHostPayload(room: Room): RevealHostPayload | null {
-  if (!room.lastReveal) {
-    return null;
-  }
-  return {
-    correctIndex: room.lastReveal.correctIndex,
-    correctOption: room.lastReveal.correctOption,
-    results: room.lastReveal.results,
-    answerCounts: room.lastReveal.answerCounts,
-    autoAdvanceMs: remainingActiveTimerMs(room),
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-    gmLine: room.lastReveal.gmLine,
-  };
-}
-
-function buildRevealPlayerPayload(room: Room, playerId: string): RevealPlayerPayload | null {
-  if (!room.lastReveal) {
-    return null;
-  }
-  const autoAdvanceMs = remainingActiveTimerMs(room);
-  const myResult = room.lastReveal.results.find((result) => result.playerId === playerId);
-
-  if (myResult) {
-    const ranks = computeCompetitionRanks(
-      room.lastReveal.results,
-      (result) => result.totalScore,
-      (result) => result.playerId,
-    );
-    return {
-      correctIndex: room.lastReveal.correctIndex,
-      correctOption: room.lastReveal.correctOption,
-      yourChoice: myResult.choice,
-      yourCorrect: myResult.correct,
-      pointsAwarded: myResult.pointsAwarded,
-      totalScore: myResult.totalScore,
-      rank: ranks.get(playerId) ?? room.lastReveal.results.length,
-      autoAdvanceMs,
-      paused: room.paused,
-      pausedByName: room.pausedByName,
-      yourTimeMs: myResult.timeMs,
-      yourAnswerRank: myResult.answerRank,
-    };
-  }
-
-  // Wasn't connected when this question ended (e.g. reconnecting now, mid
-  // REVEAL, after having been offline for the whole question) - a neutral
-  // view: no points this round, but their real total/rank among everyone.
-  const player = room.players.get(playerId);
-  if (!player) {
-    return null;
-  }
-  const ranks = computeCompetitionRanks(
-    [...room.players.values()],
-    (p) => p.score,
-    (p) => p.playerId,
-  );
-  return {
-    correctIndex: room.lastReveal.correctIndex,
-    correctOption: room.lastReveal.correctOption,
-    yourChoice: null,
-    yourCorrect: false,
-    pointsAwarded: 0,
-    totalScore: player.score,
-    rank: ranks.get(playerId) ?? room.players.size,
-    autoAdvanceMs,
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-    yourTimeMs: null,
-    yourAnswerRank: null,
-  };
-}
-
-function startQuestion(room: Room): void {
-  room.answers.clear();
-  room.questionStartedAt = Date.now();
-  const questionTimeMs = room.settings.questionTimeMs;
-  armActiveTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
-
-  const question = room.questions[room.currentQuestionIndex];
-  const totalQuestions = room.questions.length;
-
-  // Game Master (Task 24): pure/synchronous, so this can never delay the
-  // question or answer buttons appearing. Host-only, per spec.
-  const gmIntro = pickQuestionIntro(room.gameMaster, {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions,
-    category: question.category,
-  });
-
-  const hostPayload: QuestionShowHostPayload = {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions,
-    question: question.question,
-    options: question.options,
-    category: question.category,
-    questionTimeMs,
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-    gmIntro,
-  };
-  if (room.hostSocketId) {
-    io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
-  }
-
-  const playerPayload: QuestionShowPlayerPayload = {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions,
-    options: question.options,
-    category: question.category,
-    questionTimeMs,
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-  };
-  for (const player of getConnectedPlayers(room)) {
-    io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
-  }
-
-  console.log(`room ${room.code} started — question ${room.currentQuestionIndex + 1}/${totalQuestions}`);
-}
-
-// Ends the current question exactly once - guarded by the phase check, so
-// whichever of (all connected players answered) / (timer fired) happens
-// first wins, and the timer is always cleared so it can never fire twice.
-function endQuestion(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'QUESTION') {
-    return;
-  }
-
-  const question = room.questions[room.currentQuestionIndex];
-  const connectedPlayers = getConnectedPlayers(room);
-  const questionTimeMs = room.settings.questionTimeMs;
-
-  // Game Master (Task 24) needs scoreBefore/scoreAfter and whether they
-  // answered at all - built alongside `results` (same loop, same source
-  // data) rather than recomputed from it afterward.
-  const gmInputs: GmPlayerRoundInput[] = [];
-
-  const results: RevealPlayerResult[] = connectedPlayers.map((player) => {
-    const recorded = room.answers.get(player.playerId);
-    const choice = recorded ? recorded.choice : null;
-    const correct = choice === question.correctIndex;
-    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs);
-    const scoreBefore = player.score;
-    player.score += pointsAwarded;
-
-    gmInputs.push({
-      playerId: player.playerId,
-      name: player.name,
-      answered: choice !== null,
-      correct,
-      answerRank: null, // filled in below, once sortAndRankResults has computed it
-      scoreBefore,
-      scoreAfter: player.score,
-    });
-
-    return {
-      playerId: player.playerId,
-      name: player.name,
-      avatarId: player.avatarId,
-      choice,
-      correct,
-      pointsAwarded,
-      totalScore: player.score,
-      timeMs: recorded ? recorded.timeMs : null,
-      answerRank: null, // filled in by sortAndRankResults below
-    };
-  });
-
-  // Correct-by-speed first, then wrong, then non-answerers last - insertion
-  // (join) order made no sense to anyone once there were 7 players in the
-  // room. Also fills in each correct answer's 1-based speed rank.
-  sortAndRankResults(results);
-  const answerRankByPlayerId = new Map(results.map((result) => [result.playerId, result.answerRank]));
-  for (const gmInput of gmInputs) {
-    gmInput.answerRank = answerRankByPlayerId.get(gmInput.playerId) ?? null;
-  }
-
-  const answerCounts = [0, 0, 0, 0];
-  for (const result of results) {
-    if (result.choice !== null) {
-      answerCounts[result.choice] += 1;
-    }
-  }
-
-  const correctOption = question.options[question.correctIndex];
-
-  // Pure/synchronous - can never delay the REVEAL broadcast that follows.
-  const gmLine = recordRoundAndPickLine(room.gameMaster, gmInputs, {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions: room.questions.length,
-    difficulty: question.difficulty,
-  });
-
-  room.phase = 'REVEAL';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-
-  // Snapshot so a player who reconnects mid-REVEAL can be caught up via
-  // state:sync without recomputing (or re-scoring) anything.
-  room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts, gmLine };
-
-  const hostPayload = buildRevealHostPayload(room);
-  if (hostPayload && room.hostSocketId) {
-    io.to(room.hostSocketId).emit(ServerEvents.REVEAL_SHOW, hostPayload);
-  }
-
-  for (const result of results) {
-    const player = room.players.get(result.playerId);
-    if (!player) {
-      continue;
-    }
-    const playerPayload = buildRevealPlayerPayload(room, result.playerId);
-    if (playerPayload) {
-      io.to(player.socketId).emit(ServerEvents.REVEAL_SHOW, playerPayload);
-    }
-  }
-
-  console.log(
-    `room ${room.code} question ${room.currentQuestionIndex + 1} revealed — correctIndex=${question.correctIndex} results: ${JSON.stringify(results)}`,
-  );
-
-  armActiveTimer(room, 'REVEAL', REVEAL_DURATION_MS, () => advanceFromReveal(room.code));
-}
-
-function buildScoreboard(room: Room): ScoreboardPayload {
-  const players = [...room.players.values()];
-  const ranks = computeCompetitionRanks(
-    players,
-    (player) => player.score,
-    (player) => player.playerId,
-  );
-
-  const standings: ScoreboardStanding[] = [...players]
-    .sort((a, b) => b.score - a.score)
-    .map((player) => ({
-      playerId: player.playerId,
-      name: player.name,
-      avatarId: player.avatarId,
-      score: player.score,
-      rank: ranks.get(player.playerId) ?? players.length,
-      connected: player.connected,
-    }));
-
-  return {
-    standings,
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions: room.questions.length,
-    isLastQuestion: room.currentQuestionIndex >= room.questions.length - 1,
-    autoAdvanceMs: remainingActiveTimerMs(room),
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-  };
-}
-
-function buildGameOver(room: Room): GameOverPayload {
-  const players = [...room.players.values()];
-  const ranks = computeCompetitionRanks(
-    players,
-    (player) => player.score,
-    (player) => player.playerId,
-  );
-
-  const standings: GameOverStanding[] = [...players]
-    .sort((a, b) => b.score - a.score)
-    .map((player) => ({
-      playerId: player.playerId,
-      name: player.name,
-      avatarId: player.avatarId,
-      score: player.score,
-      rank: ranks.get(player.playerId) ?? players.length,
-    }));
-
-  const winners = standings.filter((standing) => standing.rank === 1);
-
-  return {
-    standings,
-    winnerName: winners.map((winner) => winner.name).join(' & '),
-    isTie: winners.length > 1,
-    totalQuestions: room.questions.length,
-  };
-}
-
-// Whether the just-finished question should be followed by a SCOREBOARD -
-// every SCOREBOARD_EVERY_N_QUESTIONS questions, and ALWAYS after the final
-// question (so there's a stop right before GAME_OVER). REVEAL already shows
-// per-player results with animation; a scoreboard after every single
-// question just repeats it, hence the skip.
-function shouldShowScoreboard(room: Room): boolean {
-  const questionNumber = room.currentQuestionIndex + 1; // 1-based
-  const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
-  return isLastQuestion || questionNumber % SCOREBOARD_EVERY_N_QUESTIONS === 0;
-}
-
-// Ends REVEAL exactly once - guarded by the phase check, so whichever of
-// (the auto-advance timer firing) / (host clicking "skip") happens first
-// wins, and the timer is always cleared so it can never fire twice. Either
-// shows SCOREBOARD (arming its own timer) or - when this question doesn't
-// warrant one - skips straight to the next question/GAME_OVER, exactly as
-// if a SCOREBOARD had shown and immediately auto-advanced.
-function advanceFromReveal(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'REVEAL') {
-    return;
-  }
-
-  if (!shouldShowScoreboard(room)) {
-    console.log(`room ${room.code} skipping scoreboard after question ${room.currentQuestionIndex + 1}`);
-    advanceToNextQuestionOrGameOver(room);
-    return;
-  }
-
-  room.phase = 'SCOREBOARD';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
-  console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
-
-  armActiveTimer(room, 'SCOREBOARD', SCOREBOARD_DURATION_MS, () => advanceFromScoreboard(room.code));
-}
-
-// Same one-shot discipline as advanceFromReveal.
-function advanceFromScoreboard(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'SCOREBOARD') {
-    return;
-  }
-  advanceToNextQuestionOrGameOver(room);
-}
-
-// The shared tail of both advanceFromReveal (when it skips SCOREBOARD
-// entirely) and advanceFromScoreboard (once SCOREBOARD's own time is up) -
-// either the next question starts, or - on the final question, always
-// reached via SCOREBOARD since shouldShowScoreboard forces it - the game
-// ends.
-function advanceToNextQuestionOrGameOver(room: Room): void {
-  const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
-  if (isLastQuestion) {
-    room.phase = 'GAME_OVER';
-    clearActiveTimer(room); // no more phase-advance timer needed once the game is over
-    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-    const gameOverPayload = buildGameOver(room);
-    io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
-    console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
-    return;
-  }
-
-  room.currentQuestionIndex += 1;
-  room.phase = 'QUESTION';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  startQuestion(room); // arms its own QUESTION timer
 }
 
 // Catches a single player up to whatever's currently happening in the room -
@@ -668,24 +237,6 @@ function getPlayerRoomForSocket(
   }
 
   return { room, playerId: association.playerId };
-}
-
-// The continuation a resumed timer should fire once its remaining time
-// elapses - whichever function originally would have advanced the phase
-// that got paused. Lives here (not in rooms.ts) because it reaches into
-// endQuestion/advanceFromReveal/advanceFromScoreboard, which use `io`.
-function continuationForActiveTimer(room: Room): (() => void) | null {
-  if (!room.activeTimer) {
-    return null;
-  }
-  switch (room.activeTimer.kind) {
-    case 'QUESTION':
-      return () => endQuestion(room.code);
-    case 'REVEAL':
-      return () => advanceFromReveal(room.code);
-    case 'SCOREBOARD':
-      return () => advanceFromScoreboard(room.code);
-  }
 }
 
 io.on('connection', (socket) => {
