@@ -6,6 +6,7 @@ import {
   type RoomCode,
   type RoomSettings,
   type SabotageAnnouncement,
+  type SabotageEffect,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   MAX_PLAYERS,
@@ -21,6 +22,25 @@ import { clearActiveTimer, type ActiveTimer } from './timers.js';
 export interface RecordedAnswer {
   choice: number;
   timeMs: number;
+}
+
+// A sabotage that has actually LANDED on someone (Task 28b) - moved here out
+// of pendingSabotageByTarget at the start of the victim's next question,
+// which is what "consumed" means: it can never fire a second time. Kept for
+// the whole question so a reconnecting victim is re-served the same effect
+// with its REMAINING time, and dropped when the next question starts.
+export interface AppliedSabotage {
+  effect: SabotageEffect;
+  // The wall-clock moment it landed - always the question's own
+  // questionStartedAt, since an effect only ever starts with its question.
+  startedAt: number;
+  // Already clamped to `questionTimeMs` below, so an effect can never
+  // outlive - let alone extend - the round it landed in.
+  durationMs: number;
+  // The full length of the question it landed in, kept so remaining time can
+  // be derived from the shared timer helper (which is what pause freezes)
+  // rather than from a raw Date.now() that would keep ticking through one.
+  questionTimeMs: number;
 }
 
 // A snapshot of the last computed reveal, kept around so a player who
@@ -96,8 +116,13 @@ export interface Room {
   // reconnect without the client ever having to remember anything itself.
   // If two casters target the same player in one round, the later cast
   // wins here (both still appear in that round's sabotageAnnouncements).
-  // Actually CONSUMING this (freezing/inking/shuffling) is a later task.
+  // Emptied into activeSabotageByTarget by applyPendingSabotage() when that
+  // next question starts - see sabotage.ts.
   pendingSabotageByTarget: Map<string, SabotageAnnouncement>;
+  // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
+  // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
+  // scratch at the start of every one.
+  activeSabotageByTarget: Map<string, AppliedSabotage>;
   // Every playerId who has already spent their one sabotage cast this game.
   sabotageCastUsedBy: Set<string>;
 }
@@ -147,6 +172,7 @@ export function createRoom(hostSocketId: string): Room {
     gameMaster: createGameMasterState(),
     hiddenSabotageCasts: new Map(),
     pendingSabotageByTarget: new Map(),
+    activeSabotageByTarget: new Map(),
     sabotageCastUsedBy: new Set(),
   };
 
@@ -395,6 +421,7 @@ export function resetRoomForNewGame(room: Room): void {
   // A fresh game means a fresh one-cast-per-game sabotage budget too.
   room.hiddenSabotageCasts.clear();
   room.pendingSabotageByTarget.clear();
+  room.activeSabotageByTarget.clear();
   room.sabotageCastUsedBy.clear();
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets

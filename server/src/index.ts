@@ -50,7 +50,7 @@ import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './t
 import { isValidAvatarId } from './avatars.js';
 import { startQuestion, endQuestion, advanceFromReveal, advanceFromScoreboard, continuationForActiveTimer } from './phases.js';
 import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
-import { pickSabotageEffect } from './sabotage.js';
+import { activeSabotageFor, isIced, pickSabotageEffect } from './sabotage.js';
 import { initRealtime, io, httpServer } from './realtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +133,10 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
         yourChoice: recorded ? recorded.choice : null,
         paused: room.paused,
         pausedByName: room.pausedByName,
+        // Sabotage (Task 28b): the time still LEFT on whatever is running
+        // against them, so a mid-question reconnect resumes the freeze/fade
+        // rather than restarting it. Read live from room state, never cached.
+        yourSabotage: activeSabotageFor(room, playerId),
       };
     }
     case 'REVEAL': {
@@ -493,6 +497,14 @@ io.on('connection', (socket) => {
     const { playerId } = association;
     if (room.answers.has(playerId)) {
       console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from player ${playerId}: already answered this question`);
+      return;
+    }
+
+    // Sabotage (Task 28b): ice is enforced HERE, not just by greying the
+    // phone's buttons - a client that ignores the freeze still gets nothing
+    // recorded. No ack is sent back: the phone knows how long it has left.
+    if (isIced(room, playerId)) {
+      console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from player ${playerId}: iced by sabotage`);
       return;
     }
 

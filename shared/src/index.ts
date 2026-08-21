@@ -252,7 +252,6 @@ export interface LobbyUpdatePayload {
 
 export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
 
-// Task 28a: server-side model only - no effect actually fires yet (28b/28c).
 // Each player may cast ONE of these per game, at a target of their choosing;
 // the SERVER (never the client) picks which effect they get, weighted by the
 // caster's current rank (see server/src/sabotage.ts) so a leader casting is
@@ -280,6 +279,31 @@ export interface SabotageAnnouncement {
   targetPlayerId: string;
   targetName: string;
   effect: SabotageEffect;
+}
+
+// How long each effect lasts once it LANDS, measured from the start of the
+// victim's next question. These are the nominal figures only: the server
+// always clamps the applied duration down to the room's question time, so a
+// 10s round can never be stretched by an effect that nominally outlives it.
+// 'shuffle' is deliberately 0 - the effect itself is not implemented (28c),
+// so a shuffle cast is consumed at the victim's next question and does
+// nothing, rather than sitting pending forever.
+export const SABOTAGE_EFFECT_DURATION_MS: Record<SabotageEffect, number> = {
+  ice: 5000,
+  ink: 8000,
+  shuffle: 0,
+};
+
+// The effect currently RUNNING against a player, sent only to that player,
+// on question:show and on a mid-question state:sync. `remainingMs` is always
+// the time still left this instant - never the full duration - so a phone
+// that reconnects halfway through an ice picks the freeze up where it was
+// rather than restarting it. `durationMs` is the already-clamped total, sent
+// alongside so the ink fade can be drawn against the right curve.
+export interface ActiveSabotage {
+  effect: SabotageEffect;
+  durationMs: number;
+  remainingMs: number;
 }
 
 export interface AnswerIdentity {
@@ -376,6 +400,11 @@ export interface QuestionShowPlayerPayload {
   questionTimeMs: number;
   paused: boolean;
   pausedByName: string | null;
+  // Sabotage (Task 28b) - the effect landing on THIS player for THIS
+  // question, or null for everyone else. Per-player by construction: the
+  // host payload has no equivalent field, and no phone is ever told about
+  // another phone's sabotage.
+  yourSabotage: ActiveSabotage | null;
 }
 
 export type QuestionShowPayload = QuestionShowHostPayload | QuestionShowPlayerPayload;

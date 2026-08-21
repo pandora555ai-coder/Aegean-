@@ -12,6 +12,7 @@ import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
+import { activeSabotageFor, applyPendingSabotage } from './sabotage.js';
 import { io } from './realtime.js';
 import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
 
@@ -52,6 +53,11 @@ export function startQuestion(room: Room): void {
   const questionTimeMs = room.settings.questionTimeMs;
   armActiveTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
 
+  // Sabotage (Task 28b): anything announced at the last REVEAL lands NOW, on
+  // the same clock as the question timer just armed above. Deliberately
+  // after the arm - applyPendingSabotage reads both it and questionStartedAt.
+  applyPendingSabotage(room);
+
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
 
@@ -78,16 +84,19 @@ export function startQuestion(room: Room): void {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
   }
 
-  const playerPayload: QuestionShowPlayerPayload = {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions,
-    options: question.options,
-    category: question.category,
-    questionTimeMs,
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-  };
+  // Built per player, not once and reused: yourSabotage is the one field
+  // here that differs between phones, and no phone may learn another's.
   for (const player of getConnectedPlayers(room)) {
+    const playerPayload: QuestionShowPlayerPayload = {
+      questionIndex: room.currentQuestionIndex,
+      totalQuestions,
+      options: question.options,
+      category: question.category,
+      questionTimeMs,
+      paused: room.paused,
+      pausedByName: room.pausedByName,
+      yourSabotage: activeSabotageFor(room, player.playerId),
+    };
     io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
   }
 

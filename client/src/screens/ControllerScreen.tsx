@@ -16,6 +16,7 @@ import {
   isQuestionShowHostPayload,
   isRevealHostPayload,
   sanitizeCustomName,
+  type ActiveSabotage,
   type AnswerAcceptedPayload,
   type DifficultyMix,
   type GameOverPayload,
@@ -235,6 +236,11 @@ export default function ControllerScreen() {
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
+  // Sabotage (Task 28b) - whatever is running against ME this question, and
+  // how much of it is left. The server hands over the REMAINING time (never
+  // a fresh full duration), so this is only ever counted down from there.
+  const [sabotage, setSabotage] = useState<ActiveSabotage | null>(null);
+  const [sabotageRemainingMs, setSabotageRemainingMs] = useState(0);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -295,6 +301,13 @@ export default function ControllerScreen() {
       setRoomSettings(payload);
     }
 
+    // Sabotage (Task 28b) - the effect and its countdown are always set
+    // together from the server's own figure, so they can never disagree.
+    function applySabotage(next: ActiveSabotage | null) {
+      setSabotage(next);
+      setSabotageRemainingMs(next ? next.remainingMs : 0);
+    }
+
     function handleQuestionShow(payload: QuestionShowPayload) {
       if (!isQuestionShowHostPayload(payload)) {
         setQuestion(payload);
@@ -304,6 +317,7 @@ export default function ControllerScreen() {
         setScoreboard(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
+        applySabotage(payload.yourSabotage);
       }
     }
 
@@ -316,6 +330,7 @@ export default function ControllerScreen() {
         setReveal(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
+        applySabotage(null); // the question it belonged to is over
       }
     }
 
@@ -324,11 +339,13 @@ export default function ControllerScreen() {
       setScoreboard(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
+      applySabotage(null);
     }
 
     function handleGameOver(payload: GameOverPayload) {
       setScoreboard(null);
       setGameOver(payload);
+      applySabotage(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -352,6 +369,7 @@ export default function ControllerScreen() {
       setReveal(null);
       setScoreboard(null);
       setGameOver(null);
+      applySabotage(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -368,12 +386,16 @@ export default function ControllerScreen() {
               questionTimeMs: payload.questionTimeMs,
               paused: payload.paused,
               pausedByName: payload.pausedByName,
+              yourSabotage: payload.yourSabotage,
             });
             // Landed mid-question having already answered - go straight to
             // the SUBMITTED view instead of a fresh (re-tappable) one.
             if (payload.yourChoice !== null) {
               setAcceptedChoice(payload.yourChoice);
             }
+            // Resumes an ice/ink already in progress at whatever the server
+            // says is LEFT of it - reconnecting never re-runs it from zero.
+            applySabotage(payload.yourSabotage);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -434,6 +456,30 @@ export default function ControllerScreen() {
   useEffect(() => {
     codeRef.current = code;
   }, [code]);
+
+  // Sabotage (Task 28b) - the only countdown the phone runs. Deliberately
+  // torn down while `paused`, which is what freezes the effect on this side;
+  // resuming re-anchors from the remaining time left frozen in state, so a
+  // pause can't burn off an ice. Re-anchoring to a wall-clock deadline (not
+  // "subtract 100 each tick") keeps a throttled background tab honest.
+  // `sabotageRemainingMs` is intentionally NOT a dependency - it would
+  // re-anchor on every tick; the effect already re-reads it whenever the two
+  // things that matter, the effect itself or the pause, change.
+  useEffect(() => {
+    if (!sabotage || paused || sabotageRemainingMs <= 0) {
+      return;
+    }
+    const endsAt = Date.now() + sabotageRemainingMs;
+    const handle = setInterval(() => {
+      const left = Math.max(0, endsAt - Date.now());
+      setSabotageRemainingMs(left);
+      if (left === 0) {
+        clearInterval(handle);
+      }
+    }, 100);
+    return () => clearInterval(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sabotage, paused]);
 
   // Fires a fresh room:peek whenever the code reaches a complete 4 digits -
   // covers both "just finished typing" and "came back to fix a typo", so
@@ -503,8 +549,18 @@ export default function ControllerScreen() {
   const canJoin = connected && code.length === 4 && selectedName !== null && selectedAvatarId !== null;
   const isVip = vipPlayerId === playerId;
 
+  // Sabotage (Task 28b). Ice blocks answering for its first N seconds; ink
+  // only obscures, so inked buttons stay fully tappable throughout.
+  // `icedMs` counts DOWN to 0 - the server enforces the same window from the
+  // same clock, and since this deadline is anchored on a server figure that
+  // arrived over the network, it can only ever expire later than the
+  // server's, never earlier. A tap can't slip through and be silently
+  // dropped.
+  const icedMs = sabotage?.effect === 'ice' ? sabotageRemainingMs : 0;
+  const inkedFraction = sabotage?.effect === 'ink' ? sabotageRemainingMs / sabotage.durationMs : 0;
+
   function handleAnswerTap(index: number) {
-    if (pendingChoice !== null || paused) {
+    if (pendingChoice !== null || paused || icedMs > 0) {
       return; // optimistic lock - first tap is final, no changing the answer
     }
     setPendingChoice(index);
@@ -686,6 +742,17 @@ export default function ControllerScreen() {
     // the four buttons is "mine" and gets highlighted - the other three dim.
     const myChoice = pendingChoice !== null ? pendingChoice : acceptedChoice;
     const answered = myChoice !== null;
+    // Ink obscures the option TEXT only - the letter and shape stay crisp, so
+    // a tap is always aimable even at full strength. Fades to nothing as
+    // `inkedFraction` runs 1 -> 0 across the effect's duration.
+    const inkStyle: CSSProperties | undefined =
+      inkedFraction > 0
+        ? {
+            filter: `blur(${(inkedFraction * 8).toFixed(2)}px)`,
+            opacity: 1 - inkedFraction * 0.45,
+            transition: 'filter 120ms linear, opacity 120ms linear',
+          }
+        : undefined;
     return (
       <div style={styles.questionContainer}>
         {joined && (
@@ -707,13 +774,20 @@ export default function ControllerScreen() {
           ) : (
             <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
           )}
+          {sabotage && sabotageRemainingMs > 0 && (
+            <div style={styles.sabotageBanner} data-testid="sabotage-banner" data-effect={sabotage.effect}>
+              {sabotage.effect === 'ice'
+                ? `🧊 Πάγωσες! ${Math.ceil(icedMs / 1000)}΄΄`
+                : `🖋️ Μελάνι! Καθαρίζει σε ${Math.ceil(sabotageRemainingMs / 1000)}΄΄`}
+            </div>
+          )}
         </div>
         <div style={styles.answerGrid}>
           {question.options.map((option, index) => {
             const identity = ANSWER_IDENTITIES[index];
             const isMine = index === myChoice;
             const dimmed = answered && !isMine;
-            const disabled = answered || paused;
+            const disabled = answered || paused || icedMs > 0;
             return (
               <button
                 key={index}
@@ -748,7 +822,7 @@ export default function ControllerScreen() {
                       background. */}
                   <span style={styles.answerLabel}>{identity.letter}</span>
                 </span>
-                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
+                <span style={{ ...(dimmed ? styles.answerTextDim : styles.answerText), ...inkStyle }}>{option}</span>
               </button>
             );
           })}
@@ -1336,6 +1410,18 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: '0.3rem',
     flexShrink: 0,
+  },
+  // Sabotage (Task 28b) - deliberately loud, and always paired with a
+  // countdown, so a frozen phone never reads as a broken one.
+  sabotageBanner: {
+    fontSize: '1rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: 'var(--text)',
+    background: 'var(--surface)',
+    border: '2px solid #7c3aed',
+    borderRadius: '0.6rem',
+    padding: '0.3rem 0.7rem',
   },
   questionFooter: {
     display: 'flex',
