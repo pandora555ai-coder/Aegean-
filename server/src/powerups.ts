@@ -1,4 +1,5 @@
-import { POWER_UP_EFFECTS, SABOTAGE_EFFECT_DURATION_MS, type PowerUpEffect } from '@game/shared';
+import { POWER_UP_EFFECTS, type PowerUpEffect } from '@game/shared';
+import { addAppliedSabotage } from './sabotage.js';
 import type { Room } from './state.js';
 
 // Never trust the client: an effect only counts if it's verbatim one of the
@@ -10,41 +11,38 @@ export function isPowerUpEffect(value: unknown): value is PowerUpEffect {
 
 // Lands every choice made during POWER_UP at the exact moment the question
 // that phase preceded begins. CONSUMING is the point, same discipline as
-// applyPendingSabotage: each entry is moved out of pendingPowerUpByTarget so
+// applyPendingSabotage: every entry is moved out of pendingPowerUpByTarget so
 // it can never fire twice.
 //
-// Deliberately writes into activeSabotageByTarget rather than a parallel map:
-// from the instant it lands, a power-up IS just an effect running against a
-// player, and every existing reader (activeSabotageFor, isIced, the victim's
-// `yourSabotage`, the pause-aware remaining-time maths) then works unchanged.
+// Deliberately goes through addAppliedSabotage rather than writing a parallel
+// map: from the instant it lands, a power-up IS just an effect running against
+// a player, so it gets the stacking rules (Task 31a), the question-time clamp,
+// and every existing reader (activeSabotagesFor, isIced, the victim's
+// `yourSabotages`, the pause-aware remaining-time maths) unchanged.
 //
 // MUST be called AFTER applyPendingSabotage, which clears that map and would
-// otherwise wipe what this just wrote. If a Task 28a sabotage and a power-up
-// happen to target the same player for the same question, the power-up - the
-// deliberate, player-made choice - is the one that lands.
-//
-// Durations are clamped to the room's question time exactly like a sabotage,
-// so a power-up can only eat into a round, never extend one.
+// otherwise wipe what this just wrote. A Task 28a sabotage and a power-up
+// targeting the same player for the same question now STACK like any other
+// pair, instead of one silently replacing the other.
 export function applyPendingPowerUps(room: Room): void {
   if (room.pendingPowerUpByTarget.size === 0) {
     return;
   }
 
-  const questionTimeMs = room.settings.questionTimeMs;
-  for (const [targetPlayerId, choice] of room.pendingPowerUpByTarget) {
-    const durationMs = Math.min(SABOTAGE_EFFECT_DURATION_MS[choice.effect], questionTimeMs);
-    // A zero-length effect is still consumed - it just never becomes active.
-    if (durationMs > 0) {
-      room.activeSabotageByTarget.set(targetPlayerId, {
-        effect: choice.effect,
-        startedAt: room.questionStartedAt,
-        durationMs,
-        questionTimeMs,
-      });
+  for (const [targetPlayerId, choices] of room.pendingPowerUpByTarget) {
+    // Every chooser who aimed here lands - in stage 2 the whole room chooses
+    // each round, so this list is routinely several deep and stacking it is
+    // the entire point.
+    for (const choice of choices) {
+      addAppliedSabotage(room, targetPlayerId, choice.effect);
+      console.log(
+        `room ${room.code} power-up '${choice.effect}' from ${choice.casterName} landed on ${choice.targetName} ` +
+          `at ${room.questionStartedAt} (question ${room.currentQuestionIndex + 1})`,
+      );
     }
     console.log(
-      `room ${room.code} power-up '${choice.effect}' from ${choice.casterName} landed on ${choice.targetName} ` +
-        `at ${room.questionStartedAt} for ${durationMs}ms (question ${room.currentQuestionIndex + 1})`,
+      `room ${room.code} stack on ${targetPlayerId}: ` +
+        `${JSON.stringify(room.activeSabotageByTarget.get(targetPlayerId) ?? [])}`,
     );
   }
   room.pendingPowerUpByTarget.clear();

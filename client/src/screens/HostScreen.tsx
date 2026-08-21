@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
+  STAGE_ANNOUNCE_DURATION_MS,
   ServerEvents,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
@@ -26,6 +27,7 @@ import {
   type ScoreboardPayload,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
+  type StageAnnouncePayload,
   type StateSyncPayload,
 } from '@game/shared';
 import QRCode from 'qrcode';
@@ -37,6 +39,7 @@ import { useWakeLock } from '../hooks/useWakeLock';
 import { QR_SIZE_PX } from './host/hostStyles';
 import { LobbyView } from './host/LobbyView';
 import { PowerUpView } from './host/PowerUpView';
+import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
 import { ScoreboardView } from './host/ScoreboardView';
@@ -63,6 +66,11 @@ export default function HostScreen() {
   const [powerUp, setPowerUp] = useState<PowerUpShowHostPayload | null>(null);
   const [powerUpProgress, setPowerUpProgress] = useState<PowerUpProgressPayload | null>(null);
   const [powerUpSecondsLeft, setPowerUpSecondsLeft] = useState(0);
+  // Stage announcement (Task 31a) - the TV is the only screen that shows it.
+  // Set by stage:announce (which the server emits exactly once per stage) and
+  // cleared purely locally after STAGE_ANNOUNCE_DURATION_MS; nothing on the
+  // server waits for it, so the phase underneath is already live.
+  const [stageAnnounce, setStageAnnounce] = useState<StageAnnouncePayload | null>(null);
   const wakeLockFailed = useWakeLock();
   const {
     muted,
@@ -156,6 +164,7 @@ export default function HostScreen() {
         setGameOver(null);
         setPowerUp(null);
         setPowerUpProgress(null);
+        setStageAnnounce(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -215,6 +224,10 @@ export default function HostScreen() {
 
     // WHO has locked in, never what they picked or at whom - that is all the
     // server sends the host, and all the TV ever shows.
+    function handleStageAnnounce(payload: StageAnnouncePayload) {
+      setStageAnnounce(payload);
+    }
+
     function handlePowerUpProgress(payload: PowerUpProgressPayload) {
       setPowerUpProgress(payload);
     }
@@ -363,6 +376,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
+    socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -380,6 +394,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
+      socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -483,6 +498,18 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [scoreboard, paused]);
 
+  // Drops the stage card after its own fixed lifetime (Task 31a). Purely
+  // local and purely cosmetic: the game never waited for it, and a TV that
+  // reconnects mid-stage simply doesn't get one - the announcement is an
+  // ENTRANCE, exactly like the Game Master's question intro.
+  useEffect(() => {
+    if (!stageAnnounce) {
+      return;
+    }
+    const handle = setTimeout(() => setStageAnnounce(null), STAGE_ANNOUNCE_DURATION_MS);
+    return () => clearTimeout(handle);
+  }, [stageAnnounce]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -540,82 +567,94 @@ export default function HostScreen() {
   const connectedCount = players.filter((player) => player.connected).length;
   const vip = players.find((player) => player.isVip) ?? null;
 
-  if (phase === 'GAME_OVER' && gameOver) {
-    return <GameOverView gameOver={gameOver} />;
-  }
+  // The phase view, unchanged - lifted into a function of its own (Task 31a)
+  // only so the stage card below can overlay ANY of them from one place
+  // instead of every branch having to remember to render it.
+  function renderPhaseView() {
+    if (phase === 'GAME_OVER' && gameOver) {
+      return <GameOverView gameOver={gameOver} />;
+    }
 
-  if (phase === 'REVEAL' && reveal && question) {
-    return (
-      <RevealView
-        reveal={reveal}
-        question={question}
-        roomCode={roomCode}
-        paused={paused}
-        pausedByName={pausedByName}
-        revealSecondsLeft={revealSecondsLeft}
-      />
-    );
-  }
+    if (phase === 'REVEAL' && reveal && question) {
+      return (
+        <RevealView
+          reveal={reveal}
+          question={question}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          revealSecondsLeft={revealSecondsLeft}
+        />
+      );
+    }
 
-  if (phase === 'SCOREBOARD' && scoreboard) {
-    return (
-      <ScoreboardView
-        scoreboard={scoreboard}
-        roomCode={roomCode}
-        paused={paused}
-        pausedByName={pausedByName}
-        scoreboardSecondsLeft={scoreboardSecondsLeft}
-      />
-    );
-  }
+    if (phase === 'SCOREBOARD' && scoreboard) {
+      return (
+        <ScoreboardView
+          scoreboard={scoreboard}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          scoreboardSecondsLeft={scoreboardSecondsLeft}
+        />
+      );
+    }
 
-  if (phase === 'POWER_UP' && powerUp) {
+    if (phase === 'POWER_UP' && powerUp) {
+      return (
+        <PowerUpView
+          powerUp={powerUp}
+          progress={powerUpProgress}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={powerUpSecondsLeft}
+          players={players}
+          connectedCount={connectedCount}
+        />
+      );
+    }
+
+    if (phase === 'QUESTION' && question) {
+      return (
+        <QuestionView
+          question={question}
+          answerProgress={answerProgress}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={secondsLeft}
+          players={players}
+          connectedCount={connectedCount}
+        />
+      );
+    }
+
     return (
-      <PowerUpView
-        powerUp={powerUp}
-        progress={powerUpProgress}
+      <LobbyView
+        connected={connected}
         roomCode={roomCode}
-        paused={paused}
-        pausedByName={pausedByName}
-        secondsLeft={powerUpSecondsLeft}
+        isRejoining={isRejoining}
+        wakeLockFailed={wakeLockFailed}
+        phase={phase}
+        muted={muted}
+        onToggleMuted={toggleMuted}
+        onCreateRoom={handleCreateRoom}
+        qrCanvasRef={qrCanvasRef}
         players={players}
         connectedCount={connectedCount}
-      />
-    );
-  }
-
-  if (phase === 'QUESTION' && question) {
-    return (
-      <QuestionView
-        question={question}
-        answerProgress={answerProgress}
-        roomCode={roomCode}
-        paused={paused}
-        pausedByName={pausedByName}
-        secondsLeft={secondsLeft}
-        players={players}
-        connectedCount={connectedCount}
+        roomSettings={roomSettings}
+        vip={vip}
+        powerHintDismissed={powerHintDismissed}
+        onDismissPowerHint={() => setPowerHintDismissed(true)}
       />
     );
   }
 
   return (
-    <LobbyView
-      connected={connected}
-      roomCode={roomCode}
-      isRejoining={isRejoining}
-      wakeLockFailed={wakeLockFailed}
-      phase={phase}
-      muted={muted}
-      onToggleMuted={toggleMuted}
-      onCreateRoom={handleCreateRoom}
-      qrCanvasRef={qrCanvasRef}
-      players={players}
-      connectedCount={connectedCount}
-      roomSettings={roomSettings}
-      vip={vip}
-      powerHintDismissed={powerHintDismissed}
-      onDismissPowerHint={() => setPowerHintDismissed(true)}
-    />
+    <>
+      {renderPhaseView()}
+      {stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
+    </>
   );
 }

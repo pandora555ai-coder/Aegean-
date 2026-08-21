@@ -3,17 +3,21 @@ import {
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
+  STAGES,
   ServerEvents,
+  firstQuestionIndexOfStage,
+  stageForQuestionIndex,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
   type RoomCode,
+  type StageAnnouncePayload,
 } from '@game/shared';
 import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
-import { activeSabotageFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
+import { activeSabotagesFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { io } from './realtime.js';
 import {
@@ -56,18 +60,42 @@ function sortAndRankResults(results: RevealPlayerResult[]): void {
   }
 }
 
-// The one question the POWER_UP phase precedes: the midpoint of THIS game's
-// question count (question 6 of 10, 8 of 15, 11 of 20 - 1-based).
-function powerUpQuestionIndex(room: Room): number {
-  return Math.floor(room.questions.length / 2);
+// Stages (Task 31a). Brings room.stage in line with whatever question is
+// about to be entered, and announces the stage on the TV the ONE time it
+// actually changes. Called from the single gate below, so "each stage is
+// announced exactly once, as it begins" is structural rather than something
+// each caller has to remember - and a pause, a reconnect or a re-broadcast
+// can never re-announce, since none of them move currentQuestionIndex.
+function syncStage(room: Room): void {
+  const definition = stageForQuestionIndex(room.currentQuestionIndex);
+  if (room.stage === definition.stage) {
+    return;
+  }
+  room.stage = definition.stage;
+
+  const payload: StageAnnouncePayload = {
+    stage: definition.stage,
+    totalStages: STAGES.length,
+    title: definition.title,
+    tagline: definition.tagline,
+    questionCount: definition.questionCount,
+    firstQuestionIndex: firstQuestionIndexOfStage(definition.stage),
+    totalQuestions: room.questions.length,
+  };
+  // Room-wide, but only the TV renders it: the phones are controllers and
+  // are about to be busy with a power-up choice or an answer.
+  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, payload);
+  console.log(`room ${room.code} entering stage ${definition.stage} — ${definition.title}`);
 }
 
 // The ONLY way any question is ever entered - vip:start_game and every
 // advance past a REVEAL/SCOREBOARD both come through here. That's what makes
-// "POWER_UP happens exactly once, and only immediately before a QUESTION"
-// structural rather than something each caller has to remember.
+// "the stage decides whether a POWER_UP precedes this question, and every
+// stage announces itself once" structural rather than something each caller
+// has to remember.
 export function enterQuestionOrPowerUp(room: Room): void {
-  if (!room.powerUpDone && room.currentQuestionIndex === powerUpQuestionIndex(room)) {
+  syncStage(room);
+  if (stageForQuestionIndex(room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
     startPowerUp(room);
     return;
   }
@@ -80,13 +108,13 @@ export function enterQuestionOrPowerUp(room: Room): void {
 // so a pause freezes it exactly like a question timer and a reconnect gets
 // the real remaining time back. room.currentQuestionIndex already points at
 // the question this precedes - it is NOT advanced here; endPowerUp starts
-// that very question.
+// that very question. Since Task 31a this runs before EVERY question of a
+// power-up stage, so nothing here may carry over between rounds: every
+// connected player simply gets one fresh choice each time (no economy, no
+// holdings), and endPowerUp below is what re-enters the question itself
+// rather than re-entering this gate.
 export function startPowerUp(room: Room): void {
   room.phase = 'POWER_UP';
-  // Marked on ENTRY, not on exit: whatever happens next (a pause, every
-  // phone reconnecting, the room emptying out) this game has now had its
-  // one power-up phase.
-  room.powerUpDone = true;
   room.powerUpChoices.clear();
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
@@ -119,10 +147,13 @@ export function endPowerUp(code: RoomCode): void {
     return;
   }
 
-  // Last chooser wins if two players aimed at the same target - the same
-  // convention Task 28a uses for its own per-target map.
+  // Every choice is kept, not just the last one aimed at a given target
+  // (Task 31a): several players piling onto the same victim is the normal
+  // case in a power-up stage, and they STACK when they land.
   for (const choice of room.powerUpChoices.values()) {
-    room.pendingPowerUpByTarget.set(choice.targetPlayerId, choice);
+    const forTarget = room.pendingPowerUpByTarget.get(choice.targetPlayerId) ?? [];
+    forTarget.push(choice);
+    room.pendingPowerUpByTarget.set(choice.targetPlayerId, forTarget);
   }
   console.log(
     `room ${room.code} power-up phase ended — ${room.powerUpChoices.size} chose, ` +
@@ -189,12 +220,14 @@ export function startQuestion(room: Room): void {
       questionTimeMs,
       paused: room.paused,
       pausedByName: room.pausedByName,
-      yourSabotage: activeSabotageFor(room, player.playerId),
+      yourSabotages: activeSabotagesFor(room, player.playerId),
     };
     io.to(player.socketId).emit(ServerEvents.QUESTION_SHOW, playerPayload);
   }
 
-  console.log(`room ${room.code} started — question ${room.currentQuestionIndex + 1}/${totalQuestions}`);
+  console.log(
+    `room ${room.code} started — question ${room.currentQuestionIndex + 1}/${totalQuestions} (stage ${room.stage})`,
+  );
 }
 
 // Ends the current question exactly once - guarded by the phase check, so

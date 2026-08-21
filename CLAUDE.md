@@ -40,9 +40,16 @@ client/src/theme.css     Gameshow theme
 
 ## Phases
 LOBBY -> QUESTION -> REVEAL -> (SCOREBOARD every 3rd + final) -> GAME_OVER
-POWER_UP runs ONCE per game, right before the midpoint QUESTION.
 Every question is entered via enterQuestionOrPowerUp() — the only gate.
 `paused` is a boolean flag, NOT a phase.
+
+## Stages
+STAGES in shared owns the game's shape: stage 1 = 3 plain questions,
+stage 2 = 5 questions each preceded by POWER_UP. Question count is NOT a
+setting — it's the sum of the stages. room.stage is server-side; the TV
+announces each stage once, on entry.
+Landed effects STACK per target: ice in duration (10s cap), ink in
+intensity, both via addAppliedSabotage() in sabotage.ts.
 
 ## Deploy
 ~/deploy.sh   (stop service, copy to /opt/party-game, build, chown, start)

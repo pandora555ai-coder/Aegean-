@@ -40,6 +40,7 @@ export const ServerEvents = {
   POWER_UP_SHOW: 'power_up:show',
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
   POWER_UP_PROGRESS: 'power_up:progress',
+  STAGE_ANNOUNCE: 'stage:announce',
 } as const;
 
 export type RoomCode = string;
@@ -254,10 +255,97 @@ export interface LobbyUpdatePayload {
   settings: RoomSettings;
 }
 
-// POWER_UP (Task 30a) runs EXACTLY ONCE per game, immediately before the
-// midpoint question - a real phase, not a flag, so every existing phase
-// guard keeps rejecting answers/casts while it's up.
+// POWER_UP (Task 30a) is a real phase, not a flag, so every existing phase
+// guard keeps rejecting answers/casts while it's up. WHEN it runs is decided
+// by the stage table below (Task 31a), not by this type.
 export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
+
+// ---------------------------------------------------------------------------
+// Stages (Task 31a)
+// ---------------------------------------------------------------------------
+
+// A game is a SEQUENCE OF STAGES, each a run of consecutive questions with its
+// own rules. This table is the whole definition: the question count of a game
+// is the sum of its stages' counts (TOTAL_STAGE_QUESTIONS), and which
+// questions get a POWER_UP phase in front of them is a per-stage flag rather
+// than a special case anywhere in the phase machine. Adding stage 3 means
+// adding a row here.
+export interface StageDefinition {
+  stage: number; // 1-based - matches Room.stage server-side
+  questionCount: number;
+  // When true, EVERY question of this stage is preceded by its own POWER_UP
+  // phase in which every connected player picks one power-up. There is no
+  // economy and nothing is held over: a power-up is chosen and spent inside
+  // the same stage-question boundary.
+  powerUpBeforeEveryQuestion: boolean;
+  title: string; // Greek, announced on the TV as the stage begins
+  tagline: string; // Greek, one line under the title
+}
+
+export const STAGES: readonly StageDefinition[] = [
+  {
+    stage: 1,
+    questionCount: 3,
+    powerUpBeforeEveryQuestion: false,
+    title: 'Στάδιο 1 — Καθαρές Ερωτήσεις',
+    tagline: 'Χωρίς κόλπα. Μόνο ταχύτητα και γνώση.',
+  },
+  {
+    stage: 2,
+    questionCount: 5,
+    powerUpBeforeEveryQuestion: true,
+    title: 'Στάδιο 2 — Σαμποτάζ',
+    tagline: 'Πριν από ΚΑΘΕ ερώτηση διαλέγετε όπλο. Και τα όπλα στοιβάζονται.',
+  },
+] as const;
+
+export const TOTAL_STAGE_QUESTIONS: number = STAGES.reduce((total, stage) => total + stage.questionCount, 0);
+
+// Which stage a 0-based question index falls in. Out-of-range indices clamp to
+// the first/last stage rather than returning null, so no caller has to handle
+// an impossible "question that belongs to no stage".
+export function stageForQuestionIndex(questionIndex: number): StageDefinition {
+  let firstIndex = 0;
+  for (const stage of STAGES) {
+    if (questionIndex < firstIndex + stage.questionCount) {
+      return stage;
+    }
+    firstIndex += stage.questionCount;
+  }
+  return STAGES[STAGES.length - 1];
+}
+
+// The 0-based index of a stage's FIRST question - what the TV announcement
+// reports, and what makes "question 2 of 5 in this stage" computable.
+export function firstQuestionIndexOfStage(stage: number): number {
+  let firstIndex = 0;
+  for (const definition of STAGES) {
+    if (definition.stage === stage) {
+      return firstIndex;
+    }
+    firstIndex += definition.questionCount;
+  }
+  return 0;
+}
+
+// Fired at the room the moment a game ENTERS a stage - exactly once per stage
+// per game, since the server only emits it when Room.stage actually changes.
+// The TV shows it as a brief overlay; phones ignore it (they're controllers,
+// and the phone is already busy with a POWER_UP choice half the time).
+export interface StageAnnouncePayload {
+  stage: number;
+  totalStages: number;
+  title: string;
+  tagline: string;
+  questionCount: number;
+  firstQuestionIndex: number; // 0-based, into the whole game's question list
+  totalQuestions: number;
+}
+
+// How long the TV keeps the announcement overlay up. Purely cosmetic and
+// entirely client-side: no server timer is involved, the game does NOT wait
+// for it, and the question/POWER_UP underneath is already live.
+export const STAGE_ANNOUNCE_DURATION_MS = 3500;
 
 // Each player may cast ONE of these per game, at a target of their choosing;
 // the SERVER (never the client) picks which effect they get, weighted by the
@@ -302,16 +390,41 @@ export const SABOTAGE_EFFECT_DURATION_MS: Record<SabotageEffect, number> = {
   shuffle: 60000,
 };
 
+// Stacking (Task 31a). In stage 2 every connected player gets a power-up
+// before every question, so several of them landing on the same victim in the
+// same round is the NORMAL case, not an edge one. Each effect stacks along its
+// own axis, and each axis has a hard ceiling:
+//   ice - stacks in DURATION, capped at MAX_ICE_STACK_MS total. Ice past the
+//         cap is discarded (a whole round of being frozen is already the
+//         worst thing the game can do to someone).
+//   ink - stacks in INTENSITY, never in duration: a second ink makes the
+//         blur worse for the same window, it does not extend the window.
+//   shuffle - stacks as neither; there is one option order per question, so a
+//         second shuffle is simply absorbed.
+// Both ceilings are ALSO clamped to the room's question time by the server, so
+// no amount of stacking can make an effect outlive the round it landed in.
+export const MAX_ICE_STACK_MS = 10000;
+export const MAX_INK_INTENSITY = 3;
+
 // The effect currently RUNNING against a player, sent only to that player,
 // on question:show and on a mid-question state:sync. `remainingMs` is always
 // the time still left this instant - never the full duration - so a phone
 // that reconnects halfway through an ice picks the freeze up where it was
 // rather than restarting it. `durationMs` is the already-clamped total, sent
 // alongside so the ink fade can be drawn against the right curve.
+//
+// One of these per EFFECT, never per cast: several ices landing on one player
+// arrive as a single entry with a longer `durationMs`, several inks as a
+// single entry with a higher `intensity`. A player can, however, be under an
+// ice AND an ink at once - hence the list, `yourSabotages`.
 export interface ActiveSabotage {
   effect: SabotageEffect;
   durationMs: number;
   remainingMs: number;
+  // How many instances have been folded into this entry along its INTENSITY
+  // axis: >1 only for ink (capped at MAX_INK_INTENSITY). Always 1 for ice and
+  // shuffle, whose stacking shows up in `durationMs` or nowhere at all.
+  intensity: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,17 +544,17 @@ export interface Question {
 export type DifficultyMix = 'easy' | 'normal' | 'hard';
 export const DIFFICULTY_MIX_OPTIONS: readonly DifficultyMix[] = ['easy', 'normal', 'hard'];
 
-export const QUESTION_COUNT_OPTIONS = [10, 15, 20] as const;
+// Question COUNT is no longer a setting (Task 31a): the stage table owns it,
+// a game being exactly TOTAL_STAGE_QUESTIONS questions long. Time and
+// difficulty remain the VIP's to choose.
 export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
 
 export type RoomSettings = {
-  questionCount: number;
   questionTimeMs: number;
   difficultyMix: DifficultyMix;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
-  questionCount: 10,
   questionTimeMs: 20000,
   difficultyMix: 'normal',
 };
@@ -487,11 +600,13 @@ export interface QuestionShowPlayerPayload {
   questionTimeMs: number;
   paused: boolean;
   pausedByName: string | null;
-  // Sabotage (Task 28b) - the effect landing on THIS player for THIS
-  // question, or null for everyone else. Per-player by construction: the
-  // host payload has no equivalent field, and no phone is ever told about
-  // another phone's sabotage.
-  yourSabotage: ActiveSabotage | null;
+  // Sabotage (Task 28b) - the effects landing on THIS player for THIS
+  // question, empty for everyone else. Per-player by construction: the host
+  // payload has no equivalent field, and no phone is ever told about another
+  // phone's sabotage. A LIST since Task 31a: at most one entry per effect
+  // (already stacked, see ActiveSabotage), but a player can be under several
+  // different effects at once.
+  yourSabotages: ActiveSabotage[];
 }
 
 export type QuestionShowPayload = QuestionShowHostPayload | QuestionShowPlayerPayload;
@@ -741,4 +856,5 @@ export type ServerToClientEvents = {
   [ServerEvents.POWER_UP_SHOW]: (payload: PowerUpShowPayload) => void;
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
   [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;
+  [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
 };

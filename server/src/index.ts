@@ -69,7 +69,7 @@ import {
 } from './payloads.js';
 import { isPowerUpEffect } from './powerups.js';
 import {
-  activeSabotageFor,
+  activeSabotagesFor,
   isIced,
   optionsForPlayer,
   pickSabotageEffect,
@@ -173,10 +173,12 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
         yourChoice: recorded ? toDisplayChoice(room, playerId, recorded.choice) : null,
         paused: room.paused,
         pausedByName: room.pausedByName,
-        // Sabotage (Task 28b): the time still LEFT on whatever is running
+        // Sabotage (Task 28b): the time still LEFT on everything running
         // against them, so a mid-question reconnect resumes the freeze/fade
-        // rather than restarting it. Read live from room state, never cached.
-        yourSabotage: activeSabotageFor(room, playerId),
+        // rather than restarting it - a STACKED effect included, since the
+        // stack lives in room state and the remaining time is derived from
+        // the shared (pause-aware) timer. Read live, never cached.
+        yourSabotages: activeSabotagesFor(room, playerId),
       };
     }
     case 'REVEAL': {
@@ -477,10 +479,10 @@ io.on('connection', (socket) => {
 
     buildRoomQuestions(room);
     room.currentQuestionIndex = 0;
-    // Sets the phase and emits phase:changed itself - question 0 is never
-    // the power-up midpoint at any supported question count, but routing
-    // even the first question through the one gate keeps that a property of
-    // the gate rather than an assumption spread across callers.
+    // Sets the stage, the phase and emits phase:changed itself - stage 1
+    // happens not to use power-ups today, but routing even the first question
+    // through the one gate keeps that a property of the stage table rather
+    // than an assumption spread across callers.
     enterQuestionOrPowerUp(room);
   });
 

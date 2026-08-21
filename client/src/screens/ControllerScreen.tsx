@@ -8,10 +8,11 @@ import {
   DIFFICULTY_MIX_OPTIONS,
   MIN_PLAYERS,
   PRESET_NAMES,
-  QUESTION_COUNT_OPTIONS,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
+  STAGES,
+  TOTAL_STAGE_QUESTIONS,
   ServerEvents,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
@@ -38,6 +39,7 @@ import {
   type RevealShowPayload,
   type RoomPeekResultPayload,
   type RoomSettings,
+  type SabotageEffect,
   type ScoreboardPayload,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
@@ -249,11 +251,19 @@ export default function ControllerScreen() {
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
-  // Sabotage (Task 28b) - whatever is running against ME this question, and
-  // how much of it is left. The server hands over the REMAINING time (never
-  // a fresh full duration), so this is only ever counted down from there.
-  const [sabotage, setSabotage] = useState<ActiveSabotage | null>(null);
-  const [sabotageRemainingMs, setSabotageRemainingMs] = useState(0);
+  // Sabotage (Task 28b, stacked in Task 31a) - everything running against ME
+  // this question, one entry per effect, and how long this phone has been
+  // counting since the server last told it. The server hands over each
+  // effect's REMAINING time (never a fresh full duration), so every countdown
+  // below is `remainingMs - sabotageElapsedMs`: ONE local clock for the whole
+  // stack, which is what keeps an ice and an ink landing together from
+  // drifting apart on screen.
+  const [sabotages, setSabotages] = useState<ActiveSabotage[]>([]);
+  const [sabotageElapsedMs, setSabotageElapsedMs] = useState(0);
+  // Mirrors `sabotageElapsedMs` so the ticker below can re-anchor from the
+  // value already counted (after a pause) without taking it as a dependency
+  // and re-anchoring on every single tick.
+  const sabotageElapsedRef = useRef(0);
   // Power-up (Task 30b) - two steps on one screen. `powerUpEffect` IS the
   // step: null = pick an effect, set = pick a target, and the back button is
   // just clearing it again. `powerUpChoice` is the locked-in state, set
@@ -339,11 +349,14 @@ export default function ControllerScreen() {
       setRoomSettings(payload);
     }
 
-    // Sabotage (Task 28b) - the effect and its countdown are always set
-    // together from the server's own figure, so they can never disagree.
-    function applySabotage(next: ActiveSabotage | null) {
-      setSabotage(next);
-      setSabotageRemainingMs(next ? next.remainingMs : 0);
+    // Sabotage (Task 28b) - the stack and its countdown are always set
+    // together from the server's own figures, so they can never disagree.
+    // Elapsed always restarts at 0: every `remainingMs` in `next` was
+    // computed by the server this instant.
+    function applySabotages(next: ActiveSabotage[]) {
+      setSabotages(next);
+      sabotageElapsedRef.current = 0;
+      setSabotageElapsedMs(0);
     }
 
     function handleQuestionShow(payload: QuestionShowPayload) {
@@ -358,7 +371,7 @@ export default function ControllerScreen() {
         applyPowerUp(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
-        applySabotage(payload.yourSabotage);
+        applySabotages(payload.yourSabotages);
       }
     }
 
@@ -371,7 +384,7 @@ export default function ControllerScreen() {
         setAcceptedChoice(null);
         setReveal(null);
         setScoreboard(null);
-        applySabotage(null);
+        applySabotages([]);
         applyPowerUp(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
@@ -394,7 +407,7 @@ export default function ControllerScreen() {
         setReveal(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
-        applySabotage(null); // the question it belonged to is over
+        applySabotages([]); // the question it belonged to is over
       }
     }
 
@@ -403,13 +416,13 @@ export default function ControllerScreen() {
       setScoreboard(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
-      applySabotage(null);
+      applySabotages([]);
     }
 
     function handleGameOver(payload: GameOverPayload) {
       setScoreboard(null);
       setGameOver(payload);
-      applySabotage(null);
+      applySabotages([]);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -433,7 +446,7 @@ export default function ControllerScreen() {
       setReveal(null);
       setScoreboard(null);
       setGameOver(null);
-      applySabotage(null);
+      applySabotages([]);
       applyPowerUp(null);
 
       switch (payload.phase) {
@@ -462,16 +475,17 @@ export default function ControllerScreen() {
               questionTimeMs: payload.questionTimeMs,
               paused: payload.paused,
               pausedByName: payload.pausedByName,
-              yourSabotage: payload.yourSabotage,
+              yourSabotages: payload.yourSabotages,
             });
             // Landed mid-question having already answered - go straight to
             // the SUBMITTED view instead of a fresh (re-tappable) one.
             if (payload.yourChoice !== null) {
               setAcceptedChoice(payload.yourChoice);
             }
-            // Resumes an ice/ink already in progress at whatever the server
-            // says is LEFT of it - reconnecting never re-runs it from zero.
-            applySabotage(payload.yourSabotage);
+            // Resumes every ice/ink already in progress at whatever the
+            // server says is LEFT of it - stacked or not, reconnecting never
+            // re-runs anything from zero.
+            applySabotages(payload.yourSabotages);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -537,29 +551,34 @@ export default function ControllerScreen() {
     codeRef.current = code;
   }, [code]);
 
-  // Sabotage (Task 28b) - the only countdown the phone runs. Deliberately
-  // torn down while `paused`, which is what freezes the effect on this side;
-  // resuming re-anchors from the remaining time left frozen in state, so a
-  // pause can't burn off an ice. Re-anchoring to a wall-clock deadline (not
-  // "subtract 100 each tick") keeps a throttled background tab honest.
-  // `sabotageRemainingMs` is intentionally NOT a dependency - it would
-  // re-anchor on every tick; the effect already re-reads it whenever the two
-  // things that matter, the effect itself or the pause, change.
+  // Sabotage (Task 28b) - the only countdown the phone runs, and since Task
+  // 31a ONE countdown for the whole stack: it advances `sabotageElapsedMs`,
+  // which every effect's own remaining time is measured against. Deliberately
+  // torn down while `paused`, which is what freezes the effects on this side;
+  // resuming re-anchors from the elapsed time frozen in the ref, so a pause
+  // can't burn off an ice. Anchoring to a wall-clock start (not "add 100 each
+  // tick") keeps a throttled background tab honest. `sabotageElapsedMs` is
+  // intentionally NOT a dependency - it would re-anchor on every tick; the
+  // effect already re-reads it (via the ref) whenever the two things that
+  // matter, the stack itself or the pause, change.
   useEffect(() => {
-    if (!sabotage || paused || sabotageRemainingMs <= 0) {
+    if (sabotages.length === 0 || paused) {
       return;
     }
-    const endsAt = Date.now() + sabotageRemainingMs;
+    const anchoredAt = Date.now();
+    const alreadyElapsedMs = sabotageElapsedRef.current;
+    const longestMs = Math.max(...sabotages.map((effect) => effect.remainingMs));
     const handle = setInterval(() => {
-      const left = Math.max(0, endsAt - Date.now());
-      setSabotageRemainingMs(left);
-      if (left === 0) {
-        clearInterval(handle);
+      const elapsed = alreadyElapsedMs + (Date.now() - anchoredAt);
+      sabotageElapsedRef.current = elapsed;
+      setSabotageElapsedMs(elapsed);
+      if (elapsed >= longestMs) {
+        clearInterval(handle); // nothing in the stack is still running
       }
     }, 100);
     return () => clearInterval(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sabotage, paused]);
+  }, [sabotages, paused]);
 
   // Fires a fresh room:peek whenever the code reaches a complete 4 digits -
   // covers both "just finished typing" and "came back to fix a typo", so
@@ -630,14 +649,25 @@ export default function ControllerScreen() {
   const isVip = vipPlayerId === playerId;
 
   // Sabotage (Task 28b). Ice blocks answering for its first N seconds; ink
-  // only obscures, so inked buttons stay fully tappable throughout.
-  // `icedMs` counts DOWN to 0 - the server enforces the same window from the
-  // same clock, and since this deadline is anchored on a server figure that
-  // arrived over the network, it can only ever expire later than the
-  // server's, never earlier. A tap can't slip through and be silently
-  // dropped.
-  const icedMs = sabotage?.effect === 'ice' ? sabotageRemainingMs : 0;
-  const inkedFraction = sabotage?.effect === 'ink' ? sabotageRemainingMs / sabotage.durationMs : 0;
+  // only obscures, so inked buttons stay fully tappable throughout. Both are
+  // read out of the STACK (Task 31a) by effect - at most one entry each, the
+  // server having already folded multiple casts into a longer ice or a
+  // stronger ink. `icedMs` counts DOWN to 0 - the server enforces the same
+  // window from the same clock, and since this is anchored on a server figure
+  // that arrived over the network, it can only ever expire later than the
+  // server's, never earlier. A tap can't slip through and be silently dropped.
+  function remainingMsFor(effect: SabotageEffect): number {
+    const active = sabotages.find((candidate) => candidate.effect === effect);
+    return active ? Math.max(0, active.remainingMs - sabotageElapsedMs) : 0;
+  }
+
+  const icedMs = remainingMsFor('ice');
+  const inkRemainingMs = remainingMsFor('ink');
+  const ink = sabotages.find((candidate) => candidate.effect === 'ink') ?? null;
+  // 1 -> 0 across the ink's window, exactly as before stacking; the extra
+  // instances show up as `intensity` below, never as a longer window.
+  const inkedFraction = ink && inkRemainingMs > 0 ? inkRemainingMs / ink.durationMs : 0;
+  const inkIntensity = ink ? ink.intensity : 1;
 
   function handleAnswerTap(index: number) {
     if (pendingChoice !== null || paused || icedMs > 0) {
@@ -706,8 +736,10 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_RESET_TO_LOBBY, {});
   }
 
+  // Question count is the stage table's, not a setting (Task 31a) - the only
+  // thing the VIP still moves here is the per-question time.
   const estimatedMinutes = Math.round(
-    (roomSettings.questionCount * (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) / 60000,
+    (TOTAL_STAGE_QUESTIONS * (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) / 60000,
   );
 
   if (gameOver) {
@@ -944,12 +976,15 @@ export default function ControllerScreen() {
     const answered = myChoice !== null;
     // Ink obscures the option TEXT only - the letter and shape stay crisp, so
     // a tap is always aimable even at full strength. Fades to nothing as
-    // `inkedFraction` runs 1 -> 0 across the effect's duration.
+    // `inkedFraction` runs 1 -> 0 across the effect's duration. Stacked ink
+    // (Task 31a) multiplies the blur and the wash for that SAME window - it
+    // never lengthens it - and the crisp letter/shape are what keep even a
+    // triple-strength ink answerable rather than a lockout by another name.
     const inkStyle: CSSProperties | undefined =
       inkedFraction > 0
         ? {
-            filter: `blur(${(inkedFraction * 8).toFixed(2)}px)`,
-            opacity: 1 - inkedFraction * 0.45,
+            filter: `blur(${(inkedFraction * 8 * inkIntensity).toFixed(2)}px)`,
+            opacity: 1 - inkedFraction * Math.min(0.45 * inkIntensity, 0.8),
             transition: 'filter 120ms linear, opacity 120ms linear',
           }
         : undefined;
@@ -974,18 +1009,34 @@ export default function ControllerScreen() {
           ) : (
             <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
           )}
-          {sabotage && sabotageRemainingMs > 0 && (
-            <div style={styles.sabotageBanner} data-testid="sabotage-banner" data-effect={sabotage.effect}>
-              {sabotage.effect === 'ice'
-                ? `🧊 Πάγωσες! ${Math.ceil(icedMs / 1000)}΄΄`
-                : sabotage.effect === 'ink'
-                  ? `🖋️ Μελάνι! Καθαρίζει σε ${Math.ceil(sabotageRemainingMs / 1000)}΄΄`
-                  : // Shuffle (Task 28c) lasts the whole question and has no
-                    // countdown to show - the server already reordered the
-                    // options below; this only warns them not to trust the TV.
-                    '🔀 Ανακάτεμα! Οι απαντήσεις σου δεν είναι στη σειρά της τηλεόρασης'}
-            </div>
-          )}
+          {/* One banner per EFFECT (Task 31a) - a stacked victim can be under
+              an ice and an ink at once, and each has its own countdown. The
+              server already folded repeats of the same effect together, so
+              this never grows past one row per effect. */}
+          {sabotages.map((active) => {
+            const remainingMs = remainingMsFor(active.effect);
+            if (remainingMs <= 0 && active.effect !== 'shuffle') {
+              return null;
+            }
+            return (
+              <div
+                key={active.effect}
+                style={styles.sabotageBanner}
+                data-testid="sabotage-banner"
+                data-effect={active.effect}
+                data-intensity={active.intensity}
+              >
+                {active.effect === 'ice'
+                  ? `🧊 Πάγωσες! ${Math.ceil(remainingMs / 1000)}΄΄`
+                  : active.effect === 'ink'
+                    ? `🖋️ Μελάνι${active.intensity > 1 ? ` ×${active.intensity}` : ''}! Καθαρίζει σε ${Math.ceil(remainingMs / 1000)}΄΄`
+                    : // Shuffle (Task 28c) lasts the whole question and has no
+                      // countdown to show - the server already reordered the
+                      // options below; this only warns them not to trust the TV.
+                      '🔀 Ανακάτεμα! Οι απαντήσεις σου δεν είναι στη σειρά της τηλεόρασης'}
+              </div>
+            );
+          })}
         </div>
         <div style={styles.answerGrid}>
           {question.options.map((option, index) => {
@@ -1060,15 +1111,13 @@ export default function ControllerScreen() {
         <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
 
         <div style={styles.settingsPanel} data-testid="settings-panel">
-          <SegmentedRow
-            label="Ερωτήσεις"
-            options={QUESTION_COUNT_OPTIONS}
-            current={roomSettings.questionCount}
-            format={(count) => String(count)}
-            onSelect={(count) => handleSettingChange({ questionCount: count })}
-            readOnly={!isVip}
-            testIdPrefix="setting-count"
-          />
+          {/* Not a control (Task 31a): the stage table decides how many
+              questions a game is and how they're split, so this states the
+              shape of the game instead of pretending it's adjustable. */}
+          <div style={styles.estimatedLength} data-testid="stage-summary">
+            {TOTAL_STAGE_QUESTIONS} ερωτήσεις σε {STAGES.length} στάδια (
+            {STAGES.map((stage) => stage.questionCount).join(' + ')})
+          </div>
           <SegmentedRow
             label="Χρόνος"
             options={QUESTION_TIME_OPTIONS_MS}

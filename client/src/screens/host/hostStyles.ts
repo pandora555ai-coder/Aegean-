@@ -111,6 +111,49 @@ export const styles: Record<string, CSSProperties> = {
     gap: '1rem',
     zIndex: 40,
   },
+  // Stage announcement (Task 31a). Sits ABOVE the pause overlay's z-index so
+  // a stage entered while paused still reads, but below the corner room code
+  // (50), which must never be covered.
+  stageOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(10, 7, 22, 0.9)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem',
+    zIndex: 45,
+  },
+  stageCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1rem',
+    textAlign: 'center',
+    maxWidth: '80%',
+  },
+  stageKicker: {
+    fontSize: '2rem',
+    fontWeight: 700,
+    letterSpacing: '0.3em',
+    color: 'var(--gold)',
+  },
+  stageTitle: {
+    fontSize: 'clamp(3.5rem, 6vw, 6rem)',
+    fontWeight: 900,
+    lineHeight: 1.15,
+    color: 'var(--text)',
+  },
+  stageTagline: {
+    fontSize: '2rem',
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+  },
+  stageRange: {
+    fontSize: '1.5rem',
+    fontWeight: 600,
+    color: 'var(--text-faint)',
+  },
   pauseTitle: {
     fontSize: '5rem',
     fontWeight: 900,

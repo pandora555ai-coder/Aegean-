@@ -11,8 +11,8 @@ import {
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   MAX_PLAYERS,
-  QUESTION_COUNT_OPTIONS,
   QUESTION_TIME_OPTIONS_MS,
+  TOTAL_STAGE_QUESTIONS,
   sanitizeCustomName,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
@@ -36,8 +36,12 @@ export interface AppliedSabotage {
   // questionStartedAt, since an effect only ever starts with its question.
   startedAt: number;
   // Already clamped to `questionTimeMs` below, so an effect can never
-  // outlive - let alone extend - the round it landed in.
+  // outlive - let alone extend - the round it landed in. For ice this is
+  // also where STACKING shows up (capped at MAX_ICE_STACK_MS).
   durationMs: number;
+  // Stacking (Task 31a) - how many instances have been folded in along the
+  // INTENSITY axis. >1 only for ink; ice stacks in durationMs instead.
+  intensity: number;
   // The full length of the question it landed in, kept so remaining time can
   // be derived from the shared timer helper (which is what pause freezes)
   // rather than from a raw Date.now() that would keep ticking through one.
@@ -85,6 +89,12 @@ export interface Room {
   createdAt: number;
   players: Map<string, Player>; // keyed by playerId
   phase: GamePhase;
+  // Stages (Task 31a) - which stage of the STAGES table the game is currently
+  // in, 1-based; 0 before the game starts. Server-authoritative and derived
+  // from currentQuestionIndex (see syncStage in phases.ts) - it exists as a
+  // field only so the "has the stage CHANGED" edge is detectable, which is
+  // what keeps the TV's stage announcement to exactly once per stage.
+  stage: number;
   questions: Question[];
   currentQuestionIndex: number; // -1 until the game starts
   answers: Map<string, RecordedAnswer>; // keyed by playerId, cleared every question
@@ -133,8 +143,11 @@ export interface Room {
   pendingSabotageByTarget: Map<string, SabotageAnnouncement>;
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
-  // scratch at the start of every one.
-  activeSabotageByTarget: Map<string, AppliedSabotage>;
+  // scratch at the start of every one. A LIST since Task 31a: at most one
+  // entry per EFFECT (stacking folds instances together - see
+  // addAppliedSabotage in sabotage.ts), but a player can be under an ice and
+  // an ink simultaneously.
+  activeSabotageByTarget: Map<string, AppliedSabotage[]>;
   // Every playerId who has already spent their one sabotage cast this game.
   sabotageCastUsedBy: Set<string>;
   // Sabotage (Task 28c) - the option order the victim of a 'shuffle' is
@@ -146,10 +159,6 @@ export interface Room {
   // back. Canonical order is what the TV always shows; this map is the only
   // place the victim's order exists. Cleared at REVEAL.
   shuffledOptionsByTarget: Map<string, number[]>;
-  // Power-up (Task 30a). True from the moment the one POWER_UP phase of this
-  // game is ENTERED - the sole guard that keeps it to exactly once per game,
-  // and why a pause/reconnect during it can never re-trigger it.
-  powerUpDone: boolean;
   // Choices made during POWER_UP, keyed by casterPlayerId - hidden from
   // everyone but their own caster until they LAND on the next question.
   // Emptied into pendingPowerUpByTarget the instant the phase ends.
@@ -157,9 +166,12 @@ export interface Room {
   // Deliberately NOT pendingSabotageByTarget: a power-up lands on the very
   // next question, not on the target's next-question-after-a-REVEAL, so it
   // must not go anywhere near Task 28a's announce-then-pend path. Keyed by
-  // targetPlayerId (last chooser wins if two aim at the same player), and
-  // consumed - cleared - by applyPendingPowerUps when that question starts.
-  pendingPowerUpByTarget: Map<string, PowerUpChoice>;
+  // targetPlayerId, and consumed - cleared - by applyPendingPowerUps when that
+  // question starts. A LIST of choices per target since Task 31a: in stage 2
+  // the whole room chooses every round, so several players piling onto one
+  // victim is the normal case and every one of them must STACK rather than
+  // the last one silently winning.
+  pendingPowerUpByTarget: Map<string, PowerUpChoice[]>;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -189,6 +201,7 @@ export function createRoom(hostSocketId: string): Room {
     createdAt: Date.now(),
     players: new Map(),
     phase: 'LOBBY',
+    stage: 0, // no stage until the first question is entered
     // Nobody reads `questions` before the game actually starts - built for
     // real by buildRoomQuestions() on vip:start_game and vip:play_again, so
     // settings changes made while still in LOBBY never waste a shuffle.
@@ -210,7 +223,6 @@ export function createRoom(hostSocketId: string): Room {
     activeSabotageByTarget: new Map(),
     sabotageCastUsedBy: new Set(),
     shuffledOptionsByTarget: new Map(),
-    powerUpDone: false,
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
   };
@@ -281,8 +293,10 @@ export function detachHostDisplay(room: Room): void {
 // (Re)builds `room.questions` from the room's CURRENT settings - called on
 // vip:start_game and vip:play_again (never eagerly at creation or on every
 // settings tweak, since nobody reads it until the game is actually live).
+// HOW MANY is not a setting (Task 31a): the stage table decides it, so a
+// game's question list is always exactly long enough to fill every stage.
 export function buildRoomQuestions(room: Room): void {
-  room.questions = getQuestionSet(room.settings.difficultyMix, room.settings.questionCount);
+  room.questions = getQuestionSet(room.settings.difficultyMix, TOTAL_STAGE_QUESTIONS);
 }
 
 // Merges a VIP-supplied partial settings update into `room.settings`,
@@ -291,9 +305,6 @@ export function buildRoomQuestions(room: Room): void {
 // of the allowed values - never trust the client. Returns the resulting
 // settings (unchanged if nothing in the partial was valid).
 export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): RoomSettings {
-  if (partial.questionCount !== undefined && (QUESTION_COUNT_OPTIONS as readonly number[]).includes(partial.questionCount)) {
-    room.settings.questionCount = partial.questionCount;
-  }
   if (
     partial.questionTimeMs !== undefined &&
     (QUESTION_TIME_OPTIONS_MS as readonly number[]).includes(partial.questionTimeMs)
@@ -457,6 +468,8 @@ export function removePlayer(code: RoomCode, playerId: string): boolean {
 // has to rejoin for "play again".
 export function resetRoomForNewGame(room: Room): void {
   room.phase = 'LOBBY';
+  // Back to "no stage" so the next game announces stage 1 again from scratch.
+  room.stage = 0;
   room.currentQuestionIndex = -1;
   room.answers.clear();
   clearActiveTimer(room);
@@ -473,9 +486,7 @@ export function resetRoomForNewGame(room: Room): void {
   room.activeSabotageByTarget.clear();
   room.sabotageCastUsedBy.clear();
   room.shuffledOptionsByTarget.clear();
-  // A fresh game gets its one POWER_UP phase back, and carries no unspent
-  // choice over from the game that just ended.
-  room.powerUpDone = false;
+  // No unspent power-up choice carries over from the game that just ended.
   room.powerUpChoices.clear();
   room.pendingPowerUpByTarget.clear();
   // Settings PERSIST across play_again (room.settings is untouched) - the

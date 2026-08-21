@@ -1,5 +1,13 @@
 import type { RefObject } from 'react';
-import { MAX_PLAYERS, type GamePhase, type LobbyPlayer, type RoomCode, type RoomSettings } from '@game/shared';
+import {
+  MAX_PLAYERS,
+  STAGES,
+  TOTAL_STAGE_QUESTIONS,
+  type GamePhase,
+  type LobbyPlayer,
+  type RoomCode,
+  type RoomSettings,
+} from '@game/shared';
 import { DIFFICULTY_MIX_LABELS } from '../../difficultyLabels';
 import { Avatar } from '../../components/Avatar';
 import { QR_SIZE_PX, styles } from './hostStyles';
@@ -111,8 +119,8 @@ export function LobbyView({
           </div>
 
           <div data-testid="room-settings-summary" style={styles.settingsSummary}>
-            {roomSettings.questionCount} ερωτήσεις · {roomSettings.questionTimeMs / 1000}΄΄ ·{' '}
-            {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
+            {TOTAL_STAGE_QUESTIONS} ερωτήσεις σε {STAGES.length} στάδια ·{' '}
+            {roomSettings.questionTimeMs / 1000}΄΄ · {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
           </div>
 
           {vip ? (
