@@ -188,11 +188,12 @@ input {
   animation: screen-fade-in 280ms ease-out backwards;
 }
 
-/* Game Master (Task 24) QUESTION-start intro - pops in, holds briefly, then
-   fades on its own. Entirely CSS-driven (no JS timer), so it can never
-   delay anything else on the screen; ends invisible (forwards fill) so it
-   never leaves a stray box sitting there for the rest of the question. */
-@keyframes gm-intro-fade {
+/* Socrates (Task 24, renamed Task 37a) QUESTION-start intro - pops in,
+   holds briefly, then fades on its own. Entirely CSS-driven (no JS
+   timer), so it can never delay anything else on the screen; ends
+   invisible (forwards fill) so it never leaves a stray box sitting there
+   for the rest of the question. */
+@keyframes socrates-intro-fade {
   0% {
     opacity: 0;
     transform: translate3d(0, -6px, 0);
@@ -211,8 +212,8 @@ input {
   }
 }
 
-.gm-intro-fade {
-  animation: gm-intro-fade 4.5s ease-in-out forwards;
+.socrates-intro-fade {
+  animation: socrates-intro-fade 4.5s ease-in-out forwards;
 }
 
 /* Question appears with a brief scale/fade entrance. The class's OWN base

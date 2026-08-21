@@ -46,16 +46,16 @@ export function QuestionView({
           <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
         </div>
       )}
-      {/* Game Master (Task 24) - HOST ONLY, briefly shown then fades on
-          its own via CSS (gm-intro-fade, see theme.css) - no JS timer, so
-          it can never delay anything else on this screen. The player
-          side's answer buttons are unaffected regardless, since gmIntro
-          is never even sent in the player payload. Conditionally
-          rendered, same reasoning as gmLine on REVEAL - no gap when
-          null. */}
-      {question.gmIntro && (
-        <div className="gm-intro-fade" style={styles.gmIntroBanner} data-testid="gm-intro">
-          {question.gmIntro}
+      {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY, briefly shown
+          then fades on its own via CSS (socrates-intro-fade, see
+          theme.css) - no JS timer, so it can never delay anything else on
+          this screen. The player side's answer buttons are unaffected
+          regardless, since socratesIntro is never even sent in the player
+          payload. Conditionally rendered, same reasoning as socratesLine
+          on REVEAL - no gap when null. */}
+      {question.socratesIntro && (
+        <div className="socrates-intro-fade" style={styles.socratesIntroBanner} data-testid="socrates-intro">
+          {question.socratesIntro}
         </div>
       )}
       <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>

@@ -243,7 +243,7 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         // host already missed. The REVEAL commentary below, by contrast,
         // DOES persist and catch a reconnect up (it reuses
         // buildRevealHostPayload, same as the live broadcast).
-        gmIntro: null,
+        socratesIntro: null,
       };
     }
     case 'REVEAL': {

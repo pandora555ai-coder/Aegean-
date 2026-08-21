@@ -50,16 +50,17 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
       <div style={styles.progress}>
         Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
       </div>
-      {/* Game Master (Task 24) - HOST ONLY. Plain block flow, not an
-          overlay, so it can never cover the results or the correct
-          answer - it just takes its own line, pushing the rest down a
-          little. Conditionally rendered (not a fixed-height placeholder)
-          so a null gmLine (rare - only if every applicable line pool
-          happened to already be exhausted this game) leaves no empty
-          gap; in normal play gmLine is essentially always present. */}
-      {reveal.gmLine && (
-        <div className="enter-pop" style={styles.gmLineBanner} data-testid="gm-line">
-          {reveal.gmLine}
+      {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY. Plain block
+          flow, not an overlay, so it can never cover the results or the
+          correct answer - it just takes its own line, pushing the rest
+          down a little. Conditionally rendered (not a fixed-height
+          placeholder) so a null socratesLine (rare - only if every
+          applicable line pool happened to already be exhausted this game)
+          leaves no empty gap; in normal play socratesLine is essentially
+          always present. */}
+      {reveal.socratesLine && (
+        <div className="enter-pop" style={styles.socratesLineBanner} data-testid="socrates-line">
+          {reveal.socratesLine}
         </div>
       )}
       {/* Running standings stay glanceable during REVEAL - a compact strip,

@@ -17,7 +17,7 @@ import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
-import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
+import { pickQuestionIntro, recordRoundAndPickLine, type SocratesPlayerRoundInput } from './socrates.js';
 import { activeSabotagesFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -223,9 +223,10 @@ export function startQuestion(room: Room): void {
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
 
-  // Game Master (Task 24): pure/synchronous, so this can never delay the
-  // question or answer buttons appearing. Host-only, per spec.
-  const gmIntro = pickQuestionIntro(room.gameMaster, {
+  // Socrates (Task 24, renamed Task 37a): pure/synchronous, so this can
+  // never delay the question or answer buttons appearing. Host-only, per
+  // spec.
+  const socratesIntro = pickQuestionIntro(room.socrates, {
     questionIndex: room.currentQuestionIndex,
     totalQuestions,
     category: question.category,
@@ -240,7 +241,7 @@ export function startQuestion(room: Room): void {
     questionTimeMs,
     paused: room.paused,
     pausedByName: room.pausedByName,
-    gmIntro,
+    socratesIntro,
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
@@ -281,10 +282,10 @@ export function endQuestion(code: RoomCode): void {
   const connectedPlayers = getConnectedPlayers(room);
   const questionTimeMs = room.settings.questionTimeMs;
 
-  // Game Master (Task 24) needs scoreBefore/scoreAfter and whether they
-  // answered at all - built alongside `results` (same loop, same source
-  // data) rather than recomputed from it afterward.
-  const gmInputs: GmPlayerRoundInput[] = [];
+  // Socrates (Task 24, renamed Task 37a) needs scoreBefore/scoreAfter and
+  // whether they answered at all - built alongside `results` (same loop,
+  // same source data) rather than recomputed from it afterward.
+  const socratesInputs: SocratesPlayerRoundInput[] = [];
 
   const results: RevealPlayerResult[] = connectedPlayers.map((player) => {
     const recorded = room.answers.get(player.playerId);
@@ -294,7 +295,7 @@ export function endQuestion(code: RoomCode): void {
     const scoreBefore = player.score;
     player.score += pointsAwarded;
 
-    gmInputs.push({
+    socratesInputs.push({
       playerId: player.playerId,
       name: player.name,
       answered: choice !== null,
@@ -322,8 +323,8 @@ export function endQuestion(code: RoomCode): void {
   // room. Also fills in each correct answer's 1-based speed rank.
   sortAndRankResults(results);
   const answerRankByPlayerId = new Map(results.map((result) => [result.playerId, result.answerRank]));
-  for (const gmInput of gmInputs) {
-    gmInput.answerRank = answerRankByPlayerId.get(gmInput.playerId) ?? null;
+  for (const socratesInput of socratesInputs) {
+    socratesInput.answerRank = answerRankByPlayerId.get(socratesInput.playerId) ?? null;
   }
 
   const answerCounts = [0, 0, 0, 0];
@@ -336,7 +337,7 @@ export function endQuestion(code: RoomCode): void {
   const correctOption = question.options[question.correctIndex];
 
   // Pure/synchronous - can never delay the REVEAL broadcast that follows.
-  const gmLine = recordRoundAndPickLine(room.gameMaster, gmInputs, {
+  const socratesLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     difficulty: question.difficulty,
@@ -377,7 +378,7 @@ export function endQuestion(code: RoomCode): void {
     correctOption,
     results,
     answerCounts,
-    gmLine,
+    socratesLine,
     sabotageAnnouncements,
   };
 

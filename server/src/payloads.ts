@@ -79,7 +79,7 @@ export function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
-    gmLine: room.lastReveal.gmLine,
+    socratesLine: room.lastReveal.socratesLine,
     sabotageAnnouncements: room.lastReveal.sabotageAnnouncements,
   };
 }

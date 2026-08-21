@@ -469,7 +469,7 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     color: 'var(--text-dim)',
   },
-  gmLineBanner: {
+  socratesLineBanner: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -485,7 +485,7 @@ export const styles: Record<string, CSSProperties> = {
     width: '100%',
     maxWidth: '900px',
   },
-  gmIntroBanner: {
+  socratesIntroBanner: {
     padding: '0.5rem 1.25rem',
     borderRadius: '0.75rem',
     background: 'rgba(212, 175, 55, 0.12)',

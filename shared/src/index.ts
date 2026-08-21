@@ -312,30 +312,35 @@ export interface StageDefinition {
   tagline: string; // Greek, one line under the title
 }
 
+// Task 37a - each stage is framed as a round of a public dispute in
+// Athens (Socrates now hosts, see server/src/socrates.ts): an open
+// rebuttal in the Agora, the sophists' rhetorical tricks, and finally a
+// trial. Renaming only - questionCount/powerUpBeforeEveryQuestion/
+// stealAfterEveryQuestion (the actual mechanics) are untouched.
 export const STAGES: readonly StageDefinition[] = [
   {
     stage: 1,
     questionCount: 3,
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: false,
-    title: 'Στάδιο 1 — Καθαρές Ερωτήσεις',
-    tagline: 'Χωρίς κόλπα. Μόνο ταχύτητα και γνώση.',
+    title: 'Γύρος 1 — Η Αγορά',
+    tagline: 'Ανοιχτή αντιπαράθεση. Χωρίς κόλπα, μόνο ταχύτητα και γνώση.',
   },
   {
     stage: 2,
     questionCount: 5,
     powerUpBeforeEveryQuestion: true,
     stealAfterEveryQuestion: false,
-    title: 'Στάδιο 2 — Σαμποτάζ',
-    tagline: 'Πριν από ΚΑΘΕ ερώτηση διαλέγετε όπλο. Και τα όπλα στοιβάζονται.',
+    title: 'Γύρος 2 — Οι Σοφιστές',
+    tagline: 'Πριν από ΚΑΘΕ ερώτηση επιλέγετε σοφιστικό τέχνασμα. Και τα τεχνάσματα στοιβάζονται.',
   },
   {
     stage: 3,
     questionCount: 4,
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: true,
-    title: 'Στάδιο 3 — Κλοπή Πόντων',
-    tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον θέλει.',
+    title: 'Γύρος 3 — Η Δίκη',
+    tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον κρίνει ένοχο.',
   },
 ] as const;
 
@@ -762,11 +767,12 @@ export interface QuestionShowHostPayload {
   // which reuses this same shape, for a player/TV reconnecting mid-pause.
   paused: boolean;
   pausedByName: string | null;
-  // Game Master (Task 24) - HOST ONLY, the phones never show commentary.
-  // A short, one-off line shown briefly as the question appears, then
-  // fades - never delays the question/answer buttons. null on rare games
-  // where every applicable line pool happened to already be exhausted.
-  gmIntro: string | null;
+  // Socrates (Task 24, renamed Task 37a) - HOST ONLY, the phones never show
+  // commentary. A short, one-off line shown briefly as the question
+  // appears, then fades - never delays the question/answer buttons. null
+  // on rare games where every applicable line pool happened to already be
+  // exhausted.
+  socratesIntro: string | null;
 }
 
 export interface QuestionShowPlayerPayload {
@@ -828,12 +834,12 @@ export interface RevealHostPayload {
   autoAdvanceMs: number; // so clients can render a progress bar
   paused: boolean;
   pausedByName: string | null;
-  // Game Master (Task 24) - HOST ONLY, the phones never show commentary.
-  // The single highest-priority "moment" line for this round, already
-  // rendered (placeholders substituted, player names sanitised/truncated
-  // server-side). null on rare games where every applicable line pool
-  // happened to already be exhausted.
-  gmLine: string | null;
+  // Socrates (Task 24, renamed Task 37a) - HOST ONLY, the phones never
+  // show commentary. The single highest-priority "moment" line for this
+  // round, already rendered (placeholders substituted, player names
+  // sanitised/truncated server-side). null on rare games where every
+  // applicable line pool happened to already be exhausted.
+  socratesLine: string | null;
   // Sabotage (Task 28a) - every cast made DURING this just-finished question,
   // now safe to announce publicly (host TV, shared by everyone) now that the
   // question is over. Empty when nobody cast this round.

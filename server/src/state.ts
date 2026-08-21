@@ -19,7 +19,7 @@ import {
   totalQuestionsForLength,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
-import { createGameMasterState, resetGameMasterState, type GameMasterState } from './gamemaster.js';
+import { createSocratesState, resetSocratesState, type SocratesState } from './socrates.js';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
 import { clearActiveTimer, clearSimpleTimer, type ActiveTimer, type SimpleTimer } from './timers.js';
 
@@ -87,10 +87,11 @@ export interface RevealSnapshot {
   correctOption: string;
   results: RevealPlayerResult[];
   answerCounts: number[];
-  // Game Master (Task 24) - computed once, alongside the rest of this
-  // snapshot, at the moment REVEAL begins - so a reconnecting host gets the
-  // SAME line via state:sync, never a freshly (and differently) picked one.
-  gmLine: string | null;
+  // Socrates (Task 24, renamed Task 37a) - computed once, alongside the
+  // rest of this snapshot, at the moment REVEAL begins - so a reconnecting
+  // host gets the SAME line via state:sync, never a freshly (and
+  // differently) picked one.
+  socratesLine: string | null;
   // Sabotage (Task 28a) - the casts made during the question this snapshot
   // is for, frozen at the same moment as everything else above.
   sabotageAnnouncements: SabotageAnnouncement[];
@@ -142,10 +143,10 @@ export interface Room {
   // Armed only while the room is fully empty (see refreshRoomTtl); cleared
   // the instant anyone (host display or player) reattaches.
   emptyTtlTimer: NodeJS.Timeout | null;
-  // Game Master (Task 24) - per-player streak/rank/cooldown tracking plus
-  // every line already used this game, so commentary never repeats itself
-  // and never roasts the same player every single round.
-  gameMaster: GameMasterState;
+  // Socrates (Task 24, renamed Task 37a) - per-player streak/rank/cooldown
+  // tracking plus every line already used this game, so commentary never
+  // repeats itself and never roasts the same player every single round.
+  socrates: SocratesState;
   // Sabotage (Task 28a). Casts made DURING the current question - hidden
   // from everyone, including the caster and victim, until this question's
   // REVEAL announces them. Keyed by casterPlayerId (each player casts at
@@ -248,7 +249,7 @@ export function createRoom(hostSocketId: string): Room {
     pausedByName: null,
     pausedAt: null,
     emptyTtlTimer: null,
-    gameMaster: createGameMasterState(),
+    socrates: createSocratesState(),
     hiddenSabotageCasts: new Map(),
     pendingSabotageByTarget: new Map(),
     activeSabotageByTarget: new Map(),
@@ -517,7 +518,7 @@ export function resetRoomForNewGame(room: Room): void {
   room.lastReveal = null;
   // A fresh game means fresh commentary too - no streaks/cooldowns/used
   // lines carried over from the game that just ended.
-  resetGameMasterState(room.gameMaster);
+  resetSocratesState(room.socrates);
   // A fresh game means a fresh one-cast-per-game sabotage budget too.
   room.hiddenSabotageCasts.clear();
   room.pendingSabotageByTarget.clear();

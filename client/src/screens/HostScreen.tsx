@@ -370,7 +370,7 @@ export default function HostScreen() {
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
-          // Unlike the Game Master's question intro, this one DOES catch a
+          // Unlike Socrates' question intro, this one DOES catch a
           // reconnect up: the game is genuinely holding on it, so a TV that
           // reattaches mid-beat must show the card, not the next view early.
           setStageAnnounce(payload);

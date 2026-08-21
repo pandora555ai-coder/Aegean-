@@ -1,14 +1,15 @@
 import type { Difficulty } from '@game/shared';
 
-// The Game Master: a teasing text commentator that reacts to what actually
-// happened in the round (never anything not derivable from game state).
-// Two kinds of line:
-//   - a REVEAL line (gmLine) - picked once per question, right after
+// Socrates: the host persona (Task 37a - renamed from "Game Master", text
+// only, same module) - a teasing text commentator that reacts to what
+// actually happened in the round (never anything not derivable from game
+// state). Two kinds of line:
+//   - a REVEAL line (socratesLine) - picked once per question, right after
 //     scoring, from whichever MOMENT is the most interesting thing that
 //     just happened (a streak, a comeback, a total wipeout...).
-//   - a QUESTION-START line (gmIntro) - a much lighter touch shown briefly
-//     as the next question appears (final question, halfway point, the
-//     category, or just a generic "let's go").
+//   - a QUESTION-START line (socratesIntro) - a much lighter touch shown
+//     briefly as the next question appears (final question, halfway
+//     point, the category, or just a generic "let's go").
 // Both are plain synchronous string computation - no I/O, no timers - so
 // neither can ever delay a phase transition or the answer buttons becoming
 // tappable, which is the hard constraint this whole module exists under.
@@ -42,7 +43,7 @@ export type IntroMoment = 'FINAL_QUESTION' | 'HALFWAY_POINT' | 'CATEGORY_CALLOUT
 // 0 = HIGH (bypasses cooldown), 1 = MEDIUM, 2 = LOW.
 type Priority = 0 | 1 | 2;
 
-export interface GmPlayerRoundInput {
+export interface SocratesPlayerRoundInput {
   playerId: string;
   name: string;
   answered: boolean;
@@ -52,19 +53,19 @@ export interface GmPlayerRoundInput {
   scoreAfter: number;
 }
 
-export interface GmRoundContext {
+export interface SocratesRoundContext {
   questionIndex: number; // 0-based
   totalQuestions: number;
   difficulty: Difficulty;
 }
 
-export interface GmQuestionIntroContext {
+export interface SocratesQuestionIntroContext {
   questionIndex: number; // 0-based
   totalQuestions: number;
   category: string;
 }
 
-interface GmPlayerState {
+interface SocratesPlayerState {
   correctStreak: number;
   wrongStreak: number;
   fastestAnswerCount: number;
@@ -78,31 +79,32 @@ interface GmPlayerState {
   lastTargetedAtQuestionIndex: number;
 }
 
-export interface GameMasterState {
-  players: Map<string, GmPlayerState>;
+export interface SocratesState {
+  players: Map<string, SocratesPlayerState>;
   // Every line TEMPLATE (pre-substitution) already used this game, across
-  // BOTH gmLine and gmIntro - "never repeat the exact same line twice" is a
-  // whole-game invariant, not scoped per moment or per surface.
+  // BOTH socratesLine and socratesIntro - "never repeat the exact same
+  // line twice" is a whole-game invariant, not scoped per moment or per
+  // surface.
   usedLines: Set<string>;
 }
 
-export function createGameMasterState(): GameMasterState {
+export function createSocratesState(): SocratesState {
   return { players: new Map(), usedLines: new Set() };
 }
 
-export function resetGameMasterState(state: GameMasterState): void {
+export function resetSocratesState(state: SocratesState): void {
   state.players.clear();
   state.usedLines.clear();
 }
 
 const MAX_NAME_DISPLAY_LENGTH = 12;
 
-// Defense in depth: gmLine/gmIntro are rendered client-side as plain JSX
-// text (React already escapes text-node content, so this isn't patching a
-// real injection hole), but a player name is still arbitrary user input -
-// HTML-tag-like characters are stripped and the length is capped before it
-// is ever spliced into a line, independent of how any future consumer
-// might render it.
+// Defense in depth: socratesLine/socratesIntro are rendered client-side
+// as plain JSX text (React already escapes text-node content, so this
+// isn't patching a real injection hole), but a player name is still
+// arbitrary user input - HTML-tag-like characters are stripped and the
+// length is capped before it is ever spliced into a line, independent of
+// how any future consumer might render it.
 function safeNameForLine(name: string): string {
   const stripped = name.replace(/[<>&]/g, '');
   const truncated =
@@ -336,7 +338,7 @@ export const INTRO_LINES: Record<IntroMoment, readonly string[]> = {
 
 // ============================= selection logic =============================
 
-function pickLine(state: GameMasterState, pool: readonly string[], vars: Record<string, string>): string | null {
+function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): string | null {
   for (const template of pool) {
     if (!state.usedLines.has(template)) {
       state.usedLines.add(template);
@@ -369,7 +371,7 @@ interface Candidate {
   vars: Record<string, string>;
 }
 
-function ensurePlayerState(state: GameMasterState, playerId: string): GmPlayerState {
+function ensurePlayerState(state: SocratesState, playerId: string): SocratesPlayerState {
   let p = state.players.get(playerId);
   if (!p) {
     p = {
@@ -399,9 +401,9 @@ function ensurePlayerState(state: GameMasterState, playerId: string): GmPlayerSt
 // a ready-to-display line. Pure/synchronous - safe to call inline from
 // endQuestion without risking any delay.
 export function recordRoundAndPickLine(
-  state: GameMasterState,
-  results: GmPlayerRoundInput[],
-  context: GmRoundContext,
+  state: SocratesState,
+  results: SocratesPlayerRoundInput[],
+  context: SocratesRoundContext,
 ): string | null {
   if (results.length === 0) {
     return null;
@@ -471,7 +473,7 @@ export function recordRoundAndPickLine(
   // meaningless on the very first question, where every previousRank is null.
   if (context.questionIndex > 0) {
     let bestClimb = 0;
-    let climber: GmPlayerRoundInput | null = null;
+    let climber: SocratesPlayerRoundInput | null = null;
     for (const r of results) {
       const before = preRank.get(r.playerId);
       if (before === null || before === undefined) {
@@ -661,7 +663,7 @@ export function recordRoundAndPickLine(
 // Called once per question, right before question:show - a much lighter
 // touch than the REVEAL line, never targets a player, and must never delay
 // the question/answer buttons appearing (also pure/synchronous).
-export function pickQuestionIntro(state: GameMasterState, context: GmQuestionIntroContext): string | null {
+export function pickQuestionIntro(state: SocratesState, context: SocratesQuestionIntroContext): string | null {
   const questionNumber = context.questionIndex + 1;
   const isFinal = questionNumber === context.totalQuestions;
   const isHalfway = !isFinal && context.totalQuestions >= 4 && questionNumber === Math.ceil(context.totalQuestions / 2);

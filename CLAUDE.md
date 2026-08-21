@@ -19,7 +19,7 @@ server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering
-server/src/gamemaster.ts Moment detection + Greek commentary lines
+server/src/socrates.ts   Moment detection + Greek commentary lines (host persona: Socrates)
 server/src/scoring.ts    Pure scoring function
 server/src/avatars.ts    Avatar catalogue
 server/src/data/questions.json  899 questions, 49 categories
