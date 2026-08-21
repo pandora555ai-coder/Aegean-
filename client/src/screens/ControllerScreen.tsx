@@ -778,7 +778,12 @@ export default function ControllerScreen() {
             <div style={styles.sabotageBanner} data-testid="sabotage-banner" data-effect={sabotage.effect}>
               {sabotage.effect === 'ice'
                 ? `🧊 Πάγωσες! ${Math.ceil(icedMs / 1000)}΄΄`
-                : `🖋️ Μελάνι! Καθαρίζει σε ${Math.ceil(sabotageRemainingMs / 1000)}΄΄`}
+                : sabotage.effect === 'ink'
+                  ? `🖋️ Μελάνι! Καθαρίζει σε ${Math.ceil(sabotageRemainingMs / 1000)}΄΄`
+                  : // Shuffle (Task 28c) lasts the whole question and has no
+                    // countdown to show - the server already reordered the
+                    // options below; this only warns them not to trust the TV.
+                    '🔀 Ανακάτεμα! Οι απαντήσεις σου δεν είναι στη σειρά της τηλεόρασης'}
             </div>
           )}
         </div>

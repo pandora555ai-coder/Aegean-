@@ -50,7 +50,14 @@ import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './t
 import { isValidAvatarId } from './avatars.js';
 import { startQuestion, endQuestion, advanceFromReveal, advanceFromScoreboard, continuationForActiveTimer } from './phases.js';
 import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
-import { activeSabotageFor, isIced, pickSabotageEffect } from './sabotage.js';
+import {
+  activeSabotageFor,
+  isIced,
+  optionsForPlayer,
+  pickSabotageEffect,
+  toCanonicalChoice,
+  toDisplayChoice,
+} from './sabotage.js';
 import { initRealtime, io, httpServer } from './realtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -126,11 +133,15 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
         phase: 'QUESTION',
         questionIndex: room.currentQuestionIndex,
         totalQuestions: room.questions.length,
-        options: question.options,
+        // Sabotage (Task 28c): a shuffled victim gets THEIR stored order
+        // back - the same one, never a fresh draw - and `yourChoice` is
+        // re-mapped into it, so the button their phone re-marks as answered
+        // is the one they actually pressed.
+        options: optionsForPlayer(room, playerId, question.options),
         category: question.category,
         questionTimeMs: room.settings.questionTimeMs,
         remainingMs: remainingActiveTimerMs(room),
-        yourChoice: recorded ? recorded.choice : null,
+        yourChoice: recorded ? toDisplayChoice(room, playerId, recorded.choice) : null,
         paused: room.paused,
         pausedByName: room.pausedByName,
         // Sabotage (Task 28b): the time still LEFT on whatever is running
@@ -510,7 +521,13 @@ io.on('connection', (socket) => {
 
     // Server clock only - a client-supplied timestamp can never be trusted.
     const timeMs = Date.now() - room.questionStartedAt;
-    room.answers.set(playerId, { choice, timeMs });
+    // Sabotage (Task 28c): `choice` is a SLOT number on the phone that sent
+    // it, which for a shuffled victim is not the option number it names. It's
+    // de-permuted here, once, at the edge - scoring, the reveal and the answer
+    // counts all speak canonical indices and never learn a shuffle happened.
+    // The ack echoes the slot they pressed, since that's what their UI marks.
+    const canonicalChoice = toCanonicalChoice(room, playerId, choice);
+    room.answers.set(playerId, { choice: canonicalChoice, timeMs });
     socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice });
 
     const connectedPlayers = getConnectedPlayers(room);

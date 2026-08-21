@@ -12,7 +12,7 @@ import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
-import { activeSabotageFor, applyPendingSabotage } from './sabotage.js';
+import { activeSabotageFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
 import { io } from './realtime.js';
 import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
 
@@ -84,13 +84,14 @@ export function startQuestion(room: Room): void {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
   }
 
-  // Built per player, not once and reused: yourSabotage is the one field
-  // here that differs between phones, and no phone may learn another's.
+  // Built per player, not once and reused: yourSabotage and (Task 28c) the
+  // ORDER of `options` are what differ between phones, and no phone may learn
+  // another's. The host payload above keeps canonical order regardless.
   for (const player of getConnectedPlayers(room)) {
     const playerPayload: QuestionShowPlayerPayload = {
       questionIndex: room.currentQuestionIndex,
       totalQuestions,
-      options: question.options,
+      options: optionsForPlayer(room, player.playerId, question.options),
       category: question.category,
       questionTimeMs,
       paused: room.paused,
@@ -188,6 +189,12 @@ export function endQuestion(code: RoomCode): void {
     room.pendingSabotageByTarget.set(cast.targetPlayerId, cast);
   }
   room.hiddenSabotageCasts.clear();
+
+  // Sabotage (Task 28c): the shuffled order belonged to the question that
+  // just ended. Every answer was de-permuted on submit, so `results` below
+  // is already canonical - from here on there is one option order again, the
+  // TV's, which is the one the reveal is read in.
+  room.shuffledOptionsByTarget.clear();
 
   // Snapshot so a player who reconnects mid-REVEAL can be caught up via
   // state:sync without recomputing (or re-scoring) anything.

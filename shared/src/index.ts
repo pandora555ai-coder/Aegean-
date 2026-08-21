@@ -285,13 +285,14 @@ export interface SabotageAnnouncement {
 // victim's next question. These are the nominal figures only: the server
 // always clamps the applied duration down to the room's question time, so a
 // 10s round can never be stretched by an effect that nominally outlives it.
-// 'shuffle' is deliberately 0 - the effect itself is not implemented (28c),
-// so a shuffle cast is consumed at the victim's next question and does
-// nothing, rather than sitting pending forever.
+// 'shuffle' (Task 28c) reorders the victim's options for the WHOLE round -
+// there's no half-shuffled state to fade back out of - so its nominal figure
+// is deliberately longer than any question-time option and the clamp turns it
+// into exactly "this question".
 export const SABOTAGE_EFFECT_DURATION_MS: Record<SabotageEffect, number> = {
   ice: 5000,
   ink: 8000,
-  shuffle: 0,
+  shuffle: 60000,
 };
 
 // The effect currently RUNNING against a player, sent only to that player,

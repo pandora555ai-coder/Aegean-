@@ -125,6 +125,15 @@ export interface Room {
   activeSabotageByTarget: Map<string, AppliedSabotage>;
   // Every playerId who has already spent their one sabotage cast this game.
   sabotageCastUsedBy: Set<string>;
+  // Sabotage (Task 28c) - the option order the victim of a 'shuffle' is
+  // seeing THIS question, keyed by targetPlayerId. permutation[displayIndex]
+  // = canonicalIndex, i.e. what the phone shows in slot 0 is really the
+  // question's option number permutation[0]. Generated ONCE, server-side, by
+  // applyPendingSabotage and read (never regenerated) on every later
+  // broadcast/state:sync, so a mid-question reconnect gets the same order
+  // back. Canonical order is what the TV always shows; this map is the only
+  // place the victim's order exists. Cleared at REVEAL.
+  shuffledOptionsByTarget: Map<string, number[]>;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -174,6 +183,7 @@ export function createRoom(hostSocketId: string): Room {
     pendingSabotageByTarget: new Map(),
     activeSabotageByTarget: new Map(),
     sabotageCastUsedBy: new Set(),
+    shuffledOptionsByTarget: new Map(),
   };
 
   rooms.set(code, room);
@@ -423,6 +433,7 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingSabotageByTarget.clear();
   room.activeSabotageByTarget.clear();
   room.sabotageCastUsedBy.clear();
+  room.shuffledOptionsByTarget.clear();
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

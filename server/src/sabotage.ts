@@ -3,9 +3,59 @@ import type { Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
 
 // Weakest to strongest - the ordering "comeback weighting" below hands out.
-// 'shuffle' has no implementation yet (28c); it still gets cast and still
-// gets consumed, it simply does nothing when it lands.
 const EFFECTS_WEAKEST_TO_STRONGEST: readonly SabotageEffect[] = ['shuffle', 'ink', 'ice'];
+
+// Builds the victim's option order for one question: permutation[displayIndex]
+// = canonicalIndex. Fisher-Yates, retried until it isn't the identity - a
+// shuffle that happened to reorder nothing would silently be a no-op, and with
+// 4 options that's a 1-in-24 draw, far too likely to leave to chance.
+function makeOptionPermutation(optionCount: number): number[] {
+  const permutation = Array.from({ length: optionCount }, (_, index) => index);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    for (let i = permutation.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [permutation[i], permutation[j]] = [permutation[j], permutation[i]];
+    }
+    if (permutation.some((canonicalIndex, displayIndex) => canonicalIndex !== displayIndex)) {
+      break;
+    }
+  }
+  return permutation;
+}
+
+// The options THIS player should be sent, in THIS player's order - the
+// canonical list untouched for everyone who isn't currently shuffled. The TV
+// never goes through here, so it always shows canonical order.
+export function optionsForPlayer(room: Room, playerId: string, options: string[]): string[] {
+  const permutation = room.shuffledOptionsByTarget.get(playerId);
+  if (!permutation || permutation.length !== options.length) {
+    return options;
+  }
+  return permutation.map((canonicalIndex) => options[canonicalIndex]);
+}
+
+// Victim's slot number -> the real option they actually pressed. Everything
+// past the socket handler (scoring, reveal, answer counts) speaks canonical
+// indices only, so this de-permute happens once, at the edge, on submit.
+export function toCanonicalChoice(room: Room, playerId: string, displayChoice: number): number {
+  const permutation = room.shuffledOptionsByTarget.get(playerId);
+  if (!permutation || displayChoice < 0 || displayChoice >= permutation.length) {
+    return displayChoice;
+  }
+  return permutation[displayChoice];
+}
+
+// The inverse, needed in exactly one place: a mid-question state:sync echoing
+// an already-recorded answer back to the victim, which has to name the slot
+// THEY pressed, not the canonical index it was stored as.
+export function toDisplayChoice(room: Room, playerId: string, canonicalChoice: number): number {
+  const permutation = room.shuffledOptionsByTarget.get(playerId);
+  if (!permutation) {
+    return canonicalChoice;
+  }
+  const displayChoice = permutation.indexOf(canonicalChoice);
+  return displayChoice === -1 ? canonicalChoice : displayChoice;
+}
 
 // Competition ranking (ties share a rank) among every player currently in
 // the room, same convention as the scoreboard - 1 = current leader.
@@ -40,15 +90,18 @@ export function pickSabotageEffect(room: Room, casterPlayerId: string): Sabotage
 // the same ink in a 5s round is 5s and ends exactly with the question.
 export function applyPendingSabotage(room: Room): void {
   room.activeSabotageByTarget.clear();
+  // Belt and braces - REVEAL already clears this, but the first question of a
+  // game never had one, and no question may ever inherit an older order.
+  room.shuffledOptionsByTarget.clear();
   if (room.pendingSabotageByTarget.size === 0) {
     return;
   }
 
   const questionTimeMs = room.settings.questionTimeMs;
+  const optionCount = room.questions[room.currentQuestionIndex].options.length;
   for (const [targetPlayerId, cast] of room.pendingSabotageByTarget) {
     const durationMs = Math.min(SABOTAGE_EFFECT_DURATION_MS[cast.effect], questionTimeMs);
-    // A zero-length effect (today: every 'shuffle', since 28c hasn't built
-    // it) is still consumed - it just never becomes active.
+    // A zero-length effect is still consumed - it just never becomes active.
     if (durationMs > 0) {
       room.activeSabotageByTarget.set(targetPlayerId, {
         effect: cast.effect,
@@ -56,6 +109,13 @@ export function applyPendingSabotage(room: Room): void {
         durationMs,
         questionTimeMs,
       });
+    }
+    // Sabotage (Task 28c): drawn ONCE, here, and left in room state for the
+    // rest of the question - every later read (question:show, state:sync,
+    // submit) goes to that stored order, so a reconnect can never hand the
+    // victim a second, different shuffle mid-question.
+    if (cast.effect === 'shuffle') {
+      room.shuffledOptionsByTarget.set(targetPlayerId, makeOptionPermutation(optionCount));
     }
     console.log(
       `room ${room.code} sabotage '${cast.effect}' from ${cast.casterName} landed on ${cast.targetName} ` +
