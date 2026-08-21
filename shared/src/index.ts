@@ -269,9 +269,10 @@ export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' |
 
 // A game is a SEQUENCE OF STAGES, each a run of consecutive questions with its
 // own rules. This table is the whole definition: the question count of a game
-// is the sum of its stages' counts (TOTAL_STAGE_QUESTIONS), and which
+// is the sum of its INCLUDED stages' counts (totalQuestionsForLength, Task
+// 33 - which stages are included is the VIP's gameLength setting), and which
 // questions get a POWER_UP phase in front of them is a per-stage flag rather
-// than a special case anywhere in the phase machine. Adding stage 3 means
+// than a special case anywhere in the phase machine. Adding stage 4 means
 // adding a row here.
 export interface StageDefinition {
   stage: number; // 1-based - matches Room.stage server-side
@@ -317,7 +318,26 @@ export const STAGES: readonly StageDefinition[] = [
   },
 ] as const;
 
-export const TOTAL_STAGE_QUESTIONS: number = STAGES.reduce((total, stage) => total + stage.questionCount, 0);
+// How many stages of the game the VIP wants (Task 33). `short`/`medium` are
+// fixed slices of the table (stages 1-2 / 1-3) so they stay put when a new
+// stage is appended; `long` tracks STAGES itself and is the ONLY one that
+// grows when a stage is added.
+export type GameLength = 'short' | 'medium' | 'long';
+export const GAME_LENGTH_OPTIONS: readonly GameLength[] = ['short', 'medium', 'long'];
+
+const GAME_LENGTH_STAGE_COUNT: Record<GameLength, number> = {
+  short: 2,
+  medium: 3,
+  long: STAGES.length,
+};
+
+export function stagesForLength(length: GameLength): readonly StageDefinition[] {
+  return STAGES.slice(0, GAME_LENGTH_STAGE_COUNT[length]);
+}
+
+export function totalQuestionsForLength(length: GameLength): number {
+  return stagesForLength(length).reduce((total, stage) => total + stage.questionCount, 0);
+}
 
 // Which stage a 0-based question index falls in. Out-of-range indices clamp to
 // the first/last stage rather than returning null, so no caller has to handle
@@ -658,19 +678,22 @@ export interface Question {
 export type DifficultyMix = 'easy' | 'normal' | 'hard';
 export const DIFFICULTY_MIX_OPTIONS: readonly DifficultyMix[] = ['easy', 'normal', 'hard'];
 
-// Question COUNT is no longer a setting (Task 31a): the stage table owns it,
-// a game being exactly TOTAL_STAGE_QUESTIONS questions long. Time and
-// difficulty remain the VIP's to choose.
+// Question COUNT is not a setting of its own (Task 31a): the stage table
+// owns it, a game being exactly totalQuestionsForLength(gameLength)
+// questions long. Time, difficulty and how many stages to play are the
+// VIP's to choose.
 export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
 
 export type RoomSettings = {
   questionTimeMs: number;
   difficultyMix: DifficultyMix;
+  gameLength: GameLength;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   questionTimeMs: 20000,
   difficultyMix: 'normal',
+  gameLength: 'long',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,

@@ -11,10 +11,11 @@ import {
   type StealResolvedPayload,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
+  GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
-  TOTAL_STAGE_QUESTIONS,
   sanitizeCustomName,
+  totalQuestionsForLength,
 } from '@game/shared';
 import { getQuestionSet } from './questions.js';
 import { createGameMasterState, resetGameMasterState, type GameMasterState } from './gamemaster.js';
@@ -316,10 +317,10 @@ export function detachHostDisplay(room: Room): void {
 // (Re)builds `room.questions` from the room's CURRENT settings - called on
 // vip:start_game and vip:play_again (never eagerly at creation or on every
 // settings tweak, since nobody reads it until the game is actually live).
-// HOW MANY is not a setting (Task 31a): the stage table decides it, so a
-// game's question list is always exactly long enough to fill every stage.
+// HOW MANY is not a setting of its own (Task 31a/33): the stage table decides
+// it, gated by how many of those stages the VIP's gameLength setting includes.
 export function buildRoomQuestions(room: Room): void {
-  room.questions = getQuestionSet(room.settings.difficultyMix, TOTAL_STAGE_QUESTIONS);
+  room.questions = getQuestionSet(room.settings.difficultyMix, totalQuestionsForLength(room.settings.gameLength));
 }
 
 // Merges a VIP-supplied partial settings update into `room.settings`,
@@ -336,6 +337,9 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   }
   if (partial.difficultyMix !== undefined && DIFFICULTY_MIX_OPTIONS.includes(partial.difficultyMix)) {
     room.settings.difficultyMix = partial.difficultyMix;
+  }
+  if (partial.gameLength !== undefined && GAME_LENGTH_OPTIONS.includes(partial.gameLength)) {
+    room.settings.gameLength = partial.gameLength;
   }
   return room.settings;
 }

@@ -6,22 +6,24 @@ import {
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
+  GAME_LENGTH_OPTIONS,
   MIN_PLAYERS,
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
-  STAGES,
-  TOTAL_STAGE_QUESTIONS,
   ServerEvents,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
   isStealHostPayload,
   sanitizeCustomName,
+  stagesForLength,
+  totalQuestionsForLength,
   type ActiveSabotage,
   type AnswerAcceptedPayload,
   type DifficultyMix,
+  type GameLength,
   type GameOverPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
@@ -54,6 +56,7 @@ import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
+import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
 import { AnswerShape } from '../components/AnswerShape';
 import { Avatar } from '../components/Avatar';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
@@ -817,10 +820,12 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_RESET_TO_LOBBY, {});
   }
 
-  // Question count is the stage table's, not a setting (Task 31a) - the only
-  // thing the VIP still moves here is the per-question time.
+  // Question count is the stage table's, not a setting of its own (Task
+  // 31a) - but how many of those stages are IN the game is (Task 33).
   const estimatedMinutes = Math.round(
-    (TOTAL_STAGE_QUESTIONS * (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) / 60000,
+    (totalQuestionsForLength(roomSettings.gameLength) *
+      (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) /
+      60000,
   );
 
   if (gameOver) {
@@ -1290,12 +1295,25 @@ export default function ControllerScreen() {
         <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
 
         <div style={styles.settingsPanel} data-testid="settings-panel">
-          {/* Not a control (Task 31a): the stage table decides how many
-              questions a game is and how they're split, so this states the
-              shape of the game instead of pretending it's adjustable. */}
+          <SegmentedRow
+            label="Διάρκεια"
+            options={GAME_LENGTH_OPTIONS}
+            current={roomSettings.gameLength}
+            format={(length: GameLength) => GAME_LENGTH_LABELS[length]}
+            onSelect={(length) => handleSettingChange({ gameLength: length })}
+            readOnly={!isVip}
+            testIdPrefix="setting-length"
+          />
+          {/* Not a control of its own (Task 31a/33): the stage table decides
+              how many questions a game is and how they're split, once the
+              Διάρκεια row above picks how many of those stages are in play. */}
           <div style={styles.estimatedLength} data-testid="stage-summary">
-            {TOTAL_STAGE_QUESTIONS} ερωτήσεις σε {STAGES.length} στάδια (
-            {STAGES.map((stage) => stage.questionCount).join(' + ')})
+            {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
+            {stagesForLength(roomSettings.gameLength).length} στάδια (
+            {stagesForLength(roomSettings.gameLength)
+              .map((stage) => stage.questionCount)
+              .join(' + ')}
+            )
           </div>
           <SegmentedRow
             label="Χρόνος"

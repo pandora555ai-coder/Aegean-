@@ -3,12 +3,12 @@ import {
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
-  STAGES,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
   ServerEvents,
   firstQuestionIndexOfStage,
   stageForQuestionIndex,
+  stagesForLength,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
@@ -80,7 +80,7 @@ function syncStage(room: Room): void {
 
   const payload: StageAnnouncePayload = {
     stage: definition.stage,
-    totalStages: STAGES.length,
+    totalStages: stagesForLength(room.settings.gameLength).length,
     title: definition.title,
     tagline: definition.tagline,
     questionCount: definition.questionCount,

@@ -1,8 +1,8 @@
 import type { RefObject } from 'react';
 import {
   MAX_PLAYERS,
-  STAGES,
-  TOTAL_STAGE_QUESTIONS,
+  stagesForLength,
+  totalQuestionsForLength,
   type GamePhase,
   type LobbyPlayer,
   type RoomCode,
@@ -119,7 +119,8 @@ export function LobbyView({
           </div>
 
           <div data-testid="room-settings-summary" style={styles.settingsSummary}>
-            {TOTAL_STAGE_QUESTIONS} ερωτήσεις σε {STAGES.length} στάδια ·{' '}
+            {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
+            {stagesForLength(roomSettings.gameLength).length} στάδια ·{' '}
             {roomSettings.questionTimeMs / 1000}΄΄ · {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
           </div>
 
