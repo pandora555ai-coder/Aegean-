@@ -16,6 +16,7 @@ import {
   type StageAnnouncePayload,
   type StealShowHostPayload,
   type StealShowPlayerPayload,
+  type StealStanding,
   type StealTarget,
 } from '@game/shared';
 import { getConnectedPlayers, type Room } from './state.js';
@@ -215,6 +216,19 @@ export function stealTargetsFor(room: Room, thiefPlayerId: string): StealTarget[
     }));
 }
 
+// Every player, in join order (NEVER sorted by score - see StealStanding),
+// so the TV's strip can show what's at stake and, once resolved, animate
+// each score into place without any row changing position.
+function stealStandingsFor(room: Room): StealStanding[] {
+  return [...room.players.values()].map((player) => ({
+    playerId: player.playerId,
+    name: player.name,
+    avatarId: player.avatarId,
+    score: player.score,
+    connected: player.connected,
+  }));
+}
+
 // Built fresh from room state on every send - live broadcast and state:sync
 // catch-up therefore share one code path, and `durationMs` is the time STILL
 // LEFT (frozen while paused, since it comes from the shared timer helper).
@@ -231,6 +245,7 @@ export function buildStealHostPayload(room: Room): StealShowHostPayload | null {
     thiefName: steal.thiefName,
     thiefAvatarId: steal.thiefAvatarId,
     amount: steal.amount,
+    standings: stealStandingsFor(room),
     resolved: steal.resolved,
     paused: room.paused,
     pausedByName: room.pausedByName,

@@ -587,6 +587,21 @@ export interface StealChoosePayload {
   targetPlayerId: string;
 }
 
+// Every player's current score, for the TV's "what's at stake" strip - built
+// fresh on each send just like StealTarget, so it carries the PRE-theft
+// scores while the thief is choosing and the POST-theft scores once
+// buildStealHostPayload is re-run after applySteal has moved the points.
+// Order is room.players' insertion (join) order, NEVER re-sorted by score -
+// rows must stay in the same slot while a score animates, or the transfer
+// would read as a swap instead of a transfer.
+export interface StealStanding {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  score: number;
+  connected: boolean;
+}
+
 // Public, symmetric, and only ever sent AFTER the theft has been applied -
 // the whole room (TV included) sees the same figures. `victimPlayerId` is
 // null when nothing was stolen at all, which happens when the thief let the
@@ -617,6 +632,9 @@ export interface StealShowHostPayload {
   thiefName: string;
   thiefAvatarId: string;
   amount: number; // what their speed earned them, before the victim clamp
+  // Every player's current score - see StealStanding. Lets the TV show what
+  // is at stake throughout the phase, and animate the transfer once resolved.
+  standings: StealStanding[];
   // null while the thief is still choosing; set once the theft has resolved,
   // which is what the TV announces.
   resolved: StealResolvedPayload | null;
