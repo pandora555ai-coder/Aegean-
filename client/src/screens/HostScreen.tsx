@@ -3,6 +3,7 @@ import {
   ClientEvents,
   DEFAULT_ROOM_SETTINGS,
   ServerEvents,
+  isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
   type AnswerProgressPayload,
@@ -11,6 +12,9 @@ import {
   type LobbyUpdatePayload,
   type PausedPayload,
   type PhaseChangedPayload,
+  type PowerUpProgressPayload,
+  type PowerUpShowHostPayload,
+  type PowerUpShowPayload,
   type QuestionShowHostPayload,
   type QuestionShowPayload,
   type ResumedPayload,
@@ -32,6 +36,7 @@ import { useGameAudio } from '../hooks/useGameAudio';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { QR_SIZE_PX } from './host/hostStyles';
 import { LobbyView } from './host/LobbyView';
+import { PowerUpView } from './host/PowerUpView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
 import { ScoreboardView } from './host/ScoreboardView';
@@ -51,6 +56,13 @@ export default function HostScreen() {
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
   const [scoreboardSecondsLeft, setScoreboardSecondsLeft] = useState(0);
+  // Power-up (Task 30b). Two pieces of state, exactly like question/
+  // answerProgress: the phase payload is set ONCE per phase, and the ticker
+  // that follows updates only the progress - so the countdown below can key
+  // off `powerUp` alone without every new chooser resetting it.
+  const [powerUp, setPowerUp] = useState<PowerUpShowHostPayload | null>(null);
+  const [powerUpProgress, setPowerUpProgress] = useState<PowerUpProgressPayload | null>(null);
+  const [powerUpSecondsLeft, setPowerUpSecondsLeft] = useState(0);
   const wakeLockFailed = useWakeLock();
   const {
     muted,
@@ -142,6 +154,8 @@ export default function HostScreen() {
         setReveal(null);
         setScoreboard(null);
         setGameOver(null);
+        setPowerUp(null);
+        setPowerUpProgress(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -164,6 +178,10 @@ export default function HostScreen() {
         setAnswerProgress(null);
         setReveal(null);
         setScoreboard(null);
+        // The question a POWER_UP phase preceded starts the instant that
+        // phase ends - drop its view rather than leaving it behind.
+        setPowerUp(null);
+        setPowerUpProgress(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         // The "look at the TV" cue - fires on EVERY live question:show
@@ -176,6 +194,29 @@ export default function HostScreen() {
           playQuestionStartCue();
         }
       }
+    }
+
+    // Power-up (Task 30b). The host branch of an asymmetric event - the
+    // player payload (effects, targets, their own choice) is never meant for
+    // the TV and is ignored here, the same way question:show/reveal:show are
+    // filtered.
+    function handlePowerUpShow(payload: PowerUpShowPayload) {
+      if (isPowerUpHostPayload(payload)) {
+        setQuestion(null);
+        setAnswerProgress(null);
+        setReveal(null);
+        setScoreboard(null);
+        setPowerUp(payload);
+        setPowerUpProgress(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // WHO has locked in, never what they picked or at whom - that is all the
+    // server sends the host, and all the TV ever shows.
+    function handlePowerUpProgress(payload: PowerUpProgressPayload) {
+      setPowerUpProgress(payload);
     }
 
     function handleAnswerProgress(payload: AnswerProgressPayload) {
@@ -238,6 +279,8 @@ export default function HostScreen() {
         setRevealSecondsLeft(seconds);
       } else if (phaseRef.current === 'SCOREBOARD') {
         setScoreboardSecondsLeft(seconds);
+      } else if (phaseRef.current === 'POWER_UP') {
+        setPowerUpSecondsLeft(seconds);
       }
     }
 
@@ -263,6 +306,8 @@ export default function HostScreen() {
       setReveal(null);
       setScoreboard(null);
       setGameOver(null);
+      setPowerUp(null);
+      setPowerUpProgress(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -272,6 +317,17 @@ export default function HostScreen() {
           setRoomSettings(payload.settings);
           setPaused(false);
           setPausedByName(null);
+          break;
+        case 'POWER_UP':
+          // durationMs is already the time STILL LEFT (see
+          // buildPowerUpHostPayload), so the countdown effect below picks
+          // up mid-phase rather than restarting from a full 10s.
+          if (isPowerUpHostPayload(payload)) {
+            setPowerUp(payload);
+            setPowerUpProgress(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
           break;
         case 'QUESTION':
           if (isQuestionShowHostPayload(payload)) {
@@ -305,6 +361,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
+    socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
+    socket.on(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -320,6 +378,8 @@ export default function HostScreen() {
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
+      socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
+      socket.off(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -390,6 +450,28 @@ export default function HostScreen() {
     }
     setScoreboardSecondsLeft(Math.ceil(scoreboard.autoAdvanceMs / 1000));
   }, [scoreboard]);
+
+  // POWER_UP's own countdown (Task 30b) - same pattern as the two above, and
+  // for the same reason it can key off `powerUp`: that object is set once per
+  // phase, and its durationMs is always the server's live remaining time
+  // (fresh phase or reconnect alike). Progress ticks live in separate state,
+  // so a player locking in never rewinds the clock on screen.
+  useEffect(() => {
+    if (!powerUp) {
+      return;
+    }
+    setPowerUpSecondsLeft(Math.ceil(powerUp.durationMs / 1000));
+  }, [powerUp]);
+
+  useEffect(() => {
+    if (!powerUp || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setPowerUpSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [powerUp, paused]);
 
   useEffect(() => {
     if (!scoreboard || paused) {
@@ -483,6 +565,21 @@ export default function HostScreen() {
         paused={paused}
         pausedByName={pausedByName}
         scoreboardSecondsLeft={scoreboardSecondsLeft}
+      />
+    );
+  }
+
+  if (phase === 'POWER_UP' && powerUp) {
+    return (
+      <PowerUpView
+        powerUp={powerUp}
+        progress={powerUpProgress}
+        roomCode={roomCode}
+        paused={paused}
+        pausedByName={pausedByName}
+        secondsLeft={powerUpSecondsLeft}
+        players={players}
+        connectedCount={connectedCount}
       />
     );
   }

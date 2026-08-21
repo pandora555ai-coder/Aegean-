@@ -13,6 +13,7 @@ import {
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   ServerEvents,
+  isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
   sanitizeCustomName,
@@ -25,6 +26,11 @@ import {
   type PausedPayload,
   type PhaseChangedPayload,
   type PlayerJoinedPayload,
+  type PowerUpChoiceAcceptedPayload,
+  type PowerUpChoosePayload,
+  type PowerUpEffect,
+  type PowerUpShowPayload,
+  type PowerUpShowPlayerPayload,
   type QuestionShowPayload,
   type QuestionShowPlayerPayload,
   type ResumedPayload,
@@ -55,6 +61,13 @@ type CSSVars = CSSProperties & Record<`--${string}`, string>;
 // the .glow/.glow-pulse classes - an inline boxShadow always wins over a
 // CSS class's boxShadow and would silently clobber the glow ring.
 const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
+
+// Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
+// side ("freeze them"), unlike the victim-side banner during QUESTION.
+const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blurb: string }> = {
+  ice: { icon: '🧊', title: 'Πάγος', blurb: 'Παγώνει το κινητό του για λίγα δευτερόλεπτα' },
+  ink: { icon: '🖋️', title: 'Μελάνι', blurb: 'Θολώνει τις απαντήσεις του' },
+};
 
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
@@ -241,11 +254,35 @@ export default function ControllerScreen() {
   // a fresh full duration), so this is only ever counted down from there.
   const [sabotage, setSabotage] = useState<ActiveSabotage | null>(null);
   const [sabotageRemainingMs, setSabotageRemainingMs] = useState(0);
+  // Power-up (Task 30b) - two steps on one screen. `powerUpEffect` IS the
+  // step: null = pick an effect, set = pick a target, and the back button is
+  // just clearing it again. `powerUpChoice` is the locked-in state, set
+  // optimistically on the target tap (same discipline as pendingChoice) and
+  // re-confirmed by the server's ack with identical values.
+  const [powerUp, setPowerUp] = useState<PowerUpShowPlayerPayload | null>(null);
+  const [powerUpEffect, setPowerUpEffect] = useState<PowerUpEffect | null>(null);
+  const [powerUpChoice, setPowerUpChoice] = useState<PowerUpChoosePayload | null>(null);
+  // The one-send guard. A ref, not the state above: two taps landing in the
+  // same React batch would both read a stale `powerUpChoice === null`, and
+  // the server would log a rejected duplicate. Reset only when a NEW phase's
+  // power_up:show arrives, so going back to step 1 can never re-open it.
+  const powerUpSentRef = useRef(false);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
       setJoined(payload);
       setError(null);
+    }
+
+    // Power-up (Task 30b) - always set together, so the step, the locked-in
+    // view and the send guard can never disagree about what this phone has
+    // already done. `yourChoice` is null on a fresh phase and only ever real
+    // on a state:sync catching a phone up after it already chose.
+    function applyPowerUp(payload: PowerUpShowPlayerPayload | null) {
+      setPowerUp(payload);
+      setPowerUpEffect(null);
+      setPowerUpChoice(payload?.yourChoice ?? null);
+      powerUpSentRef.current = payload?.yourChoice != null;
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -259,6 +296,7 @@ export default function ControllerScreen() {
         setReveal(null);
         setScoreboard(null);
         setGameOver(null);
+        applyPowerUp(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -315,10 +353,36 @@ export default function ControllerScreen() {
         setAcceptedChoice(null);
         setReveal(null);
         setScoreboard(null);
+        // POWER_UP flows straight into the question it preceded - whatever
+        // was chosen is now the server's business, and lands right here.
+        applyPowerUp(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         applySabotage(payload.yourSabotage);
       }
+    }
+
+    // The player branch of an asymmetric event - the host variant (which
+    // carries who has locked in) is not this screen's business.
+    function handlePowerUpShow(payload: PowerUpShowPayload) {
+      if (!isPowerUpHostPayload(payload)) {
+        setQuestion(null);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
+        setReveal(null);
+        setScoreboard(null);
+        applySabotage(null);
+        applyPowerUp(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // The ack for THIS phone's own choice alone - it says nothing about
+    // anyone else's. Confirms what was already shown optimistically.
+    function handlePowerUpChoiceAccepted(payload: PowerUpChoiceAcceptedPayload) {
+      powerUpSentRef.current = true;
+      setPowerUpChoice({ effect: payload.effect, targetPlayerId: payload.targetPlayerId });
     }
 
     function handleAnswerAccepted(payload: AnswerAcceptedPayload) {
@@ -370,11 +434,23 @@ export default function ControllerScreen() {
       setScoreboard(null);
       setGameOver(null);
       applySabotage(null);
+      applyPowerUp(null);
 
       switch (payload.phase) {
         case 'LOBBY':
           // Never actually sent (state:sync only fires when phase !==
           // 'LOBBY') - lobby:update already covers the waiting view.
+          break;
+        case 'POWER_UP':
+          // The reconnect case that matters: applyPowerUp reads `yourChoice`
+          // and lands this phone on the locked-in view if it already chose,
+          // or back at step 1 if it didn't. `durationMs` is the time still
+          // left, and `targets` is rebuilt from who is connected NOW.
+          if (!isPowerUpHostPayload(payload)) {
+            applyPowerUp(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
           break;
         case 'QUESTION':
           if (!isQuestionShowHostPayload(payload)) {
@@ -424,6 +500,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
+    socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
+    socket.on(ServerEvents.POWER_UP_CHOICE_ACCEPTED, handlePowerUpChoiceAccepted);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -441,6 +519,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
+      socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
+      socket.off(ServerEvents.POWER_UP_CHOICE_ACCEPTED, handlePowerUpChoiceAccepted);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -565,6 +645,37 @@ export default function ControllerScreen() {
     }
     setPendingChoice(index);
     socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: index });
+  }
+
+  // Power-up (Task 30b). Step 1 sends NOTHING - picking an effect only moves
+  // this phone to the target list, so the back button below is a pure local
+  // undo with no server round-trip to take back.
+  function handlePowerUpPickEffect(effect: PowerUpEffect) {
+    if (powerUpSentRef.current || paused) {
+      return;
+    }
+    setPowerUpEffect(effect);
+  }
+
+  function handlePowerUpBack() {
+    if (powerUpSentRef.current) {
+      return; // already committed - there is nothing to go back to
+    }
+    setPowerUpEffect(null);
+  }
+
+  // Step 2 - the ONLY send. Guarded by a ref rather than the state it sets,
+  // so a double tap can't slip a second player:power_up_choose through the
+  // gap before React re-renders; the server rejects duplicates anyway, but
+  // this phone should never be the one asking.
+  function handlePowerUpPickTarget(targetPlayerId: string) {
+    if (powerUpSentRef.current || powerUpEffect === null || paused) {
+      return;
+    }
+    powerUpSentRef.current = true;
+    const choice: PowerUpChoosePayload = { effect: powerUpEffect, targetPlayerId };
+    setPowerUpChoice(choice); // optimistic, exactly like an answer tap
+    socket.emit(ClientEvents.POWER_UP_CHOOSE, choice);
   }
 
   function handleStartGame() {
@@ -730,6 +841,95 @@ export default function ControllerScreen() {
         )}
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Power-up (Task 30b). Two steps, ONE screen: pick an effect, then pick who
+  // gets it. Only the second step talks to the server. The phone shows no
+  // countdown of its own - the TV owns the clock here, same as during a
+  // question.
+  if (powerUp) {
+    const lockedTargetName = powerUpChoice
+      ? (powerUp.targets.find((target) => target.playerId === powerUpChoice.targetPlayerId)?.name ?? '...')
+      : '';
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.title}>Ώρα για σαμποτάζ!</div>
+
+        {powerUpChoice ? (
+          <div style={styles.powerUpLocked} data-testid="power-up-locked">
+            <div style={styles.powerUpLockedIcon}>{POWER_UP_LABELS[powerUpChoice.effect].icon}</div>
+            <div style={styles.powerUpLockedTitle}>Κλειδώθηκε!</div>
+            <div style={styles.powerUpLockedDetail}>
+              {POWER_UP_LABELS[powerUpChoice.effect].title} στον/στην {lockedTargetName}
+            </div>
+            <div style={styles.powerUpLockedHint}>Θα χτυπήσει στην επόμενη ερώτηση</div>
+          </div>
+        ) : powerUpEffect === null ? (
+          <>
+            <div style={styles.subtitle} data-testid="power-up-step">
+              1. Διάλεξε όπλο
+            </div>
+            <div style={styles.powerUpEffectGrid}>
+              {powerUp.effects.map((effect) => (
+                <button
+                  key={effect}
+                  type="button"
+                  data-testid="power-up-effect-option"
+                  data-effect={effect}
+                  style={styles.powerUpEffectButton}
+                  onClick={() => handlePowerUpPickEffect(effect)}
+                  disabled={paused}
+                >
+                  <span style={styles.powerUpEffectIcon}>{POWER_UP_LABELS[effect].icon}</span>
+                  <span style={styles.powerUpEffectTitle}>{POWER_UP_LABELS[effect].title}</span>
+                  <span style={styles.powerUpEffectBlurb}>{POWER_UP_LABELS[effect].blurb}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={styles.subtitle} data-testid="power-up-step">
+              2. {POWER_UP_LABELS[powerUpEffect].icon} {POWER_UP_LABELS[powerUpEffect].title} — σε ποιον;
+            </div>
+            <div style={styles.powerUpTargetList} data-testid="power-up-target-list">
+              {powerUp.targets.map((target) => (
+                <button
+                  key={target.playerId}
+                  type="button"
+                  data-testid="power-up-target-option"
+                  style={styles.powerUpTargetButton}
+                  onClick={() => handlePowerUpPickTarget(target.playerId)}
+                  disabled={paused}
+                >
+                  <Avatar avatarId={target.avatarId} sizeRem={2.4} />
+                  <span style={styles.powerUpTargetName}>{target.name}</span>
+                </button>
+              ))}
+              {powerUp.targets.length === 0 && (
+                <div style={styles.nameListEmpty}>Κανένας άλλος παίκτης συνδεδεμένος</div>
+              )}
+            </div>
+            <button type="button" data-testid="power-up-back" style={styles.skipButton} onClick={handlePowerUpBack}>
+              ‹ Πίσω στα όπλα
+            </button>
+          </>
+        )}
+
+        <div style={styles.lookAtTv}>Κανείς δεν βλέπει τι διάλεξες</div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -1570,6 +1770,98 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     textAlign: 'center',
     color: 'var(--text-dim)',
+  },
+  // Power-up (Task 30b) - big tap targets, since both steps are decided
+  // under a 10 second clock the phone doesn't even display.
+  powerUpEffectGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  powerUpEffectButton: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '1.25rem 1rem',
+    borderRadius: '1rem',
+    border: '3px solid #7c3aed',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    boxShadow: SURFACE_GLOW,
+  },
+  powerUpEffectIcon: {
+    fontSize: '2.5rem',
+    lineHeight: 1,
+  },
+  powerUpEffectTitle: {
+    fontSize: '1.5rem',
+    fontWeight: 800,
+  },
+  powerUpEffectBlurb: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+    textAlign: 'center',
+  },
+  powerUpTargetList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+    maxHeight: '48vh',
+    overflowY: 'auto',
+  },
+  powerUpTargetButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.9rem',
+    padding: '0.7rem 1rem',
+    borderRadius: '0.9rem',
+    border: '2px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    textAlign: 'left',
+  },
+  powerUpTargetName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: '1.3rem',
+    fontWeight: 700,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  powerUpLocked: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '1.5rem 1rem',
+    borderRadius: '1rem',
+    border: '3px solid #7c3aed',
+    background: 'var(--surface)',
+    boxShadow: SURFACE_GLOW,
+  },
+  powerUpLockedIcon: {
+    fontSize: '3rem',
+    lineHeight: 1,
+  },
+  powerUpLockedTitle: {
+    fontSize: '1.75rem',
+    fontWeight: 800,
+    color: 'var(--gold)',
+  },
+  powerUpLockedDetail: {
+    fontSize: '1.2rem',
+    fontWeight: 700,
+    color: 'var(--text)',
+    textAlign: 'center',
+  },
+  powerUpLockedHint: {
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+    textAlign: 'center',
   },
   gameOverWon: {
     fontSize: '2rem',
