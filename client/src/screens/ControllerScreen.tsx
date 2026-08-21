@@ -60,6 +60,7 @@ import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
 import { AnswerShape } from '../components/AnswerShape';
 import { Avatar } from '../components/Avatar';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
+import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
 // `--glow-color` variable the .glow-pulse class reads (see theme.css) be set
@@ -240,6 +241,7 @@ export default function ControllerScreen() {
   // real, race-proof check happens server-side at the actual join attempt.
   const [peekedTakenAvatarIds, setPeekedTakenAvatarIds] = useState<string[]>([]);
   const availableAvatars = useAvailableAvatars();
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   // The main socket-listener effect below is registered ONCE (empty deps,
   // same convention as the rest of this file) - `code` changes as the user
   // types, so handleRoomPeekResult needs a ref to read its LATEST value
@@ -1295,6 +1297,19 @@ export default function ControllerScreen() {
         <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
 
         <div style={styles.settingsPanel} data-testid="settings-panel">
+          {fullscreenSupported && (
+            <div style={styles.settingsRow}>
+              <span style={styles.settingsRowLabel}>Πλήρης οθόνη</span>
+              <button
+                type="button"
+                data-testid="fullscreen-toggle"
+                style={isFullscreen ? styles.segmentActive : styles.segmentInactive}
+                onClick={toggleFullscreen}
+              >
+                {isFullscreen ? '⤡ Έξοδος' : '⤢ Ενεργοποίηση'}
+              </button>
+            </div>
+          )}
           <SegmentedRow
             label="Διάρκεια"
             options={GAME_LENGTH_OPTIONS}

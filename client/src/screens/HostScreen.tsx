@@ -40,7 +40,8 @@ import { useSocketConnection } from '../useSocketConnection';
 import { clearStoredHostRoomCode, getStoredHostRoomCode, setStoredHostRoomCode } from '../hostRoomCode';
 import { useGameAudio } from '../hooks/useGameAudio';
 import { useWakeLock } from '../hooks/useWakeLock';
-import { QR_SIZE_PX } from './host/hostStyles';
+import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
+import { styles as hostStyles, QR_SIZE_PX } from './host/hostStyles';
 import { LobbyView } from './host/LobbyView';
 import { PowerUpView } from './host/PowerUpView';
 import { StealView } from './host/StealView';
@@ -82,6 +83,7 @@ export default function HostScreen() {
   // server waits for it, so the phase underneath is already live.
   const [stageAnnounce, setStageAnnounce] = useState<StageAnnouncePayload | null>(null);
   const wakeLockFailed = useWakeLock();
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
     muted,
     toggleMuted,
@@ -740,8 +742,26 @@ export default function HostScreen() {
     );
   }
 
+  // Hidden mid-play once it's actually active, so it never competes with
+  // question/reveal/steal overlays - Esc (or a system gesture) still brings
+  // it back via fullscreenchange, letting the host re-enter. During
+  // LOBBY/GAME_OVER it's always shown either way.
+  const isPlayPhase = phase !== 'LOBBY' && phase !== 'GAME_OVER';
+  const showFullscreenToggle = fullscreenSupported && !(isPlayPhase && isFullscreen);
+
   return (
     <>
+      {showFullscreenToggle && (
+        <button
+          type="button"
+          data-testid="fullscreen-toggle"
+          onClick={toggleFullscreen}
+          style={hostStyles.fullscreenToggle}
+          aria-label={isFullscreen ? 'Έξοδος από πλήρη οθόνη' : 'Πλήρης οθόνη'}
+        >
+          {isFullscreen ? '⤡' : '⤢'}
+        </button>
+      )}
       {renderPhaseView()}
       {stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
     </>
