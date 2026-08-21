@@ -988,6 +988,12 @@ io.on('connection', (socket) => {
     }
 
     const player = getPlayer(association.code, association.playerId);
+    if (player && player.socketId !== socket.id) {
+      console.log(
+        `player socket ${socket.id} disconnected from room ${association.code} but had already been replaced - no-op`,
+      );
+      return;
+    }
     if (player) {
       player.connected = false;
       console.log(`player ${player.name} disconnected from room ${association.code}`);
