@@ -11,8 +11,9 @@ Client: Vite + React, two routes: / (landing), /host (TV), /play (phone)
 ## Where things live
 shared/src/index.ts      Event names, payload types, all constants. THE contract.
 server/src/index.ts      Socket handlers (LARGE)
-server/src/phases.ts     Phase machine: startQuestion/endQuestion/advanceFrom*
-server/src/payloads.ts   REVEAL/SCOREBOARD/GAME_OVER payload builders
+server/src/phases.ts     Phase machine: startQuestion/endQuestion/advanceFrom*/startPowerUp
+server/src/payloads.ts   POWER_UP/REVEAL/SCOREBOARD/GAME_OVER payload builders
+server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
@@ -39,6 +40,8 @@ client/src/theme.css     Gameshow theme
 
 ## Phases
 LOBBY -> QUESTION -> REVEAL -> (SCOREBOARD every 3rd + final) -> GAME_OVER
+POWER_UP runs ONCE per game, right before the midpoint QUESTION.
+Every question is entered via enterQuestionOrPowerUp() — the only gate.
 `paused` is a boolean flag, NOT a phase.
 
 ## Deploy

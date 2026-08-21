@@ -3,7 +3,7 @@
 // setTimeout fields. Whichever phase-advancing timer is currently running
 // (at most one at a time - a room is only ever in one phase) lives here.
 export interface ActiveTimer {
-  kind: 'QUESTION' | 'REVEAL' | 'SCOREBOARD';
+  kind: 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD';
   handle: NodeJS.Timeout | null;
   startedAt: number;
   durationMs: number;

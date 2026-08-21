@@ -14,6 +14,7 @@ import {
   type LobbyUpdatePayload,
   type PausedPayload,
   type Player,
+  type PowerUpChoiceAcceptedPayload,
   type ResumedPayload,
   type RoomCode,
   type SabotageCastAcceptedPayload,
@@ -33,6 +34,7 @@ import {
   getActiveRoomCount,
   getConnectedPlayers,
   haveAllConnectedPlayersAnswered,
+  haveAllConnectedPlayersChosenPowerUp,
   getPlayer,
   getRoom,
   isAvatarTaken,
@@ -48,8 +50,24 @@ import {
 } from './state.js';
 import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
 import { isValidAvatarId } from './avatars.js';
-import { startQuestion, endQuestion, advanceFromReveal, advanceFromScoreboard, continuationForActiveTimer } from './phases.js';
-import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
+import {
+  endQuestion,
+  endPowerUp,
+  enterQuestionOrPowerUp,
+  advanceFromReveal,
+  advanceFromScoreboard,
+  continuationForActiveTimer,
+} from './phases.js';
+import {
+  buildRevealHostPayload,
+  buildRevealPlayerPayload,
+  buildPowerUpHostPayload,
+  buildPowerUpPlayerPayload,
+  buildPowerUpProgress,
+  buildScoreboard,
+  buildGameOver,
+} from './payloads.js';
+import { isPowerUpEffect } from './powerups.js';
 import {
   activeSabotageFor,
   isIced,
@@ -126,6 +144,17 @@ function broadcastLobbyUpdate(code: RoomCode): void {
 // ever stuck looking at a stale waiting view.
 function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload | null {
   switch (room.phase) {
+    // Power-up (Task 30a): the phase's REMAINING time (frozen if the room is
+    // paused, since it comes from the shared timer helper) plus whether this
+    // phone has already chosen - `yourChoice` is read live from room state,
+    // so a reconnecting player can never be tricked into a second choice and
+    // never loses the one they made.
+    case 'POWER_UP':
+      return {
+        ...buildPowerUpPlayerPayload(room, playerId),
+        phase: 'POWER_UP',
+        remainingMs: remainingActiveTimerMs(room),
+      };
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
       const recorded = room.answers.get(playerId);
@@ -173,6 +202,8 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
       const lobbyPayload = buildLobbyUpdate(room.code);
       return lobbyPayload ? { ...lobbyPayload, phase: 'LOBBY' } : null;
     }
+    case 'POWER_UP':
+      return { ...buildPowerUpHostPayload(room), phase: 'POWER_UP', remainingMs: remainingActiveTimerMs(room) };
     case 'QUESTION': {
       const question = room.questions[room.currentQuestionIndex];
       return {
@@ -361,6 +392,11 @@ io.on('connection', (socket) => {
           socket.emit(ServerEvents.STATE_SYNC, syncPayload);
         }
       }
+      // A reconnect mid-POWER_UP changes the denominator the TV is showing
+      // (and the one the phase is waiting on), so re-tick the host.
+      if (room.phase === 'POWER_UP' && room.hostSocketId) {
+        io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
+      }
       return;
     }
 
@@ -440,10 +476,12 @@ io.on('connection', (socket) => {
     }
 
     buildRoomQuestions(room);
-    room.phase = 'QUESTION';
     room.currentQuestionIndex = 0;
-    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-    startQuestion(room);
+    // Sets the phase and emits phase:changed itself - question 0 is never
+    // the power-up midpoint at any supported question count, but routing
+    // even the first question through the one gate keeps that a property of
+    // the gate rather than an assumption spread across callers.
+    enterQuestionOrPowerUp(room);
   });
 
   socket.on(ClientEvents.VIP_UPDATE_SETTINGS, (payload) => {
@@ -610,6 +648,78 @@ io.on('connection', (socket) => {
     const acceptedPayload: SabotageCastAcceptedPayload = {};
     socket.emit(ServerEvents.SABOTAGE_CAST_ACCEPTED, acceptedPayload);
     console.log(`player ${playerId} cast a sabotage on ${targetPlayerId} in room ${room.code} (hidden until reveal)`);
+  });
+
+  // Power-up (Task 30a): the PLAYER picks the effect here - the server never
+  // does, and rank-based comeback weighting is not involved. Silent from here
+  // on: the ack goes back to the caster alone, the host learns only that one
+  // more phone has committed, and nobody learns what or at whom until it
+  // lands on the next question.
+  socket.on(ClientEvents.POWER_UP_CHOOSE, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.POWER_UP_CHOOSE);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+
+    if (room.phase !== 'POWER_UP') {
+      console.log(`rejected ${ClientEvents.POWER_UP_CHOOSE} for room ${room.code}: phase is ${room.phase}, not POWER_UP`);
+      return;
+    }
+
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.POWER_UP_CHOOSE} for room ${room.code}: game is paused`);
+      return;
+    }
+
+    // One power-up per player for this phase - and a locked-in choice, since
+    // "all connected players have chosen" is what ends the phase early.
+    if (room.powerUpChoices.has(playerId)) {
+      console.log(`rejected ${ClientEvents.POWER_UP_CHOOSE} from player ${playerId}: already chose this phase`);
+      return;
+    }
+
+    const { effect, targetPlayerId } = payload;
+    if (!isPowerUpEffect(effect)) {
+      console.log(`rejected ${ClientEvents.POWER_UP_CHOOSE} from player ${playerId}: invalid effect ${String(effect)}`);
+      return;
+    }
+
+    if (targetPlayerId === playerId) {
+      console.log(`rejected ${ClientEvents.POWER_UP_CHOOSE} from player ${playerId}: cannot target self`);
+      return;
+    }
+
+    const chooser = room.players.get(playerId);
+    const target = room.players.get(targetPlayerId);
+    if (!chooser) {
+      return;
+    }
+    if (!target || !target.connected) {
+      console.log(
+        `rejected ${ClientEvents.POWER_UP_CHOOSE} from player ${playerId}: invalid or disconnected target ${targetPlayerId}`,
+      );
+      return;
+    }
+
+    room.powerUpChoices.set(playerId, {
+      casterPlayerId: playerId,
+      casterName: chooser.name,
+      targetPlayerId,
+      targetName: target.name,
+      effect,
+    });
+
+    const acceptedPayload: PowerUpChoiceAcceptedPayload = { effect, targetPlayerId };
+    socket.emit(ServerEvents.POWER_UP_CHOICE_ACCEPTED, acceptedPayload);
+    if (room.hostSocketId) {
+      io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
+    }
+    console.log(`player ${playerId} chose power-up in room ${room.code} (hidden until it lands)`);
+
+    if (haveAllConnectedPlayersChosenPowerUp(room)) {
+      endPowerUp(room.code);
+    }
   });
 
   socket.on(ClientEvents.VIP_NEXT, () => {
@@ -820,6 +930,17 @@ io.on('connection', (socket) => {
       // doesn't sit waiting on the timer for someone who's no longer here.
       if (room && room.phase === 'QUESTION' && haveAllConnectedPlayersAnswered(room)) {
         endQuestion(room.code);
+      }
+
+      // Same reasoning for the power-up phase: the player who just left might
+      // have been the only one still deciding.
+      if (room && room.phase === 'POWER_UP') {
+        if (room.hostSocketId) {
+          io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
+        }
+        if (haveAllConnectedPlayersChosenPowerUp(room)) {
+          endPowerUp(room.code);
+        }
       }
     }
   });

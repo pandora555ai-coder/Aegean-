@@ -1,6 +1,7 @@
 import {
   type GamePhase,
   type Player,
+  type PowerUpEffect,
   type Question,
   type RevealPlayerResult,
   type RoomCode,
@@ -41,6 +42,17 @@ export interface AppliedSabotage {
   // be derived from the shared timer helper (which is what pause freezes)
   // rather than from a raw Date.now() that would keep ticking through one.
   questionTimeMs: number;
+}
+
+// One phone's POWER_UP choice (Task 30a): the effect THEY picked - the
+// server never picks one here - and who they aimed it at. Names are captured
+// at choice time so a later disconnect can't blank them out.
+export interface PowerUpChoice {
+  casterPlayerId: string;
+  casterName: string;
+  targetPlayerId: string;
+  targetName: string;
+  effect: PowerUpEffect;
 }
 
 // A snapshot of the last computed reveal, kept around so a player who
@@ -134,6 +146,20 @@ export interface Room {
   // back. Canonical order is what the TV always shows; this map is the only
   // place the victim's order exists. Cleared at REVEAL.
   shuffledOptionsByTarget: Map<string, number[]>;
+  // Power-up (Task 30a). True from the moment the one POWER_UP phase of this
+  // game is ENTERED - the sole guard that keeps it to exactly once per game,
+  // and why a pause/reconnect during it can never re-trigger it.
+  powerUpDone: boolean;
+  // Choices made during POWER_UP, keyed by casterPlayerId - hidden from
+  // everyone but their own caster until they LAND on the next question.
+  // Emptied into pendingPowerUpByTarget the instant the phase ends.
+  powerUpChoices: Map<string, PowerUpChoice>;
+  // Deliberately NOT pendingSabotageByTarget: a power-up lands on the very
+  // next question, not on the target's next-question-after-a-REVEAL, so it
+  // must not go anywhere near Task 28a's announce-then-pend path. Keyed by
+  // targetPlayerId (last chooser wins if two aim at the same player), and
+  // consumed - cleared - by applyPendingPowerUps when that question starts.
+  pendingPowerUpByTarget: Map<string, PowerUpChoice>;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -184,6 +210,9 @@ export function createRoom(hostSocketId: string): Room {
     activeSabotageByTarget: new Map(),
     sabotageCastUsedBy: new Set(),
     shuffledOptionsByTarget: new Map(),
+    powerUpDone: false,
+    powerUpChoices: new Map(),
+    pendingPowerUpByTarget: new Map(),
   };
 
   rooms.set(code, room);
@@ -349,6 +378,16 @@ export function haveAllConnectedPlayersAnswered(room: Room): boolean {
   return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.answers.has(player.playerId));
 }
 
+// Power-up (Task 30a) - identity-based for exactly the same reason as
+// haveAllConnectedPlayersAnswered above: a bare size comparison can match
+// while the specific players differ. Whoever is connected RIGHT NOW is who
+// the phase waits for, so a chooser disconnecting doesn't hold it open and a
+// non-chooser disconnecting ends it early.
+export function haveAllConnectedPlayersChosenPowerUp(room: Room): boolean {
+  const connectedPlayers = getConnectedPlayers(room);
+  return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.powerUpChoices.has(player.playerId));
+}
+
 export function isVip(room: Room, playerId: string): boolean {
   return room.vipPlayerId === playerId;
 }
@@ -434,6 +473,11 @@ export function resetRoomForNewGame(room: Room): void {
   room.activeSabotageByTarget.clear();
   room.sabotageCastUsedBy.clear();
   room.shuffledOptionsByTarget.clear();
+  // A fresh game gets its one POWER_UP phase back, and carries no unspent
+  // choice over from the game that just ended.
+  room.powerUpDone = false;
+  room.powerUpChoices.clear();
+  room.pendingPowerUpByTarget.clear();
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

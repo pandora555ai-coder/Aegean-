@@ -1,12 +1,17 @@
 import {
+  POWER_UP_EFFECTS,
   type GameOverPayload,
   type GameOverStanding,
+  type PowerUpProgressPayload,
+  type PowerUpShowHostPayload,
+  type PowerUpShowPlayerPayload,
+  type PowerUpTarget,
   type RevealHostPayload,
   type RevealPlayerPayload,
   type ScoreboardPayload,
   type ScoreboardStanding,
 } from '@game/shared';
-import type { Room } from './state.js';
+import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
 
 // Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
@@ -114,6 +119,58 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
     yourTimeMs: null,
     yourAnswerRank: null,
     yourPendingSabotage,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// POWER_UP (Task 30a)
+// ---------------------------------------------------------------------------
+
+// Built fresh from room state on every send - the live broadcast and a later
+// state:sync catch-up therefore share one code path, and `durationMs` is the
+// time STILL LEFT (frozen while paused, since it comes from the shared timer
+// helper) rather than a flat 10s, so a phone that reconnects five seconds in
+// counts down five, not ten.
+export function buildPowerUpHostPayload(room: Room): PowerUpShowHostPayload {
+  return {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    durationMs: remainingActiveTimerMs(room),
+    ...buildPowerUpProgress(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+// Per phone, never built once and reused: `targets` omits its own reader (so
+// self-targeting isn't even offered) and `yourChoice` is that phone's own
+// choice alone. No phone ever learns another's - that stays hidden until it
+// lands on the next question.
+export function buildPowerUpPlayerPayload(room: Room, playerId: string): PowerUpShowPlayerPayload {
+  const targets: PowerUpTarget[] = getConnectedPlayers(room)
+    .filter((player) => player.playerId !== playerId)
+    .map((player) => ({ playerId: player.playerId, name: player.name, avatarId: player.avatarId }));
+
+  const choice = room.powerUpChoices.get(playerId);
+  return {
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    durationMs: remainingActiveTimerMs(room),
+    effects: POWER_UP_EFFECTS,
+    targets,
+    yourChoice: choice ? { effect: choice.effect, targetPlayerId: choice.targetPlayerId } : null,
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+// WHO has committed, never what to - the host is a display, and this is the
+// only power-up information it ever receives.
+export function buildPowerUpProgress(room: Room): PowerUpProgressPayload {
+  return {
+    chosenCount: room.powerUpChoices.size,
+    totalPlayers: getConnectedPlayers(room).length,
+    chosenPlayerIds: Array.from(room.powerUpChoices.keys()),
   };
 }
 

@@ -1,4 +1,5 @@
 import {
+  POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
   SCOREBOARD_DURATION_MS,
   SCOREBOARD_EVERY_N_QUESTIONS,
@@ -13,8 +14,16 @@ import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type GmPlayerRoundInput } from './gamemaster.js';
 import { activeSabotageFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
+import { applyPendingPowerUps } from './powerups.js';
 import { io } from './realtime.js';
-import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
+import {
+  buildRevealHostPayload,
+  buildRevealPlayerPayload,
+  buildPowerUpHostPayload,
+  buildPowerUpPlayerPayload,
+  buildScoreboard,
+  buildGameOver,
+} from './payloads.js';
 
 // Sorts `results` IN PLACE: correct answers first (fastest first), then
 // wrong answers, then players who didn't answer at all go last. With 7
@@ -47,6 +56,85 @@ function sortAndRankResults(results: RevealPlayerResult[]): void {
   }
 }
 
+// The one question the POWER_UP phase precedes: the midpoint of THIS game's
+// question count (question 6 of 10, 8 of 15, 11 of 20 - 1-based).
+function powerUpQuestionIndex(room: Room): number {
+  return Math.floor(room.questions.length / 2);
+}
+
+// The ONLY way any question is ever entered - vip:start_game and every
+// advance past a REVEAL/SCOREBOARD both come through here. That's what makes
+// "POWER_UP happens exactly once, and only immediately before a QUESTION"
+// structural rather than something each caller has to remember.
+export function enterQuestionOrPowerUp(room: Room): void {
+  if (!room.powerUpDone && room.currentQuestionIndex === powerUpQuestionIndex(room)) {
+    startPowerUp(room);
+    return;
+  }
+  room.phase = 'QUESTION';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  startQuestion(room);
+}
+
+// Power-up (Task 30a). Runs on its OWN 10s timer through the shared helper,
+// so a pause freezes it exactly like a question timer and a reconnect gets
+// the real remaining time back. room.currentQuestionIndex already points at
+// the question this precedes - it is NOT advanced here; endPowerUp starts
+// that very question.
+export function startPowerUp(room: Room): void {
+  room.phase = 'POWER_UP';
+  // Marked on ENTRY, not on exit: whatever happens next (a pause, every
+  // phone reconnecting, the room emptying out) this game has now had its
+  // one power-up phase.
+  room.powerUpDone = true;
+  room.powerUpChoices.clear();
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+
+  // Armed BEFORE the payloads are built - they report the timer's remaining
+  // time, so it has to exist first.
+  armActiveTimer(room, 'POWER_UP', POWER_UP_DURATION_MS, () => endPowerUp(room.code));
+
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_SHOW, buildPowerUpHostPayload(room));
+  }
+  // Per player, never built once and reused: each phone gets its own target
+  // list (everyone but itself) and learns nothing about anyone else's pick.
+  for (const player of getConnectedPlayers(room)) {
+    io.to(player.socketId).emit(ServerEvents.POWER_UP_SHOW, buildPowerUpPlayerPayload(room, player.playerId));
+  }
+
+  console.log(
+    `room ${room.code} power-up phase — before question ${room.currentQuestionIndex + 1}/${room.questions.length}`,
+  );
+}
+
+// Ends POWER_UP exactly once - guarded by the phase check, so whichever of
+// (every connected player chose) / (the 10s timer fired) happens first wins.
+// Anyone who didn't choose simply casts nothing. Flows straight into the
+// question it preceded: the choices land THERE, on the very next question,
+// never on some later round.
+export function endPowerUp(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'POWER_UP') {
+    return;
+  }
+
+  // Last chooser wins if two players aimed at the same target - the same
+  // convention Task 28a uses for its own per-target map.
+  for (const choice of room.powerUpChoices.values()) {
+    room.pendingPowerUpByTarget.set(choice.targetPlayerId, choice);
+  }
+  console.log(
+    `room ${room.code} power-up phase ended — ${room.powerUpChoices.size} chose, ` +
+      `${room.pendingPowerUpByTarget.size} target(s) hit`,
+  );
+  room.powerUpChoices.clear();
+
+  room.phase = 'QUESTION';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  startQuestion(room); // arms its own QUESTION timer, replacing this phase's
+}
+
 export function startQuestion(room: Room): void {
   room.answers.clear();
   room.questionStartedAt = Date.now();
@@ -57,6 +145,11 @@ export function startQuestion(room: Room): void {
   // the same clock as the question timer just armed above. Deliberately
   // after the arm - applyPendingSabotage reads both it and questionStartedAt.
   applyPendingSabotage(room);
+  // Power-up (Task 30a): the choices made in the POWER_UP phase that just
+  // ended land HERE, on the very next question, on the same clock. Must
+  // follow applyPendingSabotage, which clears activeSabotageByTarget - the
+  // map both of them land into.
+  applyPendingPowerUps(room);
 
   const question = room.questions[room.currentQuestionIndex];
   const totalQuestions = room.questions.length;
@@ -294,9 +387,9 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
   }
 
   room.currentQuestionIndex += 1;
-  room.phase = 'QUESTION';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  startQuestion(room); // arms its own QUESTION timer
+  // May run the one POWER_UP phase first, which then starts this question
+  // itself once it's done.
+  enterQuestionOrPowerUp(room);
 }
 
 // The continuation a resumed timer should fire once its remaining time
@@ -307,6 +400,8 @@ export function continuationForActiveTimer(room: Room): (() => void) | null {
     return null;
   }
   switch (room.activeTimer.kind) {
+    case 'POWER_UP':
+      return () => endPowerUp(room.code);
     case 'QUESTION':
       return () => endQuestion(room.code);
     case 'REVEAL':

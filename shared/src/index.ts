@@ -13,6 +13,7 @@ export const ClientEvents = {
   VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
   ROOM_PEEK: 'room:peek',
   SABOTAGE_CAST: 'player:sabotage_cast',
+  POWER_UP_CHOOSE: 'player:power_up_choose',
 } as const;
 
 export const ServerEvents = {
@@ -36,6 +37,9 @@ export const ServerEvents = {
   GAME_RESUMED: 'game:resumed',
   ROOM_PEEK_RESULT: 'room:peek_result',
   SABOTAGE_CAST_ACCEPTED: 'sabotage:cast_accepted',
+  POWER_UP_SHOW: 'power_up:show',
+  POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
+  POWER_UP_PROGRESS: 'power_up:progress',
 } as const;
 
 export type RoomCode = string;
@@ -250,7 +254,10 @@ export interface LobbyUpdatePayload {
   settings: RoomSettings;
 }
 
-export type GamePhase = 'LOBBY' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
+// POWER_UP (Task 30a) runs EXACTLY ONCE per game, immediately before the
+// midpoint question - a real phase, not a flag, so every existing phase
+// guard keeps rejecting answers/casts while it's up.
+export type GamePhase = 'LOBBY' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'SCOREBOARD' | 'GAME_OVER';
 
 // Each player may cast ONE of these per game, at a target of their choosing;
 // the SERVER (never the client) picks which effect they get, weighted by the
@@ -305,6 +312,85 @@ export interface ActiveSabotage {
   effect: SabotageEffect;
   durationMs: number;
   remainingMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// POWER_UP phase (Task 30a)
+// ---------------------------------------------------------------------------
+
+// The phase's own countdown, run through the SHARED timer helper exactly like
+// the question/reveal/scoreboard ones, so a pause freezes it identically.
+export const POWER_UP_DURATION_MS = 10000;
+
+// What a player may pick during POWER_UP. Deliberately a SUBSET of
+// SabotageEffect - 'shuffle' has no place here, and reusing the same effect
+// names means the landing machinery (durations, ice enforcement, the victim's
+// `yourSabotage`) is shared rather than duplicated. Unlike a Task 28a cast,
+// the PLAYER picks this: the server never chooses, and rank-based comeback
+// weighting is not involved.
+export type PowerUpEffect = Extract<SabotageEffect, 'ice' | 'ink'>;
+export const POWER_UP_EFFECTS: readonly PowerUpEffect[] = ['ice', 'ink'];
+
+// A player the caster may aim at - every OTHER connected player. Sent per
+// phone (each list omits its own reader), so self-targeting isn't even
+// offered; the server rejects it regardless.
+export interface PowerUpTarget {
+  playerId: string;
+  name: string;
+  avatarId: string;
+}
+
+export interface PowerUpChoosePayload {
+  effect: PowerUpEffect;
+  targetPlayerId: string;
+}
+
+// Just an ack that this phone's one choice was recorded - carries nothing
+// about anyone else's, which stays hidden until it lands.
+export interface PowerUpChoiceAcceptedPayload {
+  effect: PowerUpEffect;
+  targetPlayerId: string;
+}
+
+// 'power_up:show' is asymmetric like question:show / reveal:show. The TV is a
+// display: it learns how many phones have committed, never what they picked
+// or at whom. Only the phones get an effect list and a target list.
+export interface PowerUpShowHostPayload {
+  questionIndex: number; // the question this phase precedes, 0-based
+  totalQuestions: number;
+  durationMs: number;
+  chosenCount: number;
+  totalPlayers: number;
+  chosenPlayerIds: string[]; // WHO has committed - never what they chose
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export interface PowerUpShowPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  durationMs: number;
+  effects: readonly PowerUpEffect[];
+  targets: PowerUpTarget[];
+  // Always null on a fresh power_up:show; only the state:sync variant can
+  // carry a real value, for a phone reconnecting after already choosing.
+  yourChoice: PowerUpChoosePayload | null;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type PowerUpShowPayload = PowerUpShowHostPayload | PowerUpShowPlayerPayload;
+
+export function isPowerUpHostPayload(payload: PowerUpShowPayload): payload is PowerUpShowHostPayload {
+  return 'chosenPlayerIds' in payload;
+}
+
+// Host-only progress ticker, same contract as answer:progress - who has
+// committed, never what they committed to.
+export interface PowerUpProgressPayload {
+  chosenCount: number;
+  totalPlayers: number;
+  chosenPlayerIds: string[];
 }
 
 export interface AnswerIdentity {
@@ -570,6 +656,16 @@ export interface StateSyncLobbyPayload {
   settings: RoomSettings;
 }
 
+export type StateSyncPowerUpHostPayload = PowerUpShowHostPayload & {
+  phase: 'POWER_UP';
+  remainingMs: number;
+};
+
+export type StateSyncPowerUpPlayerPayload = PowerUpShowPlayerPayload & {
+  phase: 'POWER_UP';
+  remainingMs: number;
+};
+
 export type StateSyncQuestionHostPayload = QuestionShowHostPayload & {
   phase: 'QUESTION';
   remainingMs: number;
@@ -594,6 +690,8 @@ export interface StateSyncGameOverPayload extends GameOverPayload {
 
 export type StateSyncPayload =
   | StateSyncLobbyPayload
+  | StateSyncPowerUpHostPayload
+  | StateSyncPowerUpPlayerPayload
   | StateSyncQuestionHostPayload
   | StateSyncQuestionPlayerPayload
   | StateSyncRevealHostPayload
@@ -616,6 +714,7 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
   [ClientEvents.ROOM_PEEK]: (payload: RoomPeekPayload) => void;
   [ClientEvents.SABOTAGE_CAST]: (payload: SabotageCastPayload) => void;
+  [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -639,4 +738,7 @@ export type ServerToClientEvents = {
   [ServerEvents.GAME_RESUMED]: (payload: ResumedPayload) => void;
   [ServerEvents.ROOM_PEEK_RESULT]: (payload: RoomPeekResultPayload) => void;
   [ServerEvents.SABOTAGE_CAST_ACCEPTED]: (payload: SabotageCastAcceptedPayload) => void;
+  [ServerEvents.POWER_UP_SHOW]: (payload: PowerUpShowPayload) => void;
+  [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
+  [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;
 };
