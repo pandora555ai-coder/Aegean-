@@ -16,6 +16,7 @@ import {
   type Player,
   type ResumedPayload,
   type RoomCode,
+  type SabotageCastAcceptedPayload,
   type ServerToClientEvents,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
@@ -49,6 +50,7 @@ import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './t
 import { isValidAvatarId } from './avatars.js';
 import { startQuestion, endQuestion, advanceFromReveal, advanceFromScoreboard, continuationForActiveTimer } from './phases.js';
 import { buildRevealHostPayload, buildRevealPlayerPayload, buildScoreboard, buildGameOver } from './payloads.js';
+import { pickSabotageEffect } from './sabotage.js';
 import { initRealtime, io, httpServer } from './realtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -514,6 +516,71 @@ io.on('connection', (socket) => {
     if (haveAllConnectedPlayersAnswered(room)) {
       endQuestion(room.code);
     }
+  });
+
+  // Sabotage (Task 28a): cast is completely silent from here - no ack
+  // reveals the effect, no broadcast tells anyone else a cast even
+  // happened. It only surfaces later, publicly, when this question's
+  // REVEAL announces it (see endQuestion in phases.ts).
+  socket.on(ClientEvents.SABOTAGE_CAST, (payload) => {
+    const association = socketAssociationBySocketId.get(socket.id);
+    if (!association || association.role !== 'player') {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} from ${socket.id}: not a player`);
+      return;
+    }
+
+    const room = getRoom(association.code);
+    if (!room) {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} from ${socket.id}: room ${association.code} not found`);
+      return;
+    }
+
+    if (room.phase !== 'QUESTION') {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} for room ${room.code}: phase is ${room.phase}, not QUESTION`);
+      return;
+    }
+
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} for room ${room.code}: game is paused`);
+      return;
+    }
+
+    const { playerId } = association;
+    if (room.sabotageCastUsedBy.has(playerId)) {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} from player ${playerId}: already used their one cast this game`);
+      return;
+    }
+
+    const caster = room.players.get(playerId);
+    if (!caster) {
+      return;
+    }
+
+    const { targetPlayerId } = payload;
+    if (targetPlayerId === playerId) {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} from player ${playerId}: cannot target self`);
+      return;
+    }
+
+    const target = room.players.get(targetPlayerId);
+    if (!target || !target.connected) {
+      console.log(`rejected ${ClientEvents.SABOTAGE_CAST} from player ${playerId}: invalid or disconnected target ${targetPlayerId}`);
+      return;
+    }
+
+    const effect = pickSabotageEffect(room, playerId);
+    room.sabotageCastUsedBy.add(playerId);
+    room.hiddenSabotageCasts.set(playerId, {
+      casterPlayerId: playerId,
+      casterName: caster.name,
+      targetPlayerId,
+      targetName: target.name,
+      effect,
+    });
+
+    const acceptedPayload: SabotageCastAcceptedPayload = {};
+    socket.emit(ServerEvents.SABOTAGE_CAST_ACCEPTED, acceptedPayload);
+    console.log(`player ${playerId} cast a sabotage on ${targetPlayerId} in room ${room.code} (hidden until reveal)`);
   });
 
   socket.on(ClientEvents.VIP_NEXT, () => {

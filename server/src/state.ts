@@ -5,6 +5,7 @@ import {
   type RevealPlayerResult,
   type RoomCode,
   type RoomSettings,
+  type SabotageAnnouncement,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   MAX_PLAYERS,
@@ -34,6 +35,9 @@ export interface RevealSnapshot {
   // snapshot, at the moment REVEAL begins - so a reconnecting host gets the
   // SAME line via state:sync, never a freshly (and differently) picked one.
   gmLine: string | null;
+  // Sabotage (Task 28a) - the casts made during the question this snapshot
+  // is for, frozen at the same moment as everything else above.
+  sabotageAnnouncements: SabotageAnnouncement[];
 }
 
 // A room is deleted only once it's been fully empty - no host/TV display
@@ -80,6 +84,22 @@ export interface Room {
   // every line already used this game, so commentary never repeats itself
   // and never roasts the same player every single round.
   gameMaster: GameMasterState;
+  // Sabotage (Task 28a). Casts made DURING the current question - hidden
+  // from everyone, including the caster and victim, until this question's
+  // REVEAL announces them. Keyed by casterPlayerId (each player casts at
+  // most once ever, so at most one entry per player at a time). Cleared the
+  // moment endQuestion turns it into a RevealSnapshot.sabotageAnnouncements.
+  hiddenSabotageCasts: Map<string, SabotageAnnouncement>;
+  // Announced at REVEAL and left here, keyed by targetPlayerId, as the
+  // effect pending against that player for their NEXT question - read fresh
+  // from this map on every broadcast/state:sync, so it survives a victim's
+  // reconnect without the client ever having to remember anything itself.
+  // If two casters target the same player in one round, the later cast
+  // wins here (both still appear in that round's sabotageAnnouncements).
+  // Actually CONSUMING this (freezing/inking/shuffling) is a later task.
+  pendingSabotageByTarget: Map<string, SabotageAnnouncement>;
+  // Every playerId who has already spent their one sabotage cast this game.
+  sabotageCastUsedBy: Set<string>;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -125,6 +145,9 @@ export function createRoom(hostSocketId: string): Room {
     pausedAt: null,
     emptyTtlTimer: null,
     gameMaster: createGameMasterState(),
+    hiddenSabotageCasts: new Map(),
+    pendingSabotageByTarget: new Map(),
+    sabotageCastUsedBy: new Set(),
   };
 
   rooms.set(code, room);
@@ -369,6 +392,10 @@ export function resetRoomForNewGame(room: Room): void {
   // A fresh game means fresh commentary too - no streaks/cooldowns/used
   // lines carried over from the game that just ended.
   resetGameMasterState(room.gameMaster);
+  // A fresh game means a fresh one-cast-per-game sabotage budget too.
+  room.hiddenSabotageCasts.clear();
+  room.pendingSabotageByTarget.clear();
+  room.sabotageCastUsedBy.clear();
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

@@ -171,9 +171,25 @@ export function endQuestion(code: RoomCode): void {
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
 
+  // Sabotage (Task 28a): whatever was cast during this question, hidden
+  // until now, becomes this round's announcement - and stays pending
+  // against each victim (keyed by targetPlayerId) for their next question.
+  const sabotageAnnouncements = Array.from(room.hiddenSabotageCasts.values());
+  for (const cast of sabotageAnnouncements) {
+    room.pendingSabotageByTarget.set(cast.targetPlayerId, cast);
+  }
+  room.hiddenSabotageCasts.clear();
+
   // Snapshot so a player who reconnects mid-REVEAL can be caught up via
   // state:sync without recomputing (or re-scoring) anything.
-  room.lastReveal = { correctIndex: question.correctIndex, correctOption, results, answerCounts, gmLine };
+  room.lastReveal = {
+    correctIndex: question.correctIndex,
+    correctOption,
+    results,
+    answerCounts,
+    gmLine,
+    sabotageAnnouncements,
+  };
 
   const hostPayload = buildRevealHostPayload(room);
   if (hostPayload && room.hostSocketId) {
