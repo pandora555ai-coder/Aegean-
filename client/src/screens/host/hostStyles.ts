@@ -190,6 +190,17 @@ export const styles: Record<string, CSSProperties> = {
     maxWidth: '90%',
     color: 'var(--text)',
   },
+  // QUESTION only. With the options gone (Task 29) the question is the
+  // one thing to read on the TV, so it takes the space they used to.
+  // clamp keeps the longest questions on screen at 1080p.
+  questionTextTv: {
+    fontSize: 'clamp(4rem, 6vw, 6rem)',
+    fontWeight: 700,
+    textAlign: 'center',
+    lineHeight: 1.25,
+    maxWidth: '85%',
+    color: 'var(--text)',
+  },
   optionsGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
