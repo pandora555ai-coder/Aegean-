@@ -32,9 +32,9 @@ export function densityScale(count: number): number {
   return DENSITY_SCALE[densityStep(count)];
 }
 
-// The outer container's own gap between phase sections - REVEAL and
-// SCOREBOARD stack several sections above the player list/results, so this
-// shrinks too at high counts to give the list the room it needs.
+// The left column's own gap between phase sections - REVEAL in particular
+// stacks several sections above its results list, so this shrinks too at
+// high counts to give the list the room it needs.
 export function containerGap(count: number): string {
   return `${(1.5 * densityScale(count)).toFixed(2)}rem`;
 }
@@ -59,7 +59,7 @@ export function lobbyAvatarSize(count: number): number {
   return count <= 4 ? 2.75 : count <= 6 ? 2.15 : 1.7;
 }
 
-// SCOREBOARD/GAME_OVER standings rows.
+// GAME_OVER's final standings rows.
 export function standingRowSizeStyle(count: number): CSSProperties {
   const s = densityScale(count);
   return {
@@ -100,15 +100,25 @@ export function resultsListGap(count: number): string {
   return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
 }
 
-export function revealStandingsStripSizeStyle(count: number): CSSProperties {
+// Task 38 - the persistent right-hand score column's rows. A narrower,
+// shorter row than GAME_OVER's standingRow* (that column is only ~30% of
+// the screen), but the same density-step philosophy: a few hand-picked
+// sizes so up to MAX_PLAYERS (8) rows always fit with no scroll.
+export function sidebarRowSizeStyle(count: number): CSSProperties {
   const s = densityScale(count);
   return {
-    fontSize: `${(1.1 * s).toFixed(2)}rem`,
+    gap: `${(0.65 * s).toFixed(2)}rem`,
+    fontSize: `${(1.3 * s).toFixed(2)}rem`,
+    padding: `${(0.55 * s).toFixed(2)}rem ${(0.75 * s).toFixed(2)}rem`,
   };
 }
 
-export function revealStandingsAvatarSize(count: number): number {
-  return 1.4 * densityScale(count);
+export function sidebarAvatarSize(count: number): number {
+  return 1.85 * densityScale(count);
+}
+
+export function sidebarListGap(count: number): string {
+  return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
 }
 
 // QUESTION/POWER_UP's per-player "who's answered" strip.
@@ -125,6 +135,108 @@ export function answeredAvatarSize(count: number): number {
 }
 
 export const styles: Record<string, CSSProperties> = {
+  // Task 38 - the fixed two-column layout every in-game phase (QUESTION,
+  // POWER_UP, REVEAL, STEAL) renders through: LEFT ~70% for the phase's own
+  // content, RIGHT a FIXED ~30% for the always-visible score column, so it
+  // never shifts or resizes as the phase content around it changes. Grid's
+  // `fr` split (not percentages) means the gap is subtracted from the
+  // tracks automatically, so 7fr/3fr + the gap below never overflows 100%.
+  // The padding IS the ~3% safe-area margin real TVs crop at the edges.
+  gameLayout: {
+    display: 'grid',
+    gridTemplateColumns: '7fr 3fr',
+    gap: '2.5%',
+    width: '100%',
+    height: '100vh',
+    boxSizing: 'border-box',
+    padding: '3vh 3vw',
+    overflow: 'hidden',
+    background: 'var(--bg)',
+    color: 'var(--text)',
+    position: 'relative',
+    zIndex: 1,
+  },
+  gameLayoutLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    overflow: 'hidden',
+  },
+  gameLayoutRight: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    overflow: 'hidden',
+  },
+  scorePanelTitle: {
+    fontSize: '1rem',
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: 'var(--text-faint)',
+    textAlign: 'center',
+    marginBottom: '0.75rem',
+  },
+  scorePanelList: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+  },
+  scorePanelRow: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    borderRadius: '0.75rem',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    boxSizing: 'border-box',
+  },
+  scorePanelRowLeader: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    borderRadius: '0.75rem',
+    background: 'rgba(212, 175, 55, 0.1)',
+    border: '2px solid var(--gold)',
+    color: 'var(--text)',
+    boxSizing: 'border-box',
+  },
+  scorePanelRowDisconnected: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    borderRadius: '0.75rem',
+    background: 'var(--surface)',
+    color: 'var(--text-faint)',
+    opacity: 0.5,
+    boxSizing: 'border-box',
+  },
+  scorePanelRank: {
+    color: 'var(--text-dim)',
+    minWidth: '1.6rem',
+    flexShrink: 0,
+    fontWeight: 700,
+  },
+  scorePanelName: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  },
+  scorePanelScore: {
+    flexShrink: 0,
+    fontFamily: 'monospace',
+    fontWeight: 700,
+  },
   container: {
     display: 'flex',
     flexDirection: 'column',
@@ -495,38 +607,6 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     maxWidth: '700px',
-  },
-  revealStandingsStrip: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'baseline',
-    gap: '0.5rem 1.25rem',
-    width: '100%',
-    maxWidth: '900px',
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    color: 'var(--text-dim)',
-  },
-  revealStandingsItem: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    whiteSpace: 'nowrap',
-  },
-  revealStandingsRank: {
-    color: 'var(--gold)',
-    fontWeight: 800,
-  },
-  revealStandingsName: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    maxWidth: '10rem',
-  },
-  revealStandingsScore: {
-    fontFamily: 'monospace',
-    color: 'var(--text)',
   },
   resultsList: {
     display: 'flex',

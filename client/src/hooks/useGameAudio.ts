@@ -222,13 +222,6 @@ export function useGameAudio() {
     playToneAt(NOTE.E5, 0, 380, 0.12);
   }
 
-  // CUE 6 - SCOREBOARD: a brief two-note transition - smaller than the
-  // question-start motif, since this means "moving on", not "look now".
-  function playScoreboardCue() {
-    playToneAt(NOTE.CS5, 0, 90, 0.16);
-    playToneAt(NOTE.E5, 0.09, 110, 0.16);
-  }
-
   // CUE 7 - GAME OVER: the one cue allowed to be long (~1s) - an ascending
   // 4-note flourish resolving into a held 3-note chord, clearly a finale.
   function playGameOverFanfare() {
@@ -250,7 +243,6 @@ export function useGameAudio() {
     playCountdownTick,
     playCountdownExpire,
     playRevealCue,
-    playScoreboardCue,
     playGameOverFanfare,
   };
 }

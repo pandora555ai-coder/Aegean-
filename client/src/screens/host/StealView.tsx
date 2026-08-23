@@ -1,13 +1,7 @@
-import { type RoomCode, type StealShowHostPayload, type StealStanding } from '@game/shared';
+import { type RoomCode, type StealShowHostPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
-import {
-  containerGap,
-  densityScale,
-  revealStandingsAvatarSize,
-  revealStandingsStripSizeStyle,
-  styles,
-} from './hostStyles';
+import { GameLayout } from './GameLayout';
+import { densityScale, styles } from './hostStyles';
 
 interface StealViewProps {
   steal: StealShowHostPayload;
@@ -15,37 +9,6 @@ interface StealViewProps {
   paused: boolean;
   pausedByName: string | null;
   secondsLeft: number;
-}
-
-// One row of the standings strip. Its own component (not inlined in the
-// .map below) so useAnimatedNumber's hook state lives per-player, keyed by
-// playerId - that's what lets the score tween from its pre-steal value to
-// its post-steal one instead of snapping when `standing.score` changes.
-function StealStandingItem({
-  standing,
-  avatarSize,
-  isThief,
-  isVictim,
-}: {
-  standing: StealStanding;
-  avatarSize: number;
-  isThief: boolean;
-  isVictim: boolean;
-}) {
-  const displayScore = useAnimatedNumber(standing.score);
-  const color = isThief ? 'var(--gold)' : isVictim ? 'var(--danger-text)' : undefined;
-
-  return (
-    <span style={styles.revealStandingsItem} data-testid="steal-standing-item" data-thief={isThief} data-victim={isVictim}>
-      <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={color} />
-      <span style={{ ...styles.revealStandingsName, color: color ?? styles.revealStandingsName.color }}>
-        {standing.name}
-      </span>
-      <span style={{ ...styles.revealStandingsScore, color: color ?? styles.revealStandingsScore.color }}>
-        {displayScore}
-      </span>
-    </span>
-  );
 }
 
 // Task 32 - the TV during STEAL. Two beats in one view, driven entirely by
@@ -57,28 +20,22 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
   const resolved = steal.resolved;
   const timerCritical = !paused && !resolved && secondsLeft <= 3 && secondsLeft > 0;
   const count = steal.standings.length;
-  const standingsStripStyle = revealStandingsStripSizeStyle(count);
-  const standingsAvatar = revealStandingsAvatarSize(count);
-  // The banner above the standings strip used to be the whole view - now it
-  // shares the screen with a per-player strip (up to 8 rows), so it shrinks
+  // The banner used to share the screen with its own standings strip - now
+  // that the persistent right column (Task 38) covers that, it just shrinks
   // at the same density steps everything else on this TV does.
   const s = densityScale(count);
   const bannerAvatar = 3 * s;
   const victimAvatar = 2.5 * s;
 
   return (
-    <div style={{ ...styles.container, gap: containerGap(count) }} className="screen-fade-in">
-      {roomCode && (
-        <div style={styles.cornerRoomCode} data-testid="corner-room-code">
-          {roomCode}
-        </div>
-      )}
-      {paused && (
-        <div style={styles.pauseOverlay} data-testid="pause-overlay">
-          <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
-          <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
-        </div>
-      )}
+    <GameLayout
+      roomCode={roomCode}
+      paused={paused}
+      pausedByName={pausedByName}
+      standings={steal.standings}
+      thiefPlayerId={steal.thiefPlayerId}
+      victimPlayerId={resolved?.victimPlayerId ?? null}
+    >
       <div style={styles.category}>Κλοπή Πόντων</div>
 
       {resolved ? (
@@ -154,27 +111,6 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
           </div>
         </>
       )}
-
-      {/* Every player's score, visible for the whole phase - what's at
-          stake while the thief picks, then the transfer animating live once
-          resolved (StealStandingItem ticks its own score via
-          useAnimatedNumber). Same density-scaled strip REVEAL uses, so this
-          still fits with no overflow at MAX_PLAYERS (8). */}
-      <div style={{ ...styles.revealStandingsStrip, ...standingsStripStyle }} data-testid="steal-standings-strip">
-        {steal.standings.map((standing) => (
-          <StealStandingItem
-            key={standing.playerId}
-            standing={standing}
-            avatarSize={standingsAvatar}
-            isThief={standing.playerId === steal.thiefPlayerId}
-            isVictim={resolved?.victimPlayerId === standing.playerId}
-          />
-        ))}
-      </div>
-
-      <div style={styles.progress}>
-        Μετά την ερώτηση {steal.questionIndex + 1}/{steal.totalQuestions}
-      </div>
-    </div>
+    </GameLayout>
   );
 }

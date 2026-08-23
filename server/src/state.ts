@@ -125,15 +125,15 @@ export interface Room {
   // duration, but questionStartedAt shifts FORWARD by the paused duration,
   // so elapsed "thinking time" for scoring never includes the break.
   questionStartedAt: number;
-  // Whichever phase-advance timer (QUESTION/REVEAL/SCOREBOARD) is
+  // Whichever phase-advance timer (QUESTION/REVEAL/STEAL/...) is
   // currently running or frozen - null only in LOBBY/GAME_OVER.
   activeTimer: ActiveTimer | null;
   lastReveal: RevealSnapshot | null;
   settings: RoomSettings;
   vipPlayerId: string | null;
   // A boolean flag, not a GamePhase - the phase itself stays QUESTION/
-  // REVEAL/SCOREBOARD throughout a pause, so no existing phase guard needs
-  // to change. Only ever true during those three phases.
+  // REVEAL/STEAL throughout a pause, so no existing phase guard needs
+  // to change.
   paused: boolean;
   pausedByName: string | null;
   // Wall-clock moment the CURRENT pause began - needed to compute the

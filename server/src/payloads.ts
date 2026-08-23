@@ -5,18 +5,16 @@ import {
   stagesForLength,
   type GameOverPayload,
   type GameOverStanding,
+  type PlayerStanding,
   type PowerUpProgressPayload,
   type PowerUpShowHostPayload,
   type PowerUpShowPlayerPayload,
   type PowerUpTarget,
   type RevealHostPayload,
   type RevealPlayerPayload,
-  type ScoreboardPayload,
-  type ScoreboardStanding,
   type StageAnnouncePayload,
   type StealShowHostPayload,
   type StealShowPlayerPayload,
-  type StealStanding,
   type StealTarget,
 } from '@game/shared';
 import { getConnectedPlayers, type Room } from './state.js';
@@ -60,6 +58,28 @@ function computeCompetitionRanks<T>(
   return ranks;
 }
 
+// Every player's current score + rank, in room.players' insertion (join)
+// order - NEVER re-sorted by score, so the TV's persistent score column
+// (Task 38) never reshuffles a row as a total changes. Included on every
+// host payload (QUESTION/POWER_UP/REVEAL/STEAL), built fresh each time so a
+// live broadcast and a later state:sync catch-up always agree.
+export function computeStandings(room: Room): PlayerStanding[] {
+  const players = [...room.players.values()];
+  const ranks = computeCompetitionRanks(
+    players,
+    (player) => player.score,
+    (player) => player.playerId,
+  );
+  return players.map((player) => ({
+    playerId: player.playerId,
+    name: player.name,
+    avatarId: player.avatarId,
+    score: player.score,
+    rank: ranks.get(player.playerId) ?? players.length,
+    connected: player.connected,
+  }));
+}
+
 // Reads room.lastReveal (set once, at the moment REVEAL begins) rather than
 // recomputing anything, so these can be reused identically for the fresh
 // broadcast and for a later state:sync catch-up. `paused`/`pausedByName`
@@ -81,6 +101,7 @@ export function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     pausedByName: room.pausedByName,
     socratesLine: room.lastReveal.socratesLine,
     sabotageAnnouncements: room.lastReveal.sabotageAnnouncements,
+    standings: computeStandings(room),
   };
 }
 
@@ -163,6 +184,7 @@ export function buildPowerUpHostPayload(room: Room): PowerUpShowHostPayload {
     ...buildPowerUpProgress(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
+    standings: computeStandings(room),
   };
 }
 
@@ -216,19 +238,6 @@ export function stealTargetsFor(room: Room, thiefPlayerId: string): StealTarget[
     }));
 }
 
-// Every player, in join order (NEVER sorted by score - see StealStanding),
-// so the TV's strip can show what's at stake and, once resolved, animate
-// each score into place without any row changing position.
-function stealStandingsFor(room: Room): StealStanding[] {
-  return [...room.players.values()].map((player) => ({
-    playerId: player.playerId,
-    name: player.name,
-    avatarId: player.avatarId,
-    score: player.score,
-    connected: player.connected,
-  }));
-}
-
 // Built fresh from room state on every send - live broadcast and state:sync
 // catch-up therefore share one code path, and `durationMs` is the time STILL
 // LEFT (frozen while paused, since it comes from the shared timer helper).
@@ -245,7 +254,7 @@ export function buildStealHostPayload(room: Room): StealShowHostPayload | null {
     thiefName: steal.thiefName,
     thiefAvatarId: steal.thiefAvatarId,
     amount: steal.amount,
-    standings: stealStandingsFor(room),
+    standings: computeStandings(room),
     resolved: steal.resolved,
     paused: room.paused,
     pausedByName: room.pausedByName,
@@ -275,36 +284,6 @@ export function buildStealPlayerPayload(room: Room, playerId: string): StealShow
         ? { targetPlayerId: steal.chosenTargetPlayerId }
         : null,
     resolved: steal.resolved,
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-  };
-}
-
-export function buildScoreboard(room: Room): ScoreboardPayload {
-  const players = [...room.players.values()];
-  const ranks = computeCompetitionRanks(
-    players,
-    (player) => player.score,
-    (player) => player.playerId,
-  );
-
-  const standings: ScoreboardStanding[] = [...players]
-    .sort((a, b) => b.score - a.score)
-    .map((player) => ({
-      playerId: player.playerId,
-      name: player.name,
-      avatarId: player.avatarId,
-      score: player.score,
-      rank: ranks.get(player.playerId) ?? players.length,
-      connected: player.connected,
-    }));
-
-  return {
-    standings,
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions: room.questions.length,
-    isLastQuestion: room.currentQuestionIndex >= room.questions.length - 1,
-    autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
   };

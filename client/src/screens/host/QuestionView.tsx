@@ -5,6 +5,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { GameLayout } from './GameLayout';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
 interface QuestionViewProps {
@@ -34,18 +35,13 @@ export function QuestionView({
 
   const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
   return (
-    <div style={styles.container} className="screen-fade-in" key={question.questionIndex}>
-      {roomCode && (
-        <div style={styles.cornerRoomCode} data-testid="corner-room-code">
-          {roomCode}
-        </div>
-      )}
-      {paused && (
-        <div style={styles.pauseOverlay} data-testid="pause-overlay">
-          <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
-          <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
-        </div>
-      )}
+    <GameLayout
+      roomCode={roomCode}
+      paused={paused}
+      pausedByName={pausedByName}
+      standings={question.standings}
+      contentKey={question.questionIndex}
+    >
       {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY, briefly shown
           then fades on its own via CSS (socrates-intro-fade, see
           theme.css) - no JS timer, so it can never delay anything else on
@@ -65,9 +61,6 @@ export function QuestionView({
       </div>
       <div className="enter-pop">
         <div style={styles.category}>{question.category}</div>
-        <div style={styles.progress} data-testid="question-progress">
-          Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
-        </div>
         {/* Task 29: the TV shows the question only - no options. Reading
             four answers off the TV and then hunting for the matching
             button on the phone splits attention; the phone already has
@@ -102,6 +95,6 @@ export function QuestionView({
           );
         })}
       </div>
-    </div>
+    </GameLayout>
   );
 }

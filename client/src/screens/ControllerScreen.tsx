@@ -11,7 +11,6 @@ import {
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
-  SCOREBOARD_DURATION_MS,
   ServerEvents,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
@@ -43,7 +42,6 @@ import {
   type RoomPeekResultPayload,
   type RoomSettings,
   type SabotageEffect,
-  type ScoreboardPayload,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
   type StealChoosePayload,
@@ -135,7 +133,7 @@ function SegmentedRow<T extends string | number>({
 }
 
 // Available to EVERY player (not just the VIP) during QUESTION, REVEAL and
-// SCOREBOARD - deliberately not VIP-gated, since anyone might need a break.
+// STEAL - deliberately not VIP-gated, since anyone might need a break.
 function PauseControl({
   paused,
   pausedByName,
@@ -166,7 +164,7 @@ function PauseControl({
   );
 }
 
-// VIP-only, available during QUESTION/REVEAL/SCOREBOARD. Requires a second
+// VIP-only, available during QUESTION/REVEAL/STEAL. Requires a second
 // confirming tap - it wipes every score, so a single accidental tap must
 // never trigger it. Confirm state is local to this component instance, so
 // it naturally resets whenever the surrounding view unmounts (e.g. the
@@ -254,7 +252,6 @@ export default function ControllerScreen() {
   const [pendingChoice, setPendingChoice] = useState<number | null>(null);
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
-  const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
@@ -330,7 +327,6 @@ export default function ControllerScreen() {
         setPendingChoice(null);
         setAcceptedChoice(null);
         setReveal(null);
-        setScoreboard(null);
         setGameOver(null);
         applyPowerUp(null);
         applySteal(null);
@@ -392,7 +388,6 @@ export default function ControllerScreen() {
         setPendingChoice(null);
         setAcceptedChoice(null);
         setReveal(null);
-        setScoreboard(null);
         // POWER_UP flows straight into the question it preceded - whatever
         // was chosen is now the server's business, and lands right here.
         applyPowerUp(null);
@@ -411,7 +406,6 @@ export default function ControllerScreen() {
         setPendingChoice(null);
         setAcceptedChoice(null);
         setReveal(null);
-        setScoreboard(null);
         applySabotages([]);
         applyPowerUp(payload);
         setPaused(payload.paused);
@@ -435,7 +429,6 @@ export default function ControllerScreen() {
         setPendingChoice(null);
         setAcceptedChoice(null);
         setReveal(null); // the steal replaces the reveal it followed
-        setScoreboard(null);
         applySabotages([]);
         applyPowerUp(null);
         applySteal(payload);
@@ -466,17 +459,7 @@ export default function ControllerScreen() {
       }
     }
 
-    function handleScoreboardShow(payload: ScoreboardPayload) {
-      setReveal(null);
-      setScoreboard(payload);
-      setPaused(payload.paused);
-      setPausedByName(payload.pausedByName);
-      applySabotages([]);
-      applySteal(null);
-    }
-
     function handleGameOver(payload: GameOverPayload) {
-      setScoreboard(null);
       setGameOver(payload);
       applySabotages([]);
       applySteal(null);
@@ -501,7 +484,6 @@ export default function ControllerScreen() {
       setPendingChoice(null);
       setAcceptedChoice(null);
       setReveal(null);
-      setScoreboard(null);
       setGameOver(null);
       applySabotages([]);
       applyPowerUp(null);
@@ -565,11 +547,6 @@ export default function ControllerScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
-        case 'SCOREBOARD':
-          setScoreboard(payload);
-          setPaused(payload.paused);
-          setPausedByName(payload.pausedByName);
-          break;
         case 'GAME_OVER':
           setGameOver(payload);
           break;
@@ -587,7 +564,6 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
-    socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -608,7 +584,6 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
-      socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -825,9 +800,7 @@ export default function ControllerScreen() {
   // Question count is the stage table's, not a setting of its own (Task
   // 31a) - but how many of those stages are IN the game is (Task 33).
   const estimatedMinutes = Math.round(
-    (totalQuestionsForLength(roomSettings.gameLength) *
-      (roomSettings.questionTimeMs + REVEAL_DURATION_MS + SCOREBOARD_DURATION_MS)) /
-      60000,
+    (totalQuestionsForLength(roomSettings.gameLength) * (roomSettings.questionTimeMs + REVEAL_DURATION_MS)) / 60000,
   );
 
   if (gameOver) {
@@ -861,52 +834,6 @@ export default function ControllerScreen() {
             Ξανά
           </button>
         )}
-      </div>
-    );
-  }
-
-  if (scoreboard) {
-    const sorted = [...scoreboard.standings].sort((a, b) => a.rank - b.rank);
-    const myIndex = sorted.findIndex((standing) => standing.playerId === playerId);
-    const me = myIndex >= 0 ? sorted[myIndex] : null;
-    const above = myIndex > 0 ? sorted[myIndex - 1] : null;
-    const gap = me && above ? above.score - me.score : 0;
-
-    return (
-      <div style={styles.container}>
-        {joined && (
-          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
-            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
-          </div>
-        )}
-        {isVip && (
-          <div style={styles.vipBadge} data-testid="vip-badge">
-            👑 VIP
-          </div>
-        )}
-        <div style={styles.scoreboardRank} data-testid="scoreboard-rank">
-          #{me ? me.rank : '-'}
-        </div>
-        <div style={styles.scoreboardScore} data-testid="scoreboard-score">
-          {me ? me.score : 0} πόντοι
-        </div>
-        {above ? (
-          <div style={styles.scoreboardGap} data-testid="scoreboard-gap">
-            {gap} πόντοι πίσω από τον/την {above.name}
-          </div>
-        ) : (
-          <div style={styles.scoreboardGap} data-testid="scoreboard-gap">
-            Είσαι πρώτος/η!
-          </div>
-        )}
-        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τη βαθμολογία</div>
-        {isVip && !paused && (
-          <button data-testid="next-button" style={styles.skipButton} type="button" onClick={handleNext}>
-            Παράλειψη
-          </button>
-        )}
-        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
-        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
   }
@@ -2025,12 +1952,6 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     color: 'var(--text)',
-  },
-  scoreboardGap: {
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    textAlign: 'center',
-    color: 'var(--text-dim)',
   },
   // Power-up (Task 30b) - big tap targets, since both steps are decided
   // under a 10 second clock the phone doesn't even display.

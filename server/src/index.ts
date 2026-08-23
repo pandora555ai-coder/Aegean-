@@ -56,7 +56,6 @@ import {
   endPowerUp,
   enterQuestionOrPowerUp,
   advanceFromReveal,
-  advanceFromScoreboard,
   advanceFromSteal,
   resolveSteal,
   continuationForActiveTimer,
@@ -70,8 +69,8 @@ import {
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
-  buildScoreboard,
   buildGameOver,
+  computeStandings,
 } from './payloads.js';
 import { isPowerUpEffect } from './powerups.js';
 import {
@@ -199,8 +198,6 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildStealPlayerPayload(room, playerId);
       return payload ? { ...payload, phase: 'STEAL', remainingMs: remainingActiveTimerMs(room) } : null;
     }
-    case 'SCOREBOARD':
-      return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
     case 'GAME_OVER':
       return { ...buildGameOver(room), phase: 'GAME_OVER' };
     default:
@@ -244,6 +241,7 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         // DOES persist and catch a reconnect up (it reuses
         // buildRevealHostPayload, same as the live broadcast).
         socratesIntro: null,
+        standings: computeStandings(room),
       };
     }
     case 'REVEAL': {
@@ -254,8 +252,6 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
       const payload = buildStealHostPayload(room);
       return payload ? { ...payload, phase: 'STEAL', remainingMs: remainingActiveTimerMs(room) } : null;
     }
-    case 'SCOREBOARD':
-      return { ...buildScoreboard(room), phase: 'SCOREBOARD' };
     case 'GAME_OVER':
       return { ...buildGameOver(room), phase: 'GAME_OVER' };
   }
@@ -506,7 +502,7 @@ io.on('connection', (socket) => {
     }
 
     // Structurally unreachable today (pause requires QUESTION/REVEAL/
-    // SCOREBOARD, this requires LOBBY - the two can never overlap) - kept
+    // STEAL, this requires LOBBY - the two can never overlap) - kept
     // explicit anyway so the intent doesn't silently depend on that.
     if (room.paused) {
       console.log(`rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: game is paused`);
@@ -833,12 +829,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (room.phase === 'SCOREBOARD') {
-      console.log(`room ${room.code} skipped past scoreboard (VIP)`);
-      advanceFromScoreboard(room.code);
-      return;
-    }
-
     // A STEAL may only be skipped once it has RESOLVED - i.e. the VIP is
     // cutting the announcement short, never the thief's own thinking time
     // (which would silently rob them of the pick they're entitled to).
@@ -852,7 +842,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or SCOREBOARD`);
+    console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or STEAL`);
   });
 
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {
@@ -881,7 +871,7 @@ io.on('connection', (socket) => {
 
   // Lets the VIP abandon an in-progress game (e.g. it was started before
   // everyone had joined) and go straight back to LOBBY - unlike
-  // vip:play_again, this is reachable from QUESTION/REVEAL/SCOREBOARD, not
+  // vip:play_again, this is reachable from QUESTION/REVEAL/STEAL, not
   // just GAME_OVER. Deliberately NOT blocked by `room.paused`: resetting
   // must work even mid-pause, and resetRoomForNewGame clears the pause
   // state itself so the fresh LOBBY is never left frozen.

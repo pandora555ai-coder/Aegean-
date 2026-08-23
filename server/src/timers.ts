@@ -1,11 +1,11 @@
-// The ONE shared timer mechanism behind the question timer, the REVEAL
-// auto-advance, and the SCOREBOARD auto-advance - previously three ad-hoc
-// setTimeout fields. Whichever phase-advancing timer is currently running
-// (at most one at a time - a room is only ever in one phase) lives here.
+// The ONE shared timer mechanism behind the question timer and the REVEAL
+// auto-advance - previously ad-hoc setTimeout fields. Whichever
+// phase-advancing timer is currently running (at most one at a time - a
+// room is only ever in one phase) lives here.
 export interface ActiveTimer {
   // STEAL runs TWO of these back to back: 'STEAL' while the thief is picking,
   // then 'STEAL_ANNOUNCE' for the beat the TV spends announcing the result.
-  kind: 'STAGE_ANNOUNCE' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE' | 'SCOREBOARD';
+  kind: 'STAGE_ANNOUNCE' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE';
   handle: NodeJS.Timeout | null;
   startedAt: number;
   durationMs: number;
@@ -62,8 +62,8 @@ export function pauseActiveTimer(room: TimedRoom): void {
 
 // Resumes a frozen timer for EXACTLY its remaining time - never the full
 // original duration. `onFire` must be the continuation appropriate for the
-// timer's `kind` (endQuestion / advanceFromReveal / advanceFromScoreboard)
-// - the caller picks it, since those live in index.ts and reach into `io`.
+// timer's `kind` (endQuestion / advanceFromReveal / ...) - the caller picks
+// it, since those live in index.ts and reach into `io`.
 // A no-op if there's no timer, or it isn't actually paused.
 export function resumeActiveTimer(room: TimedRoom, onFire: () => void): void {
   const timer = room.activeTimer;
@@ -80,8 +80,8 @@ export function resumeActiveTimer(room: TimedRoom, onFire: () => void): void {
 // How much time is left on the active timer RIGHT NOW - the frozen value
 // while paused, or a live countdown against the server clock otherwise.
 // The ONE source of truth for every remainingMs/autoAdvanceMs a client
-// ever sees, replacing three separate ad-hoc computations (one each for
-// QUESTION/REVEAL/SCOREBOARD).
+// ever sees, replacing separate ad-hoc computations (one each for
+// QUESTION/REVEAL/...).
 export function remainingActiveTimerMs(room: TimedRoom): number {
   const timer = room.activeTimer;
   if (!timer) {

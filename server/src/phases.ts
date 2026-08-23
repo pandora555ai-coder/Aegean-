@@ -1,8 +1,6 @@
 import {
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
-  SCOREBOARD_DURATION_MS,
-  SCOREBOARD_EVERY_N_QUESTIONS,
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
@@ -30,8 +28,8 @@ import {
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
-  buildScoreboard,
   buildGameOver,
+  computeStandings,
 } from './payloads.js';
 
 // Sorts `results` IN PLACE: correct answers first (fastest first), then
@@ -113,7 +111,7 @@ export function endStageAnnounce(code: RoomCode): void {
 }
 
 // The ONLY way any question is ever entered - vip:start_game and every
-// advance past a REVEAL/SCOREBOARD both come through here. That's what makes
+// advance past a REVEAL/STEAL both come through here. That's what makes
 // "the stage decides whether a POWER_UP precedes this question, and every
 // stage announces itself once" structural rather than something each caller
 // has to remember.
@@ -242,6 +240,7 @@ export function startQuestion(room: Room): void {
     paused: room.paused,
     pausedByName: room.pausedByName,
     socratesIntro,
+    standings: computeStandings(room),
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);
@@ -405,22 +404,12 @@ export function endQuestion(code: RoomCode): void {
   armActiveTimer(room, 'REVEAL', REVEAL_DURATION_MS, () => advanceFromReveal(room.code));
 }
 
-// Whether the just-finished question should be followed by a SCOREBOARD -
-// every SCOREBOARD_EVERY_N_QUESTIONS questions, and ALWAYS after the final
-// question (so there's a stop right before GAME_OVER). REVEAL already shows
-// per-player results with animation; a scoreboard after every single
-// question just repeats it, hence the skip.
-function shouldShowScoreboard(room: Room): boolean {
-  const questionNumber = room.currentQuestionIndex + 1; // 1-based
-  const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
-  return isLastQuestion || questionNumber % SCOREBOARD_EVERY_N_QUESTIONS === 0;
-}
-
 // Ends REVEAL exactly once - guarded by the phase check, so whichever of
 // (the auto-advance timer firing) / (host clicking "skip") happens first
 // wins, and the timer is always cleared so it can never fire twice. In a
-// stealing stage the STEAL phase goes HERE, between REVEAL and any
-// SCOREBOARD, so the standings a scoreboard shows are always post-theft.
+// stealing stage the STEAL phase goes HERE, right after REVEAL, so the
+// score column's post-theft figures are always the ones the next phase
+// shows.
 export function advanceFromReveal(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'REVEAL') {
@@ -437,7 +426,7 @@ export function advanceFromReveal(code: RoomCode): void {
 // this particular round produced a thief - "nobody answered correctly" (and
 // the other no-thief cases in buildStealState) simply skips it entirely.
 // Returns whether the phase actually began, so the caller knows whether to
-// carry on to SCOREBOARD/next question itself.
+// carry on to the next question itself.
 function startStealIfEligible(room: Room): boolean {
   if (!stageForQuestionIndex(room.currentQuestionIndex).stealAfterEveryQuestion) {
     return false;
@@ -524,40 +513,15 @@ export function advanceFromSteal(code: RoomCode): void {
   continueAfterReveal(room);
 }
 
-// What follows a REVEAL once any STEAL is done with: either SCOREBOARD
-// (arming its own timer) or - when this question doesn't warrant one - the
-// next question/GAME_OVER, exactly as if a SCOREBOARD had shown and
-// immediately auto-advanced.
+// What follows a REVEAL once any STEAL is done with (Task 38 - the mid-game
+// SCOREBOARD phase is gone now that scores are always visible on the TV's
+// score column): straight to the next question, or GAME_OVER on the last one.
 function continueAfterReveal(room: Room): void {
-  if (!shouldShowScoreboard(room)) {
-    console.log(`room ${room.code} skipping scoreboard after question ${room.currentQuestionIndex + 1}`);
-    advanceToNextQuestionOrGameOver(room);
-    return;
-  }
-
-  room.phase = 'SCOREBOARD';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  // Crowd mood (Task 35) - not one of the tension/cheer/boo phases, back to calm.
-  setCrowdMood(room, 'calm');
-  io.to(room.code).emit(ServerEvents.SCOREBOARD_SHOW, buildScoreboard(room));
-  console.log(`room ${room.code} showing scoreboard after question ${room.currentQuestionIndex + 1}`);
-
-  armActiveTimer(room, 'SCOREBOARD', SCOREBOARD_DURATION_MS, () => advanceFromScoreboard(room.code));
-}
-
-// Same one-shot discipline as advanceFromReveal.
-export function advanceFromScoreboard(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'SCOREBOARD') {
-    return;
-  }
   advanceToNextQuestionOrGameOver(room);
 }
 
-// The shared tail of both advanceFromReveal (when it skips SCOREBOARD
-// entirely) and advanceFromScoreboard (once SCOREBOARD's own time is up) -
-// either the next question starts, or - on the final question, always
-// reached via SCOREBOARD since shouldShowScoreboard forces it - the game
+// The shared tail of advanceFromReveal (directly, or via a STEAL first) -
+// either the next question starts, or - on the final question - the game
 // ends.
 function advanceToNextQuestionOrGameOver(room: Room): void {
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
@@ -598,7 +562,5 @@ export function continuationForActiveTimer(room: Room): (() => void) | null {
       return () => resolveSteal(room.code, null);
     case 'STEAL_ANNOUNCE':
       return () => advanceFromSteal(room.code);
-    case 'SCOREBOARD':
-      return () => advanceFromScoreboard(room.code);
   }
 }

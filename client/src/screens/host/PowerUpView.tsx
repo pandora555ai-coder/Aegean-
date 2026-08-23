@@ -5,6 +5,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { GameLayout } from './GameLayout';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
 interface PowerUpViewProps {
@@ -39,18 +40,7 @@ export function PowerUpView({
 
   const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
   return (
-    <div style={styles.container} className="screen-fade-in">
-      {roomCode && (
-        <div style={styles.cornerRoomCode} data-testid="corner-room-code">
-          {roomCode}
-        </div>
-      )}
-      {paused && (
-        <div style={styles.pauseOverlay} data-testid="pause-overlay">
-          <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
-          <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
-        </div>
-      )}
+    <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={powerUp.standings}>
       <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
         <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="power-up-countdown">
           {secondsLeft}
@@ -62,7 +52,7 @@ export function PowerUpView({
           Διάλεξε το όπλο σου!
         </div>
         <div style={styles.progress} data-testid="power-up-subtitle">
-          Στα κινητά σας — πριν την ερώτηση {powerUp.questionIndex + 1}/{powerUp.totalQuestions}
+          Στα κινητά σας
         </div>
       </div>
       <div style={styles.answerCounter} data-testid="power-up-progress">
@@ -89,6 +79,6 @@ export function PowerUpView({
           );
         })}
       </div>
-    </div>
+    </GameLayout>
   );
 }

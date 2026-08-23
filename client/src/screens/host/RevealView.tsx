@@ -8,14 +8,12 @@ import {
 } from '@game/shared';
 import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
+import { GameLayout } from './GameLayout';
 import {
   SURFACE_GLOW,
-  containerGap,
   resultAvatarSize,
   resultRowSizeStyle,
   resultsListGap,
-  revealStandingsAvatarSize,
-  revealStandingsStripSizeStyle,
   styles,
   type CSSVars,
 } from './hostStyles';
@@ -31,25 +29,15 @@ interface RevealViewProps {
 
 export function RevealView({ reveal, question, roomCode, paused, pausedByName, revealSecondsLeft }: RevealViewProps) {
   const count = reveal.results.length;
-  const standingsStripStyle = revealStandingsStripSizeStyle(count);
-  const standingsAvatar = revealStandingsAvatarSize(count);
 
   return (
-    <div style={{ ...styles.container, gap: containerGap(count) }} className="screen-fade-in" key={question.questionIndex}>
-      {roomCode && (
-        <div style={styles.cornerRoomCode} data-testid="corner-room-code">
-          {roomCode}
-        </div>
-      )}
-      {paused && (
-        <div style={styles.pauseOverlay} data-testid="pause-overlay">
-          <div style={styles.pauseTitle}>ΠΑΥΣΗ</div>
-          <div style={styles.pauseSubtitle}>Ο/Η {pausedByName} έκανε παύση</div>
-        </div>
-      )}
-      <div style={styles.progress}>
-        Ερώτηση {question.questionIndex + 1}/{question.totalQuestions}
-      </div>
+    <GameLayout
+      roomCode={roomCode}
+      paused={paused}
+      pausedByName={pausedByName}
+      standings={reveal.standings}
+      contentKey={question.questionIndex}
+    >
       {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY. Plain block
           flow, not an overlay, so it can never cover the results or the
           correct answer - it just takes its own line, pushing the rest
@@ -63,23 +51,6 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           {reveal.socratesLine}
         </div>
       )}
-      {/* Running standings stay glanceable during REVEAL - a compact strip,
-          not the full SCOREBOARD phase, so skipping SCOREBOARD (Task 22)
-          never loses information. Sorted client-side straight from
-          reveal.results, which already carries every connected player's
-          current totalScore - no extra server payload needed. */}
-      <div style={{ ...styles.revealStandingsStrip, ...standingsStripStyle }} data-testid="reveal-standings-strip">
-        {[...reveal.results]
-          .sort((a, b) => b.totalScore - a.totalScore)
-          .map((result, index) => (
-            <span key={result.playerId} style={styles.revealStandingsItem} data-testid="reveal-standings-item">
-              <span style={styles.revealStandingsRank}>{index + 1}.</span>
-              <Avatar avatarId={result.avatarId} sizeRem={standingsAvatar} />
-              <span style={styles.revealStandingsName}>{result.name}</span>
-              <span style={styles.revealStandingsScore}>{result.totalScore}</span>
-            </span>
-          ))}
-      </div>
       <div style={styles.optionsGrid}>
         {question.options.map((option, index) => {
           const identity = ANSWER_IDENTITIES[index];
@@ -170,6 +141,6 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           }}
         />
       </div>
-    </div>
+    </GameLayout>
   );
 }

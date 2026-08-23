@@ -29,7 +29,6 @@ export const ServerEvents = {
   ANSWER_ACCEPTED: 'answer:accepted',
   ANSWER_PROGRESS: 'answer:progress',
   REVEAL_SHOW: 'reveal:show',
-  SCOREBOARD_SHOW: 'scoreboard:show',
   GAME_OVER: 'game:over',
   STATE_SYNC: 'state:sync',
   VIP_CHANGED: 'vip:changed',
@@ -146,12 +145,6 @@ export function sanitizeCustomName(input: string): string {
 export const BASE_POINTS = 1000;
 export const SPEED_BONUS_MAX = 500;
 export const REVEAL_DURATION_MS = 6000;
-export const SCOREBOARD_DURATION_MS = 4000;
-// REVEAL already shows who answered what, how fast, and the points gained -
-// a separate SCOREBOARD phase after EVERY question just repeats it. Shown
-// only every Nth question (see shouldShowScoreboard in server/src/index.ts)
-// and always after the final question, right before GAME_OVER.
-export const SCOREBOARD_EVERY_N_QUESTIONS = 3;
 
 export interface ClientPingPayload {
   sentAt: number;
@@ -269,7 +262,6 @@ export type GamePhase =
   | 'QUESTION'
   | 'REVEAL'
   | 'STEAL'
-  | 'SCOREBOARD'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
@@ -303,8 +295,8 @@ export interface StageDefinition {
   // economy and nothing is held over: a power-up is chosen and spent inside
   // the same stage-question boundary.
   powerUpBeforeEveryQuestion: boolean;
-  // When true, EVERY question of this stage is FOLLOWED (after its REVEAL,
-  // before any SCOREBOARD) by a STEAL phase in which the fastest correct
+  // When true, EVERY question of this stage is FOLLOWED (right after its
+  // REVEAL) by a STEAL phase in which the fastest correct
   // answerer takes points off one other player. Skipped entirely on a
   // question nobody got right - see startStealIfEligible in phases.ts.
   stealAfterEveryQuestion: boolean;
@@ -542,6 +534,9 @@ export interface PowerUpShowHostPayload {
   chosenPlayerIds: string[]; // WHO has committed - never what they chose
   paused: boolean;
   pausedByName: string | null;
+  // Task 38 - every player's current score, for the TV's persistent right
+  // column. See PlayerStanding.
+  standings: PlayerStanding[];
 }
 
 export interface PowerUpShowPlayerPayload {
@@ -605,20 +600,15 @@ export interface StealChoosePayload {
   targetPlayerId: string;
 }
 
-// Every player's current score, for the TV's "what's at stake" strip - built
+// Every player's current score + rank (see PlayerStanding), for the TV's
+// "what's at stake" strip AND its persistent score column (Task 38) - built
 // fresh on each send just like StealTarget, so it carries the PRE-theft
 // scores while the thief is choosing and the POST-theft scores once
 // buildStealHostPayload is re-run after applySteal has moved the points.
 // Order is room.players' insertion (join) order, NEVER re-sorted by score -
 // rows must stay in the same slot while a score animates, or the transfer
 // would read as a swap instead of a transfer.
-export interface StealStanding {
-  playerId: string;
-  name: string;
-  avatarId: string;
-  score: number;
-  connected: boolean;
-}
+export type StealStanding = PlayerStanding;
 
 // Public, symmetric, and only ever sent AFTER the theft has been applied -
 // the whole room (TV included) sees the same figures. `victimPlayerId` is
@@ -773,6 +763,9 @@ export interface QuestionShowHostPayload {
   // on rare games where every applicable line pool happened to already be
   // exhausted.
   socratesIntro: string | null;
+  // Task 38 - every player's current score, for the TV's persistent right
+  // column. See PlayerStanding.
+  standings: PlayerStanding[];
 }
 
 export interface QuestionShowPlayerPayload {
@@ -844,6 +837,9 @@ export interface RevealHostPayload {
   // now safe to announce publicly (host TV, shared by everyone) now that the
   // question is over. Empty when nobody cast this round.
   sabotageAnnouncements: SabotageAnnouncement[];
+  // Task 38 - every player's current score, for the TV's persistent right
+  // column. See PlayerStanding.
+  standings: PlayerStanding[];
 }
 
 export interface RevealPlayerPayload {
@@ -875,7 +871,12 @@ export function isRevealHostPayload(payload: RevealShowPayload): payload is Reve
 
 export interface VipNextPayload {}
 
-export interface ScoreboardStanding {
+// Every player's current score + rank, in room.players' insertion (join)
+// order - NEVER re-sorted by score, so the TV's persistent score column
+// (Task 38) never reshuffles rows as a total changes. Included on every
+// host payload (QUESTION/POWER_UP/REVEAL) so the column always has
+// something to render, whatever phase a reconnect lands the host on.
+export interface PlayerStanding {
   playerId: string;
   name: string;
   avatarId: string;
@@ -884,22 +885,10 @@ export interface ScoreboardStanding {
   connected: boolean;
 }
 
-// Symmetric, unlike question:show / reveal:show - standings are public,
-// that's the point of a scoreboard.
-export interface ScoreboardPayload {
-  standings: ScoreboardStanding[];
-  questionIndex: number; // the question just completed, 0-based
-  totalQuestions: number;
-  isLastQuestion: boolean;
-  autoAdvanceMs: number;
-  paused: boolean;
-  pausedByName: string | null;
-}
-
 export interface VipPlayAgainPayload {}
 
 // Pause is a boolean flag on the room, NOT a new GamePhase - the phase
-// stays QUESTION/REVEAL/SCOREBOARD throughout a pause, so every existing
+// stays QUESTION/REVEAL/STEAL throughout a pause, so every existing
 // phase guard keeps working unchanged; only `paused` changes.
 export interface GamePausePayload {}
 export interface GameResumePayload {}
@@ -996,10 +985,6 @@ export type StateSyncStealPlayerPayload = StealShowPlayerPayload & {
   remainingMs: number;
 };
 
-export interface StateSyncScoreboardPayload extends ScoreboardPayload {
-  phase: 'SCOREBOARD';
-}
-
 export interface StateSyncGameOverPayload extends GameOverPayload {
   phase: 'GAME_OVER';
 }
@@ -1015,7 +1000,6 @@ export type StateSyncPayload =
   | StateSyncRevealPlayerPayload
   | StateSyncStealHostPayload
   | StateSyncStealPlayerPayload
-  | StateSyncScoreboardPayload
   | StateSyncGameOverPayload;
 
 export type ClientToServerEvents = {
@@ -1049,7 +1033,6 @@ export type ServerToClientEvents = {
   [ServerEvents.ANSWER_ACCEPTED]: (payload: AnswerAcceptedPayload) => void;
   [ServerEvents.ANSWER_PROGRESS]: (payload: AnswerProgressPayload) => void;
   [ServerEvents.REVEAL_SHOW]: (payload: RevealShowPayload) => void;
-  [ServerEvents.SCOREBOARD_SHOW]: (payload: ScoreboardPayload) => void;
   [ServerEvents.GAME_OVER]: (payload: GameOverPayload) => void;
   [ServerEvents.STATE_SYNC]: (payload: StateSyncPayload) => void;
   [ServerEvents.VIP_CHANGED]: (payload: VipChangedPayload) => void;

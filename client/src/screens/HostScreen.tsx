@@ -24,7 +24,6 @@ import {
   type RoomCode,
   type RoomCreatedPayload,
   type RoomSettings,
-  type ScoreboardPayload,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
   type StageAnnouncePayload,
@@ -47,7 +46,6 @@ import { StealView } from './host/StealView';
 import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
-import { ScoreboardView } from './host/ScoreboardView';
 import { GameOverView } from './host/GameOverView';
 
 export default function HostScreen() {
@@ -60,10 +58,8 @@ export default function HostScreen() {
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
-  const [scoreboard, setScoreboard] = useState<ScoreboardPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
-  const [scoreboardSecondsLeft, setScoreboardSecondsLeft] = useState(0);
   // Power-up (Task 30b). Two pieces of state, exactly like question/
   // answerProgress: the phase payload is set ONCE per phase, and the ticker
   // that follows updates only the progress - so the countdown below can key
@@ -93,7 +89,6 @@ export default function HostScreen() {
     playCountdownTick,
     playCountdownExpire,
     playRevealCue,
-    playScoreboardCue,
     playGameOverFanfare,
   } = useGameAudio();
   const [paused, setPaused] = useState(false);
@@ -109,7 +104,8 @@ export default function HostScreen() {
   // still need the LATEST value - avoids a stale-closure read of `roomCode`.
   const roomCodeRef = useRef<RoomCode | null>(null);
   // Mirrors `phase` for the SAME reason - game:resumed needs to know which
-  // of secondsLeft/revealSecondsLeft/scoreboardSecondsLeft to correct.
+  // of secondsLeft/revealSecondsLeft/powerUpSecondsLeft/stealSecondsLeft to
+  // correct.
   const phaseRef = useRef<GamePhase>('LOBBY');
   // Mirrors `secondsLeft` so the countdown-sound decision can be made from
   // a plain setInterval callback instead of inside setSecondsLeft's
@@ -168,11 +164,10 @@ export default function HostScreen() {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round view
         // so the lobby renders cleanly instead of a stale QUESTION/REVEAL/
-        // SCOREBOARD/GAME_OVER screen flashing first.
+        // GAME_OVER screen flashing first.
         setQuestion(null);
         setAnswerProgress(null);
         setReveal(null);
-        setScoreboard(null);
         setGameOver(null);
         setPowerUp(null);
         setPowerUpProgress(null);
@@ -199,7 +194,6 @@ export default function HostScreen() {
         applySecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
         setAnswerProgress(null);
         setReveal(null);
-        setScoreboard(null);
         // The question a POWER_UP phase preceded starts the instant that
         // phase ends - drop its view rather than leaving it behind.
         setPowerUp(null);
@@ -229,7 +223,6 @@ export default function HostScreen() {
         setQuestion(null);
         setAnswerProgress(null);
         setReveal(null);
-        setScoreboard(null);
         setPowerUp(payload);
         setPowerUpProgress(payload);
         setPaused(payload.paused);
@@ -255,7 +248,6 @@ export default function HostScreen() {
         setQuestion(null);
         setAnswerProgress(null);
         setReveal(null);
-        setScoreboard(null);
         setPowerUp(null);
         setPowerUpProgress(null);
         setSteal(payload);
@@ -307,15 +299,6 @@ export default function HostScreen() {
       }
     }
 
-    function handleScoreboardShow(payload: ScoreboardPayload) {
-      setScoreboard(payload);
-      setPaused(payload.paused);
-      setPausedByName(payload.pausedByName);
-      if (!payload.paused) {
-        playScoreboardCue();
-      }
-    }
-
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -332,8 +315,6 @@ export default function HostScreen() {
         applySecondsLeft(seconds);
       } else if (phaseRef.current === 'REVEAL') {
         setRevealSecondsLeft(seconds);
-      } else if (phaseRef.current === 'SCOREBOARD') {
-        setScoreboardSecondsLeft(seconds);
       } else if (phaseRef.current === 'POWER_UP') {
         setPowerUpSecondsLeft(seconds);
       } else if (phaseRef.current === 'STEAL') {
@@ -361,7 +342,6 @@ export default function HostScreen() {
       setQuestion(null);
       setAnswerProgress(null);
       setReveal(null);
-      setScoreboard(null);
       setGameOver(null);
       setPowerUp(null);
       setPowerUpProgress(null);
@@ -419,11 +399,6 @@ export default function HostScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
-        case 'SCOREBOARD':
-          setScoreboard(payload);
-          setPaused(payload.paused);
-          setPausedByName(payload.pausedByName);
-          break;
         case 'GAME_OVER':
           setGameOver(payload);
           break;
@@ -442,7 +417,6 @@ export default function HostScreen() {
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
-    socket.on(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -462,7 +436,6 @@ export default function HostScreen() {
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
-      socket.off(ServerEvents.SCOREBOARD_SHOW, handleScoreboardShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -502,12 +475,12 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [phase, question?.questionIndex, paused]);
 
-  // Local countdowns driving the REVEAL/SCOREBOARD progress bars - purely
-  // cosmetic, so the moment doesn't feel abrupt. The server's own timers are
-  // what actually advance the game; these never have to be trusted. Unlike
-  // QUESTION above, `reveal`/`scoreboard.autoAdvanceMs` is ALWAYS the live
-  // server-computed remaining time (fresh or reconnect alike), so resetting
-  // from it whenever the object itself changes is always correct.
+  // Local countdown driving REVEAL's progress bar - purely cosmetic, so the
+  // moment doesn't feel abrupt. The server's own timer is what actually
+  // advances the game; this never has to be trusted. `reveal.autoAdvanceMs`
+  // is ALWAYS the live server-computed remaining time (fresh or reconnect
+  // alike), so resetting from it whenever the object itself changes is
+  // always correct.
   useEffect(() => {
     if (!reveal) {
       return;
@@ -525,14 +498,7 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [reveal, paused]);
 
-  useEffect(() => {
-    if (!scoreboard) {
-      return;
-    }
-    setScoreboardSecondsLeft(Math.ceil(scoreboard.autoAdvanceMs / 1000));
-  }, [scoreboard]);
-
-  // POWER_UP's own countdown (Task 30b) - same pattern as the two above, and
+  // POWER_UP's own countdown (Task 30b) - same pattern as the one above, and
   // for the same reason it can key off `powerUp`: that object is set once per
   // phase, and its durationMs is always the server's live remaining time
   // (fresh phase or reconnect alike). Progress ticks live in separate state,
@@ -573,16 +539,6 @@ export default function HostScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [steal, paused]);
-
-  useEffect(() => {
-    if (!scoreboard || paused) {
-      return;
-    }
-    const interval = setInterval(() => {
-      setScoreboardSecondsLeft((current) => Math.max(0, current - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [scoreboard, paused]);
 
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
@@ -674,18 +630,6 @@ export default function HostScreen() {
           paused={paused}
           pausedByName={pausedByName}
           secondsLeft={stealSecondsLeft}
-        />
-      );
-    }
-
-    if (phase === 'SCOREBOARD' && scoreboard) {
-      return (
-        <ScoreboardView
-          scoreboard={scoreboard}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          scoreboardSecondsLeft={scoreboardSecondsLeft}
         />
       );
     }
