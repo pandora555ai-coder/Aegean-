@@ -173,12 +173,17 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
 // state:sync catch-up can never show two different lines. Null only when
 // there is no line at all, which is precisely when the server skips the phase.
 export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
-  const line = room.lastReveal?.socratesLine;
+  // Task 48 - GAME_INTRO/STAGE_INTRO/WINNER beats carry their own line
+  // outside room.lastReveal (there may be no reveal yet, or none at all
+  // this beat is about). Checked first; a REVEAL-moment beat never sets
+  // this, so the fallback below is byte-for-byte what it always was.
+  const pending = room.pendingSocratesBeat;
+  const line = pending?.line ?? room.lastReveal?.socratesLine;
   if (!line) {
     return null;
   }
-  const lineTemplate = room.lastReveal?.socratesLineTemplate ?? '';
-  const lineTag = room.lastReveal?.socratesLineTag ?? null;
+  const lineTemplate = pending?.lineTemplate ?? room.lastReveal?.socratesLineTemplate ?? '';
+  const lineTag = pending?.lineTag ?? room.lastReveal?.socratesLineTag ?? null;
   // Recomputed from the same template every call (live broadcast AND a later
   // state:sync alike) rather than read off the timer, which only ever holds
   // what's LEFT of a DIFFERENT span now (Task 42c below).
@@ -196,7 +201,11 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     line,
     lineTemplate,
     lineTag,
-    questionIndex: room.currentQuestionIndex,
+    // WINNER plays after the final question is already scored, so it must
+    // never share a contentKey (client-side) with that same question's own
+    // REVEAL-moment beat - one past the last real index is a natural,
+    // always-distinct value for it.
+    questionIndex: pending?.kind === 'WINNER' ? room.questions.length : room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     durationMs,
     totalDurationMs,

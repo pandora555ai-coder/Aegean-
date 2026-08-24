@@ -98,6 +98,18 @@ export interface RevealSnapshot {
   socratesLineTag: string | null;
 }
 
+// Task 48 - the line currently held by a SOCRATES beat that ISN'T a
+// REVEAL-moment commentary (those keep using RevealSnapshot.socratesLine*
+// above, untouched). Set right before the phase begins, read by
+// buildSocratesPayload, and cleared by advanceFromSocrates once it decides
+// what the beat's `kind` means for what comes next.
+export interface PendingSocratesBeat {
+  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER';
+  line: string;
+  lineTemplate: string;
+  lineTag: string | null;
+}
+
 // A room is deleted only once it's been fully empty - no host/TV display
 // AND no connected players - for this long. Reattaching either cancels it.
 export const ROOM_TTL_MS = 300000; // 5 minutes
@@ -148,6 +160,15 @@ export interface Room {
   // tracking plus every line already used this game, so commentary never
   // repeats itself and never roasts the same player every single round.
   socrates: SocratesState;
+  // Task 48 - whether GAME_INTRO has already played this game (it must play
+  // exactly once, before the first STAGE_ANNOUNCE). Separate from `stage`
+  // (which starts at 0 too) so a mid-stage-1 reconnect can never be misread
+  // as "GAME_INTRO hasn't happened yet".
+  gameIntroPlayed: boolean;
+  // Non-null only while the current SOCRATES phase is a GAME_INTRO/
+  // STAGE_INTRO/WINNER beat rather than a REVEAL-moment one. See
+  // PendingSocratesBeat.
+  pendingSocratesBeat: PendingSocratesBeat | null;
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
   // scratch at the start of every one. A LIST since Task 31a: at most one
@@ -231,6 +252,8 @@ export function createRoom(hostSocketId: string): Room {
     pausedAt: null,
     emptyTtlTimer: null,
     socrates: createSocratesState(),
+    gameIntroPlayed: false,
+    pendingSocratesBeat: null,
     activeSabotageByTarget: new Map(),
     shuffledOptionsByTarget: new Map(),
     powerUpChoices: new Map(),
@@ -497,6 +520,9 @@ export function resetRoomForNewGame(room: Room): void {
   // A fresh game means fresh commentary too - no streaks/cooldowns/used
   // lines carried over from the game that just ended.
   resetSocratesState(room.socrates);
+  // A fresh game opens with GAME_INTRO again too.
+  room.gameIntroPlayed = false;
+  room.pendingSocratesBeat = null;
   room.activeSabotageByTarget.clear();
   room.shuffledOptionsByTarget.clear();
   // No unspent power-up choice carries over from the game that just ended.

@@ -895,9 +895,9 @@ export const AUDIO_BITRATE_KBPS = 64;
 // ends the phase exactly when the client reports the clip truly finished
 // (see SOCRATES_AUDIO_ENDED). Must comfortably exceed the longest actually
 // generated clip - `npm run voice:generate` reports that length after every
-// run (last measured: ~5047ms) - with real headroom for normal network/
-// decode latency before playback even starts.
-export const SOCRATES_MAX_DURATION_MS = 7000;
+// run (last measured: ~7268ms, Task 48's GAME_INTRO lines) - with real
+// headroom for normal network/decode latency before playback even starts.
+export const SOCRATES_MAX_DURATION_MS = 8500;
 
 // sha256(template [+ tag]), hex, first 16 chars - deliberately synchronous
 // and dependency-free (no node:crypto, which the browser build can't

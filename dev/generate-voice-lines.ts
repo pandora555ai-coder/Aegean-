@@ -10,7 +10,14 @@
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
-import { LINES, INTRO_LINES, LINE_TAGS } from '../server/src/socrates.ts';
+import {
+  LINES,
+  INTRO_LINES,
+  LINE_TAGS,
+  GAME_INTRO_LINES,
+  STAGE_INTRO_LINES,
+  WINNER_LINES,
+} from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
 import { lineHash, stripPlaceholders } from './voice/text.ts';
@@ -44,6 +51,19 @@ function allLineTemplates(): string[] {
     for (const line of pool) {
       templates.add(line);
     }
+  }
+  // Task 48 - GAME_INTRO/STAGE_INTRO/WINNER, generated the same way as
+  // every other pool: one MP3 per (template, tag) pair.
+  for (const line of GAME_INTRO_LINES) {
+    templates.add(line);
+  }
+  for (const pool of Object.values(STAGE_INTRO_LINES)) {
+    for (const line of pool ?? []) {
+      templates.add(line);
+    }
+  }
+  for (const line of WINNER_LINES) {
+    templates.add(line);
   }
   return [...templates];
 }

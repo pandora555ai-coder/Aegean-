@@ -16,7 +16,15 @@ import { getConnectedPlayers, getRoom, type Room } from './state.js';
 import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
-import { pickQuestionIntro, recordRoundAndPickLine, type SocratesPlayerRoundInput } from './socrates.js';
+import {
+  pickGameIntroLine,
+  pickQuestionIntro,
+  pickStageIntroLine,
+  pickWinnerLine,
+  recordRoundAndPickLine,
+  type PickedLine,
+  type SocratesPlayerRoundInput,
+} from './socrates.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -103,11 +111,19 @@ function announceStageIfChanged(room: Room): boolean {
 }
 
 // Ends the announcement beat exactly once - guarded by the phase check, the
-// same one-shot discipline as every other advanceFrom*.
+// same one-shot discipline as every other advanceFrom*. Task 48: plays that
+// stage's STAGE_INTRO beat right after the card, before the round itself
+// starts - announceStageIfChanged already guarantees this runs exactly once
+// per stage, so no separate "already played" flag is needed here the way
+// GAME_INTRO needs one.
 export function endStageAnnounce(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'STAGE_ANNOUNCE') {
     return;
+  }
+  const stage = stageForQuestionIndex(room.currentQuestionIndex).stage;
+  if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stage))) {
+    return; // advanceFromSocrates calls beginRound once the beat is over
   }
   beginRound(room);
 }
@@ -118,10 +134,53 @@ export function endStageAnnounce(code: RoomCode): void {
 // stage announces itself once" structural rather than something each caller
 // has to remember.
 export function enterQuestionOrPowerUp(room: Room): void {
+  // Task 48 - GAME_INTRO, exactly once per game, before anything else. This
+  // gate runs on EVERY call (not just the very first), but the flag makes it
+  // a cheap no-op past the first time - so nothing else here has to know
+  // whether it's "the first call" itself.
+  if (!room.gameIntroPlayed && startGameIntro(room)) {
+    return; // advanceFromSocrates re-enters this same gate once it's over
+  }
   if (announceStageIfChanged(room)) {
     return; // endStageAnnounce starts the round once the beat is over
   }
   beginRound(room);
+}
+
+// Set BEFORE attempting the beat, not after: GAME_INTRO must play at most
+// once even if its pool somehow came back empty (practically unreachable -
+// a fresh game always has a full, unused GAME_INTRO_LINES pool).
+function startGameIntro(room: Room): boolean {
+  room.gameIntroPlayed = true;
+  return startSocratesBeat(room, 'GAME_INTRO', pickGameIntroLine(room.socrates));
+}
+
+// Task 48 - the shared entry for the three one-shot beats (GAME_INTRO/
+// STAGE_INTRO/WINNER), parallel to startSocratesIfLineFired below but for a
+// line that ISN'T tied to room.lastReveal. `picked` is null exactly when
+// that beat's pool has nothing left to say (see PickedLine callers) - in
+// which case this is a no-op and the caller falls through to whatever
+// would've happened anyway, same "no line, no phase" discipline as every
+// other Socrates beat.
+function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER', picked: PickedLine | null): boolean {
+  if (!picked) {
+    return false;
+  }
+  room.pendingSocratesBeat = { kind, line: picked.text, lineTemplate: picked.template, lineTag: picked.tag };
+
+  room.phase = 'SOCRATES';
+  // Same backstop-at-the-ceiling arming as every other Socrates beat (see
+  // startSocratesIfLineFired) - the normal path out is still the client's
+  // SOCRATES_AUDIO_ENDED ack.
+  armActiveTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
+
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  const payload = buildSocratesPayload(room);
+  if (payload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
+  }
+  console.log(`room ${room.code} Socrates (${kind}) — "${picked.text}"`);
+  return true;
 }
 
 // Everything the gate does once any stage announcement is out of the way -
@@ -563,12 +622,33 @@ function startSocratesIfLineFired(room: Room): boolean {
 
 // Ends the commentary beat exactly once - the same one-shot discipline as
 // every other advanceFrom*, so the auto-advance timer and a VIP skip can
-// never both advance.
+// never both advance. Task 48: a REVEAL-moment beat never sets
+// pendingSocratesBeat, so it falls to the original path (back through the
+// one post-REVEAL decision point); GAME_INTRO/STAGE_INTRO/WINNER each carry
+// their own explicit continuation instead, since none of them are part of
+// that post-REVEAL sequence at all.
 export function advanceFromSocrates(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'SOCRATES') {
     return;
   }
+
+  const pending = room.pendingSocratesBeat;
+  if (pending) {
+    room.pendingSocratesBeat = null;
+    switch (pending.kind) {
+      case 'GAME_INTRO':
+        enterQuestionOrPowerUp(room); // now proceeds to announce stage 1
+        return;
+      case 'STAGE_INTRO':
+        beginRound(room); // starts the question (or its power-up) this stage begins with
+        return;
+      case 'WINNER':
+        finishGame(room);
+        return;
+    }
+  }
+
   // Back through the one decision point rather than jumping to the tail
   // itself - the beat is part of the post-REVEAL sequence, not a second
   // path out of it (this is what a stage change on the next question hangs
@@ -577,18 +657,15 @@ export function advanceFromSocrates(code: RoomCode): void {
 }
 
 // The shared tail of advanceFromReveal (directly, or via a STEAL first) -
-// either the next question starts, or - on the final question - the game
-// ends.
+// either the next question starts, or - on the final question - Socrates
+// names the winner (Task 48) before the game actually ends.
 function advanceToNextQuestionOrGameOver(room: Room): void {
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
   if (isLastQuestion) {
-    room.phase = 'GAME_OVER';
-    clearActiveTimer(room); // no more phase-advance timer needed once the game is over
-    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-    setCrowdMood(room, 'calm');
-    const gameOverPayload = buildGameOver(room);
-    io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
-    console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
+    if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
+      return; // advanceFromSocrates calls finishGame once the beat is over
+    }
+    finishGame(room);
     return;
   }
 
@@ -596,6 +673,20 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
   // May run the one POWER_UP phase first, which then starts this question
   // itself once it's done.
   enterQuestionOrPowerUp(room);
+}
+
+// The actual GAME_OVER transition - split out from advanceToNextQuestionOrGameOver
+// so the WINNER beat above can sit between "this was the last question" and
+// this, exactly like STAGE_INTRO sits between a stage announcement and its
+// first question.
+function finishGame(room: Room): void {
+  room.phase = 'GAME_OVER';
+  clearActiveTimer(room); // no more phase-advance timer needed once the game is over
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  setCrowdMood(room, 'calm');
+  const gameOverPayload = buildGameOver(room);
+  io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
+  console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
 }
 
 // The continuation a resumed timer should fire once its remaining time

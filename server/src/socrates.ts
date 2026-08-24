@@ -359,6 +359,66 @@ export const INTRO_LINES: Record<IntroMoment, readonly string[]> = {
   ],
 };
 
+// Task 48 - three more one-shot pools, each played through the SAME held
+// SOCRATES phase/audio path as a REVEAL-moment line (see phases.ts), just
+// triggered by a different event instead of recordRoundAndPickLine:
+//   - GAME_INTRO (8) - once, before the very first STAGE_ANNOUNCE.
+//   - STAGE_INTRO (6 per stage) - once per stage, right after that stage's
+//     announcement card.
+//   - WINNER (8) - once, right before GAME_OVER.
+// All three are plain literal Greek (no {name}/{n}/{category} placeholders -
+// there's no per-round data to substitute at these moments), so they share
+// pickLine's plumbing below with an empty vars object.
+export const GAME_INTRO_LINES: readonly string[] = [
+  'Καλώς ήρθατε στην Αγορά. Καθίστε, και μη βιαστείτε να μιλήσετε.',
+  'Ένας από εσάς θα γίνει μαθητής μου. Οι υπόλοιποι θα φύγετε πιο ταπεινοί.',
+  'Ήρθατε για τη γνώση ή για το πλήθος; Θα φανεί σύντομα.',
+  'Δεν ρωτάω για να δω τι ξέρετε. Ρωτάω για να δω ποιοι είστε.',
+  'Η Αθήνα μαζεύτηκε. Ελπίζω να αξίζει τον χρόνο της.',
+  'Εγώ ένα ξέρω: ότι δεν ξέρω τίποτα. Εσείς θα δυσκολευτείτε περισσότερο.',
+  'Τρεις γύροι σας χωρίζουν από την απάντηση. Ξεκινάμε.',
+  'Ας αρχίσει η διαμάχη. Και ας κερδίσει ο λιγότερο ανόητος.',
+];
+
+// Keyed by StageDefinition.stage (1-based, matches STAGES in shared).
+export const STAGE_INTRO_LINES: Partial<Record<number, readonly string[]>> = {
+  1: [
+    'Η Αγορά. Εδώ ξεκινούν όλα, και εδώ χάνονται οι περισσότεροι.',
+    'Πρώτος γύρος. Ακόμα κανείς δεν έχει ντροπιαστεί.',
+    'Στην Αγορά μιλάει όποιος τολμά. Τολμήστε.',
+    'Ξεκινάμε ήρεμα. Δεν θα κρατήσει.',
+    'Η Αγορά είναι γεμάτη. Ας δούμε ποιος θα μείνει.',
+    'Πρώτα ερωτήματα, απλά ερωτήματα. Οι απαντήσεις θα σας προδώσουν.',
+  ],
+  2: [
+    'Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.',
+    'Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.',
+    'Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.',
+    'Ελπίζω να μην έχετε φίλους εδώ μέσα. Θα σας εμποδίσουν.',
+    'Ένα όπλο ο καθένας. Ας δούμε σε ποιον θα στραφεί.',
+    'Η γνώση χωρίς πονηριά χάνει. Το έμαθα με τον δύσκολο τρόπο.',
+  ],
+  3: [
+    'Η Δίκη. Εδώ δεν υπερασπίζεστε γνώση, υπερασπίζεστε τον εαυτό σας.',
+    'Τελευταίος γύρος. Ξέρω πώς τελειώνουν οι δίκες στην Αθήνα.',
+    'Από εδώ και πέρα, ό,τι κερδίσετε το παίρνετε από κάποιον άλλον.',
+    'Η Δίκη. Επιτέλους κάτι που ξέρω από πρώτο χέρι.',
+    'Δεν υπάρχουν συμμαχίες πια. Ούτε υπήρξαν ποτέ.',
+    'Το τέλος πλησιάζει. Ποιος από εσάς θα το αντέξει;',
+  ],
+};
+
+export const WINNER_LINES: readonly string[] = [
+  'Βρήκα τον μαθητή μου. Η Αθήνα το είδε.',
+  "Ένας στάθηκε πάνω απ' όλους. Δεν ήταν τύχη.",
+  'Αυτό ήταν αξιοπρεπές. Και δεν το λέω συχνά.',
+  'Ο νικητής κέρδισε τη θέση δίπλα μου. Ας δούμε αν την αντέχει.',
+  'Οι υπόλοιποι, μην απελπίζεστε. Και εγώ έχασα μια δίκη κάποτε.',
+  'Τελείωσε. Ένας σοφότερος, οι υπόλοιποι ταπεινότεροι. Καλή συμφωνία.',
+  'Η διαμάχη έληξε. Πήρα την απόφασή μου.',
+  'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.',
+];
+
 // ============================= selection logic =============================
 
 // Task 43: optional eleven_v3 emotion/non-verbal tags ("[sarcastic]",
@@ -552,6 +612,44 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   'Ξεκινάμε. Δεν ξέρω τίποτα, αλλά εσείς ξέρετε ακόμα λιγότερα.': '[amused]',
   'Η Αθήνα ακούει. Μιλήστε προσεκτικά.': '[serious]',
   'Καθίστε. Οι ερωτήσεις μου δεν είναι ευγενικές.': '[dry]',
+  // GAME_INTRO (Task 48)
+  'Καλώς ήρθατε στην Αγορά. Καθίστε, και μη βιαστείτε να μιλήσετε.': '[warm]',
+  'Ήρθατε για τη γνώση ή για το πλήθος; Θα φανεί σύντομα.': '[curious]',
+  'Δεν ρωτάω για να δω τι ξέρετε. Ρωτάω για να δω ποιοι είστε.': '[dry]',
+  'Η Αθήνα μαζεύτηκε. Ελπίζω να αξίζει τον χρόνο της.': '[amused]',
+  'Εγώ ένα ξέρω: ότι δεν ξέρω τίποτα. Εσείς θα δυσκολευτείτε περισσότερο.': '[thoughtful]',
+  'Τρεις γύροι σας χωρίζουν από την απάντηση. Ξεκινάμε.': '[serious]',
+  'Ας αρχίσει η διαμάχη. Και ας κερδίσει ο λιγότερο ανόητος.': '[warm]',
+  // STAGE_INTRO stage 1 — Η Αγορά (Task 48)
+  'Η Αγορά. Εδώ ξεκινούν όλα, και εδώ χάνονται οι περισσότεροι.': '[warm]',
+  'Πρώτος γύρος. Ακόμα κανείς δεν έχει ντροπιαστεί.': '[curious]',
+  'Στην Αγορά μιλάει όποιος τολμά. Τολμήστε.': '[serious]',
+  'Ξεκινάμε ήρεμα. Δεν θα κρατήσει.': '[dry]',
+  'Η Αγορά είναι γεμάτη. Ας δούμε ποιος θα μείνει.': '[amused]',
+  'Πρώτα ερωτήματα, απλά ερωτήματα. Οι απαντήσεις θα σας προδώσουν.': '[thoughtful]',
+  // STAGE_INTRO stage 2 — Οι Σοφιστές (Task 48)
+  'Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.': '[serious]',
+  'Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.': '[amused]',
+  'Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.': '[dry]',
+  'Ελπίζω να μην έχετε φίλους εδώ μέσα. Θα σας εμποδίσουν.': '[sarcastic]',
+  'Ένα όπλο ο καθένας. Ας δούμε σε ποιον θα στραφεί.': '[curious]',
+  'Η γνώση χωρίς πονηριά χάνει. Το έμαθα με τον δύσκολο τρόπο.': '[serious]',
+  // STAGE_INTRO stage 3 — Η Δίκη (Task 48)
+  'Η Δίκη. Εδώ δεν υπερασπίζεστε γνώση, υπερασπίζεστε τον εαυτό σας.': '[serious]',
+  'Τελευταίος γύρος. Ξέρω πώς τελειώνουν οι δίκες στην Αθήνα.': '[thoughtful]',
+  'Από εδώ και πέρα, ό,τι κερδίσετε το παίρνετε από κάποιον άλλον.': '[dry]',
+  'Η Δίκη. Επιτέλους κάτι που ξέρω από πρώτο χέρι.': '[sarcastic]',
+  'Δεν υπάρχουν συμμαχίες πια. Ούτε υπήρξαν ποτέ.': '[serious]',
+  'Το τέλος πλησιάζει. Ποιος από εσάς θα το αντέξει;': '[curious]',
+  // WINNER (Task 48)
+  'Βρήκα τον μαθητή μου. Η Αθήνα το είδε.': '[warm]',
+  "Ένας στάθηκε πάνω απ' όλους. Δεν ήταν τύχη.": '[serious]',
+  'Αυτό ήταν αξιοπρεπές. Και δεν το λέω συχνά.': '[impressed]',
+  'Ο νικητής κέρδισε τη θέση δίπλα μου. Ας δούμε αν την αντέχει.': '[thoughtful]',
+  'Οι υπόλοιποι, μην απελπίζεστε. Και εγώ έχασα μια δίκη κάποτε.': '[amused]',
+  'Τελείωσε. Ένας σοφότερος, οι υπόλοιποι ταπεινότεροι. Καλή συμφωνία.': '[dry]',
+  'Η διαμάχη έληξε. Πήρα την απόφασή μου.': '[warm]',
+  'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.': '[serious]',
 };
 
 // A picked line, in three forms: `text` is what's shown on screen
@@ -913,4 +1011,23 @@ export function pickQuestionIntro(state: SocratesState, context: SocratesQuestio
     return categoryLine.text;
   }
   return pickLine(state, INTRO_LINES.GENERIC_INTRO, {})?.text ?? null;
+}
+
+// Task 48 - the three one-shot beats. Each returns a full PickedLine (not
+// just `text`, unlike pickQuestionIntro above) because these DO play through
+// the held SOCRATES phase and need `template`/`tag` for the client's audio
+// lookup, exactly like recordRoundAndPickLine's REVEAL-moment line. All pure/
+// synchronous, same as every other picker in this file - never allowed to
+// delay a phase transition itself; whether to actually enter the phase is
+// the caller's decision (phases.ts), based on whether a line came back.
+export function pickGameIntroLine(state: SocratesState): PickedLine | null {
+  return pickLine(state, GAME_INTRO_LINES, {});
+}
+
+export function pickStageIntroLine(state: SocratesState, stage: number): PickedLine | null {
+  return pickLine(state, STAGE_INTRO_LINES[stage] ?? [], {});
+}
+
+export function pickWinnerLine(state: SocratesState): PickedLine | null {
+  return pickLine(state, WINNER_LINES, {});
 }
