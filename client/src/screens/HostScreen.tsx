@@ -270,7 +270,7 @@ export default function HostScreen() {
         // so the phase advances exactly then instead of at a guessed
         // duration. Never fires for a missing/muted/failed clip - the
         // server's own fallback timer covers that case.
-        playSocratesLine(payload.lineTemplate, () => {
+        playSocratesLine(payload.lineTemplate, payload.lineTag, () => {
           socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {});
         });
       }

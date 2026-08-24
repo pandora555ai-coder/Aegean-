@@ -178,10 +178,11 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     return null;
   }
   const lineTemplate = room.lastReveal?.socratesLineTemplate ?? '';
+  const lineTag = room.lastReveal?.socratesLineTag ?? null;
   // Recomputed from the same template every call (live broadcast AND a later
   // state:sync alike) rather than read off the timer, which only ever holds
   // what's LEFT of a DIFFERENT span now (Task 42c below).
-  const totalDurationMs = resolveSocratesDurationMs(lineTemplate || null);
+  const totalDurationMs = resolveSocratesDurationMs(lineTemplate || null, lineTag);
   // The phase's REAL timer is armed at the ceiling (SOCRATES_MAX_DURATION_MS,
   // see startSocratesIfLineFired) - it's a backstop, not this line's expected
   // length, so its own remaining time is the wrong thing to show as the
@@ -194,6 +195,7 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
   return {
     line,
     lineTemplate,
+    lineTag,
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     durationMs,

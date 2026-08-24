@@ -10,7 +10,7 @@
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
-import { LINES, INTRO_LINES } from '../server/src/socrates.ts';
+import { LINES, INTRO_LINES, LINE_TAGS } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
 import { lineHash, stripPlaceholders } from './voice/text.ts';
@@ -55,11 +55,16 @@ async function main() {
   const existing = new Set(readdirSync(OUT_DIR));
   const templates = allLineTemplates();
 
-  const toGenerate: Array<{ template: string; filename: string }> = [];
+  // Task 43: the filename hashes (template, tag) together, so editing an
+  // existing line's tag in socrates.ts changes ONLY that line's filename -
+  // it's picked up here as "missing" (and generated fresh) without ever
+  // touching the now-orphaned file the old tag produced.
+  const toGenerate: Array<{ template: string; tag: string | null; filename: string }> = [];
   for (const template of templates) {
-    const filename = `${lineHash(template)}.mp3`;
+    const tag = LINE_TAGS[template] ?? null;
+    const filename = `${lineHash(template, tag)}.mp3`;
     if (!existing.has(filename)) {
-      toGenerate.push({ template, filename });
+      toGenerate.push({ template, tag, filename });
     }
   }
 
@@ -70,8 +75,11 @@ async function main() {
   } else {
     const provider = createElevenLabsProvider();
     console.log(`Generating ${batch.length} of ${toGenerate.length} missing line(s)...`);
-    for (const { template, filename } of batch) {
-      const spoken = stripPlaceholders(template);
+    for (const { template, tag, filename } of batch) {
+      const stripped = stripPlaceholders(template);
+      // Tag is spoken direction for the model only - never part of what's
+      // shown on screen (that stays `template`/`stripped`, untouched).
+      const spoken = tag ? `${tag} ${stripped}` : stripped;
       const audio = await provider.synthesize(spoken);
       writeFileSync(path.join(OUT_DIR, filename), audio);
       console.log(`  ${filename}  "${spoken}"`);

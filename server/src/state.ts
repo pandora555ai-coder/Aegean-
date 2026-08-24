@@ -93,6 +93,9 @@ export interface RevealSnapshot {
   // purely so the client can hash it to find this line's audio file; never
   // shown on screen itself.
   socratesLineTemplate: string | null;
+  // The template's optional eleven_v3 voice tag (Task 43), carried the same
+  // way - folded into the client-side hash, never shown or spoken as text.
+  socratesLineTag: string | null;
 }
 
 // A room is deleted only once it's been fully empty - no host/TV display

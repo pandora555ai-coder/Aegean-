@@ -330,20 +330,40 @@ export const INTRO_LINES: Record<IntroMoment, readonly string[]> = {
 
 // ============================= selection logic =============================
 
-// A picked line, in both forms: `text` is what's shown on screen
+// Task 43: optional eleven_v3 emotion/non-verbal tags ("[sarcastic]",
+// "[sighs]"...), keyed by the exact line TEMPLATE text they belong to - a
+// side table rather than inline fields on LINES/INTRO_LINES so the pools
+// above stay plain `readonly string[]`, and every existing selection/
+// cooldown/dedup check (all of which key on template text) is untouched.
+// A template with no entry here plays with no tag, exactly as before this
+// map existed. Spoken only - prepended to the text sent to the TTS API by
+// dev/generate-voice-lines.ts, never to what's shown on screen or to
+// `text` below.
+export const LINE_TAGS: Partial<Record<string, string>> = {
+  'Κανείς. Ούτε ένας. Επιτέλους μια στιγμή ειλικρινούς άγνοιας.': '[sarcastic]',
+  'Όλοι λάθος. Αυτό δεν είναι ερώτηση πια, είναι διάγνωση.': '[deadpan]',
+  'Τελείωσε το σερί. Όλα τελειώνουν, {name}, απλώς το δικό σου δημόσια.': '[sighs]',
+  'Πέντε συνεχόμενες, {name}. Αυτό δεν το έχω ξαναδεί σήμερα.': '[impressed]',
+  '{name}, με έκανες να αλλάξω γνώμη. Δύσκολο πράγμα.': '[laughs]',
+};
+
+// A picked line, in three forms: `text` is what's shown on screen
 // (placeholders substituted), `template` is the raw, un-substituted pool
 // entry - kept around so the REVEAL beat can hand it to the client for
-// Task 42b's audio lookup (client/public/voice/<lineHash(template)>.mp3).
+// Task 42b's audio lookup (client/public/voice/<lineHash(template, tag)>.mp3)
+// - and `tag` is that same template's optional voice tag (Task 43), looked
+// up from LINE_TAGS purely so callers don't have to import that map too.
 export interface PickedLine {
   template: string;
   text: string;
+  tag: string | null;
 }
 
 function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): PickedLine | null {
   for (const template of pool) {
     if (!state.usedLines.has(template)) {
       state.usedLines.add(template);
-      return { template, text: substitute(template, vars) };
+      return { template, text: substitute(template, vars), tag: LINE_TAGS[template] ?? null };
     }
   }
   return null; // this moment's whole pool is exhausted this game

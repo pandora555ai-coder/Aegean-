@@ -224,9 +224,11 @@ export function useGameAudio() {
   // other cue here, which is synthesized) through the same single
   // AudioContext, via a BufferSource - the only way Web Audio plays a
   // decoded file. `template` is the line's raw, un-substituted pool entry
-  // (SocratesShowPayload.lineTemplate); hashing it is exactly how
-  // dev/generate-voice-lines.ts named the file, so this is the one lookup
-  // that can never drift from the generator (lineHash lives in shared).
+  // (SocratesShowPayload.lineTemplate) and `tag` is its optional eleven_v3
+  // voice tag (SocratesShowPayload.lineTag, Task 43); hashing the pair is
+  // exactly how dev/generate-voice-lines.ts named the file, so this is the
+  // one lookup that can never drift from the generator (lineHash lives in
+  // shared).
   // Fails silently at every step - fetch 404, decode error, no
   // AudioContext - the line's TEXT is already on screen regardless, and per
   // spec a missing file must never break the phase.
@@ -240,13 +242,13 @@ export function useGameAudio() {
   // instead. The caller (HostScreen) uses this to tell the server the beat
   // is really over, rather than the server guessing a fixed duration up
   // front and risking ending the phase mid-clip.
-  async function playSocratesLine(template: string, onEnded: () => void) {
+  async function playSocratesLine(template: string, tag: string | null, onEnded: () => void) {
     const ctx = audioCtxRef.current;
     if (!ctx || mutedRef.current) {
       return;
     }
     try {
-      const hash = lineHash(template);
+      const hash = lineHash(template, tag);
       let buffer = socratesBufferCacheRef.current.get(hash);
       if (!buffer) {
         const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);

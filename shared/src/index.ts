@@ -850,6 +850,11 @@ export interface SocratesShowPayload {
   // (lineHash below) to find this line's pre-generated audio file, since
   // that's exactly what the generator hashed to name it (Task 42b).
   lineTemplate: string;
+  // Task 43: the line's optional eleven_v3 tag ("[sarcastic]", "[sighs]"...),
+  // carried alongside the template purely so the client hashes the SAME
+  // (template, tag) pair the generator did - never rendered, never spoken
+  // client-side (it's already baked into the pre-generated audio file).
+  lineTag: string | null;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat
@@ -894,13 +899,21 @@ export const AUDIO_BITRATE_KBPS = 64;
 // decode latency before playback even starts.
 export const SOCRATES_MAX_DURATION_MS = 7000;
 
-// sha256(template), hex, first 16 chars - deliberately synchronous and
-// dependency-free (no node:crypto, which the browser build can't bundle;
-// no Web Crypto, which is async) so it works identically, with no await,
-// wherever a line needs to be turned into a filename: the generator script,
-// and the client resolving audio for a line it was just handed.
-export function lineHash(template: string): string {
-  return sha256Hex(template).slice(0, 16);
+// sha256(template [+ tag]), hex, first 16 chars - deliberately synchronous
+// and dependency-free (no node:crypto, which the browser build can't
+// bundle; no Web Crypto, which is async) so it works identically, with no
+// await, wherever a line needs to be turned into a filename: the generator
+// script, and the client resolving audio for a line it was just handed.
+// Task 43: `tag` (an eleven_v3 emotion/non-verbal cue like "[sarcastic]",
+// spoken but never shown) is folded into the hash so that changing a
+// line's tag changes its filename - the old file is simply orphaned rather
+// than silently overwritten, and a tagless line hashes EXACTLY as it did
+// before this parameter existed (omitting `tag` reproduces the old
+// single-argument hash byte-for-byte), so every already-generated file
+// stays valid.
+export function lineHash(template: string, tag?: string | null): string {
+  const key = tag ? `${tag} ${template}` : template;
+  return sha256Hex(key).slice(0, 16);
 }
 
 const SHA256_K = new Uint32Array([

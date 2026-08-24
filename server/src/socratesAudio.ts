@@ -15,12 +15,14 @@ const VOICE_DIR = path.join(__dirname, '../../client/public', SOCRATES_VOICE_DIR
 // just bytes*8/bitrate - no decoding, no new dependency. Missing/unreadable
 // file, or no line at all, falls back to SOCRATES_DURATION_MS - the phase
 // (and the game) must never hang on a file that isn't there.
-export function resolveSocratesDurationMs(template: string | null): number {
+// `tag` (Task 43) must match whatever the line was picked with - it's folded
+// into the hash, so the wrong tag looks up the wrong (or a missing) file.
+export function resolveSocratesDurationMs(template: string | null, tag: string | null = null): number {
   if (!template) {
     return SOCRATES_DURATION_MS;
   }
   try {
-    const filePath = path.join(VOICE_DIR, `${lineHash(template)}.mp3`);
+    const filePath = path.join(VOICE_DIR, `${lineHash(template, tag)}.mp3`);
     const { size } = statSync(filePath);
     const estimatedMs = (size * 8) / AUDIO_BITRATE_KBPS;
     return Math.min(SOCRATES_MAX_DURATION_MS, Math.max(SOCRATES_DURATION_MS, Math.round(estimatedMs)));

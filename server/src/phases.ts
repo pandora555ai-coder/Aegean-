@@ -370,6 +370,7 @@ export function endQuestion(code: RoomCode): void {
     answerCounts,
     socratesLine: pickedLine?.text ?? null,
     socratesLineTemplate: pickedLine?.template ?? null,
+    socratesLineTag: pickedLine?.tag ?? null,
   };
 
   const hostPayload = buildRevealHostPayload(room);
