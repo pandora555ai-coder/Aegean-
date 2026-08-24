@@ -1,6 +1,7 @@
 import {
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
+  SOCRATES_MAX_DURATION_MS,
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
@@ -16,7 +17,6 @@ import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type SocratesPlayerRoundInput } from './socrates.js';
-import { resolveSocratesDurationMs } from './socratesAudio.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -536,11 +536,15 @@ function startSocratesIfLineFired(room: Room): boolean {
 
   room.phase = 'SOCRATES';
   // Armed BEFORE the payload is built - it reports the timer's remaining
-  // time, so it has to exist first. Duration follows this line's own audio
-  // (Task 42b) rather than a flat span - buildSocratesPayload below computes
-  // the SAME number for `totalDurationMs`, from the same template.
-  const durationMs = resolveSocratesDurationMs(room.lastReveal.socratesLineTemplate);
-  armActiveTimer(room, 'SOCRATES', durationMs, () => advanceFromSocrates(room.code));
+  // time, so it has to exist first. Task 42c: armed at the CEILING, not this
+  // line's own estimated audio length - the normal path out of this phase is
+  // now the client's SOCRATES_AUDIO_ENDED ack (index.ts), fired the instant
+  // its clip genuinely finishes, whatever that actually takes (network/decode
+  // latency included). This timer is only the backstop for when that ack
+  // never arrives at all (host muted, file missing, ack lost) - arming it at
+  // the per-line estimate instead would reintroduce exactly the "phase ends
+  // before the clip finishes" race this task exists to fix.
+  armActiveTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
   // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a
   // steal) set is the mood he's speaking into, and re-setting it here would
   // stomp the cheer/boo this beat is a reaction to.

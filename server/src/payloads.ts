@@ -1,5 +1,6 @@
 import {
   POWER_UP_EFFECTS,
+  SOCRATES_MAX_DURATION_MS,
   firstQuestionIndexOfStage,
   stageForQuestionIndex,
   stagesForLength,
@@ -177,16 +178,26 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     return null;
   }
   const lineTemplate = room.lastReveal?.socratesLineTemplate ?? '';
+  // Recomputed from the same template every call (live broadcast AND a later
+  // state:sync alike) rather than read off the timer, which only ever holds
+  // what's LEFT of a DIFFERENT span now (Task 42c below).
+  const totalDurationMs = resolveSocratesDurationMs(lineTemplate || null);
+  // The phase's REAL timer is armed at the ceiling (SOCRATES_MAX_DURATION_MS,
+  // see startSocratesIfLineFired) - it's a backstop, not this line's expected
+  // length, so its own remaining time is the wrong thing to show as the
+  // countdown. Deriving elapsed-since-armed from it and subtracting from
+  // `totalDurationMs` instead gives a countdown that reaches 0 right as the
+  // clip is expected to finish (matching the progress bar), even though the
+  // phase itself may keep waiting a little past that for the completion ack.
+  const elapsedMs = SOCRATES_MAX_DURATION_MS - remainingActiveTimerMs(room);
+  const durationMs = Math.max(0, totalDurationMs - elapsedMs);
   return {
     line,
     lineTemplate,
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
-    durationMs: remainingActiveTimerMs(room),
-    // Recomputed from the same template every call (live broadcast AND a
-    // later state:sync alike) rather than read off the timer, which only
-    // ever holds what's LEFT, not the original span (Task 42b).
-    totalDurationMs: resolveSocratesDurationMs(lineTemplate || null),
+    durationMs,
+    totalDurationMs,
     paused: room.paused,
     pausedByName: room.pausedByName,
     standings: computeStandings(room),

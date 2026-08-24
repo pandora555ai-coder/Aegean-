@@ -263,9 +263,16 @@ export default function HostScreen() {
       setPausedByName(payload.pausedByName);
       // Only for a LIVE entrance into the beat, exactly like playRevealCue
       // below - never on a state:sync reconnect catching a host up to a beat
-      // already in progress, which would replay the line from its start.
+      // already in progress, which would replay the line from its start (and
+      // could never legitimately ack completion of a clip it didn't play).
       if (!payload.paused) {
-        playSocratesLine(payload.lineTemplate);
+        // Task 42c - tells the server the instant this clip genuinely ends,
+        // so the phase advances exactly then instead of at a guessed
+        // duration. Never fires for a missing/muted/failed clip - the
+        // server's own fallback timer covers that case.
+        playSocratesLine(payload.lineTemplate, () => {
+          socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {});
+        });
       }
     }
 

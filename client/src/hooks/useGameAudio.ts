@@ -230,7 +230,17 @@ export function useGameAudio() {
   // Fails silently at every step - fetch 404, decode error, no
   // AudioContext - the line's TEXT is already on screen regardless, and per
   // spec a missing file must never break the phase.
-  async function playSocratesLine(template: string) {
+  //
+  // Task 42c: `onEnded` fires ONLY when this clip genuinely finishes playing
+  // (source.onended, which - because suspending the ONE AudioContext is how
+  // pause freezes it - only ever fires once total real playback time has
+  // elapsed, pause included). It does NOT fire for any failure path below
+  // (muted, missing file, decode error): there's nothing playing to finish,
+  // so the caller's server-side fallback timer is what ends the phase
+  // instead. The caller (HostScreen) uses this to tell the server the beat
+  // is really over, rather than the server guessing a fixed duration up
+  // front and risking ending the phase mid-clip.
+  async function playSocratesLine(template: string, onEnded: () => void) {
     const ctx = audioCtxRef.current;
     if (!ctx || mutedRef.current) {
       return;
@@ -254,10 +264,12 @@ export function useGameAudio() {
       }
       const source = ctx.createBufferSource();
       source.buffer = buffer;
+      source.onended = onEnded;
       source.connect(ctx.destination);
       source.start();
     } catch {
-      // Best effort - the game continues silently either way.
+      // Best effort - the game continues silently either way (server-side
+      // fallback timer ends the phase; onEnded is never called).
     }
   }
 

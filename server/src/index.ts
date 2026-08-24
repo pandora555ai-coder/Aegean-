@@ -322,6 +322,29 @@ function getPlayerRoomForSocket(
   return { room, playerId: association.playerId };
 }
 
+// Authorises a host:* event - the emitting socket must be the room's
+// CURRENTLY attached TV/display (never a player), matching the same
+// `hostSocketId === socket.id` check the disconnect handler uses to decide
+// whether a display is still the live one.
+function getHostRoomForSocket(
+  socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+  eventName: string,
+): Room | null {
+  const association = socketAssociationBySocketId.get(socket.id);
+  if (!association || association.role !== 'host') {
+    console.log(`rejected ${eventName} from ${socket.id}: not a host`);
+    return null;
+  }
+
+  const room = getRoom(association.code);
+  if (!room || room.hostSocketId !== socket.id) {
+    console.log(`rejected ${eventName} from ${socket.id}: not the room's current host display`);
+    return null;
+  }
+
+  return room;
+}
+
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
 
@@ -803,6 +826,32 @@ io.on('connection', (socket) => {
     console.log(
       `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL or SOCRATES`,
     );
+  });
+
+  // Task 42c - the host reports that a Socrates line's audio has genuinely
+  // finished (or never played at all - see useGameAudio.playSocratesLine),
+  // so the phase can end EXACTLY then instead of only on the fallback
+  // ceiling timer (armed in startSocratesIfLineFired). Same one-shot
+  // advanceFrom* as the VIP skip above - a late/duplicate ack after the
+  // phase has already moved on is a harmless no-op via the phase check.
+  socket.on(ClientEvents.SOCRATES_AUDIO_ENDED, () => {
+    const room = getHostRoomForSocket(socket, ClientEvents.SOCRATES_AUDIO_ENDED);
+    if (!room) {
+      return;
+    }
+    if (room.phase !== 'SOCRATES') {
+      console.log(`rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: phase is ${room.phase}, not SOCRATES`);
+      return;
+    }
+    // A suspended AudioContext can't fire this - genuinely can't happen -
+    // but reject it anyway, the same defensive stance as VIP_NEXT's own
+    // pause check, rather than trust a client that shouldn't be able to.
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: game is paused`);
+      return;
+    }
+    console.log(`room ${room.code} Socrates audio ended - advancing`);
+    advanceFromSocrates(room.code);
   });
 
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {

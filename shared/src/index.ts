@@ -14,6 +14,11 @@ export const ClientEvents = {
   ROOM_PEEK: 'room:peek',
   POWER_UP_CHOOSE: 'player:power_up_choose',
   STEAL_CHOOSE: 'player:steal_choose',
+  // Task 42c - the host reports that a Socrates line's audio has genuinely
+  // finished playing (or was never going to play at all - see
+  // useGameAudio.playSocratesLine), so the server can end the beat exactly
+  // then instead of guessing a duration up front.
+  SOCRATES_AUDIO_ENDED: 'socrates:audio_ended',
 } as const;
 
 export const ServerEvents = {
@@ -876,10 +881,18 @@ export const SOCRATES_VOICE_DIR = 'voice';
 // without decoding it or adding an audio-parsing dependency.
 export const AUDIO_BITRATE_KBPS = 64;
 
-// The audio-driven SOCRATES duration never goes below the fallback (a very
-// short clip still needs a moment to read) or above this cap (a long line
-// never holds the game hostage).
-export const SOCRATES_MAX_DURATION_MS = 8000;
+// The audio-driven SOCRATES duration (totalDurationMs, an ESTIMATE used only
+// for the progress bar) never goes below the fallback (a very short clip
+// still needs a moment to read) or above this cap. Task 42c: this is ALSO
+// what the server actually arms the phase's real advance timer at - a
+// backstop for "the client's audio_ended ack never arrives" (host muted, the
+// file's missing, or the ack itself got lost), not the normal path, which
+// ends the phase exactly when the client reports the clip truly finished
+// (see SOCRATES_AUDIO_ENDED). Must comfortably exceed the longest actually
+// generated clip - `npm run voice:generate` reports that length after every
+// run (last measured: ~5047ms) - with real headroom for normal network/
+// decode latency before playback even starts.
+export const SOCRATES_MAX_DURATION_MS = 7000;
 
 // sha256(template), hex, first 16 chars - deliberately synchronous and
 // dependency-free (no node:crypto, which the browser build can't bundle;
@@ -957,6 +970,10 @@ function sha256Hex(input: string): string {
 }
 
 export interface VipNextPayload {}
+
+// Task 42c - empty like VipNextPayload above; the event itself (host-only,
+// current SOCRATES beat only - see the server handler) is the whole signal.
+export interface SocratesAudioEndedPayload {}
 
 // Every player's current score + rank, in room.players' insertion (join)
 // order - NEVER re-sorted by score, so the TV's persistent score column
@@ -1126,6 +1143,7 @@ export type ClientToServerEvents = {
   [ClientEvents.ROOM_PEEK]: (payload: RoomPeekPayload) => void;
   [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
+  [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
 };
 
 export type ServerToClientEvents = {

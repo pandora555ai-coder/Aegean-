@@ -9,6 +9,7 @@
 // gitignored repo-root .env) - never committed.
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
 import { LINES, INTRO_LINES } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
@@ -79,7 +80,23 @@ async function main() {
 
   const files = readdirSync(OUT_DIR).filter((f) => f.endsWith('.mp3'));
   const totalBytes = files.reduce((sum, f) => sum + statSync(path.join(OUT_DIR, f)).size, 0);
+
+  // Task 42c - the longest clip is exactly what SOCRATES_MAX_DURATION_MS
+  // (server/src/socratesAudio.ts's estimate cap, and the phase's fallback
+  // advance timer) has to comfortably exceed - reported here, every run, so
+  // that constant can be sized from a real measurement instead of a guess.
+  let longestMs = 0;
+  let longestFile = '';
+  for (const f of files) {
+    const estimatedMs = (statSync(path.join(OUT_DIR, f)).size * 8) / AUDIO_BITRATE_KBPS;
+    if (estimatedMs > longestMs) {
+      longestMs = estimatedMs;
+      longestFile = f;
+    }
+  }
+  const capWarning = longestMs > SOCRATES_MAX_DURATION_MS ? '  ⚠ exceeds SOCRATES_MAX_DURATION_MS - raise the cap' : '';
   console.log(`\n${files.length} file(s) in client/public/voice, ${(totalBytes / 1024).toFixed(1)} KB total.`);
+  console.log(`Longest clip: ~${Math.round(longestMs)}ms (${longestFile})${capWarning}`);
 }
 
 main().catch((err) => {
