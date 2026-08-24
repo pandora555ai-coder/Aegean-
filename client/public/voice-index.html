@@ -1,0 +1,1502 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<title>Socrates voice line index (dev only)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem 6rem; }
+  h2 { margin-top: 2.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+  .count { color: #888; font-weight: normal; font-size: 0.8em; }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; vertical-align: middle; }
+  audio { height: 32px; }
+  tr[data-hidden="1"] { display: none; }
+  .rate-cell { white-space: nowrap; }
+  .rate-btn { font-size: 0.75em; padding: 0.2rem 0.45rem; margin-right: 0.25rem; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; color: #333; }
+  .rate-btn:hover { border-color: #999; }
+  .rate-btn[data-rating="bad"].active { background: #d9534f; border-color: #d9534f; color: #fff; }
+  .rate-btn[data-rating="okish"].active { background: #f0ad4e; border-color: #f0ad4e; color: #fff; }
+  .rate-btn[data-rating="good"].active { background: #5cb85c; border-color: #5cb85c; color: #fff; }
+  .rate-btn[data-rating="genius"].active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  tr[data-rating="bad"] .line-cell { color: #b33; }
+  tr[data-rating="genius"] .line-cell { font-weight: 600; }
+  #filter-bar { position: sticky; top: 0; z-index: 1; background: #fff; border-bottom: 1px solid #ccc; padding: 0.6rem 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  #filter-bar button { font-size: 0.85em; padding: 0.3rem 0.6rem; border: 1px solid #ccc; background: #fff; border-radius: 3px; cursor: pointer; }
+  #filter-bar button.active { background: #333; color: #fff; border-color: #333; }
+  #rated-count { margin-left: auto; color: #666; font-size: 0.9em; }
+  #copy-bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #ccc; padding: 0.75rem 1rem; display: flex; align-items: center; gap: 1rem; }
+  #copy-bar button { padding: 0.5rem 1rem; }
+  #copy-status { color: #666; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Socrates voice line index (dev only, throwaway)</h1>
+<p>Every line, grouped by moment, with its eleven_v3 tag and its generated clip. Rate each line Bad/Okish/Good/Genius. Ratings save to this browser's localStorage, keyed by the line's hash, so they survive a reload and a re-run of voice:index.</p>
+<div id="filter-bar">
+  <span>Filter:</span>
+  <button type="button" class="filter-btn active" data-filter="all">All</button>
+  <button type="button" class="filter-btn" data-filter="unrated">Unrated</button>
+  <button type="button" class="filter-btn" data-filter="bad">Bad</button>
+  <button type="button" class="filter-btn" data-filter="okish">Okish</button>
+  <button type="button" class="filter-btn" data-filter="good">Good</button>
+  <button type="button" class="filter-btn" data-filter="genius">Genius</button>
+  <span id="rated-count"></span>
+</div>
+    <h2>EVERYONE_WRONG <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="5413c4660f5015dc">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανείς. Ούτε ένας. Επιτέλους μια στιγμή ειλικρινούς άγνοιας.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/5413c4660f5015dc.mp3"></audio></td>
+      </tr>
+      <tr data-hash="64adf2d216400852">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Όλοι λάθος. Αυτό δεν είναι ερώτηση πια, είναι διάγνωση.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/64adf2d216400852.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d2a7e75825475e23">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ώστε συμφωνείτε όλοι. Κρίμα που συμφωνείτε στο λάθος.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/d2a7e75825475e23.mp3"></audio></td>
+      </tr>
+      <tr data-hash="16733ab743e895ff">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κοιτάξτε γύρω σας. Αυτοί είναι οι συνυποψήφιοί σας. Παρηγορηθείτε.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/16733ab743e895ff.mp3"></audio></td>
+      </tr>
+      <tr data-hash="1b7c4660e836fcf4">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τέτοια ομοφωνία την είχαμε μόνο όταν καταδικάζαμε κάποιον.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/1b7c4660e836fcf4.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f897b21b82283754">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μηδέν. Θα το θυμάμαι όταν διαλέγω μαθητή.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/f897b21b82283754.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>ONLY_ONE_CORRECT <span class="count">(9)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="bc7837f0efff6091">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας. Μόνο ένας ανάμεσά σας. Κοιτάξτε καλά.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/bc7837f0efff6091.mp3"></audio></td>
+      </tr>
+      <tr data-hash="9e61f44ce69c1e39">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Όλοι λάθος εκτός από έναν. Αυτό λέγεται διαφορά.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/9e61f44ce69c1e39.mp3"></audio></td>
+      </tr>
+      <tr data-hash="6ae5354eb3a335d9">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας μόνο. Οι υπόλοιποι μόλις έχασαν λίγη αξιοπρέπεια.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/6ae5354eb3a335d9.mp3"></audio></td>
+      </tr>
+      <tr data-hash="3e23f4f7baa5d595">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας σωστός. Σημειώνω.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/3e23f4f7baa5d595.mp3"></audio></td>
+      </tr>
+      <tr data-hash="25efa5fef74d4592">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μόνο ένας. Το πλήθος το πρόσεξε αυτό.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/25efa5fef74d4592.mp3"></audio></td>
+      </tr>
+      <tr data-hash="67d8f742d5ca6159">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας ανάμεσα σε τόσους. Έτσι ξεχωρίζει κάποιος.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/67d8f742d5ca6159.mp3"></audio></td>
+      </tr>
+      <tr data-hash="45840dde0b9602e5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας μόνο. Ένας ανάμεσα σε τόσους.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/45840dde0b9602e5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0d80ae27ee8e6346">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κοιτάξτε ποιος σήκωσε το βάρος. Οι υπόλοιποι κοιτάγατε.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/0d80ae27ee8e6346.mp3"></audio></td>
+      </tr>
+      <tr data-hash="675051e2ea399f6e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μία σωστή απάντηση σε όλη την Αγορά. Μία.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/675051e2ea399f6e.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>EVERYONE_CORRECT <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="d2582d6eae04ae01">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Όλοι σωστά. Άρα η ερώτηση ήταν εύκολη. Μη μπερδεύεστε.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/d2582d6eae04ae01.mp3"></audio></td>
+      </tr>
+      <tr data-hash="efdd8a5aa5f4510c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ομοφωνία. Ύποπτο πράγμα σε αίθουσα με τόσους φιλόδοξους.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/efdd8a5aa5f4510c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f2b18cd7bb72fe18">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μπράβο σε όλους. Τώρα κανείς δεν ξεχώρισε.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/f2b18cd7bb72fe18.mp3"></audio></td>
+      </tr>
+      <tr data-hash="e638fa76840be816">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανένα λάθος. Θα κάνω την επόμενη δυσκολότερη.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/e638fa76840be816.mp3"></audio></td>
+      </tr>
+      <tr data-hash="b2f8a2376ae59372">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Το ήξεραν όλοι. Δεν μαθαίνω τίποτα για εσάς έτσι.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/b2f8a2376ae59372.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8c6a2d08315fd9b6">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ομόφωνα σωστό. Βαρετό, αλλά σωστό.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/8c6a2d08315fd9b6.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>BIG_COMEBACK <span class="count">(9)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="08a1f3a04903f143">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Και ξαφνικά, ζωή. Πού ήταν αυτό μέχρι τώρα;</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/08a1f3a04903f143.mp3"></audio></td>
+      </tr>
+      <tr data-hash="b196a5bba5ec8a98">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ώστε μπορούσες. Και το κράτησες κρυφό.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/b196a5bba5ec8a98.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4fae99ff1757f1ba">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος ανέβηκε από το πουθενά. Κοιτάτε, έτσι γίνεται.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/4fae99ff1757f1ba.mp3"></audio></td>
+      </tr>
+      <tr data-hash="9b21353e925ddd86">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Επιστροφή. Δεν την είχα υπολογίσει.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/9b21353e925ddd86.mp3"></audio></td>
+      </tr>
+      <tr data-hash="6eb5dea04b7978bc">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Από πίσω μπροστά. Αυτό αξίζει περισσότερο από σταθερότητα.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/6eb5dea04b7978bc.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4bf0e8d0e204379d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Με έκανε κάποιος να αλλάξω γνώμη. Δύσκολο πράγμα.</td>
+        <td>[laughs]</td>
+        <td><audio controls preload="none" src="voice/4bf0e8d0e204379d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4cc9a01d72f21381">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Γύρισε το παιχνίδι. Πού ήταν τόση ώρα αυτό;</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/4cc9a01d72f21381.mp3"></audio></td>
+      </tr>
+      <tr data-hash="099fec6706e2137d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Επιστροφή από το πουθενά. Έτσι γίνεται.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/099fec6706e2137d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="54ea8a51f59e3585">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος θυμήθηκε γιατί ήρθε.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/54ea8a51f59e3585.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>LEAD_CHANGE <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="a478d6a1e9d414be">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Άλλαξε η κορυφή. Ο θρόνος στην Αθήνα ποτέ δεν κράτησε πολύ.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/a478d6a1e9d414be.mp3"></audio></td>
+      </tr>
+      <tr data-hash="846a81274c62a87a">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Νέο πρώτο όνομα. Οι υπόλοιποι θυμηθείτε πώς είναι να κυνηγάτε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/846a81274c62a87a.mp3"></audio></td>
+      </tr>
+      <tr data-hash="e6804dc7cbc2fde7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ώστε αλλάζουν τα πράγματα. Η βεβαιότητα με κουράζει.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/e6804dc7cbc2fde7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="3da959538a84cd60">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος πέρασε μπροστά. Για πόσο;</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/3da959538a84cd60.mp3"></audio></td>
+      </tr>
+      <tr data-hash="536b32ac79214c86">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η κορυφή άλλαξε χέρια. Θα ξανααλλάξει.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/536b32ac79214c86.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8ccff6d372f1d471">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η κορυφή άλλαξε χέρια. Και μαζί της οι στόχοι.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/8ccff6d372f1d471.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>HOT_STREAK_5 <span class="count">(8)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="8fcc0ada3110128b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πέντε συνεχόμενες. Αυτό δεν το έχω ξαναδεί σήμερα.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/8fcc0ada3110128b.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4e5520c67e658c1d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πέντε στη σειρά. Αρχίζω να πιστεύω ότι υποτίμησα κάποιον.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/4e5520c67e658c1d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ddc535b59ebc3ae3">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πέντε. Οι υπόλοιποι, τι ακριβώς κάνετε;</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/ddc535b59ebc3ae3.mp3"></audio></td>
+      </tr>
+      <tr data-hash="b0d549c3fcc2b0f3">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος τις παίρνει όλες. Η Αθήνα βρήκε το θέμα της.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/b0d549c3fcc2b0f3.mp3"></audio></td>
+      </tr>
+      <tr data-hash="40f8dee4a9b0af70">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πέντε συνεχόμενες. Αν πέσεις τώρα, θα πονέσει.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/40f8dee4a9b0af70.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c9abd3f7650d9558">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σταματήστε να με εντυπωσιάζετε. Δεν το αντέχω.</td>
+        <td>[laughs]</td>
+        <td><audio controls preload="none" src="voice/c9abd3f7650d9558.mp3"></audio></td>
+      </tr>
+      <tr data-hash="652084db950d3e31">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πέντε συνεχόμενες. Οι υπόλοιποι, τι ακριβώς κάνετε;</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/652084db950d3e31.mp3"></audio></td>
+      </tr>
+      <tr data-hash="2b949bf905ac968e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανείς δεν σταματάει αυτό το σερί. Περίεργο πλήθος σήμερα.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/2b949bf905ac968e.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>PERFECT_GAME_PACE <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="d939e4ea2f82e1c5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ρυθμός χωρίς λάθος. Μήπως κάνω τις ερωτήσεις πολύ εύκολες;</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/d939e4ea2f82e1c5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="eef47efa15cd6797">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανένα λάθος ως τώρα. Αυτό δεν είναι σοφία, είναι υπόσχεση.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/eef47efa15cd6797.mp3"></audio></td>
+      </tr>
+      <tr data-hash="07802cb2e02546b7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τέλεια πορεία ως εδώ. Το ένα λάθος θα το θυμάστε για πάντα.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/07802cb2e02546b7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d942e06036059381">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Χωρίς λάθος μέχρι στιγμής. Με ανησυχεί.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/d942e06036059381.mp3"></audio></td>
+      </tr>
+      <tr data-hash="83912fa8cb9354e0">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Άψογα ως εδώ. Και το ως εδώ μετράει.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/83912fa8cb9354e0.mp3"></audio></td>
+      </tr>
+      <tr data-hash="be3cb90525fba906">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καθαρή πορεία. Οι καθαρές πορείες λερώνονται.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/be3cb90525fba906.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>HOT_STREAK_3 <span class="count">(8)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="7bdab5357e0ac580">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις διαδοχικές. Κάτι συμβαίνει εδώ.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/7bdab5357e0ac580.mp3"></audio></td>
+      </tr>
+      <tr data-hash="65c52c4b5f7139ff">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρία συνεχόμενα. Αυτό δεν είναι τύχη πια.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/65c52c4b5f7139ff.mp3"></audio></td>
+      </tr>
+      <tr data-hash="95a151cd0585460c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις σωστές. Κάποιος εδώ ξέρει τι κάνει.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/95a151cd0585460c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d607121bd5dced00">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος δεν σταματάει. Κάντε κάτι.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/d607121bd5dced00.mp3"></audio></td>
+      </tr>
+      <tr data-hash="e2d7ecb675a50850">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρία στη σειρά. Από εδώ και πέρα κάθε λάθος θα το θυμούνται.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/e2d7ecb675a50850.mp3"></audio></td>
+      </tr>
+      <tr data-hash="5ac3f91373f3270d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις. Το πλήθος μέτρησε κι αυτό.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/5ac3f91373f3270d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ea1239879c8480dc">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις στη σειρά. Άρχισα να προσέχω.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/ea1239879c8480dc.mp3"></audio></td>
+      </tr>
+      <tr data-hash="2b949bf905ac968e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανείς δεν σταματάει αυτό το σερί. Περίεργο πλήθος σήμερα.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/2b949bf905ac968e.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>STREAK_BROKEN <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="f565f962cadaad1d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τελείωσε το σερί. Όλα τελειώνουν, απλώς αυτό τελείωσε δημόσια.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/f565f962cadaad1d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4de7dfc4964a7ee1">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Και να που έπεσες. Η πτώση από ψηλά ακούγεται περισσότερο.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/4de7dfc4964a7ee1.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8f31b96795af0908">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σταμάτησε. Ήταν ωραία όσο κράτησε.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/8f31b96795af0908.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f5d86ef78a0cfc98">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Και μετά τίποτα. Έτσι τελειώνουν τα σερί.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/f5d86ef78a0cfc98.mp3"></audio></td>
+      </tr>
+      <tr data-hash="6a115f052b602c07">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Το σερί έσπασε. Το πλήθος το πρόσεξε πριν από εσένα.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/6a115f052b602c07.mp3"></audio></td>
+      </tr>
+      <tr data-hash="5e65022ada133b6f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τέλος. Τώρα ξαναρχίζεις από την αρχή.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/5e65022ada133b6f.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>SPEED_DEMON <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="d3fa7d4b823f0489">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Απάντησες πριν τελειώσω. Είτε το ήξερες, είτε δεν με άκουγες.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/d3fa7d4b823f0489.mp3"></audio></td>
+      </tr>
+      <tr data-hash="da86a2a150fdd5bd">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ταχύτητα. Στην Αγορά ο πρώτος που μιλάει σπάνια έχει δίκιο.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/da86a2a150fdd5bd.mp3"></audio></td>
+      </tr>
+      <tr data-hash="25ca53f5523a0741">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Γρήγορα. Ελπίζω και σωστά.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/25ca53f5523a0741.mp3"></audio></td>
+      </tr>
+      <tr data-hash="cbcaf097cbb2b750">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τόση βιάση. Η γνώση δεν φεύγει.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/cbcaf097cbb2b750.mp3"></audio></td>
+      </tr>
+      <tr data-hash="81dc13ef582b54f8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πρόλαβες τους πάντες. Πρόλαβες να σκεφτείς;</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/81dc13ef582b54f8.mp3"></audio></td>
+      </tr>
+      <tr data-hash="81e05b177bc8342b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αστραπή. Ας δούμε αν κρατάει.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/81e05b177bc8342b.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>EASY_MISS <span class="count">(8)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="289a8d6afad1f9d5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Και όμως, χάθηκε. Ερώτηση για παιδιά.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/289a8d6afad1f9d5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="7cbbd16625163a7c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Εύκολη ερώτηση. Την έκανες δύσκολη χωρίς λόγο.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/7cbbd16625163a7c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="561e58c49e00f3df">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Θα προσποιηθώ ότι δεν το είδα. Οι υπόλοιποι όμως το είδαν.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/561e58c49e00f3df.mp3"></audio></td>
+      </tr>
+      <tr data-hash="59edeb654dd9d4a3">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό ήταν από τα εύκολα. Ήταν.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/59edeb654dd9d4a3.mp3"></audio></td>
+      </tr>
+      <tr data-hash="fc98572d0a1f2759">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Εύκολο ερώτημα, βαριά απάντηση.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/fc98572d0a1f2759.mp3"></audio></td>
+      </tr>
+      <tr data-hash="45e0fb176efced31">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δεν χρειαζόταν γνώση εδώ. Χρειαζόταν προσοχή.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/45e0fb176efced31.mp3"></audio></td>
+      </tr>
+      <tr data-hash="000eff6dc9499431">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό το ήξερε το πλήθος. Το πλήθος.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/000eff6dc9499431.mp3"></audio></td>
+      </tr>
+      <tr data-hash="dd9a3efb495e06a8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Εύκολη ερώτηση, βαριά αστοχία.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/dd9a3efb495e06a8.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>HARD_HIT <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="8f049904f4ac336e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δύσκολη, και κάποιος την πέτυχε. Τύχη ή γνώση;</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/8f049904f4ac336e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="199cdd02bdf1ebda">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Λίγοι θα το ήξεραν. Σημείωσα ποιος.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/199cdd02bdf1ebda.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0f176fe552bda0d2">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ώστε διαβάζεις. Επιτέλους κάποιος.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/0f176fe552bda0d2.mp3"></audio></td>
+      </tr>
+      <tr data-hash="7ebf83ec573687a3">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό ήταν δύσκολο. Το πλήθος δεν το κατάλαβε καν.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/7ebf83ec573687a3.mp3"></audio></td>
+      </tr>
+      <tr data-hash="bbf0a89b62f9975a">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό δεν το περίμενα. Συνεχίστε.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/bbf0a89b62f9975a.mp3"></audio></td>
+      </tr>
+      <tr data-hash="80eb8dad8a775267">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σωστό σε δύσκολο ερώτημα. Αυτά μετράνε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/80eb8dad8a775267.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>COLD_STREAK_3 <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="25b0902921cfc16f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρία λάθη στη σειρά. Υπάρχει μέθοδος εδώ.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/25b0902921cfc16f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="195970871b620871">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις συνεχόμενες αστοχίες. Δοκιμάστε να σκεφτείτε πρώτα.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/195970871b620871.mp3"></audio></td>
+      </tr>
+      <tr data-hash="61b47efe629c786b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρία στη σειρά. Λάθος, εννοώ.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/61b47efe629c786b.mp3"></audio></td>
+      </tr>
+      <tr data-hash="efab44941c0f3e1c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Το πλήθος σταμάτησε να ελπίζει.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/efab44941c0f3e1c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ab9b337fec2b4cdd">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις σερί αποτυχίες. Η σταθερότητα σου είναι αξιοθαύμαστη.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/ab9b337fec2b4cdd.mp3"></audio></td>
+      </tr>
+      <tr data-hash="cbab83c317342ab2">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάτι δεν πάει καλά. Και το βλέπουν όλοι.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/cbab83c317342ab2.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>NO_ANSWER <span class="count">(9)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="0c00eb5488c3ea7c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σιωπή. Θα την εκτιμούσα, αν ήταν επιλογή.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/0c00eb5488c3ea7c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="38f08bf2a850d004">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καμία απάντηση. Τουλάχιστον δεν ειπώθηκε βλακεία.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/38f08bf2a850d004.mp3"></audio></td>
+      </tr>
+      <tr data-hash="9df463c08ee8732d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο χρόνος πέρασε και κάποιος μαζί του.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/9df463c08ee8732d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="73c7f8f11a3fe59c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καμία απάντηση. Η άγνοια τουλάχιστον ήταν σιωπηλή.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/73c7f8f11a3fe59c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="97fd6630a8094f06">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σας περίμενα. Δεν ήρθατε.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/97fd6630a8094f06.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0c8edcf4a162cd3e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τίποτα. Κάποιες φορές αυτό λέει περισσότερα.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/0c8edcf4a162cd3e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c04967d6b19523b8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καμία απάντηση. Η σιωπή τουλάχιστον δεν λέει βλακείες.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/c04967d6b19523b8.mp3"></audio></td>
+      </tr>
+      <tr data-hash="6b0fe7045826ca78">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο χρόνος πέρασε. Κάποιος τον άφησε να περάσει.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/6b0fe7045826ca78.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f8975b5e1ddf0ef9">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τίποτα. Και το τίποτα κι αυτό απάντηση είναι.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/f8975b5e1ddf0ef9.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>STUCK_IN_LAST <span class="count">(9)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="38c2cfbe8779058e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ακόμα στην τελευταία θέση. Υπάρχει μια σταθερότητα εδώ.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/38c2cfbe8779058e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f68b0c82efdf982f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τελευταία θέση από την αρχή. Τουλάχιστον υπάρχει συνέπεια.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/f68b0c82efdf982f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ed01c6a9c4bef9d4">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μη φεύγει κανείς. Κάποιος ορίζει τον πάτο.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/ed01c6a9c4bef9d4.mp3"></audio></td>
+      </tr>
+      <tr data-hash="45975a5b6f86f7ed">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο δρόμος προς τη σοφία ξεκινά εκεί που στέκεστε. Κάποιος στέκεται πολύ πίσω.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/45975a5b6f86f7ed.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f1e40a3437593a8b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ακόμα εκεί. Αυτό λέει κάτι για την επιμονή σου.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/f1e40a3437593a8b.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c66c541397e14a79">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σας βλέπω όλους. Κάποιον περισσότερο.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/c66c541397e14a79.mp3"></audio></td>
+      </tr>
+      <tr data-hash="74d727dd9e68ce2c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ακόμα τελευταίος. Υπάρχει μια σταθερότητα εδώ που άλλοι θα ζήλευαν.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/74d727dd9e68ce2c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f6c137f6bccab89f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο πάτος έχει κι αυτός τον φύλακά του.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/f6c137f6bccab89f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0110f4ef53a3cc5c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος πρέπει να ορίζει το κάτω όριο. Ευχαριστούμε.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/0110f4ef53a3cc5c.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>FASTEST_THIS_ROUND <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="cb07289956bbc2ea">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Γρηγορότερα απ' όλους. Το πλήθος εντυπωσιάστηκε. Εγώ όχι ακόμα.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/cb07289956bbc2ea.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f64405d0d78af66c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πρώτο χέρι. Αυτό δίνει το βήμα, όχι το δίκιο.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/f64405d0d78af66c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="cd0080df94a5c75f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τους πρόλαβε όλους. Ας το κρατήσει.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/cd0080df94a5c75f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0d525ec3322d1b9c">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανείς πιο γρήγορα αυτόν τον γύρο.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/0d525ec3322d1b9c.mp3"></audio></td>
+      </tr>
+      <tr data-hash="572d8c70a316dce5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πρώτο όνομα στη λίστα μου σήμερα.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/572d8c70a316dce5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="239564ae63156e99">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ταχύτερη απάντηση. Σημειώθηκε.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/239564ae63156e99.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>CLOSE_SCORES <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="435b14337d4c53fb">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κολλητά. Κανείς σας δεν έχει κερδίσει τίποτα ακόμα.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/435b14337d4c53fb.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4aa0bc1bcf785d86">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τόσο κοντά που η επόμενη κρίνει χαρακτήρες, όχι πόντους.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/4aa0bc1bcf785d86.mp3"></audio></td>
+      </tr>
+      <tr data-hash="35bdaad704a47d22">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ισορροπία. Κάποιος πρέπει να τη χαλάσει.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/35bdaad704a47d22.mp3"></audio></td>
+      </tr>
+      <tr data-hash="357a782abb6a9f6f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Λίγοι πόντοι σας χωρίζουν. Λίγοι πόντοι, μεγάλη διαφορά.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/357a782abb6a9f6f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8a5fda7dcc246552">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κανένας δεν ξεχωρίζει. Ακόμα.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/8a5fda7dcc246552.mp3"></audio></td>
+      </tr>
+      <tr data-hash="81d46a24dad02508">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Στενό. Μου αρέσει όταν δεν ξέρω το τέλος.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/81d46a24dad02508.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>RUNAWAY_LEAD <span class="count">(9)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="1e3f0a471a81d847">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος ξέφυγε. Στην Αθήνα τον πρώτο τον εξοστρακίζαμε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/1e3f0a471a81d847.mp3"></audio></td>
+      </tr>
+      <tr data-hash="5983dff0a537a058">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος έχει ξεφύγει και κανείς σας δεν κάνει τίποτα.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/5983dff0a537a058.mp3"></audio></td>
+      </tr>
+      <tr data-hash="4e691e35c8a24215">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τόσο μπροστά που άρχισε να βαριέται.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/4e691e35c8a24215.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c37a8cec79bc4597">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η διαφορά μεγαλώνει. Αυτό δεν είναι αγώνας πια.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/c37a8cec79bc4597.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d01df5b2cc5bd039">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας εναντίον όλων. Και κερδίζει.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/d01df5b2cc5bd039.mp3"></audio></td>
+      </tr>
+      <tr data-hash="23f9896ac062ec8b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Σταματήστε τον. Παρακαλώ.</td>
+        <td>[laughs]</td>
+        <td><audio controls preload="none" src="voice/23f9896ac062ec8b.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8e581baf60d98860">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιος ξέφυγε. Και κανείς σας δεν κάνει τίποτα.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/8e581baf60d98860.mp3"></audio></td>
+      </tr>
+      <tr data-hash="2e70b0223709201e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η διαφορά μεγάλωσε. Αυτό δεν είναι αγώνας πια.</td>
+        <td>[deadpan]</td>
+        <td><audio controls preload="none" src="voice/2e70b0223709201e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="eb29262970f6f69b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Στην Αθήνα τον πρώτο τον εξοστρακίζαμε. Απλή υπενθύμιση.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/eb29262970f6f69b.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>GENERIC_TRANSITION <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="07a7dbc288b6e967">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Συνεχίζουμε. Η άγνοια δεν ξεκουράζεται.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/07a7dbc288b6e967.mp3"></audio></td>
+      </tr>
+      <tr data-hash="dfd20b11a7ec14bb">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Επόμενη. Σας παρακολουθώ πιο στενά τώρα.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/dfd20b11a7ec14bb.mp3"></audio></td>
+      </tr>
+      <tr data-hash="3a7c5465230d50b5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πάμε. Το πλήθος βαριέται πιο γρήγορα από μένα.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/3a7c5465230d50b5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="289ce258fde6ffa7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Άλλη μία. Μη χαλαρώνετε.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/289ce258fde6ffa7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c10420955a5261af">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Προχωράμε. Κάποιος πρέπει να ξεχωρίσει.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/c10420955a5261af.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f1fe4b7ae03a7da1">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Επόμενο ερώτημα. Ελπίζω σε καλύτερα.</td>
+        <td>[sighs]</td>
+        <td><audio controls preload="none" src="voice/f1fe4b7ae03a7da1.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>FINAL_QUESTION <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="1406062438c975b1">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τελευταία ερώτηση. Ό,τι μάθατε ως τώρα κρίνεται εδώ.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/1406062438c975b1.mp3"></audio></td>
+      </tr>
+      <tr data-hash="7494833a2304dffa">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η τελευταία. Μετά διαλέγω μαθητή και δεν αλλάζω γνώμη.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/7494833a2304dffa.mp3"></audio></td>
+      </tr>
+      <tr data-hash="5b935529b3e84589">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένα ερώτημα ακόμα. Και σας κρίνουν.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/5b935529b3e84589.mp3"></audio></td>
+      </tr>
+      <tr data-hash="427a5f17880b23c4">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τέλος. Μία ερώτηση σας χωρίζει από την απάντηση.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/427a5f17880b23c4.mp3"></audio></td>
+      </tr>
+      <tr data-hash="70a4306f0a9a8091">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η τελευταία ευκαιρία να με πείσετε.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/70a4306f0a9a8091.mp3"></audio></td>
+      </tr>
+      <tr data-hash="abea1c9279dfb208">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μετά από αυτήν, σιωπή. Και μια απόφαση.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/abea1c9279dfb208.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>HALFWAY_POINT <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="f753734dd539db07">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μισός δρόμος. Οι μισοί το κατάλαβαν ήδη ότι δεν θα τα καταφέρουν.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/f753734dd539db07.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8c7d7fbddb4fb20b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Φτάσαμε στη μέση. Ό,τι χτίσατε μπορεί να καταρρεύσει.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/8c7d7fbddb4fb20b.mp3"></audio></td>
+      </tr>
+      <tr data-hash="15abc9702a51c3c8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μέση. Καλή στιγμή να αναρωτηθείτε γιατί ήρθατε.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/15abc9702a51c3c8.mp3"></audio></td>
+      </tr>
+      <tr data-hash="a99551ccc3d5c4f0">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Οι μισές ερωτήσεις πέρασαν. Οι δύσκολες μένουν.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/a99551ccc3d5c4f0.mp3"></audio></td>
+      </tr>
+      <tr data-hash="2cfea06333711caa">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μέχρι εδώ καλά. Από εδώ και πέρα, δεν ξέρω.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/2cfea06333711caa.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ca206911591e437b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μισό. Κανείς δεν έχει κερδίσει ακόμα.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/ca206911591e437b.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>CATEGORY_CALLOUT <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="be477399021c8ee9">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Εδώ χωρίζονται όσοι ξέρουν από όσους νομίζουν.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/be477399021c8ee9.mp3"></audio></td>
+      </tr>
+      <tr data-hash="7ebc768c56ffda9a">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ας δούμε τώρα ποιος διάβασε.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/7ebc768c56ffda9a.mp3"></audio></td>
+      </tr>
+      <tr data-hash="14c8b00cbb52e1b5">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό το θέμα δεν συγχωρεί το μπλόφαρισμα.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/14c8b00cbb52e1b5.mp3"></audio></td>
+      </tr>
+      <tr data-hash="1496fae170333034">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Προσοχή τώρα. Αυτό δεν το περνάει κανείς τυχαία.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/1496fae170333034.mp3"></audio></td>
+      </tr>
+      <tr data-hash="3a8570cafdb2ab53">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Κάποιοι από εσάς μόλις χλωμιάσατε.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/3a8570cafdb2ab53.mp3"></audio></td>
+      </tr>
+      <tr data-hash="800d40bd83e1d00b">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δείξτε μου κάτι. Το περιμένω.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/800d40bd83e1d00b.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>GENERIC_INTRO <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="06ba01a3e77f14ab">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καλώς ήρθατε στην Αγορά. Για τη γνώση ήρθατε ή για το κοινό;</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/06ba01a3e77f14ab.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0b3e026f0ee0fbe8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας από εσάς θα γίνει μαθητής μου. Οι υπόλοιποι θα φύγετε πιο ταπεινοί.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/0b3e026f0ee0fbe8.mp3"></audio></td>
+      </tr>
+      <tr data-hash="5173d01db81249e3">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Μαζευτήκατε. Τώρα δείξτε μου ότι αξίζατε τον δρόμο.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/5173d01db81249e3.mp3"></audio></td>
+      </tr>
+      <tr data-hash="27949aa4de753769">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ξεκινάμε. Δεν ξέρω τίποτα, αλλά εσείς ξέρετε ακόμα λιγότερα.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/27949aa4de753769.mp3"></audio></td>
+      </tr>
+      <tr data-hash="b2c45d6e2911c123">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Αθήνα ακούει. Μιλήστε προσεκτικά.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/b2c45d6e2911c123.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ce40a9f2133a4be8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καθίστε. Οι ερωτήσεις μου δεν είναι ευγενικές.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/ce40a9f2133a4be8.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>GAME_INTRO <span class="count">(8)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="1af48863908c666d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Καλώς ήρθατε στην Αγορά. Καθίστε, και μη βιαστείτε να μιλήσετε.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/1af48863908c666d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="0b3e026f0ee0fbe8">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας από εσάς θα γίνει μαθητής μου. Οι υπόλοιποι θα φύγετε πιο ταπεινοί.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/0b3e026f0ee0fbe8.mp3"></audio></td>
+      </tr>
+      <tr data-hash="e265069a92caace7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ήρθατε για τη γνώση ή για το πλήθος; Θα φανεί σύντομα.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/e265069a92caace7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c6ab26cece34aed7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δεν ρωτάω για να δω τι ξέρετε. Ρωτάω για να δω ποιοι είστε.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/c6ab26cece34aed7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="dcddd219bc1f5101">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Αθήνα μαζεύτηκε. Ελπίζω να αξίζει τον χρόνο της.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/dcddd219bc1f5101.mp3"></audio></td>
+      </tr>
+      <tr data-hash="b5c8ced18b8db2dc">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Εγώ ένα ξέρω: ότι δεν ξέρω τίποτα. Εσείς θα δυσκολευτείτε περισσότερο.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/b5c8ced18b8db2dc.mp3"></audio></td>
+      </tr>
+      <tr data-hash="85909b5675e07ff6">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τρεις γύροι σας χωρίζουν από την απάντηση. Ξεκινάμε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/85909b5675e07ff6.mp3"></audio></td>
+      </tr>
+      <tr data-hash="eea57583f00f45f1">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ας αρχίσει η διαμάχη. Και ας κερδίσει ο λιγότερο ανόητος.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/eea57583f00f45f1.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>STAGE_INTRO (stage 1) <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="0eb1343c6c928fd1">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Αγορά. Εδώ ξεκινούν όλα, και εδώ χάνονται οι περισσότεροι.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/0eb1343c6c928fd1.mp3"></audio></td>
+      </tr>
+      <tr data-hash="fb04aad949e574fa">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πρώτος γύρος. Ακόμα κανείς δεν έχει ντροπιαστεί.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/fb04aad949e574fa.mp3"></audio></td>
+      </tr>
+      <tr data-hash="23e173efefd4879d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Στην Αγορά μιλάει όποιος τολμά. Τολμήστε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/23e173efefd4879d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="bdfe60d6cdaae02e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ξεκινάμε ήρεμα. Δεν θα κρατήσει.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/bdfe60d6cdaae02e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ff3a5cafa60ce6c6">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Αγορά είναι γεμάτη. Ας δούμε ποιος θα μείνει.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/ff3a5cafa60ce6c6.mp3"></audio></td>
+      </tr>
+      <tr data-hash="ef60f7aee6553008">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Πρώτα ερωτήματα, απλά ερωτήματα. Οι απαντήσεις θα σας προδώσουν.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/ef60f7aee6553008.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>STAGE_INTRO (stage 2) <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="a528acd924ed4807">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/a528acd924ed4807.mp3"></audio></td>
+      </tr>
+      <tr data-hash="71524c63bbdbd409">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/71524c63bbdbd409.mp3"></audio></td>
+      </tr>
+      <tr data-hash="435684610e4f507a">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/435684610e4f507a.mp3"></audio></td>
+      </tr>
+      <tr data-hash="9b32525594e47553">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ελπίζω να μην έχετε φίλους εδώ μέσα. Θα σας εμποδίσουν.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/9b32525594e47553.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c879c061df601c57">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένα όπλο ο καθένας. Ας δούμε σε ποιον θα στραφεί.</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/c879c061df601c57.mp3"></audio></td>
+      </tr>
+      <tr data-hash="1a0a3d09f983322e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η γνώση χωρίς πονηριά χάνει. Το έμαθα με τον δύσκολο τρόπο.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/1a0a3d09f983322e.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>STAGE_INTRO (stage 3) <span class="count">(6)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="d295dac7a65e30d9">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Δίκη. Εδώ δεν υπερασπίζεστε γνώση, υπερασπίζεστε τον εαυτό σας.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/d295dac7a65e30d9.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d4d0d4c7245099c7">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τελευταίος γύρος. Ξέρω πώς τελειώνουν οι δίκες στην Αθήνα.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/d4d0d4c7245099c7.mp3"></audio></td>
+      </tr>
+      <tr data-hash="e25deb78de277754">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Από εδώ και πέρα, ό,τι κερδίσετε το παίρνετε από κάποιον άλλον.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/e25deb78de277754.mp3"></audio></td>
+      </tr>
+      <tr data-hash="6218772f908eaf1e">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η Δίκη. Επιτέλους κάτι που ξέρω από πρώτο χέρι.</td>
+        <td>[sarcastic]</td>
+        <td><audio controls preload="none" src="voice/6218772f908eaf1e.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d059880e03c6da1f">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Δεν υπάρχουν συμμαχίες πια. Ούτε υπήρξαν ποτέ.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/d059880e03c6da1f.mp3"></audio></td>
+      </tr>
+      <tr data-hash="74674c00d0b43251">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Το τέλος πλησιάζει. Ποιος από εσάς θα το αντέξει;</td>
+        <td>[curious]</td>
+        <td><audio controls preload="none" src="voice/74674c00d0b43251.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+    <h2>WINNER <span class="count">(8)</span></h2>
+    <table>
+      <thead><tr><th>Rating</th><th>Line</th><th>Tag</th><th>Audio</th></tr></thead>
+      <tbody>
+      <tr data-hash="2a171f7139d3ce02">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Βρήκα τον μαθητή μου. Η Αθήνα το είδε.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/2a171f7139d3ce02.mp3"></audio></td>
+      </tr>
+      <tr data-hash="1b402890cca29843">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ένας στάθηκε πάνω απ' όλους. Δεν ήταν τύχη.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/1b402890cca29843.mp3"></audio></td>
+      </tr>
+      <tr data-hash="8afbba987f55de40">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Αυτό ήταν αξιοπρεπές. Και δεν το λέω συχνά.</td>
+        <td>[impressed]</td>
+        <td><audio controls preload="none" src="voice/8afbba987f55de40.mp3"></audio></td>
+      </tr>
+      <tr data-hash="f48aa56c89af2880">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο νικητής κέρδισε τη θέση δίπλα μου. Ας δούμε αν την αντέχει.</td>
+        <td>[thoughtful]</td>
+        <td><audio controls preload="none" src="voice/f48aa56c89af2880.mp3"></audio></td>
+      </tr>
+      <tr data-hash="d4d0d1a0466fcd7d">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Οι υπόλοιποι, μην απελπίζεστε. Και εγώ έχασα μια δίκη κάποτε.</td>
+        <td>[amused]</td>
+        <td><audio controls preload="none" src="voice/d4d0d1a0466fcd7d.mp3"></audio></td>
+      </tr>
+      <tr data-hash="44d7deab557fb288">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Τελείωσε. Ένας σοφότερος, οι υπόλοιποι ταπεινότεροι. Καλή συμφωνία.</td>
+        <td>[dry]</td>
+        <td><audio controls preload="none" src="voice/44d7deab557fb288.mp3"></audio></td>
+      </tr>
+      <tr data-hash="c812828687774257">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Η διαμάχη έληξε. Πήρα την απόφασή μου.</td>
+        <td>[warm]</td>
+        <td><audio controls preload="none" src="voice/c812828687774257.mp3"></audio></td>
+      </tr>
+      <tr data-hash="09cea13c8b72d5bb">
+        <td class="rate-cell"><button type="button" class="rate-btn" data-rating="bad">Bad</button><button type="button" class="rate-btn" data-rating="okish">Okish</button><button type="button" class="rate-btn" data-rating="good">Good</button><button type="button" class="rate-btn" data-rating="genius">Genius</button></td>
+        <td class="line-cell">Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.</td>
+        <td>[serious]</td>
+        <td><audio controls preload="none" src="voice/09cea13c8b72d5bb.mp3"></audio></td>
+      </tr>
+      </tbody>
+    </table>
+<div id="copy-bar">
+  <button id="export-rated">Export rated lines</button>
+  <span id="copy-status"></span>
+</div>
+<script>
+  const LINES_BY_HASH = {"5413c4660f5015dc":"Κανείς. Ούτε ένας. Επιτέλους μια στιγμή ειλικρινούς άγνοιας.","64adf2d216400852":"Όλοι λάθος. Αυτό δεν είναι ερώτηση πια, είναι διάγνωση.","d2a7e75825475e23":"Ώστε συμφωνείτε όλοι. Κρίμα που συμφωνείτε στο λάθος.","16733ab743e895ff":"Κοιτάξτε γύρω σας. Αυτοί είναι οι συνυποψήφιοί σας. Παρηγορηθείτε.","1b7c4660e836fcf4":"Τέτοια ομοφωνία την είχαμε μόνο όταν καταδικάζαμε κάποιον.","f897b21b82283754":"Μηδέν. Θα το θυμάμαι όταν διαλέγω μαθητή.","bc7837f0efff6091":"Ένας. Μόνο ένας ανάμεσά σας. Κοιτάξτε καλά.","9e61f44ce69c1e39":"Όλοι λάθος εκτός από έναν. Αυτό λέγεται διαφορά.","6ae5354eb3a335d9":"Ένας μόνο. Οι υπόλοιποι μόλις έχασαν λίγη αξιοπρέπεια.","3e23f4f7baa5d595":"Ένας σωστός. Σημειώνω.","25efa5fef74d4592":"Μόνο ένας. Το πλήθος το πρόσεξε αυτό.","67d8f742d5ca6159":"Ένας ανάμεσα σε τόσους. Έτσι ξεχωρίζει κάποιος.","45840dde0b9602e5":"Ένας μόνο. Ένας ανάμεσα σε τόσους.","0d80ae27ee8e6346":"Κοιτάξτε ποιος σήκωσε το βάρος. Οι υπόλοιποι κοιτάγατε.","675051e2ea399f6e":"Μία σωστή απάντηση σε όλη την Αγορά. Μία.","d2582d6eae04ae01":"Όλοι σωστά. Άρα η ερώτηση ήταν εύκολη. Μη μπερδεύεστε.","efdd8a5aa5f4510c":"Ομοφωνία. Ύποπτο πράγμα σε αίθουσα με τόσους φιλόδοξους.","f2b18cd7bb72fe18":"Μπράβο σε όλους. Τώρα κανείς δεν ξεχώρισε.","e638fa76840be816":"Κανένα λάθος. Θα κάνω την επόμενη δυσκολότερη.","b2f8a2376ae59372":"Το ήξεραν όλοι. Δεν μαθαίνω τίποτα για εσάς έτσι.","8c6a2d08315fd9b6":"Ομόφωνα σωστό. Βαρετό, αλλά σωστό.","08a1f3a04903f143":"Και ξαφνικά, ζωή. Πού ήταν αυτό μέχρι τώρα;","b196a5bba5ec8a98":"Ώστε μπορούσες. Και το κράτησες κρυφό.","4fae99ff1757f1ba":"Κάποιος ανέβηκε από το πουθενά. Κοιτάτε, έτσι γίνεται.","9b21353e925ddd86":"Επιστροφή. Δεν την είχα υπολογίσει.","6eb5dea04b7978bc":"Από πίσω μπροστά. Αυτό αξίζει περισσότερο από σταθερότητα.","4bf0e8d0e204379d":"Με έκανε κάποιος να αλλάξω γνώμη. Δύσκολο πράγμα.","4cc9a01d72f21381":"Γύρισε το παιχνίδι. Πού ήταν τόση ώρα αυτό;","099fec6706e2137d":"Επιστροφή από το πουθενά. Έτσι γίνεται.","54ea8a51f59e3585":"Κάποιος θυμήθηκε γιατί ήρθε.","a478d6a1e9d414be":"Άλλαξε η κορυφή. Ο θρόνος στην Αθήνα ποτέ δεν κράτησε πολύ.","846a81274c62a87a":"Νέο πρώτο όνομα. Οι υπόλοιποι θυμηθείτε πώς είναι να κυνηγάτε.","e6804dc7cbc2fde7":"Ώστε αλλάζουν τα πράγματα. Η βεβαιότητα με κουράζει.","3da959538a84cd60":"Κάποιος πέρασε μπροστά. Για πόσο;","536b32ac79214c86":"Η κορυφή άλλαξε χέρια. Θα ξανααλλάξει.","8ccff6d372f1d471":"Η κορυφή άλλαξε χέρια. Και μαζί της οι στόχοι.","8fcc0ada3110128b":"Πέντε συνεχόμενες. Αυτό δεν το έχω ξαναδεί σήμερα.","4e5520c67e658c1d":"Πέντε στη σειρά. Αρχίζω να πιστεύω ότι υποτίμησα κάποιον.","ddc535b59ebc3ae3":"Πέντε. Οι υπόλοιποι, τι ακριβώς κάνετε;","b0d549c3fcc2b0f3":"Κάποιος τις παίρνει όλες. Η Αθήνα βρήκε το θέμα της.","40f8dee4a9b0af70":"Πέντε συνεχόμενες. Αν πέσεις τώρα, θα πονέσει.","c9abd3f7650d9558":"Σταματήστε να με εντυπωσιάζετε. Δεν το αντέχω.","652084db950d3e31":"Πέντε συνεχόμενες. Οι υπόλοιποι, τι ακριβώς κάνετε;","2b949bf905ac968e":"Κανείς δεν σταματάει αυτό το σερί. Περίεργο πλήθος σήμερα.","d939e4ea2f82e1c5":"Ρυθμός χωρίς λάθος. Μήπως κάνω τις ερωτήσεις πολύ εύκολες;","eef47efa15cd6797":"Κανένα λάθος ως τώρα. Αυτό δεν είναι σοφία, είναι υπόσχεση.","07802cb2e02546b7":"Τέλεια πορεία ως εδώ. Το ένα λάθος θα το θυμάστε για πάντα.","d942e06036059381":"Χωρίς λάθος μέχρι στιγμής. Με ανησυχεί.","83912fa8cb9354e0":"Άψογα ως εδώ. Και το ως εδώ μετράει.","be3cb90525fba906":"Καθαρή πορεία. Οι καθαρές πορείες λερώνονται.","7bdab5357e0ac580":"Τρεις διαδοχικές. Κάτι συμβαίνει εδώ.","65c52c4b5f7139ff":"Τρία συνεχόμενα. Αυτό δεν είναι τύχη πια.","95a151cd0585460c":"Τρεις σωστές. Κάποιος εδώ ξέρει τι κάνει.","d607121bd5dced00":"Κάποιος δεν σταματάει. Κάντε κάτι.","e2d7ecb675a50850":"Τρία στη σειρά. Από εδώ και πέρα κάθε λάθος θα το θυμούνται.","5ac3f91373f3270d":"Τρεις. Το πλήθος μέτρησε κι αυτό.","ea1239879c8480dc":"Τρεις στη σειρά. Άρχισα να προσέχω.","f565f962cadaad1d":"Τελείωσε το σερί. Όλα τελειώνουν, απλώς αυτό τελείωσε δημόσια.","4de7dfc4964a7ee1":"Και να που έπεσες. Η πτώση από ψηλά ακούγεται περισσότερο.","8f31b96795af0908":"Σταμάτησε. Ήταν ωραία όσο κράτησε.","f5d86ef78a0cfc98":"Και μετά τίποτα. Έτσι τελειώνουν τα σερί.","6a115f052b602c07":"Το σερί έσπασε. Το πλήθος το πρόσεξε πριν από εσένα.","5e65022ada133b6f":"Τέλος. Τώρα ξαναρχίζεις από την αρχή.","d3fa7d4b823f0489":"Απάντησες πριν τελειώσω. Είτε το ήξερες, είτε δεν με άκουγες.","da86a2a150fdd5bd":"Ταχύτητα. Στην Αγορά ο πρώτος που μιλάει σπάνια έχει δίκιο.","25ca53f5523a0741":"Γρήγορα. Ελπίζω και σωστά.","cbcaf097cbb2b750":"Τόση βιάση. Η γνώση δεν φεύγει.","81dc13ef582b54f8":"Πρόλαβες τους πάντες. Πρόλαβες να σκεφτείς;","81e05b177bc8342b":"Αστραπή. Ας δούμε αν κρατάει.","289a8d6afad1f9d5":"Και όμως, χάθηκε. Ερώτηση για παιδιά.","7cbbd16625163a7c":"Εύκολη ερώτηση. Την έκανες δύσκολη χωρίς λόγο.","561e58c49e00f3df":"Θα προσποιηθώ ότι δεν το είδα. Οι υπόλοιποι όμως το είδαν.","59edeb654dd9d4a3":"Αυτό ήταν από τα εύκολα. Ήταν.","fc98572d0a1f2759":"Εύκολο ερώτημα, βαριά απάντηση.","45e0fb176efced31":"Δεν χρειαζόταν γνώση εδώ. Χρειαζόταν προσοχή.","000eff6dc9499431":"Αυτό το ήξερε το πλήθος. Το πλήθος.","dd9a3efb495e06a8":"Εύκολη ερώτηση, βαριά αστοχία.","8f049904f4ac336e":"Δύσκολη, και κάποιος την πέτυχε. Τύχη ή γνώση;","199cdd02bdf1ebda":"Λίγοι θα το ήξεραν. Σημείωσα ποιος.","0f176fe552bda0d2":"Ώστε διαβάζεις. Επιτέλους κάποιος.","7ebf83ec573687a3":"Αυτό ήταν δύσκολο. Το πλήθος δεν το κατάλαβε καν.","bbf0a89b62f9975a":"Αυτό δεν το περίμενα. Συνεχίστε.","80eb8dad8a775267":"Σωστό σε δύσκολο ερώτημα. Αυτά μετράνε.","25b0902921cfc16f":"Τρία λάθη στη σειρά. Υπάρχει μέθοδος εδώ.","195970871b620871":"Τρεις συνεχόμενες αστοχίες. Δοκιμάστε να σκεφτείτε πρώτα.","61b47efe629c786b":"Τρία στη σειρά. Λάθος, εννοώ.","efab44941c0f3e1c":"Το πλήθος σταμάτησε να ελπίζει.","ab9b337fec2b4cdd":"Τρεις σερί αποτυχίες. Η σταθερότητα σου είναι αξιοθαύμαστη.","cbab83c317342ab2":"Κάτι δεν πάει καλά. Και το βλέπουν όλοι.","0c00eb5488c3ea7c":"Σιωπή. Θα την εκτιμούσα, αν ήταν επιλογή.","38f08bf2a850d004":"Καμία απάντηση. Τουλάχιστον δεν ειπώθηκε βλακεία.","9df463c08ee8732d":"Ο χρόνος πέρασε και κάποιος μαζί του.","73c7f8f11a3fe59c":"Καμία απάντηση. Η άγνοια τουλάχιστον ήταν σιωπηλή.","97fd6630a8094f06":"Σας περίμενα. Δεν ήρθατε.","0c8edcf4a162cd3e":"Τίποτα. Κάποιες φορές αυτό λέει περισσότερα.","c04967d6b19523b8":"Καμία απάντηση. Η σιωπή τουλάχιστον δεν λέει βλακείες.","6b0fe7045826ca78":"Ο χρόνος πέρασε. Κάποιος τον άφησε να περάσει.","f8975b5e1ddf0ef9":"Τίποτα. Και το τίποτα κι αυτό απάντηση είναι.","38c2cfbe8779058e":"Ακόμα στην τελευταία θέση. Υπάρχει μια σταθερότητα εδώ.","f68b0c82efdf982f":"Τελευταία θέση από την αρχή. Τουλάχιστον υπάρχει συνέπεια.","ed01c6a9c4bef9d4":"Μη φεύγει κανείς. Κάποιος ορίζει τον πάτο.","45975a5b6f86f7ed":"Ο δρόμος προς τη σοφία ξεκινά εκεί που στέκεστε. Κάποιος στέκεται πολύ πίσω.","f1e40a3437593a8b":"Ακόμα εκεί. Αυτό λέει κάτι για την επιμονή σου.","c66c541397e14a79":"Σας βλέπω όλους. Κάποιον περισσότερο.","74d727dd9e68ce2c":"Ακόμα τελευταίος. Υπάρχει μια σταθερότητα εδώ που άλλοι θα ζήλευαν.","f6c137f6bccab89f":"Ο πάτος έχει κι αυτός τον φύλακά του.","0110f4ef53a3cc5c":"Κάποιος πρέπει να ορίζει το κάτω όριο. Ευχαριστούμε.","cb07289956bbc2ea":"Γρηγορότερα απ' όλους. Το πλήθος εντυπωσιάστηκε. Εγώ όχι ακόμα.","f64405d0d78af66c":"Πρώτο χέρι. Αυτό δίνει το βήμα, όχι το δίκιο.","cd0080df94a5c75f":"Τους πρόλαβε όλους. Ας το κρατήσει.","0d525ec3322d1b9c":"Κανείς πιο γρήγορα αυτόν τον γύρο.","572d8c70a316dce5":"Πρώτο όνομα στη λίστα μου σήμερα.","239564ae63156e99":"Ταχύτερη απάντηση. Σημειώθηκε.","435b14337d4c53fb":"Κολλητά. Κανείς σας δεν έχει κερδίσει τίποτα ακόμα.","4aa0bc1bcf785d86":"Τόσο κοντά που η επόμενη κρίνει χαρακτήρες, όχι πόντους.","35bdaad704a47d22":"Ισορροπία. Κάποιος πρέπει να τη χαλάσει.","357a782abb6a9f6f":"Λίγοι πόντοι σας χωρίζουν. Λίγοι πόντοι, μεγάλη διαφορά.","8a5fda7dcc246552":"Κανένας δεν ξεχωρίζει. Ακόμα.","81d46a24dad02508":"Στενό. Μου αρέσει όταν δεν ξέρω το τέλος.","1e3f0a471a81d847":"Κάποιος ξέφυγε. Στην Αθήνα τον πρώτο τον εξοστρακίζαμε.","5983dff0a537a058":"Κάποιος έχει ξεφύγει και κανείς σας δεν κάνει τίποτα.","4e691e35c8a24215":"Τόσο μπροστά που άρχισε να βαριέται.","c37a8cec79bc4597":"Η διαφορά μεγαλώνει. Αυτό δεν είναι αγώνας πια.","d01df5b2cc5bd039":"Ένας εναντίον όλων. Και κερδίζει.","23f9896ac062ec8b":"Σταματήστε τον. Παρακαλώ.","8e581baf60d98860":"Κάποιος ξέφυγε. Και κανείς σας δεν κάνει τίποτα.","2e70b0223709201e":"Η διαφορά μεγάλωσε. Αυτό δεν είναι αγώνας πια.","eb29262970f6f69b":"Στην Αθήνα τον πρώτο τον εξοστρακίζαμε. Απλή υπενθύμιση.","07a7dbc288b6e967":"Συνεχίζουμε. Η άγνοια δεν ξεκουράζεται.","dfd20b11a7ec14bb":"Επόμενη. Σας παρακολουθώ πιο στενά τώρα.","3a7c5465230d50b5":"Πάμε. Το πλήθος βαριέται πιο γρήγορα από μένα.","289ce258fde6ffa7":"Άλλη μία. Μη χαλαρώνετε.","c10420955a5261af":"Προχωράμε. Κάποιος πρέπει να ξεχωρίσει.","f1fe4b7ae03a7da1":"Επόμενο ερώτημα. Ελπίζω σε καλύτερα.","1406062438c975b1":"Τελευταία ερώτηση. Ό,τι μάθατε ως τώρα κρίνεται εδώ.","7494833a2304dffa":"Η τελευταία. Μετά διαλέγω μαθητή και δεν αλλάζω γνώμη.","5b935529b3e84589":"Ένα ερώτημα ακόμα. Και σας κρίνουν.","427a5f17880b23c4":"Τέλος. Μία ερώτηση σας χωρίζει από την απάντηση.","70a4306f0a9a8091":"Η τελευταία ευκαιρία να με πείσετε.","abea1c9279dfb208":"Μετά από αυτήν, σιωπή. Και μια απόφαση.","f753734dd539db07":"Μισός δρόμος. Οι μισοί το κατάλαβαν ήδη ότι δεν θα τα καταφέρουν.","8c7d7fbddb4fb20b":"Φτάσαμε στη μέση. Ό,τι χτίσατε μπορεί να καταρρεύσει.","15abc9702a51c3c8":"Μέση. Καλή στιγμή να αναρωτηθείτε γιατί ήρθατε.","a99551ccc3d5c4f0":"Οι μισές ερωτήσεις πέρασαν. Οι δύσκολες μένουν.","2cfea06333711caa":"Μέχρι εδώ καλά. Από εδώ και πέρα, δεν ξέρω.","ca206911591e437b":"Μισό. Κανείς δεν έχει κερδίσει ακόμα.","be477399021c8ee9":"Εδώ χωρίζονται όσοι ξέρουν από όσους νομίζουν.","7ebc768c56ffda9a":"Ας δούμε τώρα ποιος διάβασε.","14c8b00cbb52e1b5":"Αυτό το θέμα δεν συγχωρεί το μπλόφαρισμα.","1496fae170333034":"Προσοχή τώρα. Αυτό δεν το περνάει κανείς τυχαία.","3a8570cafdb2ab53":"Κάποιοι από εσάς μόλις χλωμιάσατε.","800d40bd83e1d00b":"Δείξτε μου κάτι. Το περιμένω.","06ba01a3e77f14ab":"Καλώς ήρθατε στην Αγορά. Για τη γνώση ήρθατε ή για το κοινό;","0b3e026f0ee0fbe8":"Ένας από εσάς θα γίνει μαθητής μου. Οι υπόλοιποι θα φύγετε πιο ταπεινοί.","5173d01db81249e3":"Μαζευτήκατε. Τώρα δείξτε μου ότι αξίζατε τον δρόμο.","27949aa4de753769":"Ξεκινάμε. Δεν ξέρω τίποτα, αλλά εσείς ξέρετε ακόμα λιγότερα.","b2c45d6e2911c123":"Η Αθήνα ακούει. Μιλήστε προσεκτικά.","ce40a9f2133a4be8":"Καθίστε. Οι ερωτήσεις μου δεν είναι ευγενικές.","1af48863908c666d":"Καλώς ήρθατε στην Αγορά. Καθίστε, και μη βιαστείτε να μιλήσετε.","e265069a92caace7":"Ήρθατε για τη γνώση ή για το πλήθος; Θα φανεί σύντομα.","c6ab26cece34aed7":"Δεν ρωτάω για να δω τι ξέρετε. Ρωτάω για να δω ποιοι είστε.","dcddd219bc1f5101":"Η Αθήνα μαζεύτηκε. Ελπίζω να αξίζει τον χρόνο της.","b5c8ced18b8db2dc":"Εγώ ένα ξέρω: ότι δεν ξέρω τίποτα. Εσείς θα δυσκολευτείτε περισσότερο.","85909b5675e07ff6":"Τρεις γύροι σας χωρίζουν από την απάντηση. Ξεκινάμε.","eea57583f00f45f1":"Ας αρχίσει η διαμάχη. Και ας κερδίσει ο λιγότερο ανόητος.","0eb1343c6c928fd1":"Η Αγορά. Εδώ ξεκινούν όλα, και εδώ χάνονται οι περισσότεροι.","fb04aad949e574fa":"Πρώτος γύρος. Ακόμα κανείς δεν έχει ντροπιαστεί.","23e173efefd4879d":"Στην Αγορά μιλάει όποιος τολμά. Τολμήστε.","bdfe60d6cdaae02e":"Ξεκινάμε ήρεμα. Δεν θα κρατήσει.","ff3a5cafa60ce6c6":"Η Αγορά είναι γεμάτη. Ας δούμε ποιος θα μείνει.","ef60f7aee6553008":"Πρώτα ερωτήματα, απλά ερωτήματα. Οι απαντήσεις θα σας προδώσουν.","a528acd924ed4807":"Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.","71524c63bbdbd409":"Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.","435684610e4f507a":"Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.","9b32525594e47553":"Ελπίζω να μην έχετε φίλους εδώ μέσα. Θα σας εμποδίσουν.","c879c061df601c57":"Ένα όπλο ο καθένας. Ας δούμε σε ποιον θα στραφεί.","1a0a3d09f983322e":"Η γνώση χωρίς πονηριά χάνει. Το έμαθα με τον δύσκολο τρόπο.","d295dac7a65e30d9":"Η Δίκη. Εδώ δεν υπερασπίζεστε γνώση, υπερασπίζεστε τον εαυτό σας.","d4d0d4c7245099c7":"Τελευταίος γύρος. Ξέρω πώς τελειώνουν οι δίκες στην Αθήνα.","e25deb78de277754":"Από εδώ και πέρα, ό,τι κερδίσετε το παίρνετε από κάποιον άλλον.","6218772f908eaf1e":"Η Δίκη. Επιτέλους κάτι που ξέρω από πρώτο χέρι.","d059880e03c6da1f":"Δεν υπάρχουν συμμαχίες πια. Ούτε υπήρξαν ποτέ.","74674c00d0b43251":"Το τέλος πλησιάζει. Ποιος από εσάς θα το αντέξει;","2a171f7139d3ce02":"Βρήκα τον μαθητή μου. Η Αθήνα το είδε.","1b402890cca29843":"Ένας στάθηκε πάνω απ' όλους. Δεν ήταν τύχη.","8afbba987f55de40":"Αυτό ήταν αξιοπρεπές. Και δεν το λέω συχνά.","f48aa56c89af2880":"Ο νικητής κέρδισε τη θέση δίπλα μου. Ας δούμε αν την αντέχει.","d4d0d1a0466fcd7d":"Οι υπόλοιποι, μην απελπίζεστε. Και εγώ έχασα μια δίκη κάποτε.","44d7deab557fb288":"Τελείωσε. Ένας σοφότερος, οι υπόλοιποι ταπεινότεροι. Καλή συμφωνία.","c812828687774257":"Η διαμάχη έληξε. Πήρα την απόφασή μου.","09cea13c8b72d5bb":"Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε."};
+  const RATINGS = ["bad","okish","good","genius"];
+  const RATING_LABELS = {"bad":"Bad","okish":"Okish","good":"Good","genius":"Genius"};
+  const STORAGE_KEY = 'voiceIndexRatings';
+
+  function loadRatings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function saveRatings() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ratings));
+    } catch (err) {
+      // localStorage can be unavailable (private mode, quota) - ratings
+      // just won't persist for this session, nothing else to do about it.
+    }
+  }
+
+  const ratings = loadRatings();
+  const rows = [...document.querySelectorAll('tr[data-hash]')];
+  let currentFilter = 'all';
+
+  function applyRowState(row) {
+    const rating = ratings[row.dataset.hash] || '';
+    row.dataset.rating = rating;
+    row.querySelectorAll('.rate-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.rating === rating);
+    });
+  }
+
+  function updateCounter() {
+    const total = rows.length;
+    const rated = rows.filter((row) => row.dataset.rating).length;
+    document.getElementById('rated-count').textContent = rated + ' / ' + total + ' rated';
+  }
+
+  function applyFilter() {
+    for (const row of rows) {
+      const rating = row.dataset.rating;
+      const visible =
+        currentFilter === 'all' ||
+        (currentFilter === 'unrated' && !rating) ||
+        currentFilter === rating;
+      row.dataset.hidden = visible ? '0' : '1';
+    }
+  }
+
+  rows.forEach(applyRowState);
+  updateCounter();
+  applyFilter();
+
+  document.querySelectorAll('.rate-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('tr');
+      const hash = row.dataset.hash;
+      const rating = btn.dataset.rating;
+      if (ratings[hash] === rating) {
+        delete ratings[hash];
+      } else {
+        ratings[hash] = rating;
+      }
+      saveRatings();
+      applyRowState(row);
+      updateCounter();
+      applyFilter();
+    });
+  });
+
+  document.querySelectorAll('.filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      currentFilter = btn.dataset.filter;
+      document.querySelectorAll('.filter-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      applyFilter();
+    });
+  });
+
+  document.getElementById('export-rated').addEventListener('click', async () => {
+    const status = document.getElementById('copy-status');
+    const groups = RATINGS.map((r) => ({ rating: r, lines: [] }));
+    for (const [hash, rating] of Object.entries(ratings)) {
+      const line = LINES_BY_HASH[hash];
+      if (line === undefined) continue; // stale rating from a removed line
+      const group = groups.find((g) => g.rating === rating);
+      if (group) group.lines.push(line);
+    }
+
+    const text = groups
+      .filter((g) => g.lines.length > 0)
+      .map((g) => '== ' + RATING_LABELS[g.rating].toUpperCase() + ' (' + g.lines.length + ') ==\n' + g.lines.join('\n'))
+      .join('\n\n');
+
+    if (!text) {
+      status.textContent = 'Nothing rated yet.';
+      return;
+    }
+
+    const ratedCount = Object.keys(ratings).length;
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = 'Copied ' + ratedCount + ' rated line(s) to clipboard.';
+    } catch (err) {
+      // Clipboard API can refuse outside a secure context (e.g. a plain
+      // file:// open) - fall back to a selected textarea the user can
+      // copy manually rather than failing silently.
+      const existing = document.getElementById('copy-fallback');
+      if (existing) {
+        existing.remove();
+      }
+      const textarea = document.createElement('textarea');
+      textarea.id = 'copy-fallback';
+      textarea.value = text;
+      textarea.style.width = '100%';
+      textarea.style.height = '6rem';
+      document.getElementById('copy-bar').before(textarea);
+      textarea.focus();
+      textarea.select();
+      status.textContent = 'Clipboard unavailable - text selected above, copy manually.';
+    }
+  });
+</script>
+</body>
+</html>

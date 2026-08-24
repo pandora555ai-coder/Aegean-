@@ -13,7 +13,8 @@
     "start": "npm run start -w @game/server",
     "typecheck": "npm run typecheck -w @game/shared && npm run typecheck -w @game/server && npm run typecheck -w @game/client",
     "screenshot:phases": "tsx dev/screenshot-phases.ts",
-    "voice:generate": "tsx dev/generate-voice-lines.ts"
+    "voice:generate": "tsx dev/generate-voice-lines.ts",
+    "voice:index": "tsx dev/generate-voice-index.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
