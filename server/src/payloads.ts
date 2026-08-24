@@ -12,6 +12,7 @@ import {
   type PowerUpTarget,
   type RevealHostPayload,
   type RevealPlayerPayload,
+  type SocratesShowPayload,
   type StageAnnouncePayload,
   type StealShowHostPayload,
   type StealShowPlayerPayload,
@@ -99,7 +100,6 @@ export function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
-    socratesLine: room.lastReveal.socratesLine,
     sabotageAnnouncements: room.lastReveal.sabotageAnnouncements,
     standings: computeStandings(room),
   };
@@ -164,6 +164,30 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
     yourTimeMs: null,
     yourAnswerRank: null,
     yourPendingSabotage,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SOCRATES (Task 39)
+// ---------------------------------------------------------------------------
+
+// The commentary beat's own card. Reads room.lastReveal.socratesLine - picked
+// once, when the round was scored - so the live broadcast and a later
+// state:sync catch-up can never show two different lines. Null only when
+// there is no line at all, which is precisely when the server skips the phase.
+export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
+  const line = room.lastReveal?.socratesLine;
+  if (!line) {
+    return null;
+  }
+  return {
+    line,
+    questionIndex: room.currentQuestionIndex,
+    totalQuestions: room.questions.length,
+    durationMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+    standings: computeStandings(room),
   };
 }
 

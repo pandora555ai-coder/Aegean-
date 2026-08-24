@@ -15,6 +15,7 @@ import {
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
+  isSocratesHostPayload,
   isStealHostPayload,
   sanitizeCustomName,
   stagesForLength,
@@ -532,6 +533,16 @@ export default function ControllerScreen() {
           break;
         case 'REVEAL':
           if (!isRevealHostPayload(payload)) {
+            setReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        // SOCRATES (Task 39) is the TV's beat - the phone has no view of its
+        // own for it and simply stays on its reveal result, which is exactly
+        // what the server sends a PLAYER for this phase.
+        case 'SOCRATES':
+          if (!isSocratesHostPayload(payload)) {
             setReveal(payload);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);

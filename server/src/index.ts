@@ -57,6 +57,7 @@ import {
   enterQuestionOrPowerUp,
   advanceFromReveal,
   advanceFromSteal,
+  advanceFromSocrates,
   resolveSteal,
   continuationForActiveTimer,
 } from './phases.js';
@@ -66,6 +67,7 @@ import {
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
   buildPowerUpProgress,
+  buildSocratesPayload,
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
@@ -190,6 +192,13 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildRevealPlayerPayload(room, playerId);
       return payload ? { ...payload, phase: 'REVEAL' } : null;
     }
+    // Socrates (Task 39) is the TV's beat, but a phone reconnecting into it
+    // still needs SOMETHING - the same reveal view it was already showing,
+    // truthfully labelled with the phase the room is actually in.
+    case 'SOCRATES': {
+      const payload = buildRevealPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'SOCRATES' } : null;
+    }
     // Steal (Task 32): the phase's REMAINING time (frozen if the room is
     // paused, since it comes from the shared timer helper) plus - the bit that
     // matters on a reconnect - whether THIS phone is the thief, and whether it
@@ -251,6 +260,13 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'STEAL': {
       const payload = buildStealHostPayload(room);
       return payload ? { ...payload, phase: 'STEAL', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    // Unlike Socrates' question INTRO (which is an entrance and is never
+    // re-picked), this beat is a real hold: a TV reattaching mid-line gets the
+    // same line back plus what's actually left of the hold, frozen if paused.
+    case 'SOCRATES': {
+      const payload = buildSocratesPayload(room);
+      return payload ? { ...payload, phase: 'SOCRATES', remainingMs: remainingActiveTimerMs(room) } : null;
     }
     case 'GAME_OVER':
       return { ...buildGameOver(room), phase: 'GAME_OVER' };
@@ -842,7 +858,18 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log(`rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL or STEAL`);
+    // Socrates (Task 39) - the phones stay on their reveal view (and so on
+    // their "next" button) while he speaks, so this must skip the beat rather
+    // than be a dead press. Same one-shot advanceFrom*, same discipline.
+    if (room.phase === 'SOCRATES') {
+      console.log(`room ${room.code} skipped past Socrates (VIP)`);
+      advanceFromSocrates(room.code);
+      return;
+    }
+
+    console.log(
+      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL or SOCRATES`,
+    );
   });
 
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {

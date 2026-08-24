@@ -583,21 +583,32 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     color: 'var(--text-dim)',
   },
-  socratesLineBanner: {
+  // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
+  // above other content: the card fills the left column on its own, and the
+  // line is set at question-sized type because it IS the screen.
+  socratesStageCard: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
-    padding: '0.6rem 1.5rem',
-    borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.12)',
-    border: '2px solid var(--gold)',
-    color: 'var(--gold)',
-    fontSize: '1.35rem',
-    fontWeight: 700,
+    gap: '2rem',
     textAlign: 'center',
     width: '100%',
-    maxWidth: '900px',
+    maxWidth: '1000px',
+    padding: '2.5rem',
+  },
+  socratesStageKicker: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
+    letterSpacing: '0.3em',
+    color: 'var(--gold)',
+  },
+  socratesStageQuote: {
+    fontSize: 'clamp(2.5rem, 4vw, 4rem)',
+    fontWeight: 800,
+    lineHeight: 1.25,
+    color: 'var(--text)',
+    fontStyle: 'italic',
   },
   socratesIntroBanner: {
     padding: '0.5rem 1.25rem',

@@ -1,6 +1,7 @@
 import {
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
+  SOCRATES_DURATION_MS,
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
@@ -25,6 +26,7 @@ import {
   buildRevealPlayerPayload,
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
+  buildSocratesPayload,
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
@@ -515,8 +517,55 @@ export function advanceFromSteal(code: RoomCode): void {
 
 // What follows a REVEAL once any STEAL is done with (Task 38 - the mid-game
 // SCOREBOARD phase is gone now that scores are always visible on the TV's
-// score column): straight to the next question, or GAME_OVER on the last one.
+// score column): Socrates' own beat if this round produced a line, then
+// straight to the next question, or GAME_OVER on the last one.
 function continueAfterReveal(room: Room): void {
+  if (startSocratesIfLineFired(room)) {
+    return; // advanceFromSocrates carries on once the beat is over
+  }
+  advanceToNextQuestionOrGameOver(room);
+}
+
+// Socrates (Task 39). A real held phase on the shared timer, exactly like
+// STAGE_ANNOUNCE: the TV shows him ALONE (beside the score column) and
+// nothing else runs while he's speaking. The line itself was already picked
+// when the round was scored (endQuestion -> recordRoundAndPickLine, stored on
+// room.lastReveal), so this decides only WHETHER there is a beat - no line,
+// no phase, rather than an empty screen. Returns whether it began, so the
+// caller knows to wait rather than advancing itself.
+function startSocratesIfLineFired(room: Room): boolean {
+  if (!room.lastReveal?.socratesLine) {
+    console.log(`room ${room.code} skipping Socrates after question ${room.currentQuestionIndex + 1} — no line fired`);
+    return false;
+  }
+
+  room.phase = 'SOCRATES';
+  // Armed BEFORE the payload is built - it reports the timer's remaining
+  // time, so it has to exist first.
+  armActiveTimer(room, 'SOCRATES', SOCRATES_DURATION_MS, () => advanceFromSocrates(room.code));
+  // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a
+  // steal) set is the mood he's speaking into, and re-setting it here would
+  // stomp the cheer/boo this beat is a reaction to.
+
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Host only - the phones are controllers and never show commentary; they
+  // stay on their own reveal result until the next question arrives.
+  const payload = buildSocratesPayload(room);
+  if (payload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
+  }
+  console.log(`room ${room.code} Socrates — "${room.lastReveal.socratesLine}"`);
+  return true;
+}
+
+// Ends the commentary beat exactly once - the same one-shot discipline as
+// every other advanceFrom*, so the auto-advance timer and a VIP skip can
+// never both advance.
+export function advanceFromSocrates(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'SOCRATES') {
+    return;
+  }
   advanceToNextQuestionOrGameOver(room);
 }
 
@@ -562,5 +611,7 @@ export function continuationForActiveTimer(room: Room): (() => void) | null {
       return () => resolveSteal(room.code, null);
     case 'STEAL_ANNOUNCE':
       return () => advanceFromSteal(room.code);
+    case 'SOCRATES':
+      return () => advanceFromSocrates(room.code);
   }
 }

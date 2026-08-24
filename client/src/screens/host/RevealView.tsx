@@ -38,19 +38,9 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
       standings={reveal.standings}
       contentKey={question.questionIndex}
     >
-      {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY. Plain block
-          flow, not an overlay, so it can never cover the results or the
-          correct answer - it just takes its own line, pushing the rest
-          down a little. Conditionally rendered (not a fixed-height
-          placeholder) so a null socratesLine (rare - only if every
-          applicable line pool happened to already be exhausted this game)
-          leaves no empty gap; in normal play socratesLine is essentially
-          always present. */}
-      {reveal.socratesLine && (
-        <div className="enter-pop" style={styles.socratesLineBanner} data-testid="socrates-line">
-          {reveal.socratesLine}
-        </div>
-      )}
+      {/* Socrates' commentary is NOT here any more (Task 39): it gets its
+          own phase after this one, alone on screen, instead of a banner
+          crowding the results. */}
       <div style={styles.optionsGrid}>
         {question.options.map((option, index) => {
           const identity = ANSWER_IDENTITIES[index];

@@ -41,6 +41,7 @@ export const ServerEvents = {
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
   POWER_UP_PROGRESS: 'power_up:progress',
   STAGE_ANNOUNCE: 'stage:announce',
+  SOCRATES_SHOW: 'socrates:show',
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
@@ -262,6 +263,10 @@ export type GamePhase =
   | 'QUESTION'
   | 'REVEAL'
   | 'STEAL'
+  // Task 39 - the host's own beat after a REVEAL (and after any STEAL that
+  // followed it): Socrates alone on screen with the line for that round.
+  // SKIPPED entirely when no moment fired, so it is never an empty screen.
+  | 'SOCRATES'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
@@ -827,12 +832,6 @@ export interface RevealHostPayload {
   autoAdvanceMs: number; // so clients can render a progress bar
   paused: boolean;
   pausedByName: string | null;
-  // Socrates (Task 24, renamed Task 37a) - HOST ONLY, the phones never
-  // show commentary. The single highest-priority "moment" line for this
-  // round, already rendered (placeholders substituted, player names
-  // sanitised/truncated server-side). null on rare games where every
-  // applicable line pool happened to already be exhausted.
-  socratesLine: string | null;
   // Sabotage (Task 28a) - every cast made DURING this just-finished question,
   // now safe to announce publicly (host TV, shared by everyone) now that the
   // question is over. Empty when nobody cast this round.
@@ -868,6 +867,28 @@ export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
 export function isRevealHostPayload(payload: RevealShowPayload): payload is RevealHostPayload {
   return 'results' in payload;
 }
+
+// Socrates (Task 39) - HOST ONLY, the phones never show commentary; they
+// stay on their own reveal result while this beat plays. The round's single
+// highest-priority "moment" line, already rendered server-side (placeholders
+// substituted, player names sanitised/truncated) by the same selection that
+// used to ride along on the REVEAL payload. Never null: the server simply
+// doesn't enter the phase when no line fired, so the TV can never be handed
+// an empty screen.
+export interface SocratesShowPayload {
+  line: string;
+  questionIndex: number;
+  totalQuestions: number;
+  durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat
+  paused: boolean;
+  pausedByName: string | null;
+  // Task 38 - the TV's persistent right column stays populated here too.
+  standings: PlayerStanding[];
+}
+
+// How long Socrates holds the screen. A real held phase on the shared timer
+// (so a pause freezes it), exactly like STAGE_ANNOUNCE.
+export const SOCRATES_DURATION_MS = 4000;
 
 export interface VipNextPayload {}
 
@@ -975,6 +996,17 @@ export type StateSyncQuestionPlayerPayload = QuestionShowPlayerPayload & {
 export type StateSyncRevealHostPayload = RevealHostPayload & { phase: 'REVEAL' };
 export type StateSyncRevealPlayerPayload = RevealPlayerPayload & { phase: 'REVEAL' };
 
+// Socrates (Task 39). The TV gets the card back plus what's left of the hold
+// (frozen if the room is paused); a phone gets the same reveal view it was
+// already showing - the phase is the host's, but a phone reconnecting into it
+// still needs its own result, not a blank screen.
+export type StateSyncSocratesHostPayload = SocratesShowPayload & {
+  phase: 'SOCRATES';
+  remainingMs: number;
+};
+
+export type StateSyncSocratesPlayerPayload = RevealPlayerPayload & { phase: 'SOCRATES' };
+
 export type StateSyncStealHostPayload = StealShowHostPayload & {
   phase: 'STEAL';
   remainingMs: number;
@@ -1000,7 +1032,17 @@ export type StateSyncPayload =
   | StateSyncRevealPlayerPayload
   | StateSyncStealHostPayload
   | StateSyncStealPlayerPayload
+  | StateSyncSocratesHostPayload
+  | StateSyncSocratesPlayerPayload
   | StateSyncGameOverPayload;
+
+// Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
+// `phase` discriminant isn't enough - `line` is what only the TV's ever has.
+export function isSocratesHostPayload(
+  payload: StateSyncSocratesHostPayload | StateSyncSocratesPlayerPayload,
+): payload is StateSyncSocratesHostPayload {
+  return 'line' in payload;
+}
 
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
@@ -1045,6 +1087,7 @@ export type ServerToClientEvents = {
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
   [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
+  [ServerEvents.SOCRATES_SHOW]: (payload: SocratesShowPayload) => void;
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;

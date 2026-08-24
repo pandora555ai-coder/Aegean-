@@ -5,7 +5,7 @@
 export interface ActiveTimer {
   // STEAL runs TWO of these back to back: 'STEAL' while the thief is picking,
   // then 'STEAL_ANNOUNCE' for the beat the TV spends announcing the result.
-  kind: 'STAGE_ANNOUNCE' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE';
+  kind: 'STAGE_ANNOUNCE' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE' | 'SOCRATES';
   handle: NodeJS.Timeout | null;
   startedAt: number;
   durationMs: number;

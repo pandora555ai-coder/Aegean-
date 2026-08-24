@@ -6,6 +6,7 @@ import {
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
+  isSocratesHostPayload,
   isStealHostPayload,
   type AnswerProgressPayload,
   type GameOverPayload,
@@ -26,6 +27,7 @@ import {
   type RoomSettings,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
+  type SocratesShowPayload,
   type StageAnnouncePayload,
   type StateSyncPayload,
   type StealResolvedPayload,
@@ -44,6 +46,7 @@ import { LobbyView } from './host/LobbyView';
 import { PowerUpView } from './host/PowerUpView';
 import { StealView } from './host/StealView';
 import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
+import { SocratesView } from './host/SocratesView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
 import { GameOverView } from './host/GameOverView';
@@ -78,6 +81,12 @@ export default function HostScreen() {
   // the server ending that phase - never on a timer of our own, so the card
   // can never outlive its beat or vanish while the game is still holding.
   const [stageAnnounce, setStageAnnounce] = useState<StageAnnouncePayload | null>(null);
+  // Socrates' own phase (Task 39) - same shape as every other held phase:
+  // the payload is set once when the beat begins (or on a reconnect into it),
+  // and its durationMs is always the server's live remaining time, so the
+  // countdown below can key off the object alone.
+  const [socrates, setSocrates] = useState<SocratesShowPayload | null>(null);
+  const [socratesSecondsLeft, setSocratesSecondsLeft] = useState(0);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -173,6 +182,7 @@ export default function HostScreen() {
         setPowerUpProgress(null);
         setSteal(null);
         setStageAnnounce(null);
+        setSocrates(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -198,8 +208,10 @@ export default function HostScreen() {
         // phase ends - drop its view rather than leaving it behind.
         setPowerUp(null);
         setPowerUpProgress(null);
-        // A steal belonged to the PREVIOUS question - it's over by now.
+        // A steal belonged to the PREVIOUS question - it's over by now, and
+        // so is the commentary beat that followed it.
         setSteal(null);
+        setSocrates(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         // The "look at the TV" cue - fires on EVERY live question:show
@@ -225,6 +237,7 @@ export default function HostScreen() {
         setReveal(null);
         setPowerUp(payload);
         setPowerUpProgress(payload);
+        setSocrates(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -234,6 +247,17 @@ export default function HostScreen() {
     // server sends the host, and all the TV ever shows.
     function handleStageAnnounce(payload: StageAnnouncePayload) {
       setStageAnnounce(payload);
+    }
+
+    // Socrates' own phase (Task 39) - host-only, so unlike question:show/
+    // reveal:show there is no player variant to filter out. The reveal it
+    // follows is dropped here: he speaks alone.
+    function handleSocratesShow(payload: SocratesShowPayload) {
+      setReveal(null);
+      setSteal(null);
+      setSocrates(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
     }
 
     function handlePowerUpProgress(payload: PowerUpProgressPayload) {
@@ -319,6 +343,8 @@ export default function HostScreen() {
         setPowerUpSecondsLeft(seconds);
       } else if (phaseRef.current === 'STEAL') {
         setStealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'SOCRATES') {
+        setSocratesSecondsLeft(seconds);
       }
     }
 
@@ -347,6 +373,7 @@ export default function HostScreen() {
       setPowerUpProgress(null);
       setSteal(null);
       setStageAnnounce(null);
+      setSocrates(null);
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -399,6 +426,16 @@ export default function HostScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
+        case 'SOCRATES':
+          // A real hold, like STAGE_ANNOUNCE - a TV reattaching mid-line gets
+          // the same line back and `durationMs` is what's actually LEFT of the
+          // beat, so the bar picks up mid-phase instead of restarting.
+          if (isSocratesHostPayload(payload)) {
+            setSocrates(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
         case 'GAME_OVER':
           setGameOver(payload);
           break;
@@ -414,6 +451,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
     socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
+    socket.on(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
@@ -433,6 +471,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
       socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
+      socket.off(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
@@ -540,6 +579,27 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [steal, paused]);
 
+  // SOCRATES' own countdown (Task 39) - same pattern as REVEAL's above, and
+  // for the same reason it can key off `socrates`: that object is set once
+  // per beat, and its durationMs is always the server's live remaining time
+  // (fresh phase or reconnect alike).
+  useEffect(() => {
+    if (!socrates) {
+      return;
+    }
+    setSocratesSecondsLeft(Math.ceil(socrates.durationMs / 1000));
+  }, [socrates]);
+
+  useEffect(() => {
+    if (!socrates || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setSocratesSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [socrates, paused]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -618,6 +678,20 @@ export default function HostScreen() {
           paused={paused}
           pausedByName={pausedByName}
           revealSecondsLeft={revealSecondsLeft}
+        />
+      );
+    }
+
+    // Socrates has the screen to himself for his beat (Task 39) - the reveal
+    // it follows is already gone by the time this renders.
+    if (phase === 'SOCRATES' && socrates) {
+      return (
+        <SocratesView
+          socrates={socrates}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={socratesSecondsLeft}
         />
       );
     }
