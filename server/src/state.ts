@@ -7,7 +7,6 @@ import {
   type RevealPlayerResult,
   type RoomCode,
   type RoomSettings,
-  type SabotageAnnouncement,
   type SabotageEffect,
   type StealResolvedPayload,
   DEFAULT_ROOM_SETTINGS,
@@ -28,11 +27,9 @@ export interface RecordedAnswer {
   timeMs: number;
 }
 
-// A sabotage that has actually LANDED on someone (Task 28b) - moved here out
-// of pendingSabotageByTarget at the start of the victim's next question,
-// which is what "consumed" means: it can never fire a second time. Kept for
-// the whole question so a reconnecting victim is re-served the same effect
-// with its REMAINING time, and dropped when the next question starts.
+// A sabotage that has actually LANDED on someone (Task 28b). Kept for the
+// whole question so a reconnecting victim is re-served the same effect with
+// its REMAINING time, and dropped when the next question starts.
 export interface AppliedSabotage {
   effect: SabotageEffect;
   // The wall-clock moment it landed - always the question's own
@@ -92,9 +89,6 @@ export interface RevealSnapshot {
   // host gets the SAME line via state:sync, never a freshly (and
   // differently) picked one.
   socratesLine: string | null;
-  // Sabotage (Task 28a) - the casts made during the question this snapshot
-  // is for, frozen at the same moment as everything else above.
-  sabotageAnnouncements: SabotageAnnouncement[];
 }
 
 // A room is deleted only once it's been fully empty - no host/TV display
@@ -147,21 +141,6 @@ export interface Room {
   // tracking plus every line already used this game, so commentary never
   // repeats itself and never roasts the same player every single round.
   socrates: SocratesState;
-  // Sabotage (Task 28a). Casts made DURING the current question - hidden
-  // from everyone, including the caster and victim, until this question's
-  // REVEAL announces them. Keyed by casterPlayerId (each player casts at
-  // most once ever, so at most one entry per player at a time). Cleared the
-  // moment endQuestion turns it into a RevealSnapshot.sabotageAnnouncements.
-  hiddenSabotageCasts: Map<string, SabotageAnnouncement>;
-  // Announced at REVEAL and left here, keyed by targetPlayerId, as the
-  // effect pending against that player for their NEXT question - read fresh
-  // from this map on every broadcast/state:sync, so it survives a victim's
-  // reconnect without the client ever having to remember anything itself.
-  // If two casters target the same player in one round, the later cast
-  // wins here (both still appear in that round's sabotageAnnouncements).
-  // Emptied into activeSabotageByTarget by applyPendingSabotage() when that
-  // next question starts - see sabotage.ts.
-  pendingSabotageByTarget: Map<string, SabotageAnnouncement>;
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
   // scratch at the start of every one. A LIST since Task 31a: at most one
@@ -169,26 +148,21 @@ export interface Room {
   // addAppliedSabotage in sabotage.ts), but a player can be under an ice and
   // an ink simultaneously.
   activeSabotageByTarget: Map<string, AppliedSabotage[]>;
-  // Every playerId who has already spent their one sabotage cast this game.
-  sabotageCastUsedBy: Set<string>;
   // Sabotage (Task 28c) - the option order the victim of a 'shuffle' is
   // seeing THIS question, keyed by targetPlayerId. permutation[displayIndex]
   // = canonicalIndex, i.e. what the phone shows in slot 0 is really the
-  // question's option number permutation[0]. Generated ONCE, server-side, by
-  // applyPendingSabotage and read (never regenerated) on every later
-  // broadcast/state:sync, so a mid-question reconnect gets the same order
-  // back. Canonical order is what the TV always shows; this map is the only
-  // place the victim's order exists. Cleared at REVEAL.
+  // question's option number permutation[0]. Read (never regenerated) on
+  // every later broadcast/state:sync, so a mid-question reconnect gets the
+  // same order back. Canonical order is what the TV always shows; this map
+  // is the only place the victim's order exists. Cleared at REVEAL.
   shuffledOptionsByTarget: Map<string, number[]>;
   // Choices made during POWER_UP, keyed by casterPlayerId - hidden from
   // everyone but their own caster until they LAND on the next question.
   // Emptied into pendingPowerUpByTarget the instant the phase ends.
   powerUpChoices: Map<string, PowerUpChoice>;
-  // Deliberately NOT pendingSabotageByTarget: a power-up lands on the very
-  // next question, not on the target's next-question-after-a-REVEAL, so it
-  // must not go anywhere near Task 28a's announce-then-pend path. Keyed by
-  // targetPlayerId, and consumed - cleared - by applyPendingPowerUps when that
-  // question starts. A LIST of choices per target since Task 31a: in stage 2
+  // A power-up lands on the very next question. Keyed by targetPlayerId, and
+  // consumed - cleared - by applyPendingPowerUps when that question starts.
+  // A LIST of choices per target since Task 31a: in stage 2
   // the whole room chooses every round, so several players piling onto one
   // victim is the normal case and every one of them must STACK rather than
   // the last one silently winning.
@@ -250,10 +224,7 @@ export function createRoom(hostSocketId: string): Room {
     pausedAt: null,
     emptyTtlTimer: null,
     socrates: createSocratesState(),
-    hiddenSabotageCasts: new Map(),
-    pendingSabotageByTarget: new Map(),
     activeSabotageByTarget: new Map(),
-    sabotageCastUsedBy: new Set(),
     shuffledOptionsByTarget: new Map(),
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
@@ -519,11 +490,7 @@ export function resetRoomForNewGame(room: Room): void {
   // A fresh game means fresh commentary too - no streaks/cooldowns/used
   // lines carried over from the game that just ended.
   resetSocratesState(room.socrates);
-  // A fresh game means a fresh one-cast-per-game sabotage budget too.
-  room.hiddenSabotageCasts.clear();
-  room.pendingSabotageByTarget.clear();
   room.activeSabotageByTarget.clear();
-  room.sabotageCastUsedBy.clear();
   room.shuffledOptionsByTarget.clear();
   // No unspent power-up choice carries over from the game that just ended.
   room.powerUpChoices.clear();

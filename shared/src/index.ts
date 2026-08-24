@@ -12,7 +12,6 @@ export const ClientEvents = {
   GAME_RESUME: 'game:resume',
   VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
   ROOM_PEEK: 'room:peek',
-  SABOTAGE_CAST: 'player:sabotage_cast',
   POWER_UP_CHOOSE: 'player:power_up_choose',
   STEAL_CHOOSE: 'player:steal_choose',
 } as const;
@@ -36,7 +35,6 @@ export const ServerEvents = {
   GAME_PAUSED: 'game:paused',
   GAME_RESUMED: 'game:resumed',
   ROOM_PEEK_RESULT: 'room:peek_result',
-  SABOTAGE_CAST_ACCEPTED: 'sabotage:cast_accepted',
   POWER_UP_SHOW: 'power_up:show',
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
   POWER_UP_PROGRESS: 'power_up:progress',
@@ -409,34 +407,10 @@ export interface StageAnnouncePayload {
 // announcement and the question from ever being on screen at once.
 export const STAGE_ANNOUNCE_DURATION_MS = 3500;
 
-// Each player may cast ONE of these per game, at a target of their choosing;
-// the SERVER (never the client) picks which effect they get, weighted by the
-// caster's current rank (see server/src/sabotage.ts) so a leader casting is
-// deliberately the weakest version of the weapon - a comeback mechanic.
+// An effect that can be applied against a player. 'shuffle' can currently
+// only land via the option-permutation machinery in server/src/sabotage.ts;
+// 'ice'/'ink' land via the POWER_UP phase (see PowerUpEffect below).
 export type SabotageEffect = 'ice' | 'ink' | 'shuffle';
-
-export interface SabotageCastPayload {
-  targetPlayerId: string;
-}
-
-// Just an ack that the cast was accepted and consumed the caster's one use -
-// deliberately carries no effect info, since even the CASTER doesn't learn
-// what they got until the announcement below fires on REVEAL.
-export interface SabotageCastAcceptedPayload {}
-
-// Cast in round N stays completely hidden through round N's QUESTION phase,
-// then is announced to everyone the moment N's REVEAL fires - this is that
-// announcement. The same shape is then left sitting in room state (server
-// side, see pendingSabotageByTarget) keyed by targetPlayerId as the pending
-// effect for round N+1, so a reconnecting victim is always caught up from
-// server state, never from something only the client remembered.
-export interface SabotageAnnouncement {
-  casterPlayerId: string;
-  casterName: string;
-  targetPlayerId: string;
-  targetName: string;
-  effect: SabotageEffect;
-}
 
 // How long each effect lasts once it LANDS, measured from the start of the
 // victim's next question. These are the nominal figures only: the server
@@ -500,9 +474,8 @@ export const POWER_UP_DURATION_MS = 10000;
 // What a player may pick during POWER_UP. Deliberately a SUBSET of
 // SabotageEffect - 'shuffle' has no place here, and reusing the same effect
 // names means the landing machinery (durations, ice enforcement, the victim's
-// `yourSabotage`) is shared rather than duplicated. Unlike a Task 28a cast,
-// the PLAYER picks this: the server never chooses, and rank-based comeback
-// weighting is not involved.
+// `yourSabotage`) is shared rather than duplicated. The PLAYER picks this
+// directly: the server never chooses on their behalf.
 export type PowerUpEffect = Extract<SabotageEffect, 'ice' | 'ink'>;
 export const POWER_UP_EFFECTS: readonly PowerUpEffect[] = ['ice', 'ink'];
 
@@ -832,10 +805,6 @@ export interface RevealHostPayload {
   autoAdvanceMs: number; // so clients can render a progress bar
   paused: boolean;
   pausedByName: string | null;
-  // Sabotage (Task 28a) - every cast made DURING this just-finished question,
-  // now safe to announce publicly (host TV, shared by everyone) now that the
-  // question is over. Empty when nobody cast this round.
-  sabotageAnnouncements: SabotageAnnouncement[];
   // Task 38 - every player's current score, for the TV's persistent right
   // column. See PlayerStanding.
   standings: PlayerStanding[];
@@ -854,12 +823,6 @@ export interface RevealPlayerPayload {
   pausedByName: string | null;
   yourTimeMs: number | null;
   yourAnswerRank: number | null; // 1-based among correct answers only - null if wrong or no answer
-  // Sabotage (Task 28a) - the effect now pending against THIS player for the
-  // NEXT question (server-computed at cast time, revealed only now), or null
-  // if nobody targeted them this round. Read fresh from room state on every
-  // REVEAL broadcast/state:sync, so a reconnecting victim always gets the
-  // correct answer straight from the server, never a client-side cache.
-  yourPendingSabotage: SabotageEffect | null;
 }
 
 export type RevealShowPayload = RevealHostPayload | RevealPlayerPayload;
@@ -1058,7 +1021,6 @@ export type ClientToServerEvents = {
   [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
   [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
   [ClientEvents.ROOM_PEEK]: (payload: RoomPeekPayload) => void;
-  [ClientEvents.SABOTAGE_CAST]: (payload: SabotageCastPayload) => void;
   [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
 };
@@ -1082,7 +1044,6 @@ export type ServerToClientEvents = {
   [ServerEvents.GAME_PAUSED]: (payload: PausedPayload) => void;
   [ServerEvents.GAME_RESUMED]: (payload: ResumedPayload) => void;
   [ServerEvents.ROOM_PEEK_RESULT]: (payload: RoomPeekResultPayload) => void;
-  [ServerEvents.SABOTAGE_CAST_ACCEPTED]: (payload: SabotageCastAcceptedPayload) => void;
   [ServerEvents.POWER_UP_SHOW]: (payload: PowerUpShowPayload) => void;
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
   [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;

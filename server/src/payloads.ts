@@ -100,7 +100,6 @@ export function buildRevealHostPayload(room: Room): RevealHostPayload | null {
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
-    sabotageAnnouncements: room.lastReveal.sabotageAnnouncements,
     standings: computeStandings(room),
   };
 }
@@ -111,9 +110,6 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
   }
   const autoAdvanceMs = remainingActiveTimerMs(room);
   const myResult = room.lastReveal.results.find((result) => result.playerId === playerId);
-  // Sabotage (Task 28a) - read fresh from room state every time this is
-  // built, never cached, so a reconnecting victim always gets the truth.
-  const yourPendingSabotage = room.pendingSabotageByTarget.get(playerId)?.effect ?? null;
 
   if (myResult) {
     const ranks = computeCompetitionRanks(
@@ -134,7 +130,6 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
       pausedByName: room.pausedByName,
       yourTimeMs: myResult.timeMs,
       yourAnswerRank: myResult.answerRank,
-      yourPendingSabotage,
     };
   }
 
@@ -163,7 +158,6 @@ export function buildRevealPlayerPayload(room: Room, playerId: string): RevealPl
     pausedByName: room.pausedByName,
     yourTimeMs: null,
     yourAnswerRank: null,
-    yourPendingSabotage,
   };
 }
 

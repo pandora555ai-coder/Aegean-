@@ -3,16 +3,15 @@ import { addAppliedSabotage } from './sabotage.js';
 import type { Room } from './state.js';
 
 // Never trust the client: an effect only counts if it's verbatim one of the
-// two the POWER_UP phase offers. 'shuffle' is a Task 28a effect and is NOT
-// choosable here, so a phone naming it is rejected like any other garbage.
+// two the POWER_UP phase offers. 'shuffle' is not choosable here, so a phone
+// naming it is rejected like any other garbage.
 export function isPowerUpEffect(value: unknown): value is PowerUpEffect {
   return typeof value === 'string' && (POWER_UP_EFFECTS as readonly string[]).includes(value);
 }
 
 // Lands every choice made during POWER_UP at the exact moment the question
-// that phase preceded begins. CONSUMING is the point, same discipline as
-// applyPendingSabotage: every entry is moved out of pendingPowerUpByTarget so
-// it can never fire twice.
+// that phase preceded begins. CONSUMING is the point: every entry is moved
+// out of pendingPowerUpByTarget so it can never fire twice.
 //
 // Deliberately goes through addAppliedSabotage rather than writing a parallel
 // map: from the instant it lands, a power-up IS just an effect running against
@@ -20,10 +19,8 @@ export function isPowerUpEffect(value: unknown): value is PowerUpEffect {
 // and every existing reader (activeSabotagesFor, isIced, the victim's
 // `yourSabotages`, the pause-aware remaining-time maths) unchanged.
 //
-// MUST be called AFTER applyPendingSabotage, which clears that map and would
-// otherwise wipe what this just wrote. A Task 28a sabotage and a power-up
-// targeting the same player for the same question now STACK like any other
-// pair, instead of one silently replacing the other.
+// MUST be called AFTER resetSabotageForNewQuestion, which clears
+// activeSabotageByTarget and would otherwise wipe what this just wrote.
 export function applyPendingPowerUps(room: Room): void {
   if (room.pendingPowerUpByTarget.size === 0) {
     return;

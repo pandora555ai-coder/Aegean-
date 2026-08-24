@@ -17,7 +17,7 @@ import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type SocratesPlayerRoundInput } from './socrates.js';
-import { activeSabotagesFor, applyPendingSabotage, optionsForPlayer } from './sabotage.js';
+import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
 import { io } from './realtime.js';
@@ -210,14 +210,12 @@ export function startQuestion(room: Room): void {
   setCrowdMood(room, 'calm');
   armCrowdTensionTimer(room, questionTimeMs);
 
-  // Sabotage (Task 28b): anything announced at the last REVEAL lands NOW, on
-  // the same clock as the question timer just armed above. Deliberately
-  // after the arm - applyPendingSabotage reads both it and questionStartedAt.
-  applyPendingSabotage(room);
+  // Wipe last question's sabotage state before this one's lands.
+  resetSabotageForNewQuestion(room);
   // Power-up (Task 30a): the choices made in the POWER_UP phase that just
   // ended land HERE, on the very next question, on the same clock. Must
-  // follow applyPendingSabotage, which clears activeSabotageByTarget - the
-  // map both of them land into.
+  // follow resetSabotageForNewQuestion, which clears activeSabotageByTarget -
+  // the map this lands into.
   applyPendingPowerUps(room);
 
   const question = room.questions[room.currentQuestionIndex];
@@ -357,15 +355,6 @@ export function endQuestion(code: RoomCode): void {
     setCrowdMood(room, correctCount * 2 > results.length ? 'cheer' : 'boo');
   }
 
-  // Sabotage (Task 28a): whatever was cast during this question, hidden
-  // until now, becomes this round's announcement - and stays pending
-  // against each victim (keyed by targetPlayerId) for their next question.
-  const sabotageAnnouncements = Array.from(room.hiddenSabotageCasts.values());
-  for (const cast of sabotageAnnouncements) {
-    room.pendingSabotageByTarget.set(cast.targetPlayerId, cast);
-  }
-  room.hiddenSabotageCasts.clear();
-
   // Sabotage (Task 28c): the shuffled order belonged to the question that
   // just ended. Every answer was de-permuted on submit, so `results` below
   // is already canonical - from here on there is one option order again, the
@@ -380,7 +369,6 @@ export function endQuestion(code: RoomCode): void {
     results,
     answerCounts,
     socratesLine,
-    sabotageAnnouncements,
   };
 
   const hostPayload = buildRevealHostPayload(room);
