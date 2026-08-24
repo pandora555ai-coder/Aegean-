@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SOCRATES_VOICE_DIR, lineHash } from '@game/shared';
 import { getStoredHostMuted, setStoredHostMuted } from '../hostAudioPreference';
 
 // One consistent key across every audio cue (Task 20) - A major pentatonic
@@ -27,6 +28,13 @@ const ANSWER_BLIP_SCALE = [NOTE.E5, NOTE.FS5, NOTE.A5, NOTE.B5, NOTE.CS6, NOTE.E
 
 export function useGameAudio() {
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Decoded Socrates line audio (Task 42b), keyed by lineHash - a game only
+  // ever plays each pool line at most once (recordRoundAndPickLine never
+  // repeats one), so this mostly saves nothing within a single game, but
+  // costs nothing either and means a re-shown line (state:sync) never
+  // re-fetches. Tied to this hook instance, not module scope: an AudioBuffer
+  // is meaningless once its AudioContext is gone.
+  const socratesBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
   // Host-only mute toggle (Task 20) - LOBBY UI only, but every cue everywhere
   // (including the Task 18 countdown ticks) checks this before playing.
   const [muted, setMuted] = useState(() => getStoredHostMuted());
@@ -65,6 +73,24 @@ export function useGameAudio() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Task 42b - freezes/unfreezes whatever's actually sounding (a Socrates
+  // line, mid-playback) in step with the game pausing, the same way the
+  // shared server timer freezes the phase itself. Suspending the ONE
+  // AudioContext is the only way to do this for an AudioBufferSourceNode -
+  // unlike an <audio> element, it has no pause(), only start/stop.
+  function suspendAudio() {
+    audioCtxRef.current?.suspend().catch(() => {});
+  }
+
+  function resumeAudio() {
+    // Unconditional, like the visibilitychange resume above - the CONTEXT
+    // running and the host being muted are independent: every play*
+    // function already gates on mutedRef itself, so leaving the context
+    // suspended here whenever muted would just permanently silence
+    // everything (including a later un-mute) after one pause/resume cycle.
+    audioCtxRef.current?.resume().catch(() => {});
+  }
 
   function toggleMuted() {
     // A plain value read from this render's closure, not a setState
@@ -194,6 +220,47 @@ export function useGameAudio() {
     }
   }
 
+  // Task 42b - Socrates' voice lines. Plays a real audio FILE (unlike every
+  // other cue here, which is synthesized) through the same single
+  // AudioContext, via a BufferSource - the only way Web Audio plays a
+  // decoded file. `template` is the line's raw, un-substituted pool entry
+  // (SocratesShowPayload.lineTemplate); hashing it is exactly how
+  // dev/generate-voice-lines.ts named the file, so this is the one lookup
+  // that can never drift from the generator (lineHash lives in shared).
+  // Fails silently at every step - fetch 404, decode error, no
+  // AudioContext - the line's TEXT is already on screen regardless, and per
+  // spec a missing file must never break the phase.
+  async function playSocratesLine(template: string) {
+    const ctx = audioCtxRef.current;
+    if (!ctx || mutedRef.current) {
+      return;
+    }
+    try {
+      const hash = lineHash(template);
+      let buffer = socratesBufferCacheRef.current.get(hash);
+      if (!buffer) {
+        const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);
+        if (!res.ok) {
+          return;
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        buffer = await ctx.decodeAudioData(arrayBuffer);
+        socratesBufferCacheRef.current.set(hash, buffer);
+      }
+      // The context (or the mute toggle) may have changed while the fetch/
+      // decode above was in flight - re-check before actually sounding it.
+      if (audioCtxRef.current !== ctx || mutedRef.current) {
+        return;
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+    } catch {
+      // Best effort - the game continues silently either way.
+    }
+  }
+
   // CUE 1 - QUESTION START, the most important cue: a rising 3-note motif
   // through the scale, ~450ms total, clearly "look at the TV now". Fires
   // once per LIVE question:show - never on a state:sync reconnect catching a
@@ -238,11 +305,14 @@ export function useGameAudio() {
     muted,
     toggleMuted,
     startKeepAliveAudio,
+    suspendAudio,
+    resumeAudio,
     playQuestionStartCue,
     playAnswerBlip,
     playCountdownTick,
     playCountdownExpire,
     playRevealCue,
     playGameOverFanfare,
+    playSocratesLine,
   };
 }

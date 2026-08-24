@@ -1,4 +1,4 @@
-import { SOCRATES_DURATION_MS, type RoomCode, type SocratesShowPayload } from '@game/shared';
+import { type RoomCode, type SocratesShowPayload } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { styles } from './hostStyles';
 
@@ -36,7 +36,9 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName, seconds
         <div
           style={{
             ...styles.progressBarFill,
-            width: `${(secondsLeft / Math.ceil(SOCRATES_DURATION_MS / 1000)) * 100}%`,
+            // Task 42b - the bar's denominator is THIS line's own duration
+            // (audio length, clamped), not a fixed span shared by every line.
+            width: `${(secondsLeft / Math.ceil(socrates.totalDurationMs / 1000)) * 100}%`,
           }}
         />
       </div>

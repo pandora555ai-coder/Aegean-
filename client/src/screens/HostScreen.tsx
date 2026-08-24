@@ -93,12 +93,15 @@ export default function HostScreen() {
     muted,
     toggleMuted,
     startKeepAliveAudio,
+    suspendAudio,
+    resumeAudio,
     playQuestionStartCue,
     playAnswerBlip,
     playCountdownTick,
     playCountdownExpire,
     playRevealCue,
     playGameOverFanfare,
+    playSocratesLine,
   } = useGameAudio();
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
@@ -258,6 +261,12 @@ export default function HostScreen() {
       setSocrates(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
+      // Only for a LIVE entrance into the beat, exactly like playRevealCue
+      // below - never on a state:sync reconnect catching a host up to a beat
+      // already in progress, which would replay the line from its start.
+      if (!payload.paused) {
+        playSocratesLine(payload.lineTemplate);
+      }
     }
 
     function handlePowerUpProgress(payload: PowerUpProgressPayload) {
@@ -326,11 +335,22 @@ export default function HostScreen() {
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
+      // Freezes a Socrates line mid-playback (Task 42b), in step with the
+      // phase itself. Scoped to SOCRATES specifically - suspending the
+      // context also silences the anti-screensaver keep-alive tone (Task
+      // 20's silent oscillator), which every OTHER phase's pause should
+      // leave running for as long as the pause lasts.
+      if (phaseRef.current === 'SOCRATES') {
+        suspendAudio();
+      }
     }
 
     function handleGameResumed(payload: ResumedPayload) {
       setPaused(false);
       setPausedByName(null);
+      if (phaseRef.current === 'SOCRATES') {
+        resumeAudio();
+      }
       // Authoritative correction, not a guess - whichever countdown is
       // currently on screen jumps to the server's real remaining time
       // rather than trusting wherever the local interval happened to freeze.

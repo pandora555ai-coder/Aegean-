@@ -840,18 +840,121 @@ export function isRevealHostPayload(payload: RevealShowPayload): payload is Reve
 // an empty screen.
 export interface SocratesShowPayload {
   line: string;
+  // The line's UN-substituted template ({name}/{n}/{category} left as
+  // literal placeholders) - not shown anywhere, only hashed client-side
+  // (lineHash below) to find this line's pre-generated audio file, since
+  // that's exactly what the generator hashed to name it (Task 42b).
+  lineTemplate: string;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat
+  // The full duration this beat was armed for (audio length, clamped - see
+  // resolveSocratesDurationMs on the server), so the client can render an
+  // accurate progress bar instead of assuming a fixed span.
+  totalDurationMs: number;
   paused: boolean;
   pausedByName: string | null;
   // Task 38 - the TV's persistent right column stays populated here too.
   standings: PlayerStanding[];
 }
 
-// How long Socrates holds the screen. A real held phase on the shared timer
-// (so a pause freezes it), exactly like STAGE_ANNOUNCE.
+// How long Socrates holds the screen when a line has no matching audio (or
+// its file is missing/unreadable) - the floor of the audio-driven range
+// otherwise, so a very short clip still holds long enough to read (Task 42b).
 export const SOCRATES_DURATION_MS = 4000;
+
+// ----------------------- Socrates voice lines (Task 42b) -----------------
+// Pre-generated audio for each line TEMPLATE lives in client/public/voice/,
+// named `${lineHash(template)}.mp3` by dev/generate-voice-lines.ts. The
+// client hashes the same template text to find the same file - this is the
+// one hashing rule both sides share, so they can never drift apart.
+export const SOCRATES_VOICE_DIR = 'voice';
+
+// Must match the bitrate baked into dev/voice/provider.ts's ElevenLabs
+// output_format (mp3_44100_64) - used server-side to estimate a clip's
+// duration from its file size (constant bitrate: seconds = bytes*8/bps)
+// without decoding it or adding an audio-parsing dependency.
+export const AUDIO_BITRATE_KBPS = 64;
+
+// The audio-driven SOCRATES duration never goes below the fallback (a very
+// short clip still needs a moment to read) or above this cap (a long line
+// never holds the game hostage).
+export const SOCRATES_MAX_DURATION_MS = 8000;
+
+// sha256(template), hex, first 16 chars - deliberately synchronous and
+// dependency-free (no node:crypto, which the browser build can't bundle;
+// no Web Crypto, which is async) so it works identically, with no await,
+// wherever a line needs to be turned into a filename: the generator script,
+// and the client resolving audio for a line it was just handed.
+export function lineHash(template: string): string {
+  return sha256Hex(template).slice(0, 16);
+}
+
+const SHA256_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+// A standard, from-spec (FIPS 180-4) SHA-256 over a UTF-8 string, returning
+// lowercase hex - byte-for-byte identical output to
+// `createHash('sha256').update(s, 'utf8').digest('hex')`. Written out in
+// full (rather than pulled in as a dependency) purely so this file has zero
+// runtime dependencies and can be imported by the browser bundle as-is.
+function sha256Hex(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  const bitLen = bytes.length * 8;
+  const paddedLen = (((bytes.length + 8) >> 6) + 1) << 6; // next multiple of 64 with room for the 1-bit + 64-bit length
+  const msg = new Uint8Array(paddedLen);
+  msg.set(bytes);
+  msg[bytes.length] = 0x80;
+  const view = new DataView(msg.buffer);
+  view.setUint32(paddedLen - 4, bitLen >>> 0, false);
+  view.setUint32(paddedLen - 8, Math.floor(bitLen / 0x100000000), false);
+
+  let h0 = 0x6a09e667;
+  let h1 = 0xbb67ae85;
+  let h2 = 0x3c6ef372;
+  let h3 = 0xa54ff53a;
+  let h4 = 0x510e527f;
+  let h5 = 0x9b05688c;
+  let h6 = 0x1f83d9ab;
+  let h7 = 0x5be0cd19;
+
+  const w = new Uint32Array(64);
+  for (let chunk = 0; chunk < paddedLen; chunk += 64) {
+    for (let i = 0; i < 16; i++) {
+      w[i] = view.getUint32(chunk + i * 4, false);
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 = ((w[i - 15] >>> 7) | (w[i - 15] << 25)) ^ ((w[i - 15] >>> 18) | (w[i - 15] << 14)) ^ (w[i - 15] >>> 3);
+      const s1 = ((w[i - 2] >>> 17) | (w[i - 2] << 15)) ^ ((w[i - 2] >>> 19) | (w[i - 2] << 13)) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let i = 0; i < 64; i++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + temp1) >>> 0;
+      d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+    }
+
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+  }
+
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, '0')).join('');
+}
 
 export interface VipNextPayload {}
 

@@ -1,0 +1,88 @@
+// Dev-only: generates one MP3 per Socrates line (server/src/socrates.ts)
+// into client/public/voice/. Not part of any workspace build or deploy -
+// run manually, commit the resulting MP3s like any other static asset.
+//
+//   tsx dev/generate-voice-lines.ts             generate everything missing
+//   tsx dev/generate-voice-lines.ts --limit 3    generate at most 3 new files
+//
+// ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID come from the environment (or a
+// gitignored repo-root .env) - never committed.
+import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { LINES, INTRO_LINES } from '../server/src/socrates.ts';
+import { loadDotEnvIfPresent } from './voice/env.ts';
+import { createElevenLabsProvider } from './voice/provider.ts';
+import { lineHash, stripPlaceholders } from './voice/text.ts';
+
+const ROOT = path.resolve(import.meta.dirname, '..');
+const OUT_DIR = path.join(ROOT, 'client', 'public', 'voice');
+
+loadDotEnvIfPresent(path.join(ROOT, '.env'));
+
+function parseLimit(argv: string[]): number | null {
+  const flag = argv.find((a) => a === '--limit' || a.startsWith('--limit='));
+  if (!flag) {
+    return null;
+  }
+  const value = flag.includes('=') ? flag.split('=')[1] : argv[argv.indexOf(flag) + 1];
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid --limit value: ${value}`);
+  }
+  return n;
+}
+
+function allLineTemplates(): string[] {
+  const templates = new Set<string>();
+  for (const pool of Object.values(LINES)) {
+    for (const line of pool) {
+      templates.add(line);
+    }
+  }
+  for (const pool of Object.values(INTRO_LINES)) {
+    for (const line of pool) {
+      templates.add(line);
+    }
+  }
+  return [...templates];
+}
+
+async function main() {
+  const limit = parseLimit(process.argv.slice(2));
+  mkdirSync(OUT_DIR, { recursive: true });
+
+  const existing = new Set(readdirSync(OUT_DIR));
+  const templates = allLineTemplates();
+
+  const toGenerate: Array<{ template: string; filename: string }> = [];
+  for (const template of templates) {
+    const filename = `${lineHash(template)}.mp3`;
+    if (!existing.has(filename)) {
+      toGenerate.push({ template, filename });
+    }
+  }
+
+  const batch = limit === null ? toGenerate : toGenerate.slice(0, limit);
+
+  if (batch.length === 0) {
+    console.log(`Nothing to generate (${templates.length} lines, all already have audio). 0 API calls.`);
+  } else {
+    const provider = createElevenLabsProvider();
+    console.log(`Generating ${batch.length} of ${toGenerate.length} missing line(s)...`);
+    for (const { template, filename } of batch) {
+      const spoken = stripPlaceholders(template);
+      const audio = await provider.synthesize(spoken);
+      writeFileSync(path.join(OUT_DIR, filename), audio);
+      console.log(`  ${filename}  "${spoken}"`);
+    }
+  }
+
+  const files = readdirSync(OUT_DIR).filter((f) => f.endsWith('.mp3'));
+  const totalBytes = files.reduce((sum, f) => sum + statSync(path.join(OUT_DIR, f)).size, 0);
+  console.log(`\n${files.length} file(s) in client/public/voice, ${(totalBytes / 1024).toFixed(1)} KB total.`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

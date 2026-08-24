@@ -330,11 +330,20 @@ export const INTRO_LINES: Record<IntroMoment, readonly string[]> = {
 
 // ============================= selection logic =============================
 
-function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): string | null {
+// A picked line, in both forms: `text` is what's shown on screen
+// (placeholders substituted), `template` is the raw, un-substituted pool
+// entry - kept around so the REVEAL beat can hand it to the client for
+// Task 42b's audio lookup (client/public/voice/<lineHash(template)>.mp3).
+export interface PickedLine {
+  template: string;
+  text: string;
+}
+
+function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): PickedLine | null {
   for (const template of pool) {
     if (!state.usedLines.has(template)) {
       state.usedLines.add(template);
-      return substitute(template, vars);
+      return { template, text: substitute(template, vars) };
     }
   }
   return null; // this moment's whole pool is exhausted this game
@@ -396,7 +405,7 @@ export function recordRoundAndPickLine(
   state: SocratesState,
   results: SocratesPlayerRoundInput[],
   context: SocratesRoundContext,
-): string | null {
+): PickedLine | null {
   if (results.length === 0) {
     return null;
   }
@@ -663,18 +672,18 @@ export function pickQuestionIntro(state: SocratesState, context: SocratesQuestio
   if (isFinal) {
     const line = pickLine(state, INTRO_LINES.FINAL_QUESTION, {});
     if (line) {
-      return line;
+      return line.text;
     }
   }
   if (isHalfway) {
     const line = pickLine(state, INTRO_LINES.HALFWAY_POINT, {});
     if (line) {
-      return line;
+      return line.text;
     }
   }
   const categoryLine = pickLine(state, INTRO_LINES.CATEGORY_CALLOUT, { category: safeCategoryForLine(context.category) });
   if (categoryLine) {
-    return categoryLine;
+    return categoryLine.text;
   }
-  return pickLine(state, INTRO_LINES.GENERIC_INTRO, {});
+  return pickLine(state, INTRO_LINES.GENERIC_INTRO, {})?.text ?? null;
 }

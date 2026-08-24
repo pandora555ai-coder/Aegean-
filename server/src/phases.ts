@@ -1,7 +1,6 @@
 import {
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
-  SOCRATES_DURATION_MS,
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
@@ -17,6 +16,7 @@ import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
 import { pickQuestionIntro, recordRoundAndPickLine, type SocratesPlayerRoundInput } from './socrates.js';
+import { resolveSocratesDurationMs } from './socratesAudio.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -336,7 +336,7 @@ export function endQuestion(code: RoomCode): void {
   const correctOption = question.options[question.correctIndex];
 
   // Pure/synchronous - can never delay the REVEAL broadcast that follows.
-  const socratesLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
+  const pickedLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     difficulty: question.difficulty,
@@ -368,7 +368,8 @@ export function endQuestion(code: RoomCode): void {
     correctOption,
     results,
     answerCounts,
-    socratesLine,
+    socratesLine: pickedLine?.text ?? null,
+    socratesLineTemplate: pickedLine?.template ?? null,
   };
 
   const hostPayload = buildRevealHostPayload(room);
@@ -535,8 +536,11 @@ function startSocratesIfLineFired(room: Room): boolean {
 
   room.phase = 'SOCRATES';
   // Armed BEFORE the payload is built - it reports the timer's remaining
-  // time, so it has to exist first.
-  armActiveTimer(room, 'SOCRATES', SOCRATES_DURATION_MS, () => advanceFromSocrates(room.code));
+  // time, so it has to exist first. Duration follows this line's own audio
+  // (Task 42b) rather than a flat span - buildSocratesPayload below computes
+  // the SAME number for `totalDurationMs`, from the same template.
+  const durationMs = resolveSocratesDurationMs(room.lastReveal.socratesLineTemplate);
+  armActiveTimer(room, 'SOCRATES', durationMs, () => advanceFromSocrates(room.code));
   // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a
   // steal) set is the mood he's speaking into, and re-setting it here would
   // stomp the cheer/boo this beat is a reaction to.

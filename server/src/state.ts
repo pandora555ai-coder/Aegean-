@@ -89,6 +89,10 @@ export interface RevealSnapshot {
   // host gets the SAME line via state:sync, never a freshly (and
   // differently) picked one.
   socratesLine: string | null;
+  // The same line's raw template (Task 42b) - carried alongside `socratesLine`
+  // purely so the client can hash it to find this line's audio file; never
+  // shown on screen itself.
+  socratesLineTemplate: string | null;
 }
 
 // A room is deleted only once it's been fully empty - no host/TV display

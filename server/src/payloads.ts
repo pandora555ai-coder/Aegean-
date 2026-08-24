@@ -18,6 +18,7 @@ import {
   type StealShowPlayerPayload,
   type StealTarget,
 } from '@game/shared';
+import { resolveSocratesDurationMs } from './socratesAudio.js';
 import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
 
@@ -175,11 +176,17 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
   if (!line) {
     return null;
   }
+  const lineTemplate = room.lastReveal?.socratesLineTemplate ?? '';
   return {
     line,
+    lineTemplate,
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     durationMs: remainingActiveTimerMs(room),
+    // Recomputed from the same template every call (live broadcast AND a
+    // later state:sync alike) rather than read off the timer, which only
+    // ever holds what's LEFT, not the original span (Task 42b).
+    totalDurationMs: resolveSocratesDurationMs(lineTemplate || null),
     paused: room.paused,
     pausedByName: room.pausedByName,
     standings: computeStandings(room),
