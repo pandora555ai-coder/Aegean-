@@ -1,6 +1,7 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { PlayerStanding } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
-import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
+import { DEFAULT_DURATION_MS, useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { sidebarAvatarSize, sidebarListGap, sidebarRowSizeStyle, styles, type CSSVars } from './hostStyles';
 
 interface PlayerScoresPanelProps {
@@ -10,6 +11,92 @@ interface PlayerScoresPanelProps {
   // duplicating a second list elsewhere on screen. null outside STEAL.
   thiefPlayerId?: string | null;
   victimPlayerId?: string | null;
+}
+
+// Rows re-sort only after the score counters have finished tweening (Task
+// 41) - matches useAnimatedNumber's own duration so "counters settle, THEN
+// rows glide" never overlaps mid-move.
+const REORDER_DELAY_MS = DEFAULT_DURATION_MS;
+const GLIDE_MS = 400;
+
+// Highest score first. Array.prototype.sort is stable (guaranteed since
+// ES2019), and `standings` itself arrives in server join order, so tied
+// players keep a fixed relative order render to render - no flicker.
+function byScoreDesc(standings: PlayerStanding[]): PlayerStanding[] {
+  return [...standings].sort((a, b) => b.score - a.score);
+}
+
+// Holds the visual row order back from the just-arrived sort order until
+// REORDER_DELAY_MS has passed, so a score change tweens its number first and
+// only reorders the rows once that settles. A later score change while a
+// reorder is still pending simply reschedules the timer for the newest
+// target - the column always converges on the true order.
+function useDisplayOrder(standings: PlayerStanding[]): PlayerStanding[] {
+  const targetIds = useMemo(() => byScoreDesc(standings).map((s) => s.playerId), [standings]);
+  const targetKey = targetIds.join('|');
+  const [displayIds, setDisplayIds] = useState<string[]>(targetIds);
+  const displayIdsRef = useRef(displayIds);
+  displayIdsRef.current = displayIds;
+
+  useEffect(() => {
+    if (targetKey === displayIdsRef.current.join('|')) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDisplayIds(targetKey.split('|'));
+    }, REORDER_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
+  const byId = useMemo(() => new Map(standings.map((s) => [s.playerId, s])), [standings]);
+  return displayIds.map((id) => byId.get(id)).filter((s): s is PlayerStanding => Boolean(s));
+}
+
+// Classic FLIP: measures each row's position before the reorder above takes
+// effect and after, then plays the delta back out as a transform transition
+// - works regardless of the density-scaled row height, which is never a
+// fixed pixel value here.
+function useFlip(containerRef: RefObject<HTMLDivElement>, orderKey: string) {
+  const prevRects = useRef<Map<string, DOMRect>>(new Map());
+  const isFirst = useRef(true);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('[data-row-id]'));
+    const nextRects = new Map<string, DOMRect>();
+    rows.forEach((row) => {
+      nextRects.set(row.dataset.rowId as string, row.getBoundingClientRect());
+    });
+
+    if (!isFirst.current) {
+      rows.forEach((row) => {
+        const id = row.dataset.rowId as string;
+        const prev = prevRects.current.get(id);
+        const next = nextRects.get(id);
+        if (!prev || !next) {
+          return;
+        }
+        const dy = prev.top - next.top;
+        if (Math.abs(dy) < 0.5) {
+          return;
+        }
+        row.style.transition = 'none';
+        row.style.transform = `translateY(${dy}px)`;
+        // Forces layout to flush the transform above before the transition
+        // below is set, so the browser animates FROM it instead of skipping
+        // straight to the resting position.
+        void row.offsetHeight;
+        row.style.transition = `transform ${GLIDE_MS}ms ease`;
+        row.style.transform = '';
+      });
+    }
+    isFirst.current = false;
+    prevRects.current = nextRects;
+  }, [orderKey, containerRef]);
 }
 
 // One row. Its own component (not inlined in the .map below) so
@@ -40,6 +127,7 @@ function ScorePanelRow({
   return (
     <div
       data-testid="score-panel-row"
+      data-row-id={standing.playerId}
       data-thief={isThief}
       data-victim={isVictim}
       style={{ ...rowStyle, ...rowSize }}
@@ -56,22 +144,30 @@ function ScorePanelRow({
   );
 }
 
-// Task 38 - the TV's persistent right-hand score column, rendered
+// Task 38/41 - the TV's persistent right-hand score column, rendered
 // identically across QUESTION/POWER_UP/REVEAL/STEAL so scores never
-// disappear between phases. Rows stay in room.players' insertion (join)
-// order (see PlayerStanding), NEVER re-sorted by score/rank - the column
-// must never shift or resize as someone's total changes, only the numbers
-// inside a row tween.
+// disappear between phases. Always sorted highest score first (competition
+// ranking - ties share a rank). Rows don't snap straight to a new sort
+// position when a score changes: useDisplayOrder holds the reorder back
+// until the counters above have finished tweening, then useFlip glides the
+// rows there via transform so the transfer reads before the standings move.
 export function PlayerScoresPanel({ standings, thiefPlayerId = null, victimPlayerId = null }: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
   const avatarSize = sidebarAvatarSize(count);
+  const orderedStandings = useDisplayOrder(standings);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useFlip(containerRef, orderedStandings.map((s) => s.playerId).join('|'));
 
   return (
     <div style={styles.gameLayoutRight}>
       <div style={styles.scorePanelTitle}>Βαθμολογία</div>
-      <div style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }} data-testid="score-panel">
-        {standings.map((standing) => (
+      <div
+        ref={containerRef}
+        style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }}
+        data-testid="score-panel"
+      >
+        {orderedStandings.map((standing) => (
           <ScorePanelRow
             key={standing.playerId}
             standing={standing}

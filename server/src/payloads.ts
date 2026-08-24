@@ -60,10 +60,11 @@ function computeCompetitionRanks<T>(
 }
 
 // Every player's current score + rank, in room.players' insertion (join)
-// order - NEVER re-sorted by score, so the TV's persistent score column
-// (Task 38) never reshuffles a row as a total changes. Included on every
-// host payload (QUESTION/POWER_UP/REVEAL/STEAL), built fresh each time so a
-// live broadcast and a later state:sync catch-up always agree.
+// order. The client is what sorts this by score for display (Task 41) -
+// keeping it in a fixed join order here is just a stable base for that sort
+// to break ties against. Included on every host payload (QUESTION/POWER_UP/
+// REVEAL/STEAL), built fresh each time so a live broadcast and a later
+// state:sync catch-up always agree.
 export function computeStandings(room: Room): PlayerStanding[] {
   const players = [...room.players.values()];
   const ranks = computeCompetitionRanks(

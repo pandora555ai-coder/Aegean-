@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-const DEFAULT_DURATION_MS = 900;
+// Exported so callers that need to sequence something AFTER the tween
+// finishes (e.g. the TV score column re-sorting rows once STEAL's counters
+// have settled) can key off the same duration instead of hand-guessing it.
+export const DEFAULT_DURATION_MS = 900;
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
