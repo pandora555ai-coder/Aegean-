@@ -507,9 +507,15 @@ export function advanceFromSteal(code: RoomCode): void {
 // SCOREBOARD phase is gone now that scores are always visible on the TV's
 // score column): Socrates' own beat if this round produced a line, then
 // straight to the next question, or GAME_OVER on the last one.
+// THE single post-REVEAL decision point: the reveal, the steal that may
+// follow it and Socrates' own beat all leave through here, so nothing else
+// ever decides what comes next. That makes it re-entrant by design - the
+// SOCRATES beat comes back through it when it ends - and the phase check
+// below is what makes the second pass fall through to the next question
+// instead of starting a second beat (and with it a second, racing advance).
 function continueAfterReveal(room: Room): void {
-  if (startSocratesIfLineFired(room)) {
-    return; // advanceFromSocrates carries on once the beat is over
+  if (room.phase !== 'SOCRATES' && startSocratesIfLineFired(room)) {
+    return; // advanceFromSocrates comes back through here once the beat is over
   }
   advanceToNextQuestionOrGameOver(room);
 }
@@ -554,7 +560,11 @@ export function advanceFromSocrates(code: RoomCode): void {
   if (!room || room.phase !== 'SOCRATES') {
     return;
   }
-  advanceToNextQuestionOrGameOver(room);
+  // Back through the one decision point rather than jumping to the tail
+  // itself - the beat is part of the post-REVEAL sequence, not a second
+  // path out of it (this is what a stage change on the next question hangs
+  // off, and it is reached identically by the timer and by a VIP skip).
+  continueAfterReveal(room);
 }
 
 // The shared tail of advanceFromReveal (directly, or via a STEAL first) -
