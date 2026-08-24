@@ -325,7 +325,9 @@ export const styles: Record<string, CSSProperties> = {
   cornerRoomCode: {
     position: 'fixed',
     top: '1rem',
-    right: '1rem',
+    // Cleared of fullscreenToggle's own top-right corner (same fixed
+    // position) so the two badges never overlap/clip each other.
+    right: '4.75rem',
     fontSize: '1rem',
     fontWeight: 700,
     fontFamily: 'monospace',
@@ -734,6 +736,11 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: '1rem',
     padding: '1.5rem 0',
+    // Own stacking context, above the confetti/firework layers (both
+    // z-index: 0) as direct siblings within .container - the winner name
+    // must never be obscured by a piece crossing through the center.
+    position: 'relative',
+    zIndex: 2,
   },
   winnerAvatarRow: {
     display: 'flex',
