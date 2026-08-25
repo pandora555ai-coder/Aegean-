@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import LandingScreen from './screens/LandingScreen';
 import HostScreen from './screens/HostScreen';
 import ControllerScreen from './screens/ControllerScreen';
+import DevDrawScreen from './screens/DevDrawScreen';
 
 export default function App() {
   return (
@@ -10,6 +11,8 @@ export default function App() {
         <Route path="/" element={<LandingScreen />} />
         <Route path="/host" element={<HostScreen />} />
         <Route path="/play" element={<ControllerScreen />} />
+        {/* Task 53 - dev-only, linked from nowhere. Open it directly on a phone. */}
+        <Route path="/dev/draw" element={<DevDrawScreen />} />
       </Routes>
     </BrowserRouter>
   );

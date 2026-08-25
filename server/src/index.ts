@@ -5,6 +5,7 @@ import cors from 'cors';
 import type { Socket } from 'socket.io';
 import {
   ClientEvents,
+  DRAWING_MAX_BYTES,
   MIN_PLAYERS,
   PRESET_NAMES,
   ServerEvents,
@@ -855,6 +856,27 @@ io.on('connection', (socket) => {
     }
     console.log(`room ${room.code} Socrates audio ended - advancing`);
     advanceFromSocrates(room.code);
+  });
+
+  // Task 53 - dev-only sink for the /dev/draw harness. No room and no
+  // player: it just checks the drawing is a plausible size and echoes back
+  // what arrived, so the phone can show the real wire size. The eventual
+  // drawing phase gets its own player:* event with the usual room/phase
+  // authorisation - this one is NOT that, and touches no room state.
+  socket.on(ClientEvents.DEV_SUBMIT_DRAWING, (payload) => {
+    const imageDataUrl = payload?.imageDataUrl;
+    if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+      console.log(`rejected ${ClientEvents.DEV_SUBMIT_DRAWING} from ${socket.id}: not an image data URL`);
+      return;
+    }
+    if (imageDataUrl.length > DRAWING_MAX_BYTES) {
+      console.log(`rejected ${ClientEvents.DEV_SUBMIT_DRAWING} from ${socket.id}: ${imageDataUrl.length} bytes exceeds ${DRAWING_MAX_BYTES}`);
+      return;
+    }
+
+    const format = imageDataUrl.slice('data:'.length, imageDataUrl.indexOf(';'));
+    console.log(`drawing from ${socket.id}: ${imageDataUrl.length} bytes (${format})`);
+    socket.emit(ServerEvents.DEV_DRAWING_RECEIVED, { bytes: imageDataUrl.length, format });
   });
 
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {

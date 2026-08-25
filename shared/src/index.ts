@@ -19,6 +19,11 @@ export const ClientEvents = {
   // useGameAudio.playSocratesLine), so the server can end the beat exactly
   // then instead of guessing a duration up front.
   SOCRATES_AUDIO_ENDED: 'socrates:audio_ended',
+  // Task 53 - dev-only drawing harness (/dev/draw). Not part of any game
+  // phase yet: the real draw phase will get its own player:* event with a
+  // room/phase check. This one exists so the surface can be tried on a
+  // real phone and the wire size measured.
+  DEV_SUBMIT_DRAWING: 'dev:submit_drawing',
 } as const;
 
 export const ServerEvents = {
@@ -48,6 +53,7 @@ export const ServerEvents = {
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
+  DEV_DRAWING_RECEIVED: 'dev:drawing_received',
 } as const;
 
 export type RoomCode = string;
@@ -1178,6 +1184,30 @@ export function isSocratesHostPayload(
   return 'line' in payload;
 }
 
+// ----------------------- Drawing (Task 53) -------------------------------
+// A drawing leaves the phone as ONE lossy data URL, never as strokes: the
+// TV only ever needs the finished picture, and a data URL is the cheapest
+// thing a socket can carry that an <img> can show with no decoding step.
+// Exported at a fixed square size so what the phone drew is what the TV
+// gets, whatever the handset's screen size or pixel ratio.
+export const DRAWING_EXPORT_SIZE = 512;
+export const DRAWING_EXPORT_QUALITY = 0.7;
+// Generous next to a real drawing (a full-page doodle measures ~12 KB as a
+// data URL) but small enough that a hostile client can't push a photo
+// through the socket.
+export const DRAWING_MAX_BYTES = 120_000;
+
+export interface DevSubmitDrawingPayload {
+  // 'data:image/webp;base64,...' (or image/jpeg where WebP export is
+  // unsupported) - always opaque, white background, black strokes.
+  imageDataUrl: string;
+}
+
+export interface DevDrawingReceivedPayload {
+  bytes: number; // length of the data URL as the server received it
+  format: string; // 'image/webp' | 'image/jpeg' | 'image/png'
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -1195,6 +1225,7 @@ export type ClientToServerEvents = {
   [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
+  [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -1224,4 +1255,5 @@ export type ServerToClientEvents = {
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
+  [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
 };
