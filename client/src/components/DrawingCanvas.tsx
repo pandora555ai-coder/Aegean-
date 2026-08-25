@@ -10,9 +10,9 @@ import {
 } from 'react';
 import { DRAWING_EXPORT_QUALITY, DRAWING_EXPORT_SIZE } from '@game/shared';
 
-// A finger-drawing surface with undo, clear, colour, eraser and size
-// (Task 53 + 54). Not wired into a game phase yet - the /dev/draw screen is
-// its only caller.
+// A finger-drawing surface with undo, clear, colour, eraser, size and fill
+// (Task 53 + 54 + 55). Not wired into a game phase yet - the /dev/draw
+// screen is its only caller.
 //
 // Strokes are kept as NORMALISED points (0..1 on both axes), never as
 // device pixels. That is what lets the same stroke list be redrawn after a
@@ -20,14 +20,15 @@ import { DRAWING_EXPORT_QUALITY, DRAWING_EXPORT_SIZE } from '@game/shared';
 // without ever rescaling pixels. Colour, size and tool are recorded PER
 // STROKE (fixed at the finger-down that starts it), so a full redraw from
 // the stroke list is enough to reconstruct the canvas exactly - which is
-// also what makes undo correct for an eraser stroke, not just a pen one.
+// also what makes undo correct for an eraser or fill stroke, not just a
+// pen one: undo just pops the last entry, whatever tool made it.
 
 interface Point {
   x: number;
   y: number;
 }
 
-type Tool = 'pen' | 'eraser';
+type Tool = 'pen' | 'eraser' | 'fill';
 type SizeKey = 'small' | 'medium' | 'large';
 
 interface Stroke {
@@ -79,8 +80,115 @@ function prepareContext(ctx: CanvasRenderingContext2D, tool: Tool, color: string
   ctx.fillStyle = color;
 }
 
+interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+// A throwaway 1x1 canvas is the simplest way to turn ANY CSS colour string
+// this component uses - hex swatches, the hsl(...) the hue wheel emits -
+// into concrete RGBA, without hand-rolling a parser per format.
+let swatchCtx: CanvasRenderingContext2D | null = null;
+function colorToRgba(color: string): Rgba {
+  if (!swatchCtx) {
+    const el = document.createElement('canvas');
+    el.width = 1;
+    el.height = 1;
+    swatchCtx = el.getContext('2d', { willReadFrequently: true })!;
+  }
+  swatchCtx.clearRect(0, 0, 1, 1);
+  swatchCtx.fillStyle = color;
+  swatchCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = swatchCtx.getImageData(0, 0, 1, 1).data;
+  return { r, g, b, a };
+}
+
+function colorsClose(a: Rgba, b: Rgba, tolerance: number): boolean {
+  return (
+    Math.abs(a.r - b.r) <= tolerance &&
+    Math.abs(a.g - b.g) <= tolerance &&
+    Math.abs(a.b - b.b) <= tolerance &&
+    Math.abs(a.a - b.a) <= tolerance
+  );
+}
+
+// Stack-based flood fill in raw pixel-buffer coordinates (getImageData /
+// putImageData ignore the canvas's current transform, so the caller must
+// hand in DEVICE pixels, not the CSS/export units the rest of this file
+// draws in). Reads the tapped pixel as the "inside" colour and floods every
+// 4-connected neighbour close enough to it - a boundary the eye reads as a
+// closed line still has anti-aliased edge pixels blended toward the fill
+// colour, so an exact match would leak the fill straight through them.
+function floodFill(ctx: CanvasRenderingContext2D, startX: number, startY: number, fillColor: string, width: number, height: number) {
+  if (startX < 0 || startY < 0 || startX >= width || startY >= height) {
+    return;
+  }
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const startIdx = (startY * width + startX) * 4;
+  const target: Rgba = { r: data[startIdx], g: data[startIdx + 1], b: data[startIdx + 2], a: data[startIdx + 3] };
+  const fill = colorToRgba(fillColor);
+  const TOLERANCE = 48;
+
+  if (colorsClose(target, fill, 0)) {
+    return;
+  }
+
+  const visited = new Uint8Array(width * height);
+  const stack: number[] = [startX, startY];
+  visited[startY * width + startX] = 1;
+
+  function tryPush(x: number, y: number) {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return;
+    }
+    const vIdx = y * width + x;
+    if (visited[vIdx]) {
+      return;
+    }
+    const pIdx = vIdx * 4;
+    const pixel: Rgba = { r: data[pIdx], g: data[pIdx + 1], b: data[pIdx + 2], a: data[pIdx + 3] };
+    if (colorsClose(pixel, target, TOLERANCE)) {
+      visited[vIdx] = 1;
+      stack.push(x, y);
+    }
+  }
+
+  while (stack.length > 0) {
+    const y = stack.pop()!;
+    const x = stack.pop()!;
+    const idx = (y * width + x) * 4;
+    data[idx] = fill.r;
+    data[idx + 1] = fill.g;
+    data[idx + 2] = fill.b;
+    data[idx + 3] = fill.a;
+
+    tryPush(x - 1, y);
+    tryPush(x + 1, y);
+    tryPush(x, y - 1);
+    tryPush(x, y + 1);
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
 function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, canvasSize: number) {
   if (stroke.points.length === 0) {
+    return;
+  }
+
+  if (stroke.tool === 'fill') {
+    // Convert the tapped point from the CSS/export units the rest of this
+    // file draws in into device pixels - the units getImageData actually
+    // reads, regardless of the context's current scale transform.
+    const canvas = ctx.canvas;
+    const ratio = canvas.width / canvasSize;
+    const x = Math.round(stroke.points[0].x * canvasSize * ratio);
+    const y = Math.round(stroke.points[0].y * canvasSize * ratio);
+    floodFill(ctx, x, y, stroke.color, canvas.width, canvas.height);
     return;
   }
 
@@ -134,6 +242,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const [color, setColor] = useState(INK);
     const [brushSize, setBrushSize] = useState<SizeKey>('medium');
     const [hue, setHue] = useState(0);
+    // Collapsed by default (Task 55): a full wheel+swatch panel sitting on
+    // the canvas permanently ate a corner of the drawing surface. Now it's
+    // a small toggle that overlays the canvas only while open.
+    const [pickerOpen, setPickerOpen] = useState(false);
 
     useEffect(() => {
       onStrokeCountChange?.(strokeCount);
@@ -230,6 +342,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       if (activePointerRef.current !== event.pointerId || !stroke) {
         return;
       }
+      // Fill is a tap, not a line: it already flooded at pointer-down, and
+      // dragging must not smear extra fill points into the same stroke.
+      if (stroke.tool === 'fill') {
+        return;
+      }
 
       const ctx = canvasRef.current?.getContext('2d');
       if (!ctx) {
@@ -292,6 +409,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       redraw();
     }
 
+    // Picking a colour should never silently switch a fill tap back to the
+    // pen - only the eraser (which has no colour of its own) gets bumped
+    // over to a paintable tool.
+    function selectColor(next: string) {
+      setColor(next);
+      setTool((current) => (current === 'eraser' ? 'pen' : current));
+    }
+
     function updateHueFromPointer(clientX: number, clientY: number) {
       const wheel = wheelRef.current;
       if (!wheel) {
@@ -303,8 +428,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const angle = (Math.atan2(clientY - cy, clientX - cx) * 180) / Math.PI;
       const normalized = Math.round((angle + 360) % 360);
       setHue(normalized);
-      setColor(`hsl(${normalized}, 100%, 50%)`);
-      setTool('pen');
+      selectColor(`hsl(${normalized}, 100%, 50%)`);
     }
 
     function handleWheelPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -367,39 +491,49 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
           />
-          <div style={styles.pickerPanel}>
-            <div
-              ref={wheelRef}
-              style={styles.wheel}
-              onPointerDown={handleWheelPointerDown}
-              onPointerMove={handleWheelPointerMove}
-              onPointerUp={handleWheelPointerUp}
-              onPointerCancel={handleWheelPointerUp}
-            >
-              <div style={{ ...styles.wheelCenter, background: color }} />
-              <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
-            </div>
-            <div style={styles.swatchGrid}>
-              {SWATCHES.map((swatch) => (
-                <button
-                  key={swatch}
-                  type="button"
-                  aria-label={`χρώμα ${swatch}`}
-                  onClick={() => {
-                    setColor(swatch);
-                    setTool('pen');
-                  }}
-                  style={{
-                    ...styles.swatch,
-                    background: swatch,
-                    ...(color === swatch ? styles.swatchActive : null),
-                  }}
-                />
-              ))}
-            </div>
-          </div>
         </div>
         <div style={styles.toolRow}>
+          <div style={styles.pickerAnchor}>
+            <button
+              type="button"
+              aria-label="επιλογή χρώματος"
+              aria-expanded={pickerOpen}
+              style={styles.pickerToggle}
+              onClick={() => setPickerOpen((open) => !open)}
+            >
+              <span style={{ ...styles.pickerToggleSwatch, background: color }} />
+            </button>
+            {pickerOpen && (
+              <div style={styles.pickerPanel}>
+                <div
+                  ref={wheelRef}
+                  style={styles.wheel}
+                  onPointerDown={handleWheelPointerDown}
+                  onPointerMove={handleWheelPointerMove}
+                  onPointerUp={handleWheelPointerUp}
+                  onPointerCancel={handleWheelPointerUp}
+                >
+                  <div style={{ ...styles.wheelCenter, background: color }} />
+                  <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
+                </div>
+                <div style={styles.swatchGrid}>
+                  {SWATCHES.map((swatch) => (
+                    <button
+                      key={swatch}
+                      type="button"
+                      aria-label={`χρώμα ${swatch}`}
+                      onClick={() => selectColor(swatch)}
+                      style={{
+                        ...styles.swatch,
+                        background: swatch,
+                        ...(color === swatch ? styles.swatchActive : null),
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div style={styles.segmentGroup}>
             <button
               type="button"
@@ -415,7 +549,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             >
               Γόμα
             </button>
+            <button
+              type="button"
+              style={{ ...styles.segmentButton, ...(tool === 'fill' ? styles.segmentButtonActive : null) }}
+              onClick={() => setTool('fill')}
+            >
+              Γέμισμα
+            </button>
           </div>
+        </div>
+        <div style={styles.toolRow}>
           <div style={styles.segmentGroup}>
             {SIZE_ORDER.map((key) => (
               <button
@@ -469,18 +612,41 @@ const styles: Record<string, CSSProperties> = {
     border: '2px solid var(--border-strong)',
     background: PAPER,
   },
+  // The toggle itself sits inline in the tool row (never over the canvas),
+  // so criterion 1's "no overlap when collapsed" holds by construction. The
+  // expanded panel is the only part allowed to float over other controls,
+  // and only while the user has it open.
+  pickerAnchor: { position: 'relative' },
+  pickerToggle: {
+    width: '2.6rem',
+    height: '2.6rem',
+    padding: '0.3rem',
+    borderRadius: '0.75rem',
+    background: 'var(--surface-strong)',
+    border: '1px solid var(--border-strong)',
+    touchAction: 'manipulation',
+  },
+  pickerToggleSwatch: {
+    display: 'block',
+    width: '100%',
+    height: '100%',
+    borderRadius: '50%',
+    border: '2px solid rgba(255,255,255,0.5)',
+  },
   pickerPanel: {
     position: 'absolute',
-    left: '0.5rem',
-    bottom: '0.5rem',
+    left: 0,
+    bottom: 'calc(100% + 0.5rem)',
+    zIndex: 10,
     display: 'flex',
     alignItems: 'center',
     gap: '0.4rem',
     padding: '0.35rem',
     borderRadius: '0.9rem',
-    background: 'rgba(18, 16, 42, 0.55)',
+    background: 'rgba(18, 16, 42, 0.9)',
     backdropFilter: 'blur(2px)',
     touchAction: 'none',
+    boxShadow: '0 0.5rem 1.5rem rgba(0,0,0,0.35)',
   },
   wheel: {
     position: 'relative',

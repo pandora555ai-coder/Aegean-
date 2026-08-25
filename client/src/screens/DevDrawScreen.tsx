@@ -45,12 +45,12 @@ export default function DevDrawScreen() {
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Ζωγραφική (dev)</h1>
-      <div style={styles.status}>{connected ? 'συνδεδεμένο' : 'σύνδεση...'}</div>
       <DrawingCanvas ref={canvasRef} onStrokeCountChange={setStrokeCount} />
       <button type="button" style={styles.submit} onClick={submit} disabled={strokeCount === 0 || !connected}>
         Υποβολή
       </button>
       <div style={styles.readout}>
+        <div>{connected ? 'συνδεδεμένο' : 'σύνδεση...'}</div>
         <div>γραμμές: {strokeCount}</div>
         {sentBytes !== null && <div>στάλθηκαν: {sentBytes.toLocaleString()} bytes</div>}
         {ack && <div>ο server έλαβε: {ack.bytes.toLocaleString()} bytes ({ack.format})</div>}
@@ -63,17 +63,20 @@ const styles: Record<string, CSSProperties> = {
   container: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '1rem',
-    padding: '1.5rem 1.25rem',
-    maxWidth: '480px',
+    gap: '0.6rem',
+    // Trimmed from the old 1.5rem/1.25rem: this padding is the only thing
+    // standing between the canvas and full phone width, since the canvas
+    // is width:100% of this container (criterion 1's "as large as the
+    // phone allows").
+    padding: '0.6rem 0.6rem 1rem',
+    maxWidth: '640px',
     margin: '0 auto',
     minHeight: '100dvh',
     background: 'var(--bg)',
     color: 'var(--text)',
     boxSizing: 'border-box',
   },
-  title: { fontSize: '1.4rem', fontWeight: 700, textAlign: 'center', margin: 0 },
-  status: { textAlign: 'center', color: 'var(--text-faint)', fontSize: '0.9rem' },
+  title: { fontSize: '1.1rem', fontWeight: 700, textAlign: 'center', margin: '0 0 0.15rem' },
   submit: {
     padding: '1rem',
     fontSize: '1.1rem',
