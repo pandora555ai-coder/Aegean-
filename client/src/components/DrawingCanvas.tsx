@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -103,6 +104,32 @@ function colorToRgba(color: string): Rgba {
   swatchCtx.fillRect(0, 0, 1, 1);
   const [r, g, b, a] = swatchCtx.getImageData(0, 0, 1, 1).data;
   return { r, g, b, a };
+}
+
+// The wheel indicator has to reflect whatever colour is actually selected,
+// including hex swatches that never pass through setHue - so hue is derived
+// from the colour itself (RGB->HSL) rather than tracked as separate state.
+function colorToHueDegrees(color: string): number {
+  const { r, g, b } = colorToRgba(color);
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  if (delta === 0) {
+    return 0;
+  }
+  let h: number;
+  if (max === rn) {
+    h = ((gn - bn) / delta) % 6;
+  } else if (max === gn) {
+    h = (bn - rn) / delta + 2;
+  } else {
+    h = (rn - gn) / delta + 4;
+  }
+  h *= 60;
+  return h < 0 ? h + 360 : h;
 }
 
 function colorsClose(a: Rgba, b: Rgba, tolerance: number): boolean {
@@ -241,7 +268,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const [tool, setTool] = useState<Tool>('pen');
     const [color, setColor] = useState(INK);
     const [brushSize, setBrushSize] = useState<SizeKey>('medium');
-    const [hue, setHue] = useState(0);
     // Collapsed by default (Task 55): a full wheel+swatch panel sitting on
     // the canvas permanently ate a corner of the drawing surface. Now it's
     // a small toggle that overlays the canvas only while open.
@@ -427,7 +453,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const cy = rect.top + rect.height / 2;
       const angle = (Math.atan2(clientY - cy, clientX - cx) * 180) / Math.PI;
       const normalized = Math.round((angle + 360) % 360);
-      setHue(normalized);
       selectColor(`hsl(${normalized}, 100%, 50%)`);
     }
 
@@ -476,6 +501,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       },
     }), []);
 
+    const hue = useMemo(() => colorToHueDegrees(color), [color]);
     const indicatorAngle = (hue * Math.PI) / 180;
     const indicatorX = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.cos(indicatorAngle);
     const indicatorY = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.sin(indicatorAngle);

@@ -50,8 +50,6 @@ export default function DevDrawScreen() {
         Υποβολή
       </button>
       <div style={styles.readout}>
-        <div>{connected ? 'συνδεδεμένο' : 'σύνδεση...'}</div>
-        <div>γραμμές: {strokeCount}</div>
         {sentBytes !== null && <div>στάλθηκαν: {sentBytes.toLocaleString()} bytes</div>}
         {ack && <div>ο server έλαβε: {ack.bytes.toLocaleString()} bytes ({ack.format})</div>}
       </div>
