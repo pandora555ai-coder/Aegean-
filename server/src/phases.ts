@@ -5,6 +5,7 @@ import {
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
+  QUIZ_STAGES,
   ServerEvents,
   stageForQuestionIndex,
   type QuestionShowHostPayload,
@@ -41,6 +42,33 @@ import {
   buildGameOver,
   computeStandings,
 } from './payloads.js';
+
+// The quiz mode's phase-advance timer kinds (Task 52). ActiveTimer.kind is a
+// plain string now - the vocabulary belongs to the mode - so this is where
+// the quiz's own set is spelled out, and modes/quiz.ts checks its
+// continuations table covers exactly these. STEAL runs TWO back to back:
+// 'STEAL' while the thief picks, then 'STEAL_ANNOUNCE' for the announcement beat.
+export type QuizTimerKind =
+  | 'STAGE_ANNOUNCE'
+  | 'POWER_UP'
+  | 'QUESTION'
+  | 'REVEAL'
+  | 'STEAL'
+  | 'STEAL_ANNOUNCE'
+  | 'SOCRATES';
+
+// The shared timer helper, narrowed to this mode's kinds - so a typo in a
+// phase name is still a compile error here even though timers.ts itself no
+// longer knows the quiz's phase names. Every arm in this file goes through it.
+function armQuizTimer(room: Room, kind: QuizTimerKind, durationMs: number, onFire: () => void): void {
+  armActiveTimer(room, kind, durationMs, onFire);
+}
+
+// The stage table this mode reads. Every @game/shared stage helper takes the
+// table as its last argument since Task 52; passing the quiz's explicitly
+// (rather than leaning on the default) is what makes this file's dependency
+// on ONE mode's shape visible.
+const stageOfQuestion = (questionIndex: number) => stageForQuestionIndex(questionIndex, QUIZ_STAGES);
 
 // Sorts `results` IN PLACE: correct answers first (fastest first), then
 // wrong answers, then players who didn't answer at all go last. With 7
@@ -85,7 +113,7 @@ function sortAndRankResults(results: RevealPlayerResult[]): void {
 // the card, which is what keeps the announcement and the question from
 // rendering on top of each other.
 function announceStageIfChanged(room: Room): boolean {
-  const definition = stageForQuestionIndex(room.currentQuestionIndex);
+  const definition = stageOfQuestion(room.currentQuestionIndex);
   if (room.stage === definition.stage) {
     return false;
   }
@@ -95,7 +123,7 @@ function announceStageIfChanged(room: Room): boolean {
   // The shared helper, exactly like every other phase - so pausing during
   // the announcement freezes it and a reconnecting TV is told the real
   // remaining time instead of a fresh full duration.
-  armActiveTimer(room, 'STAGE_ANNOUNCE', STAGE_ANNOUNCE_DURATION_MS, () => endStageAnnounce(room.code));
+  armQuizTimer(room, 'STAGE_ANNOUNCE', STAGE_ANNOUNCE_DURATION_MS, () => endStageAnnounce(room.code));
   // Crowd mood (Task 35) - calm for the announcement card, same as LOBBY.
   setCrowdMood(room, 'calm');
 
@@ -121,7 +149,7 @@ export function endStageAnnounce(code: RoomCode): void {
   if (!room || room.phase !== 'STAGE_ANNOUNCE') {
     return;
   }
-  const stage = stageForQuestionIndex(room.currentQuestionIndex).stage;
+  const stage = stageOfQuestion(room.currentQuestionIndex).stage;
   if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stage))) {
     return; // advanceFromSocrates calls beginRound once the beat is over
   }
@@ -172,7 +200,7 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
   // Same backstop-at-the-ceiling arming as every other Socrates beat (see
   // startSocratesIfLineFired) - the normal path out is still the client's
   // SOCRATES_AUDIO_ENDED ack.
-  armActiveTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
+  armQuizTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   const payload = buildSocratesPayload(room);
@@ -186,7 +214,7 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
 // Everything the gate does once any stage announcement is out of the way -
 // reached either directly (mid-stage) or from endStageAnnounce.
 function beginRound(room: Room): void {
-  if (stageForQuestionIndex(room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
+  if (stageOfQuestion(room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
     startPowerUp(room);
     return;
   }
@@ -211,7 +239,7 @@ export function startPowerUp(room: Room): void {
 
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
-  armActiveTimer(room, 'POWER_UP', POWER_UP_DURATION_MS, () => endPowerUp(room.code));
+  armQuizTimer(room, 'POWER_UP', POWER_UP_DURATION_MS, () => endPowerUp(room.code));
   // Crowd mood (Task 35) - the whole power-up phase is tension.
   setCrowdMood(room, 'tension');
 
@@ -263,7 +291,7 @@ export function startQuestion(room: Room): void {
   room.answers.clear();
   room.questionStartedAt = Date.now();
   const questionTimeMs = room.settings.questionTimeMs;
-  armActiveTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
+  armQuizTimer(room, 'QUESTION', questionTimeMs, () => endQuestion(room.code));
   // Crowd mood (Task 35) - calm to start, switching to tension for the last
   // third of the timer via its own pause-aware SimpleTimer (see crowd.ts).
   setCrowdMood(room, 'calm');
@@ -452,7 +480,7 @@ export function endQuestion(code: RoomCode): void {
     `room ${room.code} question ${room.currentQuestionIndex + 1} revealed — correctIndex=${question.correctIndex} results: ${JSON.stringify(results)}`,
   );
 
-  armActiveTimer(room, 'REVEAL', REVEAL_DURATION_MS, () => advanceFromReveal(room.code));
+  armQuizTimer(room, 'REVEAL', REVEAL_DURATION_MS, () => advanceFromReveal(room.code));
 }
 
 // Ends REVEAL exactly once - guarded by the phase check, so whichever of
@@ -479,7 +507,7 @@ export function advanceFromReveal(code: RoomCode): void {
 // Returns whether the phase actually began, so the caller knows whether to
 // carry on to the next question itself.
 function startStealIfEligible(room: Room): boolean {
-  if (!stageForQuestionIndex(room.currentQuestionIndex).stealAfterEveryQuestion) {
+  if (!stageOfQuestion(room.currentQuestionIndex).stealAfterEveryQuestion) {
     return false;
   }
   const steal = buildStealState(room);
@@ -494,7 +522,7 @@ function startStealIfEligible(room: Room): boolean {
 
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
-  armActiveTimer(room, 'STEAL', STEAL_DURATION_MS, () => resolveSteal(room.code, null));
+  armQuizTimer(room, 'STEAL', STEAL_DURATION_MS, () => resolveSteal(room.code, null));
   // Crowd mood (Task 35) - the whole steal phase is tension, until it resolves.
   setCrowdMood(room, 'tension');
 
@@ -536,7 +564,7 @@ export function resolveSteal(code: RoomCode, victimPlayerId: string | null): voi
   steal.chosenTargetPlayerId = victimPlayerId;
   steal.resolved = applySteal(room, steal, victimPlayerId);
 
-  armActiveTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
+  armQuizTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
   // Crowd mood (Task 35) - a steal resolving is always a boo, win or not.
   setCrowdMood(room, 'boo');
 
@@ -604,7 +632,7 @@ function startSocratesIfLineFired(room: Room): boolean {
   // never arrives at all (host muted, file missing, ack lost) - arming it at
   // the per-line estimate instead would reintroduce exactly the "phase ends
   // before the clip finishes" race this task exists to fix.
-  armActiveTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
+  armQuizTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
   // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a
   // steal) set is the mood he's speaking into, and re-setting it here would
   // stomp the cheer/boo this beat is a reaction to.
@@ -687,29 +715,4 @@ function finishGame(room: Room): void {
   const gameOverPayload = buildGameOver(room);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
-}
-
-// The continuation a resumed timer should fire once its remaining time
-// elapses - whichever function originally would have advanced the phase
-// that got paused.
-export function continuationForActiveTimer(room: Room): (() => void) | null {
-  if (!room.activeTimer) {
-    return null;
-  }
-  switch (room.activeTimer.kind) {
-    case 'STAGE_ANNOUNCE':
-      return () => endStageAnnounce(room.code);
-    case 'POWER_UP':
-      return () => endPowerUp(room.code);
-    case 'QUESTION':
-      return () => endQuestion(room.code);
-    case 'REVEAL':
-      return () => advanceFromReveal(room.code);
-    case 'STEAL':
-      return () => resolveSteal(room.code, null);
-    case 'STEAL_ANNOUNCE':
-      return () => advanceFromSteal(room.code);
-    case 'SOCRATES':
-      return () => advanceFromSocrates(room.code);
-  }
 }

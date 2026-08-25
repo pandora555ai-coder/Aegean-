@@ -3,9 +3,18 @@
 // phase-advancing timer is currently running (at most one at a time - a
 // room is only ever in one phase) lives here.
 export interface ActiveTimer {
-  // STEAL runs TWO of these back to back: 'STEAL' while the thief is picking,
-  // then 'STEAL_ANNOUNCE' for the beat the TV spends announcing the result.
-  kind: 'STAGE_ANNOUNCE' | 'POWER_UP' | 'QUESTION' | 'REVEAL' | 'STEAL' | 'STEAL_ANNOUNCE' | 'SOCRATES';
+  // Task 52: the VOCABULARY here belongs to the room's GameMode, not to this
+  // module - each mode names its own timer kinds and owns the table that says
+  // what each one advances to (see server/src/modes/). That is why this is a
+  // plain string rather than a union: a new mode's phases must not have to be
+  // listed here for its timers to arm, pause and resume. Exhaustiveness now
+  // lives in the mode (quiz's QuizTimerKind in phases.ts), which is checked
+  // against its own continuations table.
+  // The quiz mode uses: STAGE_ANNOUNCE, POWER_UP, QUESTION, REVEAL, STEAL,
+  // STEAL_ANNOUNCE, SOCRATES - where STEAL runs TWO of these back to back:
+  // 'STEAL' while the thief is picking, then 'STEAL_ANNOUNCE' for the beat the
+  // TV spends announcing the result.
+  kind: string;
   handle: NodeJS.Timeout | null;
   startedAt: number;
   durationMs: number;

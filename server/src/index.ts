@@ -53,13 +53,14 @@ import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
   endPowerUp,
-  enterQuestionOrPowerUp,
   advanceFromReveal,
   advanceFromSteal,
   advanceFromSocrates,
   resolveSteal,
-  continuationForActiveTimer,
 } from './phases.js';
+// Task 52 - importing the barrel is what REGISTERS every game mode, so it
+// must stay even if only these two names are used.
+import { continuationForActiveTimer, modeForRoom } from './modes/index.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -552,7 +553,9 @@ io.on('connection', (socket) => {
     // happens not to use power-ups today, but routing even the first question
     // through the one gate keeps that a property of the stage table rather
     // than an assumption spread across callers.
-    enterQuestionOrPowerUp(room);
+    // Task 52 - through the MODE, so this handler never has to know which
+    // phase a game opens on. For 'quiz' this is still enterQuestionOrPowerUp.
+    modeForRoom(room).start(room);
   });
 
   socket.on(ClientEvents.VIP_UPDATE_SETTINGS, (payload) => {

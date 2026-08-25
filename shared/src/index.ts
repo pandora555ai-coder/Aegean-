@@ -256,9 +256,27 @@ export interface LobbyUpdatePayload {
   settings: RoomSettings;
 }
 
+// ---------------------------------------------------------------------------
+// Game modes (Task 52)
+// ---------------------------------------------------------------------------
+
+// Which GAME a room is running. The mode owns its own phase sequence, what
+// follows each of its phases, and its own STAGES table (see
+// server/src/modes/) - the room only holds the id. 'quiz' is the original
+// game and, for now, the only one. Adding a mode means adding an id HERE
+// (and its phases to GamePhase below), then a module under server/src/modes/
+// that registers itself - nothing in state.ts/timers.ts/realtime.ts moves.
+export type GameModeId = 'quiz';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz'];
+export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
+
 // POWER_UP (Task 30a) is a real phase, not a flag, so every existing phase
 // guard keeps rejecting answers/casts while it's up. WHEN it runs is decided
 // by the stage table below (Task 31a), not by this type.
+// Task 52: this is the UNION of every mode's phases - the wire vocabulary a
+// client may be told about. Which of them a given room can actually enter is
+// its mode's own `phases` list. LOBBY and GAME_OVER are common to all modes;
+// everything between STAGE_ANNOUNCE and SOCRATES belongs to 'quiz'.
 export type GamePhase =
   | 'LOBBY'
   | 'STAGE_ANNOUNCE'
@@ -317,7 +335,11 @@ export interface StageDefinition {
 // rebuttal in the Agora, the sophists' rhetorical tricks, and finally a
 // trial. Renaming only - questionCount/powerUpBeforeEveryQuestion/
 // stealAfterEveryQuestion (the actual mechanics) are untouched.
-export const STAGES: readonly StageDefinition[] = [
+// Task 52: this is the QUIZ mode's stage table. Every helper below takes the
+// table it should read as an optional last argument, defaulting to this one,
+// so a mode with a different shape passes its own (server/src/modes/) and
+// every existing quiz-side call site stays exactly as it was.
+export const QUIZ_STAGES: readonly StageDefinition[] = [
   {
     stage: 1,
     questionCount: 3,
@@ -344,46 +366,62 @@ export const STAGES: readonly StageDefinition[] = [
   },
 ] as const;
 
+// The pre-Task-52 name, kept as the default stage table for every helper
+// below and for the client's lobby estimates - all of which are quiz-only.
+export const STAGES: readonly StageDefinition[] = QUIZ_STAGES;
+
 // How many stages of the game the VIP wants (Task 33). `short`/`medium` are
 // fixed slices of the table (stages 1-2 / 1-3) so they stay put when a new
-// stage is appended; `long` tracks STAGES itself and is the ONLY one that
-// grows when a stage is added.
+// stage is appended; `long` is "however many the table has", so it grows with
+// a new stage and is right for ANY mode's table, not just the quiz's.
 export type GameLength = 'short' | 'medium' | 'long';
 export const GAME_LENGTH_OPTIONS: readonly GameLength[] = ['short', 'medium', 'long'];
 
 const GAME_LENGTH_STAGE_COUNT: Record<GameLength, number> = {
   short: 2,
   medium: 3,
-  long: STAGES.length,
+  long: Number.POSITIVE_INFINITY, // the whole table, whatever mode it belongs to
 };
 
-export function stagesForLength(length: GameLength): readonly StageDefinition[] {
-  return STAGES.slice(0, GAME_LENGTH_STAGE_COUNT[length]);
+export function stagesForLength(
+  length: GameLength,
+  stages: readonly StageDefinition[] = STAGES,
+): readonly StageDefinition[] {
+  return stages.slice(0, GAME_LENGTH_STAGE_COUNT[length]);
 }
 
-export function totalQuestionsForLength(length: GameLength): number {
-  return stagesForLength(length).reduce((total, stage) => total + stage.questionCount, 0);
+export function totalQuestionsForLength(
+  length: GameLength,
+  stages: readonly StageDefinition[] = STAGES,
+): number {
+  return stagesForLength(length, stages).reduce((total, stage) => total + stage.questionCount, 0);
 }
 
 // Which stage a 0-based question index falls in. Out-of-range indices clamp to
 // the first/last stage rather than returning null, so no caller has to handle
 // an impossible "question that belongs to no stage".
-export function stageForQuestionIndex(questionIndex: number): StageDefinition {
+export function stageForQuestionIndex(
+  questionIndex: number,
+  stages: readonly StageDefinition[] = STAGES,
+): StageDefinition {
   let firstIndex = 0;
-  for (const stage of STAGES) {
+  for (const stage of stages) {
     if (questionIndex < firstIndex + stage.questionCount) {
       return stage;
     }
     firstIndex += stage.questionCount;
   }
-  return STAGES[STAGES.length - 1];
+  return stages[stages.length - 1];
 }
 
 // The 0-based index of a stage's FIRST question - what the TV announcement
 // reports, and what makes "question 2 of 5 in this stage" computable.
-export function firstQuestionIndexOfStage(stage: number): number {
+export function firstQuestionIndexOfStage(
+  stage: number,
+  stages: readonly StageDefinition[] = STAGES,
+): number {
   let firstIndex = 0;
-  for (const definition of STAGES) {
+  for (const definition of stages) {
     if (definition.stage === stage) {
       return firstIndex;
     }

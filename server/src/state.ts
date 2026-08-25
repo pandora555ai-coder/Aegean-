@@ -1,5 +1,6 @@
 import {
   type CrowdMood,
+  type GameModeId,
   type GamePhase,
   type Player,
   type PowerUpEffect,
@@ -14,10 +15,13 @@ import {
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
+  DEFAULT_GAME_MODE,
   sanitizeCustomName,
-  totalQuestionsForLength,
 } from '@game/shared';
-import { getQuestionSet } from './questions.js';
+// The registry only - never modes/index.js, which imports the mode modules
+// (and through them phases.ts, which imports THIS file). registry.ts is a
+// leaf, so this direction stays acyclic.
+import { modeForRoom } from './modes/registry.js';
 import { createSocratesState, resetSocratesState, type SocratesState } from './socrates.js';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
 import { clearActiveTimer, clearSimpleTimer, type ActiveTimer, type SimpleTimer } from './timers.js';
@@ -122,6 +126,11 @@ export interface Room {
   hostSocketId: string | null;
   createdAt: number;
   players: Map<string, Player>; // keyed by playerId
+  // Which GAME this room runs (Task 52). The mode owns the phase sequence,
+  // what follows each phase and the stage table; this field is the only
+  // thing the room itself holds. Never changes after createRoom - a room is
+  // one game - and defaults to (currently: is always) 'quiz'.
+  mode: GameModeId;
   phase: GamePhase;
   // Stages (Task 31a) - which stage of the STAGES table the game is currently
   // in, 1-based; 0 before the game starts. Server-authoritative and derived
@@ -234,6 +243,7 @@ export function createRoom(hostSocketId: string): Room {
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
+    mode: DEFAULT_GAME_MODE,
     phase: 'LOBBY',
     stage: 0, // no stage until the first question is entered
     // Nobody reads `questions` before the game actually starts - built for
@@ -332,8 +342,11 @@ export function detachHostDisplay(room: Room): void {
 // settings tweak, since nobody reads it until the game is actually live).
 // HOW MANY is not a setting of its own (Task 31a/33): the stage table decides
 // it, gated by how many of those stages the VIP's gameLength setting includes.
+// Task 52: WHAT a game is made of is the mode's business - the quiz's
+// question draw moved into modes/quiz.ts's prepareGame. This stays as the
+// name every caller already uses.
 export function buildRoomQuestions(room: Room): void {
-  room.questions = getQuestionSet(room.settings.difficultyMix, totalQuestionsForLength(room.settings.gameLength));
+  modeForRoom(room).prepareGame(room);
 }
 
 // Merges a VIP-supplied partial settings update into `room.settings`,
