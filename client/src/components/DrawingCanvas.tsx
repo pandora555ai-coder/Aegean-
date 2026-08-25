@@ -10,27 +10,52 @@ import {
 } from 'react';
 import { DRAWING_EXPORT_QUALITY, DRAWING_EXPORT_SIZE } from '@game/shared';
 
-// A finger-drawing surface with undo and clear. Deliberately featureless:
-// one colour, one brush size (Task 53). Not wired into a game phase yet -
-// the /dev/draw screen is its only caller.
+// A finger-drawing surface with undo, clear, colour, eraser and size
+// (Task 53 + 54). Not wired into a game phase yet - the /dev/draw screen is
+// its only caller.
 //
 // Strokes are kept as NORMALISED points (0..1 on both axes), never as
 // device pixels. That is what lets the same stroke list be redrawn after a
 // rotation or a resize, and exported at a fixed size on any handset,
-// without ever rescaling pixels.
+// without ever rescaling pixels. Colour, size and tool are recorded PER
+// STROKE (fixed at the finger-down that starts it), so a full redraw from
+// the stroke list is enough to reconstruct the canvas exactly - which is
+// also what makes undo correct for an eraser stroke, not just a pen one.
 
 interface Point {
   x: number;
   y: number;
 }
 
-type Stroke = Point[];
+type Tool = 'pen' | 'eraser';
+type SizeKey = 'small' | 'medium' | 'large';
 
-// Fraction of the surface's width. At the 512px export that is ~6px -
-// thick enough to read across a room on the TV.
-const LINE_WIDTH_RATIO = 0.012;
+interface Stroke {
+  points: Point[];
+  color: string;
+  size: SizeKey;
+  tool: Tool;
+}
+
+// Fraction of the surface's width, one per size. At the 512px export,
+// medium is ~6px - thick enough to read across a room on the TV. Medium is
+// the pre-Task-54 default width, kept unchanged so old strokes don't jump.
+const SIZE_RATIOS: Record<SizeKey, number> = {
+  small: 0.006,
+  medium: 0.012,
+  large: 0.024,
+};
+const SIZE_ORDER: SizeKey[] = ['small', 'medium', 'large'];
+const SIZE_DOT_PX: Record<SizeKey, number> = { small: 6, medium: 10, large: 16 };
+
 const INK = '#12102a';
 const PAPER = '#ffffff';
+
+// The 8 fixed shortcuts, plus whatever the wheel is dragged to.
+const SWATCHES = [INK, '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
+
+const WHEEL_SIZE = 56;
+const WHEEL_INDICATOR_RADIUS = 22;
 
 export interface DrawingCanvasHandle {
   // A data URL, or null if nothing has been drawn yet.
@@ -43,49 +68,72 @@ interface DrawingCanvasProps {
   onStrokeCountChange?: (count: number) => void;
 }
 
-function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, size: number) {
-  if (stroke.length === 0) {
+function prepareContext(ctx: CanvasRenderingContext2D, tool: Tool, color: string) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // The eraser removes ink where it passes rather than painting paper on
+  // top of it: destination-out clears alpha instead of drawing a colour,
+  // so it works identically over any ink colour and any stacking order.
+  ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+}
+
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, canvasSize: number) {
+  if (stroke.points.length === 0) {
     return;
   }
 
-  ctx.lineWidth = size * LINE_WIDTH_RATIO;
+  prepareContext(ctx, stroke.tool, stroke.color);
+  ctx.lineWidth = canvasSize * SIZE_RATIOS[stroke.size];
 
   // A tap is a dot, not a zero-length line - a stroked path of one point
   // paints nothing at all in canvas 2D.
-  if (stroke.length === 1) {
+  if (stroke.points.length === 1) {
     ctx.beginPath();
-    ctx.arc(stroke[0].x * size, stroke[0].y * size, ctx.lineWidth / 2, 0, Math.PI * 2);
-    ctx.fillStyle = INK;
+    ctx.arc(stroke.points[0].x * canvasSize, stroke.points[0].y * canvasSize, ctx.lineWidth / 2, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
 
   ctx.beginPath();
-  ctx.moveTo(stroke[0].x * size, stroke[0].y * size);
-  for (let i = 1; i < stroke.length; i += 1) {
-    ctx.lineTo(stroke[i].x * size, stroke[i].y * size);
+  ctx.moveTo(stroke.points[0].x * canvasSize, stroke.points[0].y * canvasSize);
+  for (let i = 1; i < stroke.points.length; i += 1) {
+    ctx.lineTo(stroke.points[i].x * canvasSize, stroke.points[i].y * canvasSize);
   }
   ctx.stroke();
 }
 
-function prepareContext(ctx: CanvasRenderingContext2D) {
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = INK;
+// Erasing leaves real transparency (see prepareContext), which is what
+// makes a redraw from the stroke list order-independent and correct - but
+// it means the canvas has holes after replaying strokes. This is the one
+// place those holes get backed with paper again: destination-over paints
+// ONLY where the canvas is still transparent, leaving inked pixels alone.
+function flattenToPaper(ctx: CanvasRenderingContext2D, canvasSize: number) {
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, canvasSize, canvasSize);
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
   function DrawingCanvas({ onStrokeCountChange }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const wheelRef = useRef<HTMLDivElement | null>(null);
     // Finished strokes live in a ref, not in state: they are redrawn
     // imperatively and a re-render per pointermove would be the lag.
     const strokesRef = useRef<Stroke[]>([]);
     const currentStrokeRef = useRef<Stroke | null>(null);
     const activePointerRef = useRef<number | null>(null);
+    const wheelDraggingRef = useRef(false);
     // CSS pixel width of the (square) surface - the coordinate space the
     // context is scaled into.
     const sizeRef = useRef(0);
     const [strokeCount, setStrokeCount] = useState(0);
+    const [tool, setTool] = useState<Tool>('pen');
+    const [color, setColor] = useState(INK);
+    const [brushSize, setBrushSize] = useState<SizeKey>('medium');
+    const [hue, setHue] = useState(0);
 
     useEffect(() => {
       onStrokeCountChange?.(strokeCount);
@@ -99,15 +147,15 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       }
 
       const size = sizeRef.current;
-      ctx.fillStyle = PAPER;
-      ctx.fillRect(0, 0, size, size);
-      prepareContext(ctx);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.clearRect(0, 0, size, size);
       for (const stroke of strokesRef.current) {
         drawStroke(ctx, stroke, size);
       }
       if (currentStrokeRef.current) {
         drawStroke(ctx, currentStrokeRef.current, size);
       }
+      flattenToPaper(ctx, size);
     }, []);
 
     // The canvas backing store follows its laid-out size x devicePixelRatio
@@ -169,9 +217,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       activePointerRef.current = event.pointerId;
       canvas.setPointerCapture(event.pointerId);
       const point = pointFromEvent(event.clientX, event.clientY);
-      currentStrokeRef.current = [point];
-      prepareContext(ctx);
-      drawStroke(ctx, currentStrokeRef.current, sizeRef.current);
+      // Colour/size/tool are fixed for the whole gesture at finger-down, so
+      // a tap on a swatch mid-stroke (impossible with one finger, but keeps
+      // the model honest) can never change ink partway through a line.
+      const stroke: Stroke = { points: [point], color, size: brushSize, tool };
+      currentStrokeRef.current = stroke;
+      drawStroke(ctx, stroke, sizeRef.current);
     }
 
     function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -194,19 +245,21 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
         ? native.getCoalescedEvents()
         : [native];
 
-      const size = sizeRef.current;
-      prepareContext(ctx);
-      ctx.lineWidth = size * LINE_WIDTH_RATIO;
+      const canvasSize = sizeRef.current;
+      prepareContext(ctx, stroke.tool, stroke.color);
+      ctx.lineWidth = canvasSize * SIZE_RATIOS[stroke.size];
       ctx.beginPath();
-      const last = stroke[stroke.length - 1];
-      ctx.moveTo(last.x * size, last.y * size);
+      const last = stroke.points[stroke.points.length - 1];
+      ctx.moveTo(last.x * canvasSize, last.y * canvasSize);
       for (const move of moves) {
         const point = pointFromEvent(move.clientX, move.clientY);
-        stroke.push(point);
-        ctx.lineTo(point.x * size, point.y * size);
+        stroke.points.push(point);
+        ctx.lineTo(point.x * canvasSize, point.y * canvasSize);
       }
       // Only the new segment is painted - a full redraw per move is what
-      // makes a long drawing feel heavier the more it holds.
+      // makes a long drawing feel heavier the more it holds. The canvas's
+      // own white CSS background stands in for paper under a fresh eraser
+      // hole until the next redraw() flattens it for real.
       ctx.stroke();
     }
 
@@ -218,13 +271,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const stroke = currentStrokeRef.current;
       activePointerRef.current = null;
       currentStrokeRef.current = null;
-      if (stroke && stroke.length > 0) {
+      if (stroke && stroke.points.length > 0) {
         strokesRef.current.push(stroke);
         setStrokeCount(strokesRef.current.length);
       }
     }
 
     function undo() {
+      // Pops whichever stroke was drawn last, pen or eraser, then replays
+      // everything left from scratch - undo never needs to know which
+      // tool made a stroke.
       strokesRef.current.pop();
       setStrokeCount(strokesRef.current.length);
       redraw();
@@ -234,6 +290,38 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       strokesRef.current = [];
       setStrokeCount(0);
       redraw();
+    }
+
+    function updateHueFromPointer(clientX: number, clientY: number) {
+      const wheel = wheelRef.current;
+      if (!wheel) {
+        return;
+      }
+      const rect = wheel.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const angle = (Math.atan2(clientY - cy, clientX - cx) * 180) / Math.PI;
+      const normalized = Math.round((angle + 360) % 360);
+      setHue(normalized);
+      setColor(`hsl(${normalized}, 100%, 50%)`);
+      setTool('pen');
+    }
+
+    function handleWheelPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      wheelDraggingRef.current = true;
+      updateHueFromPointer(event.clientX, event.clientY);
+    }
+
+    function handleWheelPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+      if (!wheelDraggingRef.current) {
+        return;
+      }
+      updateHueFromPointer(event.clientX, event.clientY);
+    }
+
+    function handleWheelPointerUp() {
+      wheelDraggingRef.current = false;
     }
 
     useImperativeHandle(ref, () => ({
@@ -248,12 +336,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
         out.width = DRAWING_EXPORT_SIZE;
         out.height = DRAWING_EXPORT_SIZE;
         const ctx = out.getContext('2d')!;
-        ctx.fillStyle = PAPER;
-        ctx.fillRect(0, 0, DRAWING_EXPORT_SIZE, DRAWING_EXPORT_SIZE);
-        prepareContext(ctx);
         for (const stroke of strokesRef.current) {
           drawStroke(ctx, stroke, DRAWING_EXPORT_SIZE);
         }
+        flattenToPaper(ctx, DRAWING_EXPORT_SIZE);
 
         // WebP is roughly half of JPEG on flat line art. A browser that
         // can't encode it hands back a PNG data URL instead of failing,
@@ -266,16 +352,91 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       },
     }), []);
 
+    const indicatorAngle = (hue * Math.PI) / 180;
+    const indicatorX = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.cos(indicatorAngle);
+    const indicatorY = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.sin(indicatorAngle);
+
     return (
       <div style={styles.wrapper}>
-        <canvas
-          ref={canvasRef}
-          style={styles.canvas}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        />
+        <div style={styles.stage}>
+          <canvas
+            ref={canvasRef}
+            style={styles.canvas}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          />
+          <div style={styles.pickerPanel}>
+            <div
+              ref={wheelRef}
+              style={styles.wheel}
+              onPointerDown={handleWheelPointerDown}
+              onPointerMove={handleWheelPointerMove}
+              onPointerUp={handleWheelPointerUp}
+              onPointerCancel={handleWheelPointerUp}
+            >
+              <div style={{ ...styles.wheelCenter, background: color }} />
+              <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
+            </div>
+            <div style={styles.swatchGrid}>
+              {SWATCHES.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  aria-label={`χρώμα ${swatch}`}
+                  onClick={() => {
+                    setColor(swatch);
+                    setTool('pen');
+                  }}
+                  style={{
+                    ...styles.swatch,
+                    background: swatch,
+                    ...(color === swatch ? styles.swatchActive : null),
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={styles.toolRow}>
+          <div style={styles.segmentGroup}>
+            <button
+              type="button"
+              style={{ ...styles.segmentButton, ...(tool === 'pen' ? styles.segmentButtonActive : null) }}
+              onClick={() => setTool('pen')}
+            >
+              Στυλό
+            </button>
+            <button
+              type="button"
+              style={{ ...styles.segmentButton, ...(tool === 'eraser' ? styles.segmentButtonActive : null) }}
+              onClick={() => setTool('eraser')}
+            >
+              Γόμα
+            </button>
+          </div>
+          <div style={styles.segmentGroup}>
+            {SIZE_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                aria-label={key}
+                style={{ ...styles.sizeButton, ...(brushSize === key ? styles.segmentButtonActive : null) }}
+                onClick={() => setBrushSize(key)}
+              >
+                <span
+                  style={{
+                    ...styles.sizeDot,
+                    width: SIZE_DOT_PX[key],
+                    height: SIZE_DOT_PX[key],
+                    background: brushSize === key ? 'var(--bg-edge)' : 'var(--text-dim)',
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={styles.buttonRow}>
           <button type="button" style={styles.button} onClick={undo} disabled={strokeCount === 0}>
             Αναίρεση
@@ -291,6 +452,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
 const styles: Record<string, CSSProperties> = {
   wrapper: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
+  stage: { position: 'relative' },
   canvas: {
     // `touch-action: none` is the whole of criterion 1's "no
     // scroll-hijacking": without it the browser owns the gesture and pans
@@ -306,6 +468,109 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     border: '2px solid var(--border-strong)',
     background: PAPER,
+  },
+  pickerPanel: {
+    position: 'absolute',
+    left: '0.5rem',
+    bottom: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+    padding: '0.35rem',
+    borderRadius: '0.9rem',
+    background: 'rgba(18, 16, 42, 0.55)',
+    backdropFilter: 'blur(2px)',
+    touchAction: 'none',
+  },
+  wheel: {
+    position: 'relative',
+    width: WHEEL_SIZE,
+    height: WHEEL_SIZE,
+    borderRadius: '50%',
+    background:
+      'conic-gradient(hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))',
+    touchAction: 'none',
+    flexShrink: 0,
+  },
+  wheelCenter: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: WHEEL_SIZE - 20,
+    height: WHEEL_SIZE - 20,
+    borderRadius: '50%',
+    border: '2px solid #ffffff',
+    transform: 'translate(-50%, -50%)',
+    pointerEvents: 'none',
+  },
+  wheelIndicator: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    background: '#ffffff',
+    border: '2px solid #12102a',
+    transform: 'translate(-50%, -50%)',
+    pointerEvents: 'none',
+  },
+  swatchGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 16px)',
+    gridAutoRows: '16px',
+    gap: '4px',
+  },
+  swatch: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    border: '2px solid rgba(255,255,255,0.5)',
+    padding: 0,
+    touchAction: 'manipulation',
+  },
+  swatchActive: {
+    border: '2px solid #ffffff',
+    boxShadow: '0 0 0 2px rgba(255,255,255,0.8)',
+  },
+  toolRow: { display: 'flex', gap: '0.5rem' },
+  segmentGroup: {
+    display: 'flex',
+    flex: 1,
+    gap: '0.35rem',
+    background: 'var(--surface-strong)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '0.75rem',
+    padding: '0.25rem',
+  },
+  segmentButton: {
+    flex: 1,
+    padding: '0.5rem 0.4rem',
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: 'var(--text-dim)',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: '0.5rem',
+    touchAction: 'manipulation',
+  },
+  segmentButtonActive: {
+    color: 'var(--text)',
+    background: 'var(--gold)',
+  },
+  sizeButton: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0.5rem 0.4rem',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: '0.5rem',
+    touchAction: 'manipulation',
+  },
+  sizeDot: {
+    display: 'block',
+    borderRadius: '50%',
+    background: 'var(--text-dim)',
   },
   buttonRow: { display: 'flex', gap: '0.75rem' },
   button: {
