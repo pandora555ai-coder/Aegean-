@@ -61,7 +61,21 @@ import {
 } from './phases.js';
 // Task 52 - importing the barrel is what REGISTERS every game mode, so it
 // must stay even if only these two names are used.
-import { continuationForActiveTimer, modeForRoom } from './modes/index.js';
+import { continuationForActiveTimer, listGameModeOptions, modeForRoom } from './modes/index.js';
+// Task 56a - the drawing mode's own socket-facing functions. Per
+// modes/README, a mode's own events (like POWER_UP_CHOOSE/STEAL_CHOOSE
+// above) are wired up here, not in modes/draw.ts itself.
+import {
+  buildDrawHostPayload,
+  buildDrawPlayerPayload,
+  buildGuessHostPayload,
+  buildGuessPlayerPayload,
+  buildGuessRevealPayload,
+  recheckDrawPhaseOnDisconnect,
+  recheckGuessPhaseOnDisconnect,
+  submitDrawing,
+  submitGuess,
+} from './modes/draw.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -134,9 +148,13 @@ function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
     isVip: player.playerId === room.vipPlayerId,
     avatarId: player.avatarId,
   }));
-  const canStart = players.filter((player) => player.connected).length >= MIN_PLAYERS;
+  // Task 57 - mode-aware: the room's CURRENTLY selected mode's own minimum
+  // (draw's is 3, quiz's is MIN_PLAYERS), not a flat floor - so a lobby that
+  // has picked 'draw' with only 2 connected players correctly reports
+  // canStart: false instead of the quiz-only threshold letting it through.
+  const canStart = players.filter((player) => player.connected).length >= modeForRoom(room).minPlayers;
 
-  return { code, players, canStart, settings: room.settings };
+  return { code, players, canStart, settings: room.settings, mode: room.mode, availableModes: listGameModeOptions() };
 }
 
 function broadcastLobbyUpdate(code: RoomCode): void {
@@ -209,6 +227,21 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
     }
     case 'GAME_OVER':
       return { ...buildGameOver(room), phase: 'GAME_OVER' };
+    // Task 56b - same reasoning as the host branches below: reuse draw.ts's
+    // own builders so a reconnecting phone can never see a stale or
+    // recomputed-differently view of the round it left.
+    case 'DRAW': {
+      const payload = buildDrawPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'DRAW', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'GUESS': {
+      const payload = buildGuessPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'GUESS', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'GUESS_REVEAL': {
+      const payload = buildGuessRevealPayload(room);
+      return payload ? { ...payload, phase: 'GUESS_REVEAL' } : null;
+    }
     default:
       return null; // LOBBY - callers never ask for this
   }
@@ -270,6 +303,23 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     }
     case 'GAME_OVER':
       return { ...buildGameOver(room), phase: 'GAME_OVER' };
+    // Task 56b - the drawing mode's own phases, same builder-plus-remainingMs
+    // shape as every phase above. Host reconnect mid-DRAW/GUESS/GUESS_REVEAL
+    // must restore the exact current screen, which is exactly what reusing
+    // draw.ts's own live-broadcast builders here guarantees: a fresh phase
+    // entry and a reconnect can never disagree.
+    case 'DRAW': {
+      const payload = buildDrawHostPayload(room);
+      return payload ? { ...payload, phase: 'DRAW', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'GUESS': {
+      const payload = buildGuessHostPayload(room);
+      return payload ? { ...payload, phase: 'GUESS', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'GUESS_REVEAL': {
+      const payload = buildGuessRevealPayload(room);
+      return payload ? { ...payload, phase: 'GUESS_REVEAL' } : null;
+    }
   }
 }
 
@@ -527,10 +577,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 57 - the room's CURRENTLY selected mode's own minimum (mirrors
+    // buildLobbyUpdate's canStart, which is what the lobby's start button
+    // is actually disabled on) - never the flat MIN_PLAYERS floor, so a
+    // client bug that somehow got past the disabled button still can't
+    // start 'draw' with 2 players.
+    const requiredPlayers = modeForRoom(room).minPlayers;
     const connectedCount = Array.from(room.players.values()).filter((player) => player.connected).length;
-    if (connectedCount < MIN_PLAYERS) {
+    if (connectedCount < requiredPlayers) {
       console.log(
-        `rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: only ${connectedCount} connected players`,
+        `rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: only ${connectedCount} connected players, mode '${room.mode}' needs ${requiredPlayers}`,
       );
       return;
     }
@@ -587,6 +643,36 @@ io.on('connection', (socket) => {
     const settingsPayload: SettingsUpdatedPayload = updated;
     io.to(room.code).emit(ServerEvents.SETTINGS_UPDATED, settingsPayload);
     console.log(`room ${room.code} settings updated: ${JSON.stringify(updated)}`);
+  });
+
+  // Task 57 - picks WHICH game the room runs, LOBBY-only (same guard as
+  // vip:update_settings) so room.mode is set before a game starts and never
+  // touched again once it's running - modeForRoom(room) is read constantly
+  // from the moment start() is called on, and letting it change under a
+  // live game would be actively dangerous, not just confusing.
+  socket.on(ClientEvents.VIP_SET_MODE, (payload) => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_SET_MODE);
+    if (!room) {
+      return;
+    }
+
+    if (room.phase !== 'LOBBY') {
+      console.log(
+        `rejected ${ClientEvents.VIP_SET_MODE} for room ${room.code}: phase is ${room.phase}, not LOBBY - mode is locked once a game starts`,
+      );
+      return;
+    }
+
+    // Never trust the client - only an id the registry actually knows.
+    const known = listGameModeOptions().some((option) => option.id === payload.mode);
+    if (!known) {
+      console.log(`rejected ${ClientEvents.VIP_SET_MODE} for room ${room.code}: unknown mode '${payload.mode}'`);
+      return;
+    }
+
+    room.mode = payload.mode;
+    console.log(`room ${room.code} mode set to '${room.mode}'`);
+    broadcastLobbyUpdate(room.code);
   });
 
   socket.on(ClientEvents.SUBMIT_ANSWER, (payload) => {
@@ -879,6 +965,34 @@ io.on('connection', (socket) => {
     socket.emit(ServerEvents.DEV_DRAWING_RECEIVED, { bytes: imageDataUrl.length, format });
   });
 
+  // Task 56a - the real DRAW phase. All validation (phase, pause, size cap,
+  // dealt-in, one-per-game) lives in submitDrawing itself, which also ends
+  // the phase early once every connected player has submitted.
+  socket.on(ClientEvents.DRAW_SUBMIT, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.DRAW_SUBMIT);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitDrawing(room, playerId, payload?.image)) {
+      console.log(`rejected ${ClientEvents.DRAW_SUBMIT} from player ${playerId} in room ${room.code}`);
+    }
+  });
+
+  // The GUESS phase. submitGuess rejects the drawer's own guess server-side
+  // (spec) along with every other validation, and ends the round early once
+  // every connected non-drawer has guessed.
+  socket.on(ClientEvents.DRAW_GUESS, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.DRAW_GUESS);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitGuess(room, playerId, payload?.choice)) {
+      console.log(`rejected ${ClientEvents.DRAW_GUESS} from player ${playerId} in room ${room.code}`);
+    }
+  });
+
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {
     const room = getVipRoomForSocket(socket, ClientEvents.VIP_PLAY_AGAIN);
     if (!room) {
@@ -1093,6 +1207,14 @@ io.on('connection', (socket) => {
         if (!victimsLeft) {
           resolveSteal(room.code, null);
         }
+      }
+
+      // Task 56a - same reasoning as QUESTION/POWER_UP above: the player who
+      // just left might have been the only one still drawing/guessing. Both
+      // are no-ops when the room isn't in that phase (e.g. a quiz-mode room).
+      if (room) {
+        recheckDrawPhaseOnDisconnect(room);
+        recheckGuessPhaseOnDisconnect(room);
       }
     }
   });

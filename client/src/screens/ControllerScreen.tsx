@@ -4,14 +4,17 @@ import {
   ANSWER_IDENTITIES,
   AVATAR_CATALOGUE,
   ClientEvents,
+  DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
+  DRAW_ROUNDS_OPTIONS,
   GAME_LENGTH_OPTIONS,
-  MIN_PLAYERS,
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   ServerEvents,
+  isDrawHostPayload,
+  isGuessHostPayload,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
@@ -23,8 +26,15 @@ import {
   type ActiveSabotage,
   type AnswerAcceptedPayload,
   type DifficultyMix,
+  type DrawShowPayload,
+  type DrawShowPlayerPayload,
   type GameLength,
+  type GameModeId,
   type GameOverPayload,
+  type GuessRevealShowPayload,
+  type GuessShowDrawerPayload,
+  type GuessShowGuesserPayload,
+  type GuessShowPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
   type PausedPayload,
@@ -58,6 +68,7 @@ import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
 import { AnswerShape } from '../components/AnswerShape';
 import { Avatar } from '../components/Avatar';
+import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
 import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
 
@@ -292,6 +303,24 @@ export default function ControllerScreen() {
   const [steal, setSteal] = useState<StealShowPlayerPayload | null>(null);
   // The one-send guard, a ref for the same reason as powerUpSentRef above.
   const stealSentRef = useRef(false);
+  // Drawing mode (Task 56b). `draw.submitted` is only ever real on a
+  // state:sync catching a phone up after it already submitted - a fresh
+  // draw:show always carries `submitted: false`. The send guard is a ref
+  // for the same one-send reasoning as powerUpSentRef/stealSentRef above.
+  const [draw, setDraw] = useState<DrawShowPlayerPayload | null>(null);
+  const drawCanvasRef = useRef<DrawingCanvasHandle>(null);
+  const [drawStrokeCount, setDrawStrokeCount] = useState(0);
+  const drawSentRef = useRef(false);
+  // GUESS. `guess.isDrawer` decides which of the two views renders - the
+  // drawer's own payload has no `options` field AT ALL (see
+  // GuessShowDrawerPayload), so there is nothing here that could even be
+  // tapped into a guess on their own drawing.
+  const [guess, setGuess] = useState<GuessShowGuesserPayload | GuessShowDrawerPayload | null>(null);
+  const [guessChoice, setGuessChoice] = useState<number | null>(null);
+  const guessSentRef = useRef(false);
+  // GUESS_REVEAL - public and symmetric, so every phone (drawer included)
+  // gets the same payload the TV does.
+  const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -319,6 +348,25 @@ export default function ControllerScreen() {
       stealSentRef.current = payload?.yourChoice != null || payload?.resolved != null;
     }
 
+    // Drawing mode (Task 56b) - set together for the same reason
+    // applyPowerUp/applySteal are: the canvas/waiting view and the send
+    // guard can never disagree about whether this phone already submitted.
+    // `submitted` is only ever true on a state:sync catching a phone up.
+    function applyDraw(payload: DrawShowPlayerPayload | null) {
+      setDraw(payload);
+      drawSentRef.current = payload?.submitted ?? false;
+    }
+
+    // `yourGuess` only exists (and is only ever non-null) on the GUESSER
+    // variant - the drawer's own payload has no such field, matching what
+    // the server actually sends them (see GuessShowDrawerPayload).
+    function applyGuess(payload: GuessShowGuesserPayload | GuessShowDrawerPayload | null) {
+      setGuess(payload);
+      const yourGuess = payload && !payload.isDrawer ? payload.yourGuess : null;
+      setGuessChoice(yourGuess);
+      guessSentRef.current = yourGuess !== null;
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -331,6 +379,9 @@ export default function ControllerScreen() {
         setGameOver(null);
         applyPowerUp(null);
         applySteal(null);
+        applyDraw(null);
+        applyGuess(null);
+        setGuessReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -450,6 +501,46 @@ export default function ControllerScreen() {
       setAcceptedChoice(payload.choice);
     }
 
+    // Drawing mode (Task 56b) - the player branch of an asymmetric event.
+    // The host variant (submission counts, never a word) is not this
+    // screen's business.
+    function handleDrawShow(payload: DrawShowPayload) {
+      if (!isDrawHostPayload(payload)) {
+        setQuestion(null);
+        setReveal(null);
+        applyPowerUp(null);
+        applySteal(null);
+        applyGuess(null);
+        setGuessReveal(null);
+        applyDraw(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // GUESS's player branch - carries EITHER the guesser shape (options, no
+    // image) or the drawer shape (no options at all), never the host's
+    // image+options combination. Which one this phone gets is entirely the
+    // server's call (see submitGuess rejecting the drawer's own guess).
+    function handleGuessShow(payload: GuessShowPayload) {
+      if (!isGuessHostPayload(payload)) {
+        applyDraw(null);
+        setGuessReveal(null);
+        applyGuess(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like reveal:show - every phone (drawer
+    // included) gets the same payload the TV does, since the round is over.
+    function handleGuessRevealShow(payload: GuessRevealShowPayload) {
+      applyGuess(null);
+      setGuessReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
@@ -464,6 +555,9 @@ export default function ControllerScreen() {
       setGameOver(payload);
       applySabotages([]);
       applySteal(null);
+      applyDraw(null);
+      applyGuess(null);
+      setGuessReveal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -489,6 +583,9 @@ export default function ControllerScreen() {
       applySabotages([]);
       applyPowerUp(null);
       applySteal(null);
+      applyDraw(null);
+      applyGuess(null);
+      setGuessReveal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -561,6 +658,30 @@ export default function ControllerScreen() {
         case 'GAME_OVER':
           setGameOver(payload);
           break;
+        // Drawing mode (Task 56b) - same reconnect reasoning as POWER_UP/
+        // STEAL above: applyDraw/applyGuess read whatever this phone
+        // already did (submitted a drawing, locked in a guess) straight
+        // from the server's own state, never from anything the client
+        // remembered.
+        case 'DRAW':
+          if (!isDrawHostPayload(payload)) {
+            applyDraw(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'GUESS':
+          if (!isGuessHostPayload(payload)) {
+            applyGuess(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'GUESS_REVEAL':
+          setGuessReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -575,6 +696,9 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
+    socket.on(ServerEvents.DRAW_SHOW, handleDrawShow);
+    socket.on(ServerEvents.GUESS_SHOW, handleGuessShow);
+    socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -595,6 +719,9 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
+      socket.off(ServerEvents.DRAW_SHOW, handleDrawShow);
+      socket.off(ServerEvents.GUESS_SHOW, handleGuessShow);
+      socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -780,6 +907,34 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.STEAL_CHOOSE, choice);
   }
 
+  // Drawing mode (Task 56b). One tap, one send, guarded by a ref for the
+  // same reason handleStealPick's is - a double tap can't slip a second
+  // draw:submit through the gap before React re-renders.
+  function handleDrawSubmit() {
+    if (drawSentRef.current || paused) {
+      return;
+    }
+    const image = drawCanvasRef.current?.exportDataUrl();
+    if (!image) {
+      return;
+    }
+    drawSentRef.current = true;
+    setDraw((current) => (current ? { ...current, submitted: true } : current));
+    socket.emit(ClientEvents.DRAW_SUBMIT, { image });
+  }
+
+  // GUESS. Same one-tap, one-send, ref-guarded discipline - never reachable
+  // for the drawer's own round since that view renders no option buttons
+  // at all (criterion 3), but guarded here too as defense in depth.
+  function handleGuessTap(index: number) {
+    if (guessSentRef.current || paused || !guess || guess.isDrawer) {
+      return;
+    }
+    guessSentRef.current = true;
+    setGuessChoice(index);
+    socket.emit(ClientEvents.DRAW_GUESS, { choice: index });
+  }
+
   function handleStartGame() {
     socket.emit(ClientEvents.VIP_START_GAME, {});
   }
@@ -794,6 +949,12 @@ export default function ControllerScreen() {
 
   function handleSettingChange(partial: Partial<RoomSettings>) {
     socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, partial);
+  }
+
+  // Task 57 - separate event from handleSettingChange: mode isn't a
+  // RoomSettings field (see VipSetModePayload's own doc comment in shared).
+  function handleModeChange(mode: GameModeId) {
+    socket.emit(ClientEvents.VIP_SET_MODE, { mode });
   }
 
   function handlePause() {
@@ -997,6 +1158,194 @@ export default function ControllerScreen() {
         )}
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Drawing mode (Task 56b) - GUESS_REVEAL. Public and symmetric like the
+  // quiz's own reveal above: everyone (drawer included) gets the same
+  // payload, so this branches on OUR OWN result within it rather than on
+  // a role the server assigned this phone for the phase.
+  if (guessReveal) {
+    const amDrawer = guessReveal.drawerPlayerId === playerId;
+    const myResult = guessReveal.results.find((result) => result.playerId === playerId) ?? null;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.revealCorrectOption} data-testid="guess-reveal-word">
+          Σωστή απάντηση: {guessReveal.correctWord}
+        </div>
+        {amDrawer ? (
+          <>
+            <div style={styles.revealPoints} data-testid="guess-reveal-drawer-points">
+              +{guessReveal.drawerPointsAwarded} πόντοι
+            </div>
+            <div style={styles.revealTotal} data-testid="guess-reveal-total">
+              Σύνολο: {guessReveal.drawerTotalScore}
+            </div>
+          </>
+        ) : myResult ? (
+          <>
+            <div style={myResult.correct ? styles.revealCorrect : styles.revealWrong} data-testid="guess-reveal-verdict">
+              {myResult.correct ? 'Σωστά!' : 'Λάθος'}
+            </div>
+            <div style={styles.revealPoints} data-testid="guess-reveal-points">
+              +{myResult.pointsAwarded} πόντοι
+            </div>
+            <div style={styles.revealTotal} data-testid="guess-reveal-total">
+              Σύνολο: {myResult.totalScore}
+            </div>
+          </>
+        ) : null}
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Drawing mode (Task 56b) - DRAW. The existing /dev/draw canvas, plus the
+  // assigned word and a submit button; a waiting screen once submitted.
+  if (draw) {
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        {draw.submitted ? (
+          <div style={styles.powerUpLocked} data-testid="draw-submitted">
+            <div style={styles.powerUpLockedIcon}>🎨</div>
+            <div style={styles.powerUpLockedTitle}>Υποβλήθηκε!</div>
+            <div style={styles.powerUpLockedDetail}>Περίμενε τους υπόλοιπους...</div>
+          </div>
+        ) : (
+          <>
+            <div style={styles.title} data-testid="draw-word">
+              Ζωγράφισε: {draw.wordToDraw}
+            </div>
+            <DrawingCanvas ref={drawCanvasRef} onStrokeCountChange={setDrawStrokeCount} />
+            <button
+              type="button"
+              data-testid="draw-submit-button"
+              style={drawStrokeCount === 0 || paused ? styles.buttonDisabled : styles.button}
+              onClick={handleDrawSubmit}
+              disabled={drawStrokeCount === 0 || paused}
+            >
+              Υποβολή
+            </button>
+          </>
+        )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+      </div>
+    );
+  }
+
+  // Drawing mode (Task 56b) - GUESS. The drawer gets a "this one is yours"
+  // screen with NO options at all (criterion 3) - `guess.isDrawer` is what
+  // the server itself decided (see buildGuessPlayerPayload), not a client
+  // guess about its own role.
+  if (guess) {
+    if (guess.isDrawer) {
+      return (
+        <div style={styles.container}>
+          {joined && (
+            <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+              <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+            </div>
+          )}
+          {isVip && (
+            <div style={styles.vipBadge} data-testid="vip-badge">
+              👑 VIP
+            </div>
+          )}
+          <div style={styles.title} data-testid="guess-drawer-title">
+            Το σχέδιό σου!
+          </div>
+          <div style={styles.subtitle}>Οι υπόλοιποι μαντεύουν τι ζωγράφισες</div>
+          <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        </div>
+      );
+    }
+
+    const answered = guessChoice !== null;
+    return (
+      <div style={styles.questionContainer}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.questionHeader}>
+          <div style={styles.category}>Τι ζωγράφισε ο/η {guess.drawerName};</div>
+          {answered ? (
+            <div style={styles.lookAtTv} data-testid="waiting-message">
+              Περίμενε τους υπόλοιπους...
+            </div>
+          ) : (
+            <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+          )}
+        </div>
+        <div style={styles.answerGrid}>
+          {guess.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            const isMine = index === guessChoice;
+            const dimmed = answered && !isMine;
+            const disabled = answered || paused;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-testid="guess-option-button"
+                data-selected={isMine}
+                className={isMine ? 'glow' : undefined}
+                style={
+                  dimmed
+                    ? { ...styles.answerButtonDim, borderColor: identity.color }
+                    : ({
+                        ...styles.answerButton,
+                        borderColor: identity.color,
+                        background: isMine ? `${identity.color}1a` : 'var(--surface)',
+                        boxShadow: isMine ? undefined : SURFACE_GLOW,
+                        ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
+                      } as CSSVars)
+                }
+                onClick={() => handleGuessTap(index)}
+                disabled={disabled}
+              >
+                <span style={styles.answerShapeRow}>
+                  <AnswerShape index={index} sizeRem={2.25} muted={dimmed} />
+                  <span style={styles.answerLabel}>{identity.letter}</span>
+                </span>
+                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={styles.questionFooter}>
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        </div>
       </div>
     );
   }
@@ -1217,7 +1566,19 @@ export default function ControllerScreen() {
 
   if (joined) {
     const connectedCount = lobby?.players.filter((player) => player.connected).length ?? 1;
+    // Task 57 - the registry-driven list (never a hardcoded array here): a
+    // new mode module appears in this picker automatically, with nothing in
+    // this file to edit.
+    const mode: GameModeId = lobby?.mode ?? DEFAULT_GAME_MODE;
+    const availableModes = lobby?.availableModes ?? [];
+    const modeIds = availableModes.map((option) => option.id);
+    const selectedModeOption = availableModes.find((option) => option.id === mode);
+    // canStart is already mode-aware server-side (buildLobbyUpdate compares
+    // against modeForRoom(room).minPlayers, not a flat floor) - this just
+    // spells out WHY for whoever's looking at a disabled button.
     const canStart = lobby?.canStart ?? false;
+    const startBlockedReason =
+      !canStart && selectedModeOption ? `χρειάζονται ${selectedModeOption.minPlayers}+ παίκτες για ${selectedModeOption.label}` : '';
     return (
       <div style={styles.container}>
         {joined && (
@@ -1248,47 +1609,80 @@ export default function ControllerScreen() {
               </button>
             </div>
           )}
+          {/* Task 57 - the mode picker. `options` comes from the registry-
+              driven `availableModes`, never a hardcoded array - adding a
+              mode module makes it appear here automatically. */}
           <SegmentedRow
-            label="Διάρκεια"
-            options={GAME_LENGTH_OPTIONS}
-            current={roomSettings.gameLength}
-            format={(length: GameLength) => GAME_LENGTH_LABELS[length]}
-            onSelect={(length) => handleSettingChange({ gameLength: length })}
+            label="Παιχνίδι"
+            options={modeIds}
+            current={mode}
+            format={(id: GameModeId) => availableModes.find((option) => option.id === id)?.label ?? id}
+            onSelect={(id) => handleModeChange(id)}
             readOnly={!isVip}
-            testIdPrefix="setting-length"
+            testIdPrefix="setting-mode"
           />
-          {/* Not a control of its own (Task 31a/33): the stage table decides
-              how many questions a game is and how they're split, once the
-              Διάρκεια row above picks how many of those stages are in play. */}
-          <div style={styles.estimatedLength} data-testid="stage-summary">
-            {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
-            {stagesForLength(roomSettings.gameLength).length} στάδια (
-            {stagesForLength(roomSettings.gameLength)
-              .map((stage) => stage.questionCount)
-              .join(' + ')}
-            )
-          </div>
-          <SegmentedRow
-            label="Χρόνος"
-            options={QUESTION_TIME_OPTIONS_MS}
-            current={roomSettings.questionTimeMs}
-            format={(ms) => `${ms / 1000}΄΄`}
-            onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
-            readOnly={!isVip}
-            testIdPrefix="setting-time"
-          />
-          <SegmentedRow
-            label="Δυσκολία"
-            options={DIFFICULTY_MIX_OPTIONS}
-            current={roomSettings.difficultyMix}
-            format={(mix: DifficultyMix) => DIFFICULTY_MIX_LABELS[mix]}
-            onSelect={(mix) => handleSettingChange({ difficultyMix: mix })}
-            readOnly={!isVip}
-            testIdPrefix="setting-difficulty"
-          />
-          <div style={styles.estimatedLength} data-testid="estimated-length">
-            ~{estimatedMinutes} λεπτά
-          </div>
+          {/* Quiz-only settings - hidden for any other mode (not just a
+              draw-specific check), so a future third mode never inherits a
+              stale quiz panel by accident. */}
+          {mode === 'quiz' && (
+            <>
+              <SegmentedRow
+                label="Διάρκεια"
+                options={GAME_LENGTH_OPTIONS}
+                current={roomSettings.gameLength}
+                format={(length: GameLength) => GAME_LENGTH_LABELS[length]}
+                onSelect={(length) => handleSettingChange({ gameLength: length })}
+                readOnly={!isVip}
+                testIdPrefix="setting-length"
+              />
+              {/* Not a control of its own (Task 31a/33): the stage table
+                  decides how many questions a game is and how they're
+                  split, once the Διάρκεια row above picks how many of those
+                  stages are in play. */}
+              <div style={styles.estimatedLength} data-testid="stage-summary">
+                {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
+                {stagesForLength(roomSettings.gameLength).length} στάδια (
+                {stagesForLength(roomSettings.gameLength)
+                  .map((stage) => stage.questionCount)
+                  .join(' + ')}
+                )
+              </div>
+              <SegmentedRow
+                label="Χρόνος"
+                options={QUESTION_TIME_OPTIONS_MS}
+                current={roomSettings.questionTimeMs}
+                format={(ms) => `${ms / 1000}΄΄`}
+                onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
+                readOnly={!isVip}
+                testIdPrefix="setting-time"
+              />
+              <SegmentedRow
+                label="Δυσκολία"
+                options={DIFFICULTY_MIX_OPTIONS}
+                current={roomSettings.difficultyMix}
+                format={(mix: DifficultyMix) => DIFFICULTY_MIX_LABELS[mix]}
+                onSelect={(mix) => handleSettingChange({ difficultyMix: mix })}
+                readOnly={!isVip}
+                testIdPrefix="setting-difficulty"
+              />
+              <div style={styles.estimatedLength} data-testid="estimated-length">
+                ~{estimatedMinutes} λεπτά
+              </div>
+            </>
+          )}
+          {/* Drawing mode (Task 57) - its own game-shape setting, parallel
+              to Διάρκεια above: how many full draw-then-guess rounds. */}
+          {mode === 'draw' && (
+            <SegmentedRow
+              label="Γύροι"
+              options={DRAW_ROUNDS_OPTIONS}
+              current={roomSettings.drawRounds}
+              format={(n) => String(n)}
+              onSelect={(n) => handleSettingChange({ drawRounds: n })}
+              readOnly={!isVip}
+              testIdPrefix="setting-draw-rounds"
+            />
+          )}
         </div>
 
         {isVip ? (
@@ -1299,7 +1693,7 @@ export default function ControllerScreen() {
             onClick={handleStartGame}
             disabled={!canStart}
           >
-            Έναρξη{!canStart && ` (χρειάζονται ${MIN_PLAYERS}+ παίκτες)`}
+            Έναρξη{startBlockedReason && ` (${startBlockedReason})`}
           </button>
         ) : (
           <div style={styles.subtitle} data-testid="waiting-for-vip">

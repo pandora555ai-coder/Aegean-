@@ -14,6 +14,14 @@ import type { Room } from '../state.js';
 export interface GameMode {
   id: GameModeId;
 
+  // Task 57 - the lobby's mode picker reads these two straight off the
+  // registry (see registry.ts's listGameModeOptions) instead of a
+  // hand-kept list, so a new mode module appears there for free: this is
+  // the ONE place its display label and its own minimum CONNECTED player
+  // count are authored.
+  label: string; // Greek, shown on the mode picker
+  minPlayers: number;
+
   // Every phase a room running this mode can be in, LOBBY and GAME_OVER
   // included (both are common to all modes - a room has to sit somewhere
   // before and after a game). The wire-level GamePhase union in @game/shared

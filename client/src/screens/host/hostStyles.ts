@@ -100,6 +100,27 @@ export function resultsListGap(count: number): string {
   return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
 }
 
+// Drawing mode (Task 56b) - GUESS_REVEAL stacks the picture ABOVE a
+// player-count-sensitive results list (up to 7 guesser rows), unlike plain
+// GUESS which has vertical room to spare for a big square image. Verified
+// against a real 8-player render: without this shrink, the picture alone
+// (drawingImageWrap's fixed min(52vh,46vw)) pushed total column height past
+// 1080px, and centered-flex overflow clips symmetrically top+bottom rather
+// than growing a scrollbar - silent, and NOT caught by a scrollHeight check
+// (browsers don't count a centered overflow's "before" side toward it).
+export function guessRevealImageWrapStyle(count: number): CSSProperties {
+  const vh = 30 * densityScale(count);
+  return {
+    width: `min(${vh}vh, ${(vh * 0.88).toFixed(1)}vw)`,
+    aspectRatio: '1 / 1',
+    borderRadius: '1rem',
+    overflow: 'hidden',
+    border: '3px solid var(--border-strong)',
+    boxShadow: SURFACE_GLOW,
+    flexShrink: 0,
+  };
+}
+
 // Task 38 - the persistent right-hand score column's rows. A narrower,
 // shorter row than GAME_OVER's standingRow* (that column is only ~30% of
 // the screen), but the same density-step philosophy: a few hand-picked
@@ -812,6 +833,26 @@ export const styles: Record<string, CSSProperties> = {
     background: 'var(--gold)',
     borderRadius: '999px',
     transition: 'width 1s linear',
+  },
+  // Drawing mode (Task 56b) - GUESS/GUESS_REVEAL's picture. Fixed square
+  // (drawings export at 512x512 - see DRAWING_EXPORT_SIZE), sized off the
+  // viewport's smaller dimension so it never pushes the options grid or
+  // timer off a 100vh screen at any player count (criterion 4).
+  drawingImageWrap: {
+    width: 'min(52vh, 46vw)',
+    aspectRatio: '1 / 1',
+    borderRadius: '1rem',
+    overflow: 'hidden',
+    border: '3px solid var(--border-strong)',
+    boxShadow: SURFACE_GLOW,
+    flexShrink: 0,
+  },
+  drawingImage: {
+    display: 'block',
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    background: '#ffffff',
   },
   // Steal (Task 32) - the TV during and after a theft.
   stealThiefRow: {

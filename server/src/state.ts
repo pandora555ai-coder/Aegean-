@@ -12,6 +12,7 @@ import {
   type StealResolvedPayload,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
+  DRAW_ROUNDS_OPTIONS,
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
@@ -366,6 +367,12 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   }
   if (partial.gameLength !== undefined && GAME_LENGTH_OPTIONS.includes(partial.gameLength)) {
     room.settings.gameLength = partial.gameLength;
+  }
+  // Task 57 - the draw mode's own knob (quiz never reads it). Validated the
+  // same way as every other field here regardless of which mode is
+  // currently selected - never trust the client.
+  if (partial.drawRounds !== undefined && (DRAW_ROUNDS_OPTIONS as readonly number[]).includes(partial.drawRounds)) {
+    room.settings.drawRounds = partial.drawRounds;
   }
   return room.settings;
 }

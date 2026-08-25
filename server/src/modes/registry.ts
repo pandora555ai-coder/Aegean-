@@ -1,4 +1,4 @@
-import { type GameModeId } from '@game/shared';
+import { type GameModeId, type GameModeOption } from '@game/shared';
 import type { GameMode } from './types.js';
 // Type-only on purpose - see the note in types.ts. state.ts imports THIS
 // module at runtime, so this one must never import it back.
@@ -21,6 +21,15 @@ export function registerGameMode(mode: GameMode): void {
   }
   modes.set(mode.id, mode);
   console.log(`registered game mode '${mode.id}' — phases: ${mode.phases.join(', ')}`);
+}
+
+// Task 57 - the lobby's mode picker, read straight off whatever is actually
+// registered (registration order) rather than a hardcoded array anywhere in
+// client or server code: adding a mode module (which calls
+// registerGameMode as it loads - see modes/index.ts) is what makes it
+// appear here, with no edit to this function or to any lobby code.
+export function listGameModeOptions(): GameModeOption[] {
+  return [...modes.values()].map((mode) => ({ id: mode.id, label: mode.label, minPlayers: mode.minPlayers }));
 }
 
 // The mode a room is running. Throws rather than falling back to the quiz:

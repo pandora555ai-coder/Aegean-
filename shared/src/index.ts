@@ -8,6 +8,10 @@ export const ClientEvents = {
   VIP_NEXT: 'vip:next',
   VIP_PLAY_AGAIN: 'vip:play_again',
   VIP_UPDATE_SETTINGS: 'vip:update_settings',
+  // Task 57 - separate from VIP_UPDATE_SETTINGS: mode isn't a RoomSettings
+  // field (it's Room's own, read by modeForRoom everywhere), so it gets its
+  // own tiny event rather than being smuggled into the settings partial.
+  VIP_SET_MODE: 'vip:set_mode',
   GAME_PAUSE: 'game:pause',
   GAME_RESUME: 'game:resume',
   VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
@@ -24,6 +28,11 @@ export const ClientEvents = {
   // room/phase check. This one exists so the surface can be tried on a
   // real phone and the wire size measured.
   DEV_SUBMIT_DRAWING: 'dev:submit_drawing',
+  // Task 56a - the real drawing mode. DRAW_SUBMIT carries the finished
+  // picture, DRAW_GUESS carries one guesser's pick among that round's 4
+  // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
+  DRAW_SUBMIT: 'draw:submit',
+  DRAW_GUESS: 'draw:guess',
 } as const;
 
 export const ServerEvents = {
@@ -54,6 +63,14 @@ export const ServerEvents = {
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
   DEV_DRAWING_RECEIVED: 'dev:drawing_received',
+  // Task 56a - the drawing mode's own phases. DRAW/GUESS are asymmetric like
+  // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
+  // is finally safe to send), like reveal:show.
+  DRAW_SHOW: 'draw:show',
+  DRAW_PROGRESS: 'draw:progress',
+  GUESS_SHOW: 'guess:show',
+  GUESS_PROGRESS: 'guess:progress',
+  GUESS_REVEAL_SHOW: 'guess_reveal:show',
 } as const;
 
 export type RoomCode = string;
@@ -258,8 +275,19 @@ export interface LobbyPlayer {
 export interface LobbyUpdatePayload {
   code: RoomCode;
   players: LobbyPlayer[];
+  // Task 57 - already mode-aware server-side (each mode's own minPlayers,
+  // not a flat MIN_PLAYERS floor) - see buildLobbyUpdate.
   canStart: boolean;
   settings: RoomSettings;
+  // The room's currently selected game - never changes once the game
+  // leaves LOBBY (see vip:set_mode's phase guard).
+  mode: GameModeId;
+  // Task 57 - every mode actually REGISTERED server-side, in registration
+  // order, with just enough to render a picker and explain a blocked start.
+  // Never a hardcoded array on the client: adding a mode module (which
+  // calls registerGameMode) is what makes it appear here, with no lobby
+  // code to edit.
+  availableModes: GameModeOption[];
 }
 
 // ---------------------------------------------------------------------------
@@ -272,9 +300,24 @@ export interface LobbyUpdatePayload {
 // game and, for now, the only one. Adding a mode means adding an id HERE
 // (and its phases to GamePhase below), then a module under server/src/modes/
 // that registers itself - nothing in state.ts/timers.ts/realtime.ts moves.
-export type GameModeId = 'quiz';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz'];
+export type GameModeId = 'quiz' | 'draw';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
+
+// Task 57 - one mode as the LOBBY needs to know it: its own display label
+// and its own minimum CONNECTED player count (draw's is 3, quiz's is
+// MIN_PLAYERS) - both authored once, on the mode itself
+// (server/src/modes/<mode>.ts), and read here off whatever the registry
+// actually has rather than a second, hand-kept list.
+export interface GameModeOption {
+  id: GameModeId;
+  label: string; // Greek, shown on the mode picker
+  minPlayers: number;
+}
+
+export interface VipSetModePayload {
+  mode: GameModeId;
+}
 
 // POWER_UP (Task 30a) is a real phase, not a flag, so every existing phase
 // guard keeps rejecting answers/casts while it's up. WHEN it runs is decided
@@ -294,6 +337,12 @@ export type GamePhase =
   // followed it): Socrates alone on screen with the line for that round.
   // SKIPPED entirely when no moment fired, so it is never an empty screen.
   | 'SOCRATES'
+  // Task 56a - the 'draw' mode's own phases. DRAW is every player drawing
+  // their assigned word at once; GUESS/GUESS_REVEAL then run once per
+  // submitted drawing, in a fixed queue.
+  | 'DRAW'
+  | 'GUESS'
+  | 'GUESS_REVEAL'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
@@ -746,16 +795,25 @@ export const DIFFICULTY_MIX_OPTIONS: readonly DifficultyMix[] = ['easy', 'normal
 // VIP's to choose.
 export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
 
+// Task 57 - the draw mode's own game-shape setting, parallel to gameLength:
+// how many full draw-then-guess cycles a game runs (fresh words dealt each
+// cycle). Quiz ignores this field entirely, exactly the way draw ignores
+// questionTimeMs/difficultyMix/gameLength - RoomSettings is a flat bag of
+// every mode's own knobs, and each mode reads only the ones it owns.
+export const DRAW_ROUNDS_OPTIONS = [1, 2] as const;
+
 export type RoomSettings = {
   questionTimeMs: number;
   difficultyMix: DifficultyMix;
   gameLength: GameLength;
+  drawRounds: number;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   questionTimeMs: 20000,
   difficultyMix: 'normal',
   gameLength: 'long',
+  drawRounds: 1,
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,
@@ -1096,13 +1154,10 @@ export interface GameOverPayload {
 // role using the same `isQuestionShowHostPayload` / `isRevealHostPayload`
 // guards as their live counterparts, since they carry the identical shapes
 // plus a couple of catch-up-only fields.
-export interface StateSyncLobbyPayload {
-  phase: 'LOBBY';
-  code: RoomCode;
-  players: LobbyPlayer[];
-  canStart: boolean;
-  settings: RoomSettings;
-}
+// Task 57 - widened to LobbyUpdatePayload's own shape (mode + availableModes
+// included) rather than a hand-kept subset, so a TV reattaching mid-LOBBY
+// sees the same mode picker state a live lobby:update would have sent.
+export type StateSyncLobbyPayload = LobbyUpdatePayload & { phase: 'LOBBY' };
 
 // The announcement beat is a phase of its own now, so a TV reattaching
 // mid-beat gets the same card the live event carried, plus what's left of
@@ -1161,6 +1216,19 @@ export interface StateSyncGameOverPayload extends GameOverPayload {
   phase: 'GAME_OVER';
 }
 
+// Task 56b - the drawing mode's own state:sync shapes, same `remainingMs`
+// convention as every other held phase above (the payload's own durationMs
+// is already live too - remainingMs is kept alongside it purely so the
+// client can destructure the same field name it does for every other phase).
+export type StateSyncDrawHostPayload = DrawShowHostPayload & { phase: 'DRAW'; remainingMs: number };
+export type StateSyncDrawPlayerPayload = DrawShowPlayerPayload & { phase: 'DRAW'; remainingMs: number };
+export type StateSyncGuessHostPayload = GuessShowHostPayload & { phase: 'GUESS'; remainingMs: number };
+export type StateSyncGuessGuesserPayload = GuessShowGuesserPayload & { phase: 'GUESS'; remainingMs: number };
+export type StateSyncGuessDrawerPayload = GuessShowDrawerPayload & { phase: 'GUESS'; remainingMs: number };
+// No remainingMs here, same reasoning as StateSyncRevealHostPayload above -
+// GuessRevealShowPayload already carries its own live autoAdvanceMs.
+export type StateSyncGuessRevealPayload = GuessRevealShowPayload & { phase: 'GUESS_REVEAL' };
+
 export type StateSyncPayload =
   | StateSyncLobbyPayload
   | StateSyncStageAnnouncePayload
@@ -1174,6 +1242,12 @@ export type StateSyncPayload =
   | StateSyncStealPlayerPayload
   | StateSyncSocratesHostPayload
   | StateSyncSocratesPlayerPayload
+  | StateSyncDrawHostPayload
+  | StateSyncDrawPlayerPayload
+  | StateSyncGuessHostPayload
+  | StateSyncGuessGuesserPayload
+  | StateSyncGuessDrawerPayload
+  | StateSyncGuessRevealPayload
   | StateSyncGameOverPayload;
 
 // Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
@@ -1208,6 +1282,214 @@ export interface DevDrawingReceivedPayload {
   format: string; // 'image/webp' | 'image/jpeg' | 'image/png'
 }
 
+// ----------------------- Drawing mode (Task 56a) --------------------------
+// A room needs at least this many CONNECTED players before the mode will
+// prepare/start a game - below it there's no meaningful "guess someone
+// else's drawing" round to run.
+export const DRAW_MIN_PLAYERS = 3;
+
+export const DRAW_DURATION_MS = 75_000;
+export const GUESS_DURATION_MS = 20_000;
+export const GUESS_REVEAL_DURATION_MS = 8_000;
+
+// The drawer's reward for a round, scaled by how many guessers got it right
+// - flat per guesser, no speed component (the drawer didn't race anyone).
+export const DRAWER_POINTS_PER_CORRECT_GUESSER = 100;
+
+// [correct, decoy1, decoy2, decoy3]. Converted from drawing-word-sets.md at
+// the repo root, which is the source of truth - edit that file first, then
+// mirror the change here.
+export type WordSet = readonly [correct: string, decoy1: string, decoy2: string, decoy3: string];
+
+export const WORD_SETS: readonly WordSet[] = [
+  ['Γάτα', 'Σκύλος', 'Λαγός', 'Αλεπού'],
+  ['Σκύλος', 'Γάτα', 'Λύκος', 'Αρκούδα'],
+  ['Ήλιος', 'Φεγγάρι', 'Αστέρι', 'Σύννεφο'],
+  ['Φεγγάρι', 'Ήλιος', 'Αστέρι', 'Πλανήτης'],
+  ['Δέντρο', 'Λουλούδι', 'Θάμνος', 'Φυτό'],
+  ['Σπίτι', 'Πύργος', 'Καλύβα', 'Κτίριο'],
+  ['Αυτοκίνητο', 'Λεωφορείο', 'Μοτοσικλέτα', 'Ποδήλατο'],
+  ['Ποδήλατο', 'Αυτοκίνητο', 'Μοτοσικλέτα', 'Πατίνι'],
+  ['Ψάρι', 'Καρχαρίας', 'Δελφίνι', 'Χταπόδι'],
+  ['Πουλί', 'Πεταλούδα', 'Νυχτερίδα', 'Μέλισσα'],
+  ['Βάρκα', 'Πλοίο', 'Καράβι', 'Υποβρύχιο'],
+  ['Αεροπλάνο', 'Ελικόπτερο', 'Μπαλόνι', 'Πύραυλος'],
+  ['Καρέκλα', 'Τραπέζι', 'Καναπές', 'Κρεβάτι'],
+  ['Τραπέζι', 'Καρέκλα', 'Ντουλάπα', 'Ράφι'],
+  ['Βιβλίο', 'Εφημερίδα', 'Περιοδικό', 'Τετράδιο'],
+  ['Ρολόι', 'Ημερολόγιο', 'Ξυπνητήρι', 'Κομπολόι'],
+  ['Ομπρέλα', 'Καπέλο', 'Βροχή', 'Σκιάδι'],
+  ['Κιθάρα', 'Βιολί', 'Πιάνο', 'Τύμπανο'],
+  ['Μπάλα', 'Κύβος', 'Κύκλος', 'Δαχτυλίδι'],
+  ['Καπέλο', 'Κράνος', 'Στέμμα', 'Μαντήλι'],
+  ['Παπούτσι', 'Μπότα', 'Σανδάλι', 'Κάλτσα'],
+  ['Ελέφαντας', 'Ρινόκερος', 'Ιπποπόταμος', 'Καμήλα'],
+  ['Λιοντάρι', 'Τίγρης', 'Λεοπάρδαλη', 'Πάνθηρας'],
+  ['Φίδι', 'Σκουλήκι', 'Χέλι', 'Δράκος'],
+  ['Πεταλούδα', 'Μέλισσα', 'Λιβελλούλη', 'Σκόρος'],
+  ['Καράβι', 'Βάρκα', 'Σχεδία', 'Φάρος'],
+  ['Βουνό', 'Λόφος', 'Ηφαίστειο', 'Παγόβουνο'],
+  ['Θάλασσα', 'Λίμνη', 'Ποτάμι', 'Ωκεανός'],
+  ['Αστέρι', 'Ήλιος', 'Κομήτης', 'Πλανήτης'],
+  ['Καμήλα', 'Άλογο', 'Ελέφαντας', 'Λάμα'],
+  ['Άλογο', 'Ζέβρα', 'Γαϊδούρι', 'Ταύρος'],
+  ['Ζέβρα', 'Άλογο', 'Τίγρης', 'Πάντα'],
+  ['Κοάλα', 'Πάντα', 'Καγκουρό', 'Αρκούδα'],
+  ['Καγκουρό', 'Κοάλα', 'Λαγός', 'Ελάφι'],
+  ['Πιγκουίνος', 'Πάπια', 'Χήνα', 'Φλαμίνγκο'],
+  ['Χταπόδι', 'Καλαμάρι', 'Μέδουσα', 'Αστερίας'],
+  ['Καβούρι', 'Αστακός', 'Γαρίδα', 'Χελώνα'],
+  ['Χελώνα', 'Σαλιγκάρι', 'Σαύρα', 'Κροκόδειλος'],
+  ['Δράκος', 'Δεινόσαυρος', 'Φίδι', 'Χίμαιρα'],
+  ['Κάστρο', 'Πύργος', 'Παλάτι', 'Εκκλησία'],
+] as const;
+
+export interface DrawSubmitPayload {
+  // 'data:image/webp;base64,...' - see DRAWING_MAX_BYTES for the size cap
+  // enforced server-side (rejected outright, not truncated).
+  image: string;
+}
+
+export interface DrawGuessPayload {
+  choice: number; // 0-3, into that round's shuffled 4 options
+}
+
+// 'draw:show' is asymmetric like question:show: the host is a display (no
+// word to draw), each player gets only their OWN assigned word - no player
+// ever learns another's word before it comes up in the GUESS phase.
+export interface DrawShowHostPayload {
+  durationMs: number;
+  submittedCount: number;
+  totalPlayers: number;
+  submittedPlayerIds: string[]; // WHO has submitted - never the drawing itself
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface DrawShowPlayerPayload {
+  wordToDraw: string;
+  durationMs: number;
+  submitted: boolean; // true on a state:sync catch-up after already submitting
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type DrawShowPayload = DrawShowHostPayload | DrawShowPlayerPayload;
+
+export function isDrawHostPayload(payload: DrawShowPayload): payload is DrawShowHostPayload {
+  return 'submittedCount' in payload;
+}
+
+// Host-only progress ticker, same contract as answer:progress - who has
+// submitted, never the drawing itself.
+export interface DrawProgressPayload {
+  submittedCount: number;
+  totalPlayers: number;
+  submittedPlayerIds: string[];
+}
+
+// 'guess:show' is asymmetric in THREE ways, not two: the host gets the
+// drawing plus the 4 shuffled options; a guessing player gets the options
+// only (no image); the drawer themselves gets neither - just a spectator
+// view, and their own draw:guess is rejected server-side. The correct index
+// never appears in ANY of these - only guess_reveal:show carries it, once
+// the round is over.
+export interface GuessShowHostPayload {
+  drawerPlayerId: string;
+  drawerName: string;
+  drawerAvatarId: string;
+  image: string;
+  options: string[]; // 4, shuffled - correct index withheld
+  roundIndex: number; // 0-based, into the queue of submitted drawings
+  totalRounds: number;
+  durationMs: number;
+  guessedCount: number;
+  totalGuessers: number; // connected players minus the drawer
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface GuessShowGuesserPayload {
+  isDrawer: false;
+  drawerName: string;
+  drawerAvatarId: string;
+  options: string[]; // 4, shuffled - correct index withheld
+  roundIndex: number;
+  totalRounds: number;
+  durationMs: number;
+  yourGuess: number | null; // set only on a state:sync catch-up
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+// The drawer's own view of their round - no options at all, so there is
+// nothing here for a client to even mistakenly submit a guess against.
+export interface GuessShowDrawerPayload {
+  isDrawer: true;
+  roundIndex: number;
+  totalRounds: number;
+  durationMs: number;
+  guessedCount: number;
+  totalGuessers: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type GuessShowPayload = GuessShowHostPayload | GuessShowGuesserPayload | GuessShowDrawerPayload;
+
+export function isGuessHostPayload(payload: GuessShowPayload): payload is GuessShowHostPayload {
+  return 'image' in payload;
+}
+
+export function isGuessDrawerPayload(
+  payload: GuessShowGuesserPayload | GuessShowDrawerPayload,
+): payload is GuessShowDrawerPayload {
+  return payload.isDrawer;
+}
+
+// Host-only progress ticker for the GUESS phase - who has guessed, never
+// what they picked.
+export interface GuessProgressPayload {
+  guessedCount: number;
+  totalGuessers: number;
+  guessedPlayerIds: string[];
+}
+
+export interface GuessRevealResult {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  choice: number | null; // null = did not guess
+  correct: boolean;
+  pointsAwarded: number;
+  totalScore: number;
+  timeMs: number | null;
+}
+
+// Public and symmetric, like reveal:show - the round is over, so the
+// drawing, the correct index and every guesser's result are all safe to
+// send to everyone, including the drawer.
+export interface GuessRevealShowPayload {
+  drawerPlayerId: string;
+  drawerName: string;
+  drawerAvatarId: string;
+  image: string;
+  correctIndex: number;
+  correctWord: string;
+  options: string[];
+  results: GuessRevealResult[]; // guessers only - the drawer isn't one
+  drawerPointsAwarded: number;
+  drawerTotalScore: number;
+  roundIndex: number;
+  totalRounds: number;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -1218,6 +1500,7 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
+  [ClientEvents.VIP_SET_MODE]: (payload: VipSetModePayload) => void;
   [ClientEvents.GAME_PAUSE]: (payload: GamePausePayload) => void;
   [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
   [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
@@ -1226,6 +1509,8 @@ export type ClientToServerEvents = {
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
+  [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
+  [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -1256,4 +1541,9 @@ export type ServerToClientEvents = {
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
+  [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
+  [ServerEvents.DRAW_PROGRESS]: (payload: DrawProgressPayload) => void;
+  [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
+  [ServerEvents.GUESS_PROGRESS]: (payload: GuessProgressPayload) => void;
+  [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
 };

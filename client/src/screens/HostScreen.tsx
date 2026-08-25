@@ -1,16 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ClientEvents,
+  DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   ServerEvents,
+  isDrawHostPayload,
+  isGuessHostPayload,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
   isSocratesHostPayload,
   isStealHostPayload,
   type AnswerProgressPayload,
+  type DrawProgressPayload,
+  type DrawShowHostPayload,
+  type DrawShowPayload,
   type GameOverPayload,
   type GamePhase,
+  type GuessProgressPayload,
+  type GuessRevealShowPayload,
+  type GuessShowHostPayload,
+  type GuessShowPayload,
   type LobbyUpdatePayload,
   type PausedPayload,
   type PhaseChangedPayload,
@@ -50,6 +60,9 @@ import { SocratesView } from './host/SocratesView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
 import { GameOverView } from './host/GameOverView';
+import { DrawView } from './host/DrawView';
+import { GuessView } from './host/GuessView';
+import { GuessRevealView } from './host/GuessRevealView';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -87,6 +100,17 @@ export default function HostScreen() {
   // countdown below can key off the object alone.
   const [socrates, setSocrates] = useState<SocratesShowPayload | null>(null);
   const [socratesSecondsLeft, setSocratesSecondsLeft] = useState(0);
+  // Drawing mode (Task 56b) - same two-piece pattern as POWER_UP: the phase
+  // payload set once per phase/reconnect, and a separate progress ticker so
+  // a submission/guess landing never resets the countdown effect below.
+  const [draw, setDraw] = useState<DrawShowHostPayload | null>(null);
+  const [drawProgress, setDrawProgress] = useState<DrawProgressPayload | null>(null);
+  const [drawSecondsLeft, setDrawSecondsLeft] = useState(0);
+  const [guess, setGuess] = useState<GuessShowHostPayload | null>(null);
+  const [guessProgress, setGuessProgress] = useState<GuessProgressPayload | null>(null);
+  const [guessSecondsLeft, setGuessSecondsLeft] = useState(0);
+  const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
+  const [guessRevealSecondsLeft, setGuessRevealSecondsLeft] = useState(0);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -186,6 +210,11 @@ export default function HostScreen() {
         setSteal(null);
         setStageAnnounce(null);
         setSocrates(null);
+        setDraw(null);
+        setDrawProgress(null);
+        setGuess(null);
+        setGuessProgress(null);
+        setGuessReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -339,6 +368,60 @@ export default function HostScreen() {
       }
     }
 
+    // Drawing mode (Task 56b). The host branch of an asymmetric event -
+    // players get their own assigned word, never sent here (see
+    // isDrawHostPayload).
+    function handleDrawShow(payload: DrawShowPayload) {
+      if (isDrawHostPayload(payload)) {
+        setGuess(null);
+        setGuessProgress(null);
+        setGuessReveal(null);
+        setDraw(payload);
+        setDrawProgress(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    function handleDrawProgress(payload: DrawProgressPayload) {
+      setDrawProgress(payload);
+    }
+
+    // The host branch of GUESS's three-way asymmetric event - the drawing
+    // and the 4 options, never the correct index (see isGuessHostPayload).
+    function handleGuessShow(payload: GuessShowPayload) {
+      if (isGuessHostPayload(payload)) {
+        setDraw(null);
+        setDrawProgress(null);
+        setGuessReveal(null);
+        setGuess(payload);
+        // No guessedPlayerIds to seed here (GuessShowHostPayload only
+        // carries the counts, never who - see buildGuessHostPayload) -
+        // GuessView reads guess.guessedCount/totalGuessers directly until
+        // the first guess:progress tick arrives.
+        setGuessProgress(null);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    function handleGuessProgress(payload: GuessProgressPayload) {
+      setGuessProgress(payload);
+    }
+
+    // Public and symmetric, like reveal:show - the round is over, so the
+    // drawing and the correct index are both safe to show now.
+    function handleGuessRevealShow(payload: GuessRevealShowPayload) {
+      setGuess(null);
+      setGuessProgress(null);
+      setGuessReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+      if (!pausedRef.current) {
+        playRevealCue();
+      }
+    }
+
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -372,6 +455,12 @@ export default function HostScreen() {
         setStealSecondsLeft(seconds);
       } else if (phaseRef.current === 'SOCRATES') {
         setSocratesSecondsLeft(seconds);
+      } else if (phaseRef.current === 'DRAW') {
+        setDrawSecondsLeft(seconds);
+      } else if (phaseRef.current === 'GUESS') {
+        setGuessSecondsLeft(seconds);
+      } else if (phaseRef.current === 'GUESS_REVEAL') {
+        setGuessRevealSecondsLeft(seconds);
       }
     }
 
@@ -401,6 +490,11 @@ export default function HostScreen() {
       setSteal(null);
       setStageAnnounce(null);
       setSocrates(null);
+      setDraw(null);
+      setDrawProgress(null);
+      setGuess(null);
+      setGuessProgress(null);
+      setGuessReveal(null);
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -412,7 +506,14 @@ export default function HostScreen() {
         case 'LOBBY':
           setRoomCode(payload.code);
           roomCodeRef.current = payload.code;
-          setLobby({ code: payload.code, players: payload.players, canStart: payload.canStart, settings: payload.settings });
+          setLobby({
+            code: payload.code,
+            players: payload.players,
+            canStart: payload.canStart,
+            settings: payload.settings,
+            mode: payload.mode,
+            availableModes: payload.availableModes,
+          });
           setRoomSettings(payload.settings);
           setPaused(false);
           setPausedByName(null);
@@ -466,6 +567,30 @@ export default function HostScreen() {
         case 'GAME_OVER':
           setGameOver(payload);
           break;
+        // Drawing mode (Task 56b) - same live-broadcast builders as the
+        // fresh phase entry, so a reconnect mid-DRAW/GUESS/GUESS_REVEAL
+        // restores exactly the same screen (criterion 1).
+        case 'DRAW':
+          if (isDrawHostPayload(payload)) {
+            setDraw(payload);
+            setDrawProgress(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'GUESS':
+          if (isGuessHostPayload(payload)) {
+            setGuess(payload);
+            setGuessProgress(null); // see handleGuessShow's comment
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'GUESS_REVEAL':
+          setGuessReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -482,6 +607,11 @@ export default function HostScreen() {
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
+    socket.on(ServerEvents.DRAW_SHOW, handleDrawShow);
+    socket.on(ServerEvents.DRAW_PROGRESS, handleDrawProgress);
+    socket.on(ServerEvents.GUESS_SHOW, handleGuessShow);
+    socket.on(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
+    socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -502,6 +632,11 @@ export default function HostScreen() {
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
+      socket.off(ServerEvents.DRAW_SHOW, handleDrawShow);
+      socket.off(ServerEvents.DRAW_PROGRESS, handleDrawProgress);
+      socket.off(ServerEvents.GUESS_SHOW, handleGuessShow);
+      socket.off(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
+      socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -626,6 +761,62 @@ export default function HostScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [socrates, paused]);
+
+  // Drawing mode (Task 56b) - DRAW/GUESS's own countdowns, same pattern as
+  // POWER_UP's above: `durationMs` is always the server's live remaining
+  // time (fresh phase or reconnect alike), so the interval can key off the
+  // phase object alone without a submission/guess resetting it.
+  useEffect(() => {
+    if (!draw) {
+      return;
+    }
+    setDrawSecondsLeft(Math.ceil(draw.durationMs / 1000));
+  }, [draw]);
+
+  useEffect(() => {
+    if (!draw || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setDrawSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [draw, paused]);
+
+  useEffect(() => {
+    if (!guess) {
+      return;
+    }
+    setGuessSecondsLeft(Math.ceil(guess.durationMs / 1000));
+  }, [guess]);
+
+  useEffect(() => {
+    if (!guess || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setGuessSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [guess, paused]);
+
+  // GUESS_REVEAL's progress bar - same pattern as REVEAL's above.
+  useEffect(() => {
+    if (!guessReveal) {
+      return;
+    }
+    setGuessRevealSecondsLeft(Math.ceil(guessReveal.autoAdvanceMs / 1000));
+  }, [guessReveal]);
+
+  useEffect(() => {
+    if (!guessReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setGuessRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [guessReveal, paused]);
 
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
@@ -765,6 +956,46 @@ export default function HostScreen() {
       );
     }
 
+    // Drawing mode (Task 56b).
+    if (phase === 'DRAW' && draw) {
+      return (
+        <DrawView
+          draw={draw}
+          progress={drawProgress}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={drawSecondsLeft}
+          players={players}
+        />
+      );
+    }
+
+    if (phase === 'GUESS' && guess) {
+      return (
+        <GuessView
+          guess={guess}
+          progress={guessProgress}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={guessSecondsLeft}
+        />
+      );
+    }
+
+    if (phase === 'GUESS_REVEAL' && guessReveal) {
+      return (
+        <GuessRevealView
+          guessReveal={guessReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={guessRevealSecondsLeft}
+        />
+      );
+    }
+
     return (
       <LobbyView
         connected={connected}
@@ -779,6 +1010,8 @@ export default function HostScreen() {
         players={players}
         connectedCount={connectedCount}
         roomSettings={roomSettings}
+        mode={lobby?.mode ?? DEFAULT_GAME_MODE}
+        availableModes={lobby?.availableModes ?? []}
         vip={vip}
         powerHintDismissed={powerHintDismissed}
         onDismissPowerHint={() => setPowerHintDismissed(true)}

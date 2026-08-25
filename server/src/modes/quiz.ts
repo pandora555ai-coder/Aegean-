@@ -1,4 +1,4 @@
-import { QUIZ_STAGES, totalQuestionsForLength, type GamePhase } from '@game/shared';
+import { MIN_PLAYERS, QUIZ_STAGES, totalQuestionsForLength, type GamePhase } from '@game/shared';
 import type { Room } from '../state.js';
 import { getQuestionSet } from '../questions.js';
 import {
@@ -48,6 +48,8 @@ const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
 
 export const quizMode: GameMode = {
   id: 'quiz',
+  label: 'Κουίζ',
+  minPlayers: MIN_PLAYERS,
   phases: QUIZ_PHASES,
   stages: QUIZ_STAGES,
   // The question draw that used to sit in state.ts's buildRoomQuestions. It

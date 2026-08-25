@@ -3,6 +3,8 @@ import {
   MAX_PLAYERS,
   stagesForLength,
   totalQuestionsForLength,
+  type GameModeId,
+  type GameModeOption,
   type GamePhase,
   type LobbyPlayer,
   type RoomCode,
@@ -25,6 +27,11 @@ interface LobbyViewProps {
   players: LobbyPlayer[];
   connectedCount: number;
   roomSettings: RoomSettings;
+  // Task 57 - which game is selected, plus the registry-driven list (used
+  // here only to look up the selected mode's own label - never a hardcoded
+  // mode name).
+  mode: GameModeId;
+  availableModes: GameModeOption[];
   vip: LobbyPlayer | null;
   powerHintDismissed: boolean;
   onDismissPowerHint: () => void;
@@ -43,10 +50,13 @@ export function LobbyView({
   players,
   connectedCount,
   roomSettings,
+  mode,
+  availableModes,
   vip,
   powerHintDismissed,
   onDismissPowerHint,
 }: LobbyViewProps) {
+  const modeLabel = availableModes.find((option) => option.id === mode)?.label ?? mode;
   return (
     <div style={styles.container} className="screen-fade-in">
       {/* LOBBY only, per spec - a fixed top-left chip so it never competes
@@ -118,11 +128,24 @@ export function LobbyView({
             ))}
           </div>
 
-          <div data-testid="room-settings-summary" style={styles.settingsSummary}>
-            {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
-            {stagesForLength(roomSettings.gameLength).length} στάδια ·{' '}
-            {roomSettings.questionTimeMs / 1000}΄΄ · {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
+          <div data-testid="room-mode-summary" style={styles.settingsSummary}>
+            {modeLabel}
           </div>
+          {/* Task 57 - quiz-only settings, hidden for any other mode rather
+              than a hardcoded `=== 'draw'` check, so a future third mode
+              doesn't inherit a stale quiz summary by accident. */}
+          {mode === 'quiz' && (
+            <div data-testid="room-settings-summary" style={styles.settingsSummary}>
+              {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
+              {stagesForLength(roomSettings.gameLength).length} στάδια ·{' '}
+              {roomSettings.questionTimeMs / 1000}΄΄ · {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
+            </div>
+          )}
+          {mode === 'draw' && (
+            <div data-testid="room-settings-summary" style={styles.settingsSummary}>
+              {roomSettings.drawRounds} {roomSettings.drawRounds > 1 ? 'γύροι' : 'γύρος'}
+            </div>
+          )}
 
           {vip ? (
             <div data-testid="waiting-message" style={styles.waitingMessage}>
