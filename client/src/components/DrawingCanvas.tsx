@@ -77,10 +77,12 @@ const SWATCHES: { color: string; label: string }[] = [
   { color: INK, label: 'μαύρο' },
 ];
 
-// Sized to sit in the same single row as the swatches, tool icons and size
-// dots (Task 63) rather than floating over the canvas as a popup.
-const WHEEL_SIZE = 38;
-const WHEEL_INDICATOR_RADIUS = 15;
+// Sits in the same single row as the swatches, tool icons and size dots
+// (Task 63) rather than floating over the canvas as a popup. Its CSS size is
+// fluid (clamp, Task 64) so the indicator position below is expressed as a
+// fraction of that size, not a fixed pixel radius, to stay under the finger
+// at any width.
+const WHEEL_INDICATOR_RADIUS_FRACTION = 15 / 19;
 
 export interface DrawingCanvasHandle {
   // A data URL, or null if nothing has been drawn yet.
@@ -605,9 +607,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }), []);
 
     const hue = useMemo(() => colorToHueDegrees(color), [color]);
-    const { dx: indicatorDx, dy: indicatorDy } = hueToWheelOffset(hue, WHEEL_INDICATOR_RADIUS);
-    const indicatorX = WHEEL_SIZE / 2 + indicatorDx;
-    const indicatorY = WHEEL_SIZE / 2 + indicatorDy;
+    const { dx: indicatorDx, dy: indicatorDy } = hueToWheelOffset(hue, WHEEL_INDICATOR_RADIUS_FRACTION);
+    // Percentages of the wheel's own box, so the dot tracks the fluid
+    // clamp() size instead of a stale fixed-pixel radius.
+    const indicatorLeftPct = 50 + indicatorDx * 50;
+    const indicatorTopPct = 50 + indicatorDy * 50;
 
     return (
       <div style={styles.wrapper}>
@@ -649,7 +653,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             onPointerCancel={handleWheelPointerUp}
           >
             <div style={{ ...styles.wheelCenter, background: color }} />
-            <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
+            <div
+              style={{ ...styles.wheelIndicator, left: `${indicatorLeftPct}%`, top: `${indicatorTopPct}%` }}
+            />
           </div>
           <span style={styles.separator} />
           <button
@@ -686,7 +692,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
               type="button"
               aria-label={key}
               aria-pressed={brushSize === key}
-              style={{ ...styles.iconButton, ...(brushSize === key ? styles.iconButtonActive : null) }}
+              style={{ ...styles.sizeButton, ...(brushSize === key ? styles.iconButtonActive : null) }}
               onClick={() => setBrushSize(key)}
             >
               <span
@@ -742,13 +748,16 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     flexWrap: 'nowrap',
     alignItems: 'center',
-    gap: '0.2rem',
+    justifyContent: 'center',
+    // Flat 2px, not 0.2rem (3.2px) - at the smallest real phone widths every
+    // fixed px in this row competes with the clamp()'d controls for space.
+    gap: '2px',
     overflowX: 'auto',
   },
   wheel: {
     position: 'relative',
-    width: WHEEL_SIZE,
-    height: WHEEL_SIZE,
+    width: 'clamp(32px, 9.5vw, 38px)',
+    height: 'clamp(32px, 9.5vw, 38px)',
     borderRadius: '50%',
     background:
       'conic-gradient(hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))',
@@ -759,8 +768,10 @@ const styles: Record<string, CSSProperties> = {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    width: WHEEL_SIZE - 14,
-    height: WHEEL_SIZE - 14,
+    // Relative to the wheel's own (fluid) box rather than a fixed pixel
+    // size, so the ring stays proportional at every clamp() width.
+    width: 'calc(100% - 14px)',
+    height: 'calc(100% - 14px)',
     borderRadius: '50%',
     border: '2px solid #ffffff',
     transform: 'translate(-50%, -50%)',
@@ -777,8 +788,8 @@ const styles: Record<string, CSSProperties> = {
     pointerEvents: 'none',
   },
   swatch: {
-    width: '34px',
-    height: '34px',
+    width: 'clamp(28px, 8.5vw, 34px)',
+    height: 'clamp(28px, 8.5vw, 34px)',
     borderRadius: '50%',
     border: '2px solid rgba(255,255,255,0.5)',
     padding: 0,
@@ -794,11 +805,26 @@ const styles: Record<string, CSSProperties> = {
     height: '22px',
     flexShrink: 0,
     background: 'var(--border-strong)',
-    margin: '0 0.15rem',
   },
   iconButton: {
-    width: '34px',
-    height: '34px',
+    width: 'clamp(34px, 11vw, 44px)',
+    height: 'clamp(34px, 11vw, 44px)',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-dim)',
+    background: 'var(--surface-strong)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '0.6rem',
+    touchAction: 'manipulation',
+  },
+  // Size buttons show a dot, not an icon - they don't need the tool
+  // buttons' 44px touch target to stay legible, so they're sized down to
+  // claw back row width instead.
+  sizeButton: {
+    width: 'clamp(26px, 7.5vw, 30px)',
+    height: 'clamp(26px, 7.5vw, 30px)',
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
