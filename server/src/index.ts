@@ -76,6 +76,15 @@ import {
   submitDrawing,
   submitGuess,
 } from './modes/draw.js';
+// Task 65 - the numeric-estimate mode's own socket-facing function, wired up
+// here for the same reason as draw's above (modes/README).
+import {
+  buildNumericQuestionHostShow,
+  buildNumericQuestionPlayerShow,
+  buildNumericRevealShow,
+  recheckNumericPhaseOnDisconnect,
+  submitNumericAnswer,
+} from './modes/numeric.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -242,6 +251,15 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildGuessRevealPayload(room);
       return payload ? { ...payload, phase: 'GUESS_REVEAL' } : null;
     }
+    // Task 65 - same reasoning as DRAW/GUESS/GUESS_REVEAL above.
+    case 'NUMERIC_QUESTION': {
+      const payload = buildNumericQuestionPlayerShow(room, playerId);
+      return payload ? { ...payload, phase: 'NUMERIC_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'NUMERIC_REVEAL': {
+      const payload = buildNumericRevealShow(room);
+      return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
+    }
     default:
       return null; // LOBBY - callers never ask for this
   }
@@ -319,6 +337,15 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'GUESS_REVEAL': {
       const payload = buildGuessRevealPayload(room);
       return payload ? { ...payload, phase: 'GUESS_REVEAL' } : null;
+    }
+    // Task 65 - same reasoning as DRAW/GUESS/GUESS_REVEAL above.
+    case 'NUMERIC_QUESTION': {
+      const payload = buildNumericQuestionHostShow(room);
+      return payload ? { ...payload, phase: 'NUMERIC_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'NUMERIC_REVEAL': {
+      const payload = buildNumericRevealShow(room);
+      return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
     }
   }
 }
@@ -993,6 +1020,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Task 65 - the numeric-estimate mode. All validation (phase, pause,
+  // clamping) lives in submitNumericAnswer itself, which also ends the
+  // question early once every connected player has submitted.
+  socket.on(ClientEvents.NUMERIC_SUBMIT, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.NUMERIC_SUBMIT);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitNumericAnswer(room, playerId, payload?.value)) {
+      console.log(`rejected ${ClientEvents.NUMERIC_SUBMIT} from player ${playerId} in room ${room.code}`);
+    }
+  });
+
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {
     const room = getVipRoomForSocket(socket, ClientEvents.VIP_PLAY_AGAIN);
     if (!room) {
@@ -1215,6 +1256,12 @@ io.on('connection', (socket) => {
       if (room) {
         recheckDrawPhaseOnDisconnect(room);
         recheckGuessPhaseOnDisconnect(room);
+      }
+
+      // Task 65 - same reasoning: the player who just left might have been
+      // the only one still deciding. A no-op outside NUMERIC_QUESTION.
+      if (room) {
+        recheckNumericPhaseOnDisconnect(room);
       }
     }
   });

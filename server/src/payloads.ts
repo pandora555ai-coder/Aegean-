@@ -41,8 +41,10 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
 
 // Tied scores share the same rank (1,1,3 - not 1,2,3): the "competition
 // ranking" convention, where a rank equals 1 + the number of players
-// strictly ahead of it.
-function computeCompetitionRanks<T>(
+// strictly ahead of it. Exported (Task 65) so the numeric mode's distance
+// ranking reuses this exact function instead of a second one - pass a
+// negated distance as getScore to rank ascending instead of descending.
+export function computeCompetitionRanks<T>(
   items: T[],
   getScore: (item: T) => number,
   getId: (item: T) => string,

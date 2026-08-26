@@ -33,6 +33,9 @@ export const ClientEvents = {
   // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
   DRAW_SUBMIT: 'draw:submit',
   DRAW_GUESS: 'draw:guess',
+  // Task 65 - the numeric-estimate mode. One event: the player's guess,
+  // clamped server-side to 0..max - never rejected for being out of range.
+  NUMERIC_SUBMIT: 'player:numeric_submit',
 } as const;
 
 export const ServerEvents = {
@@ -71,6 +74,11 @@ export const ServerEvents = {
   GUESS_SHOW: 'guess:show',
   GUESS_PROGRESS: 'guess:progress',
   GUESS_REVEAL_SHOW: 'guess_reveal:show',
+  // Task 65 - the numeric-estimate mode's own phases, symmetric like
+  // draw:show/guess_reveal:show: NUMERIC_QUESTION never carries the answer,
+  // NUMERIC_REVEAL is the one place it becomes safe to send.
+  NUMERIC_QUESTION_SHOW: 'numeric_question:show',
+  NUMERIC_REVEAL_SHOW: 'numeric_reveal:show',
 } as const;
 
 export type RoomCode = string;
@@ -300,8 +308,8 @@ export interface LobbyUpdatePayload {
 // game and, for now, the only one. Adding a mode means adding an id HERE
 // (and its phases to GamePhase below), then a module under server/src/modes/
 // that registers itself - nothing in state.ts/timers.ts/realtime.ts moves.
-export type GameModeId = 'quiz' | 'draw';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw'];
+export type GameModeId = 'quiz' | 'draw' | 'numeric';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
 
 // Task 57 - one mode as the LOBBY needs to know it: its own display label
@@ -343,6 +351,12 @@ export type GamePhase =
   | 'DRAW'
   | 'GUESS'
   | 'GUESS_REVEAL'
+  // Task 65 - the 'numeric' mode's own phases: everyone submits one number
+  // (clamped server-side to 0..max), then a reveal shows the real answer and
+  // everyone's distance-ranked score. Standalone for now (Task 66 folds it
+  // into the quiz as a stage).
+  | 'NUMERIC_QUESTION'
+  | 'NUMERIC_REVEAL'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
@@ -1229,6 +1243,20 @@ export type StateSyncGuessDrawerPayload = GuessShowDrawerPayload & { phase: 'GUE
 // GuessRevealShowPayload already carries its own live autoAdvanceMs.
 export type StateSyncGuessRevealPayload = GuessRevealShowPayload & { phase: 'GUESS_REVEAL' };
 
+// Task 65 - the numeric mode's own state:sync shapes, same conventions as
+// draw's above: remainingMs alongside the live durationMs for the held
+// question, no remainingMs on the reveal (NumericRevealShowPayload already
+// carries its own live autoAdvanceMs).
+export type StateSyncNumericQuestionHostPayload = NumericQuestionShowHostPayload & {
+  phase: 'NUMERIC_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncNumericQuestionPlayerPayload = NumericQuestionShowPlayerPayload & {
+  phase: 'NUMERIC_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncNumericRevealPayload = NumericRevealShowPayload & { phase: 'NUMERIC_REVEAL' };
+
 export type StateSyncPayload =
   | StateSyncLobbyPayload
   | StateSyncStageAnnouncePayload
@@ -1248,6 +1276,9 @@ export type StateSyncPayload =
   | StateSyncGuessGuesserPayload
   | StateSyncGuessDrawerPayload
   | StateSyncGuessRevealPayload
+  | StateSyncNumericQuestionHostPayload
+  | StateSyncNumericQuestionPlayerPayload
+  | StateSyncNumericRevealPayload
   | StateSyncGameOverPayload;
 
 // Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
@@ -1519,6 +1550,86 @@ export interface GuessRevealShowPayload {
   standings: PlayerStanding[];
 }
 
+// ----------------------- Numeric estimate mode (Task 65) -------------------
+// Standalone for now (Task 66 folds it into the quiz as a stage) - the wire
+// contract and the pure mechanic (maxForAnswer, scoring, payload builders;
+// server/src/numeric.ts) are kept mode-agnostic on purpose, so that later
+// merge only ever has to rewrite server/src/modes/numeric.ts, the shell.
+export const NUMERIC_MIN_PLAYERS = 2;
+export const NUMERIC_QUESTION_DURATION_MS = 20_000;
+export const NUMERIC_REVEAL_DURATION_MS = 8_000;
+
+export interface NumericSubmitPayload {
+  value: number; // clamped server-side to 0..max - never rejected out of range
+}
+
+// 'numeric_question:show' is asymmetric like question:show: the host and
+// every player get the same slider bounds (max, sliderStep), never the
+// answer - that stays server-only until NUMERIC_REVEAL.
+export interface NumericQuestionShowHostPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  text: string;
+  category: string;
+  max: number;
+  sliderStep: number;
+  durationMs: number;
+  submittedCount: number;
+  totalPlayers: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface NumericQuestionShowPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  text: string;
+  category: string;
+  max: number;
+  sliderStep: number;
+  durationMs: number;
+  submitted: boolean; // true on a state:sync catch-up after already submitting
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type NumericQuestionShowPayload = NumericQuestionShowHostPayload | NumericQuestionShowPlayerPayload;
+
+export function isNumericQuestionHostPayload(
+  payload: NumericQuestionShowPayload,
+): payload is NumericQuestionShowHostPayload {
+  return 'submittedCount' in payload;
+}
+
+// Public and symmetric, like reveal:show - the round is over, so the real
+// answer and everyone's distance/rank/score are all safe to send to everyone.
+export interface NumericRevealResult {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  value: number | null; // null - never submitted
+  distance: number;
+  rank: number; // tied distances share the better rank (1,1,3 - not 1,2,3)
+  exact: boolean;
+  pointsAwarded: number;
+  totalScore: number;
+}
+
+export interface NumericRevealShowPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  text: string;
+  category: string;
+  answer: number;
+  max: number;
+  results: NumericRevealResult[];
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -1540,6 +1651,7 @@ export type ClientToServerEvents = {
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
+  [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -1575,4 +1687,6 @@ export type ServerToClientEvents = {
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
   [ServerEvents.GUESS_PROGRESS]: (payload: GuessProgressPayload) => void;
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
+  [ServerEvents.NUMERIC_QUESTION_SHOW]: (payload: NumericQuestionShowPayload) => void;
+  [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
 };

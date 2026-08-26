@@ -3,8 +3,10 @@
 // one file a new mode adds a line to.
 import './quiz.js';
 import './draw.js';
+import './numeric.js';
 
 export { quizMode } from './quiz.js';
 export { drawMode } from './draw.js';
+export { numericMode } from './numeric.js';
 export { continuationForActiveTimer, listGameModeOptions, modeForRoom, registerGameMode } from './registry.js';
 export type { GameMode } from './types.js';
