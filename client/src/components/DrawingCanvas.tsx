@@ -53,15 +53,51 @@ const SIZE_DOT_PX: Record<SizeKey, number> = { small: 6, medium: 10, large: 16 }
 const INK = '#12102a';
 const PAPER = '#ffffff';
 
-// The 8 fixed shortcuts, plus whatever the wheel is dragged to.
-const SWATCHES = [INK, '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
+// Task 63 - every colour but these two now comes from the wheel, which is
+// always on-screen (no more popup), so the swatch list shrinks to just the
+// two shortcuts a thumb reaches for constantly: paper white and ink black.
+const SWATCHES: { color: string; label: string }[] = [
+  { color: PAPER, label: 'λευκό' },
+  { color: INK, label: 'μαύρο' },
+];
 
-const WHEEL_SIZE = 56;
-const WHEEL_INDICATOR_RADIUS = 22;
+// Sized to sit in the same single row as the swatches, tool icons and size
+// dots (Task 63) rather than floating over the canvas as a popup.
+const WHEEL_SIZE = 38;
+const WHEEL_INDICATOR_RADIUS = 15;
 
 export interface DrawingCanvasHandle {
   // A data URL, or null if nothing has been drawn yet.
   exportDataUrl: () => string | null;
+}
+
+// Task 63 - Στυλό/Γόμα/Γέμισμα lose their text labels so the tool trio fits
+// its third of the one-row toolbar; these replace them one-for-one.
+function PenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13.5 3.5 L16.5 6.5 L7 16 L3.5 16.5 L4 13 Z" />
+    </svg>
+  );
+}
+
+function EraserIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.5 11 L7.5 4 L2.5 9 L8 16 H16 L14.5 11 Z" />
+      <path d="M8 16 L12.5 11.5" />
+    </svg>
+  );
+}
+
+function FillIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 2.5 L15.5 9 C17 10.5 17 12.5 15.5 14 C14 15.5 12 15.5 10.5 14 C9 12.5 9 10.5 10.5 9 Z" />
+      <path d="M3.5 11.5 H12.5" />
+      <circle cx="16.5" cy="16.5" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
 }
 
 interface DrawingCanvasProps {
@@ -283,10 +319,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const [tool, setTool] = useState<Tool>('pen');
     const [color, setColor] = useState(INK);
     const [brushSize, setBrushSize] = useState<SizeKey>('medium');
-    // Collapsed by default (Task 55): a full wheel+swatch panel sitting on
-    // the canvas permanently ate a corner of the drawing surface. Now it's
-    // a small toggle that overlays the canvas only while open.
-    const [pickerOpen, setPickerOpen] = useState(false);
 
     useEffect(() => {
       onStrokeCountChange?.(strokeCount);
@@ -532,93 +564,84 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             onPointerCancel={handlePointerUp}
           />
         </div>
-        <div style={styles.toolRow}>
-          <div style={styles.pickerAnchor}>
-            <button
-              type="button"
-              aria-label="επιλογή χρώματος"
-              aria-expanded={pickerOpen}
-              style={styles.pickerToggle}
-              onClick={() => setPickerOpen((open) => !open)}
-            >
-              <span style={{ ...styles.pickerToggleSwatch, background: color }} />
-            </button>
-            {pickerOpen && (
-              <div style={styles.pickerPanel}>
-                <div
-                  ref={wheelRef}
-                  style={styles.wheel}
-                  onPointerDown={handleWheelPointerDown}
-                  onPointerMove={handleWheelPointerMove}
-                  onPointerUp={handleWheelPointerUp}
-                  onPointerCancel={handleWheelPointerUp}
-                >
-                  <div style={{ ...styles.wheelCenter, background: color }} />
-                  <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
-                </div>
-                <div style={styles.swatchGrid}>
-                  {SWATCHES.map((swatch) => (
-                    <button
-                      key={swatch}
-                      type="button"
-                      aria-label={`χρώμα ${swatch}`}
-                      onClick={() => selectColor(swatch)}
-                      style={{
-                        ...styles.swatch,
-                        background: swatch,
-                        ...(color === swatch ? styles.swatchActive : null),
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Task 63 - the whole toolbar in one row: wheel, the two fixed
+            swatches, the three tools and the three sizes, each cluster split
+            by a thin separator. The wheel sits inline here (never absolute,
+            never over the canvas) so criterion 2 holds at every width by
+            construction, not by measurement. */}
+        <div style={styles.unifiedRow}>
+          <div
+            ref={wheelRef}
+            style={styles.wheel}
+            onPointerDown={handleWheelPointerDown}
+            onPointerMove={handleWheelPointerMove}
+            onPointerUp={handleWheelPointerUp}
+            onPointerCancel={handleWheelPointerUp}
+          >
+            <div style={{ ...styles.wheelCenter, background: color }} />
+            <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
           </div>
-          <div style={styles.segmentGroup}>
+          {SWATCHES.map((swatch) => (
             <button
+              key={swatch.color}
               type="button"
-              style={{ ...styles.segmentButton, ...(tool === 'pen' ? styles.segmentButtonActive : null) }}
-              onClick={() => setTool('pen')}
-            >
-              Στυλό
-            </button>
+              aria-label={swatch.label}
+              onClick={() => selectColor(swatch.color)}
+              style={{
+                ...styles.swatch,
+                background: swatch.color,
+                ...(color === swatch.color ? styles.swatchActive : null),
+              }}
+            />
+          ))}
+          <span style={styles.separator} />
+          <button
+            type="button"
+            aria-label="Στυλό"
+            aria-pressed={tool === 'pen'}
+            style={{ ...styles.iconButton, ...(tool === 'pen' ? styles.iconButtonActive : null) }}
+            onClick={() => setTool('pen')}
+          >
+            <PenIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="Γόμα"
+            aria-pressed={tool === 'eraser'}
+            style={{ ...styles.iconButton, ...(tool === 'eraser' ? styles.iconButtonActive : null) }}
+            onClick={() => setTool('eraser')}
+          >
+            <EraserIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="Γέμισμα"
+            aria-pressed={tool === 'fill'}
+            style={{ ...styles.iconButton, ...(tool === 'fill' ? styles.iconButtonActive : null) }}
+            onClick={() => setTool('fill')}
+          >
+            <FillIcon />
+          </button>
+          <span style={styles.separator} />
+          {SIZE_ORDER.map((key) => (
             <button
+              key={key}
               type="button"
-              style={{ ...styles.segmentButton, ...(tool === 'eraser' ? styles.segmentButtonActive : null) }}
-              onClick={() => setTool('eraser')}
+              aria-label={key}
+              aria-pressed={brushSize === key}
+              style={{ ...styles.iconButton, ...(brushSize === key ? styles.iconButtonActive : null) }}
+              onClick={() => setBrushSize(key)}
             >
-              Γόμα
+              <span
+                style={{
+                  ...styles.sizeDot,
+                  width: SIZE_DOT_PX[key],
+                  height: SIZE_DOT_PX[key],
+                  background: brushSize === key ? 'var(--bg-edge)' : 'var(--text-dim)',
+                }}
+              />
             </button>
-            <button
-              type="button"
-              style={{ ...styles.segmentButton, ...(tool === 'fill' ? styles.segmentButtonActive : null) }}
-              onClick={() => setTool('fill')}
-            >
-              Γέμισμα
-            </button>
-          </div>
-        </div>
-        <div style={styles.toolRow}>
-          <div style={styles.segmentGroup}>
-            {SIZE_ORDER.map((key) => (
-              <button
-                key={key}
-                type="button"
-                aria-label={key}
-                style={{ ...styles.sizeButton, ...(brushSize === key ? styles.segmentButtonActive : null) }}
-                onClick={() => setBrushSize(key)}
-              >
-                <span
-                  style={{
-                    ...styles.sizeDot,
-                    width: SIZE_DOT_PX[key],
-                    height: SIZE_DOT_PX[key],
-                    background: brushSize === key ? 'var(--bg-edge)' : 'var(--text-dim)',
-                  }}
-                />
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
         <div style={styles.buttonRow}>
           <button type="button" style={styles.button} onClick={undo} disabled={strokeCount === 0}>
@@ -652,41 +675,18 @@ const styles: Record<string, CSSProperties> = {
     border: '2px solid var(--border-strong)',
     background: PAPER,
   },
-  // The toggle itself sits inline in the tool row (never over the canvas),
-  // so criterion 1's "no overlap when collapsed" holds by construction. The
-  // expanded panel is the only part allowed to float over other controls,
-  // and only while the user has it open.
-  pickerAnchor: { position: 'relative' },
-  pickerToggle: {
-    width: '2.6rem',
-    height: '2.6rem',
-    padding: '0.3rem',
-    borderRadius: '0.75rem',
-    background: 'var(--surface-strong)',
-    border: '1px solid var(--border-strong)',
-    touchAction: 'manipulation',
-  },
-  pickerToggleSwatch: {
-    display: 'block',
-    width: '100%',
-    height: '100%',
-    borderRadius: '50%',
-    border: '2px solid rgba(255,255,255,0.5)',
-  },
-  pickerPanel: {
-    position: 'absolute',
-    left: 0,
-    bottom: 'calc(100% + 0.5rem)',
-    zIndex: 10,
+  // Task 63 - wheel, swatches, tools and sizes all in one row, wrapped in
+  // nowrap so it can never spill onto a second line and reclaim the
+  // vertical space the old 3-row toolbar spent. Every child is inline in
+  // normal flow (nothing absolute), so the wheel can never overlap the
+  // canvas above it at any width - criterion 2 holds by construction, not
+  // by measurement.
+  unifiedRow: {
     display: 'flex',
+    flexWrap: 'nowrap',
     alignItems: 'center',
-    gap: '0.4rem',
-    padding: '0.35rem',
-    borderRadius: '0.9rem',
-    background: 'rgba(18, 16, 42, 0.9)',
-    backdropFilter: 'blur(2px)',
-    touchAction: 'none',
-    boxShadow: '0 0.5rem 1.5rem rgba(0,0,0,0.35)',
+    gap: '0.2rem',
+    overflowX: 'auto',
   },
   wheel: {
     position: 'relative',
@@ -702,8 +702,8 @@ const styles: Record<string, CSSProperties> = {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    width: WHEEL_SIZE - 20,
-    height: WHEEL_SIZE - 20,
+    width: WHEEL_SIZE - 14,
+    height: WHEEL_SIZE - 14,
     borderRadius: '50%',
     border: '2px solid #ffffff',
     transform: 'translate(-50%, -50%)',
@@ -711,67 +711,51 @@ const styles: Record<string, CSSProperties> = {
   },
   wheelIndicator: {
     position: 'absolute',
-    width: 10,
-    height: 10,
+    width: 9,
+    height: 9,
     borderRadius: '50%',
     background: '#ffffff',
     border: '2px solid #12102a',
     transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
   },
-  swatchGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 16px)',
-    gridAutoRows: '16px',
-    gap: '4px',
-  },
   swatch: {
-    width: '16px',
-    height: '16px',
+    width: '34px',
+    height: '34px',
     borderRadius: '50%',
     border: '2px solid rgba(255,255,255,0.5)',
     padding: 0,
+    flexShrink: 0,
     touchAction: 'manipulation',
   },
   swatchActive: {
     border: '2px solid #ffffff',
     boxShadow: '0 0 0 2px rgba(255,255,255,0.8)',
   },
-  toolRow: { display: 'flex', gap: '0.5rem' },
-  segmentGroup: {
-    display: 'flex',
-    flex: 1,
-    gap: '0.35rem',
-    background: 'var(--surface-strong)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: '0.75rem',
-    padding: '0.25rem',
+  separator: {
+    width: '1px',
+    height: '22px',
+    flexShrink: 0,
+    background: 'var(--border-strong)',
+    margin: '0 0.15rem',
   },
-  segmentButton: {
-    flex: 1,
-    padding: '0.5rem 0.4rem',
-    fontSize: '0.85rem',
-    fontWeight: 700,
-    color: 'var(--text-dim)',
-    background: 'transparent',
-    border: 'none',
-    borderRadius: '0.5rem',
-    touchAction: 'manipulation',
-  },
-  segmentButtonActive: {
-    color: 'var(--text)',
-    background: 'var(--gold)',
-  },
-  sizeButton: {
-    flex: 1,
+  iconButton: {
+    width: '34px',
+    height: '34px',
+    flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0.5rem 0.4rem',
-    background: 'transparent',
-    border: 'none',
-    borderRadius: '0.5rem',
+    color: 'var(--text-dim)',
+    background: 'var(--surface-strong)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '0.6rem',
     touchAction: 'manipulation',
+  },
+  iconButtonActive: {
+    color: 'var(--bg-edge)',
+    background: 'var(--gold)',
+    borderColor: 'var(--gold)',
   },
   sizeDot: {
     display: 'block',
