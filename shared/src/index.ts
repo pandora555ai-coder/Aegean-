@@ -1296,52 +1296,78 @@ export const GUESS_REVEAL_DURATION_MS = 8_000;
 // - flat per guesser, no speed component (the drawer didn't race anyone).
 export const DRAWER_POINTS_PER_CORRECT_GUESSER = 100;
 
-// [correct, decoy1, decoy2, decoy3]. Converted from drawing-word-sets.md at
-// the repo root, which is the source of truth - edit that file first, then
-// mirror the change here.
-export type WordSet = readonly [correct: string, decoy1: string, decoy2: string, decoy3: string];
+// { words: [w1, w2, w3, w4], rotatable }. Converted from
+// drawing-word-sets.md at the repo root, which is the source of truth -
+// edit that file first, then mirror the change here. `rotatable: false`
+// means the target is always words[0]; `rotatable: true` means
+// prepareGame may pick ANY of the four as the target (Task 58) - every
+// row currently qualifies, but the field stays for a future set that
+// doesn't. Several words below appear in more than one set, so distinct
+// SETS no longer implies distinct TARGET words - see prepareGame's
+// dealAssignment.
+export interface WordSet {
+  readonly words: readonly [w1: string, w2: string, w3: string, w4: string];
+  readonly rotatable: boolean;
+}
 
 export const WORD_SETS: readonly WordSet[] = [
-  ['Γάτα', 'Σκύλος', 'Λαγός', 'Αλεπού'],
-  ['Σκύλος', 'Γάτα', 'Λύκος', 'Αρκούδα'],
-  ['Ήλιος', 'Φεγγάρι', 'Αστέρι', 'Σύννεφο'],
-  ['Φεγγάρι', 'Ήλιος', 'Αστέρι', 'Πλανήτης'],
-  ['Δέντρο', 'Λουλούδι', 'Θάμνος', 'Φυτό'],
-  ['Σπίτι', 'Πύργος', 'Καλύβα', 'Κτίριο'],
-  ['Αυτοκίνητο', 'Λεωφορείο', 'Μοτοσικλέτα', 'Ποδήλατο'],
-  ['Ποδήλατο', 'Αυτοκίνητο', 'Μοτοσικλέτα', 'Πατίνι'],
-  ['Ψάρι', 'Καρχαρίας', 'Δελφίνι', 'Χταπόδι'],
-  ['Πουλί', 'Πεταλούδα', 'Νυχτερίδα', 'Μέλισσα'],
-  ['Βάρκα', 'Πλοίο', 'Καράβι', 'Υποβρύχιο'],
-  ['Αεροπλάνο', 'Ελικόπτερο', 'Μπαλόνι', 'Πύραυλος'],
-  ['Καρέκλα', 'Τραπέζι', 'Καναπές', 'Κρεβάτι'],
-  ['Τραπέζι', 'Καρέκλα', 'Ντουλάπα', 'Ράφι'],
-  ['Βιβλίο', 'Εφημερίδα', 'Περιοδικό', 'Τετράδιο'],
-  ['Ρολόι', 'Ημερολόγιο', 'Ξυπνητήρι', 'Κομπολόι'],
-  ['Ομπρέλα', 'Καπέλο', 'Βροχή', 'Σκιάδι'],
-  ['Κιθάρα', 'Βιολί', 'Πιάνο', 'Τύμπανο'],
-  ['Μπάλα', 'Κύβος', 'Κύκλος', 'Δαχτυλίδι'],
-  ['Καπέλο', 'Κράνος', 'Στέμμα', 'Μαντήλι'],
-  ['Παπούτσι', 'Μπότα', 'Σανδάλι', 'Κάλτσα'],
-  ['Ελέφαντας', 'Ρινόκερος', 'Ιπποπόταμος', 'Καμήλα'],
-  ['Λιοντάρι', 'Τίγρης', 'Λεοπάρδαλη', 'Πάνθηρας'],
-  ['Φίδι', 'Σκουλήκι', 'Χέλι', 'Δράκος'],
-  ['Πεταλούδα', 'Μέλισσα', 'Λιβελλούλη', 'Σκόρος'],
-  ['Καράβι', 'Βάρκα', 'Σχεδία', 'Φάρος'],
-  ['Βουνό', 'Λόφος', 'Ηφαίστειο', 'Παγόβουνο'],
-  ['Θάλασσα', 'Λίμνη', 'Ποτάμι', 'Ωκεανός'],
-  ['Αστέρι', 'Ήλιος', 'Κομήτης', 'Πλανήτης'],
-  ['Καμήλα', 'Άλογο', 'Ελέφαντας', 'Λάμα'],
-  ['Άλογο', 'Ζέβρα', 'Γαϊδούρι', 'Ταύρος'],
-  ['Ζέβρα', 'Άλογο', 'Τίγρης', 'Πάντα'],
-  ['Κοάλα', 'Πάντα', 'Καγκουρό', 'Αρκούδα'],
-  ['Καγκουρό', 'Κοάλα', 'Λαγός', 'Ελάφι'],
-  ['Πιγκουίνος', 'Πάπια', 'Χήνα', 'Φλαμίνγκο'],
-  ['Χταπόδι', 'Καλαμάρι', 'Μέδουσα', 'Αστερίας'],
-  ['Καβούρι', 'Αστακός', 'Γαρίδα', 'Χελώνα'],
-  ['Χελώνα', 'Σαλιγκάρι', 'Σαύρα', 'Κροκόδειλος'],
-  ['Δράκος', 'Δεινόσαυρος', 'Φίδι', 'Χίμαιρα'],
-  ['Κάστρο', 'Πύργος', 'Παλάτι', 'Εκκλησία'],
+  // Sky and nature
+  { words: ['Φεγγάρι', 'Ήλιος', 'Αστέρι', 'Έκλειψη'], rotatable: true },
+  { words: ['Σύννεφο', 'Ομίχλη', 'Καπνός', 'Χιονοστιβάδα'], rotatable: true },
+  { words: ['Κεραυνός', 'Φωτιά', 'Βέλος', 'Πριόνι'], rotatable: true },
+  { words: ['Ηφαίστειο', 'Βουνό', 'Πυραμίδα', 'Σκηνή'], rotatable: true },
+  { words: ['Καταρράκτης', 'Ποτάμι', 'Σιντριβάνι', 'Βροχή'], rotatable: true },
+  { words: ['Δέντρο', 'Θάμνος', 'Λουλούδι', 'Φοίνικας'], rotatable: true },
+  { words: ['Κύμα', 'Θάλασσα', 'Λόφος', 'Αμμόλοφος'], rotatable: true },
+  // Buildings and structures
+  { words: ['Φάρος', 'Πύργος', 'Καμινάδα', 'Κολόνα'], rotatable: true },
+  { words: ['Ναός', 'Παλάτι', 'Εκκλησία', 'Θέατρο'], rotatable: true },
+  { words: ['Γέφυρα', 'Υδραγωγείο', 'Τείχος', 'Σκάλα'], rotatable: true },
+  { words: ['Ανεμόμυλος', 'Ανεμογεννήτρια', 'Μύλος', 'Έλικας'], rotatable: true },
+  { words: ['Κάστρο', 'Πύλη', 'Επάλξεις', 'Ταράτσα'], rotatable: true },
+  { words: ['Πηγάδι', 'Βαρέλι', 'Καζάνι', 'Κουβάς'], rotatable: true },
+  // Transport
+  { words: ['Βάρκα', 'Άγκυρα', 'Φεγγάρι', 'Χαμόγελο'], rotatable: true },
+  { words: ['Αεροπλάνο', 'Ελικόπτερο', 'Πύραυλος', 'Χαρταετός'], rotatable: true },
+  { words: ['Ποδήλατο', 'Μοτοσικλέτα', 'Πατίνι', 'Καρότσι'], rotatable: true },
+  { words: ['Τρένο', 'Λεωφορείο', 'Φορτηγό', 'Τραμ'], rotatable: true },
+  { words: ['Άρμα', 'Καρότσα', 'Τρακτέρ', 'Αλέτρι'], rotatable: true },
+  // Animals
+  { words: ['Λιοντάρι', 'Γάτα', 'Σκύλος', 'Λύκος'], rotatable: true },
+  { words: ['Ελέφαντας', 'Ρινόκερως', 'Ιπποπόταμος', 'Ταύρος'], rotatable: true },
+  { words: ['Καμηλοπάρδαλη', 'Καμήλα', 'Άλογο', 'Ελάφι'], rotatable: true },
+  { words: ['Δελφίνι', 'Φάλαινα', 'Καρχαρίας', 'Φώκια'], rotatable: true },
+  { words: ['Χταπόδι', 'Μέδουσα', 'Αστερίας', 'Καλαμάρι'], rotatable: true },
+  { words: ['Αετός', 'Κουκουβάγια', 'Γεράκι', 'Περιστέρι'], rotatable: true },
+  { words: ['Πεταλούδα', 'Μέλισσα', 'Λιβελούλα', 'Μύγα'], rotatable: true },
+  { words: ['Φίδι', 'Σκουλήκι', 'Χέλι', 'Σχοινί'], rotatable: true },
+  { words: ['Χελώνα', 'Σαλιγκάρι', 'Καβούρι', 'Ασπίδα'], rotatable: true },
+  { words: ['Σκαντζόχοιρος', 'Ποντίκι', 'Σκίουρος', 'Κάστανο'], rotatable: true },
+  // Food
+  { words: ['Καρπούζι', 'Πεπόνι', 'Μήλο', 'Ντομάτα'], rotatable: true },
+  { words: ['Μπανάνα', 'Πιπεριά', 'Αγγούρι', 'Κρουασάν'], rotatable: true },
+  { words: ['Παγωτό', 'Τούρτα', 'Κύπελλο', 'Χωνί'], rotatable: true },
+  { words: ['Πίτσα', 'Ρόδα', 'Ήλιος', 'Τιμόνι'], rotatable: true },
+  { words: ['Σταφύλι', 'Κεράσια', 'Μούρα', 'Μπαλόνια'], rotatable: true },
+  { words: ['Αυγό', 'Ελιά', 'Πέτρα', 'Πατάτα'], rotatable: true },
+  // Objects
+  { words: ['Ρολόι', 'Πυξίδα', 'Τιμόνι', 'Ρόδα'], rotatable: true },
+  { words: ['Κλειδί', 'Κουτάλι', 'Πιρούνι', 'Σφυρί'], rotatable: true },
+  { words: ['Ομπρέλα', 'Μανιτάρι', 'Καπέλο', 'Αλεξίπτωτο'], rotatable: true },
+  { words: ['Κιθάρα', 'Βιολί', 'Λύρα', 'Κουτάλα'], rotatable: true },
+  { words: ['Ψαλίδι', 'Πένσα', 'Τσιμπίδα', 'Σταυρός'], rotatable: true },
+  { words: ['Κερί', 'Φακός', 'Πυρσός', 'Μολύβι'], rotatable: true },
+  { words: ['Ζυγαριά', 'Κούνια', 'Κρεμάστρα', 'Άγκυρα'], rotatable: true },
+  { words: ['Κλεψύδρα', 'Ποτήρι', 'Παπιγιόν', 'Χωνί'], rotatable: true },
+  { words: ['Καθρέφτης', 'Πίνακας', 'Παράθυρο', 'Πόρτα'], rotatable: true },
+  { words: ['Σκάλα', 'Φράχτης', 'Ράγες', 'Πληκτρολόγιο'], rotatable: true },
+  // Ancient Athens
+  { words: ['Τρίαινα', 'Πιρούνι', 'Δόρυ', 'Τσουγκράνα'], rotatable: true },
+  { words: ['Ασπίδα', 'Χελώνα', 'Πιάτο', 'Ρόδα'], rotatable: true },
+  { words: ['Περικεφαλαία', 'Καπέλο', 'Μάσκα', 'Κρανίο'], rotatable: true },
+  { words: ['Αμφορέας', 'Βάζο', 'Μπουκάλι', 'Κύπελλο'], rotatable: true },
+  { words: ['Πάπυρος', 'Χάρτης', 'Πετσέτα', 'Σημαία'], rotatable: true },
+  { words: ['Στέμμα', 'Πριόνι', 'Φράχτης', 'Χτένα'], rotatable: true },
 ] as const;
 
 export interface DrawSubmitPayload {

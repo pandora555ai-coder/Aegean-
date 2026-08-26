@@ -40,12 +40,22 @@ import type { GameMode } from './types.js';
 // second game never sees a trace of the first: it now deletes any existing
 // entry unconditionally, up front, before deciding whether it can even deal
 // a fresh one in (Task 56b fix - see the comment there).
+// One player's dealt row plus WHICH of its four words they must draw. For a
+// non-rotatable row targetIndex is always 0; for a rotatable row it's
+// whichever index dealAssignment picked - see assignTargets below for how
+// it guarantees every player in the game gets a distinct target word even
+// though rows are no longer sufficient for that on their own (Task 58).
+interface DealtWord {
+  words: WordSet['words'];
+  targetIndex: number;
+}
+
 interface DrawState {
-  // playerId -> the word set they were dealt this game. Built once, in
-  // prepareGame, from players connected at that moment - never rebuilt
+  // playerId -> the row + target word they were dealt this game. Built once,
+  // in prepareGame, from players connected at that moment - never rebuilt
   // mid-game, so a late joiner simply has no word and can't be drawn into
   // the queue below.
-  assignment: Map<string, WordSet>;
+  assignment: Map<string, DealtWord>;
   // playerId -> the image they submitted, in SUBMISSION order (a Map
   // preserves insertion order) - this doubles as the guess queue's source
   // once DRAW ends. Players who never submitted are simply absent, which is
@@ -113,12 +123,50 @@ function shuffled<T>(items: readonly T[]): T[] {
   return copy;
 }
 
+// Picks one target index per dealt row - 0 for a non-rotatable row, any of
+// 0-3 for a rotatable one - such that the resulting target WORDS are all
+// distinct. Plain backtracking: rows are small in number (<= MAX_PLAYERS)
+// and each offers at most 4 candidates, so exhaustively trying every
+// candidate in a random order before giving up is cheap and, unlike a
+// pick-and-hope approach, is guaranteed to find a valid assignment
+// whenever one exists for this exact set of rows. Returns null only if no
+// such assignment exists at all (e.g. two non-rotatable rows sharing a
+// word[0], or a too-tightly-overlapping draw of rotatable rows).
+function assignTargets(rows: readonly WordSet[]): number[] | null {
+  const targetIndex = new Array<number>(rows.length).fill(-1);
+  const usedWords = new Set<string>();
+
+  function place(i: number): boolean {
+    if (i === rows.length) {
+      return true;
+    }
+    const row = rows[i];
+    const candidates = row.rotatable ? shuffled([0, 1, 2, 3]) : [0];
+    for (const idx of candidates) {
+      const word = row.words[idx];
+      if (usedWords.has(word)) {
+        continue;
+      }
+      usedWords.add(word);
+      targetIndex[i] = idx;
+      if (place(i + 1)) {
+        return true;
+      }
+      usedWords.delete(word);
+    }
+    return false;
+  }
+
+  return place(0) ? targetIndex : null;
+}
+
 // Deals one cycle's word sets to whoever is CURRENTLY connected - shared by
 // prepareGame (cycle 0) and advanceToNextCycleOrGameOver (cycle 1, if the
 // VIP picked 2 rounds). Returns null (logging why) rather than dealing
-// anyone in below DRAW_MIN_PLAYERS connected players, or if the word bank
-// somehow ran short - both callers treat null as "can't proceed".
-function dealAssignment(room: Room): Map<string, WordSet> | null {
+// anyone in below DRAW_MIN_PLAYERS connected players, if the word bank
+// somehow ran short, or if no duplicate-free target assignment could be
+// found - all callers treat null as "can't proceed".
+function dealAssignment(room: Room): Map<string, DealtWord> | null {
   const connected = getConnectedPlayers(room);
   if (connected.length < DRAW_MIN_PLAYERS) {
     console.log(
@@ -135,12 +183,28 @@ function dealAssignment(room: Room): Map<string, WordSet> | null {
     return null;
   }
 
-  const dealt = shuffled(WORD_SETS).slice(0, connected.length);
-  const assignment = new Map<string, WordSet>();
-  connected.forEach((player, index) => {
-    assignment.set(player.playerId, dealt[index]);
-  });
-  return assignment;
+  // Retried with a freshly reshuffled ROW selection, not just a reshuffled
+  // target search (assignTargets already exhausts every target combination
+  // for the rows it's given) - a different draw of rows is the only thing
+  // that can rescue a subset whose overlaps make it truly unsolvable.
+  const MAX_ATTEMPTS = 25;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const dealtRows = shuffled(WORD_SETS).slice(0, connected.length);
+    const targetIndex = assignTargets(dealtRows);
+    if (!targetIndex) {
+      continue;
+    }
+    const assignment = new Map<string, DealtWord>();
+    connected.forEach((player, index) => {
+      assignment.set(player.playerId, { words: dealtRows[index].words, targetIndex: targetIndex[index] });
+    });
+    return assignment;
+  }
+
+  console.log(
+    `room ${room.code} draw mode: couldn't find a duplicate-free target-word assignment for ${connected.length} players after ${MAX_ATTEMPTS} attempts`,
+  );
+  return null;
 }
 
 // Task 57 - room.settings.drawRounds, clamped defensively even though
@@ -231,12 +295,12 @@ export function buildDrawHostPayload(room: Room): DrawShowHostPayload | null {
 
 export function buildDrawPlayerPayload(room: Room, playerId: string): DrawShowPlayerPayload | null {
   const state = drawStateByRoom.get(room);
-  const wordSet = state?.assignment.get(playerId);
-  if (!state || !wordSet) {
+  const dealt = state?.assignment.get(playerId);
+  if (!state || !dealt) {
     return null; // never dealt into this game - nothing to show them
   }
   return {
-    wordToDraw: wordSet[0],
+    wordToDraw: dealt.words[dealt.targetIndex],
     durationMs: remainingActiveTimerMs(room),
     submitted: state.drawings.has(playerId),
     paused: room.paused,
@@ -393,9 +457,9 @@ function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
 function startGuessRound(room: Room, state: DrawState): void {
   const drawerId = state.queue[state.roundIndex];
   const drawer = room.players.get(drawerId);
-  const wordSet = state.assignment.get(drawerId);
+  const dealt = state.assignment.get(drawerId);
   const image = state.drawings.get(drawerId);
-  if (!drawer || !wordSet || image === undefined) {
+  if (!drawer || !dealt || image === undefined) {
     // Defensive only - every id in `queue` came from `drawings`, whose keys
     // are exactly `assignment`'s, and players are never removed from
     // room.players. Skips rather than crashing the room if this ever did fire.
@@ -403,9 +467,10 @@ function startGuessRound(room: Room, state: DrawState): void {
     return;
   }
 
-  const options = shuffled(wordSet);
+  const targetWord = dealt.words[dealt.targetIndex];
+  const options = shuffled(dealt.words);
   state.currentOptions = options;
-  state.currentCorrectIndex = options.indexOf(wordSet[0]);
+  state.currentCorrectIndex = options.indexOf(targetWord);
   state.guesses.clear();
   state.roundStartedAt = Date.now();
 
