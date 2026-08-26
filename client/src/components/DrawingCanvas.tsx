@@ -50,6 +50,22 @@ const SIZE_RATIOS: Record<SizeKey, number> = {
 const SIZE_ORDER: SizeKey[] = ['small', 'medium', 'large'];
 const SIZE_DOT_PX: Record<SizeKey, number> = { small: 6, medium: 10, large: 16 };
 
+// A destination-out erase can only ATTENUATE existing alpha proportionally
+// to its own edge coverage (result = a * (1 - a) at a shared anti-aliased
+// boundary), which never reaches exactly 0 unless the eraser's opaque core
+// fully swallows the ink's anti-aliased fringe first - a same-width erase
+// over the same-width ink leaves a faint dotted outline at every edge
+// pixel. The multiplier covers large sizes proportionally; the +3px floor
+// is what actually matters at 'small', where 60% of a ~2px line still
+// isn't a full pixel of extra reach.
+const ERASER_WIDTH_MULTIPLIER = 1.6;
+const ERASER_WIDTH_FLOOR_PX = 3;
+
+function strokeLineWidth(tool: Tool, size: SizeKey, canvasSize: number): number {
+  const base = canvasSize * SIZE_RATIOS[size];
+  return tool === 'eraser' ? Math.max(base * ERASER_WIDTH_MULTIPLIER, base + ERASER_WIDTH_FLOOR_PX) : base;
+}
+
 const INK = '#12102a';
 const PAPER = '#ffffff';
 
@@ -271,7 +287,7 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, canvasSize: n
   }
 
   prepareContext(ctx, stroke.tool, stroke.color);
-  ctx.lineWidth = canvasSize * SIZE_RATIOS[stroke.size];
+  ctx.lineWidth = strokeLineWidth(stroke.tool, stroke.size, canvasSize);
 
   // A tap is a dot, not a zero-length line - a stroked path of one point
   // paints nothing at all in canvas 2D.
@@ -324,14 +340,15 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       onStrokeCountChange?.(strokeCount);
     }, [onStrokeCountChange, strokeCount]);
 
-    const redraw = useCallback(() => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      if (!canvas || !ctx) {
-        return;
-      }
-
-      const size = sizeRef.current;
+    // Replays every stroke as ONE continuous path each (round joins along
+    // its whole length, not the many separate round-capped segments a live
+    // drag paints per pointermove) - a single destination-out composite per
+    // stroke, so an eraser clears to true alpha 0 with no seam left behind
+    // from overlapping partial-alpha caps. Deliberately does NOT flatten to
+    // paper: callers that need the canvas to look solid (resize) flatten
+    // afterwards themselves; a plain post-stroke replay must leave erased/
+    // background pixels genuinely transparent, not bake them opaque.
+    const replayStrokes = useCallback((ctx: CanvasRenderingContext2D, size: number) => {
       ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, size, size);
       for (const stroke of strokesRef.current) {
@@ -340,8 +357,19 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       if (currentStrokeRef.current) {
         drawStroke(ctx, currentStrokeRef.current, size);
       }
-      flattenToPaper(ctx, size);
     }, []);
+
+    const redraw = useCallback(() => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (!canvas || !ctx) {
+        return;
+      }
+
+      const size = sizeRef.current;
+      replayStrokes(ctx, size);
+      flattenToPaper(ctx, size);
+    }, [replayStrokes]);
 
     // The canvas backing store follows its laid-out size x devicePixelRatio
     // (capped at 2 - a 3x phone gains nothing visible here and pays for it
@@ -437,7 +465,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
       const canvasSize = sizeRef.current;
       prepareContext(ctx, stroke.tool, stroke.color);
-      ctx.lineWidth = canvasSize * SIZE_RATIOS[stroke.size];
+      ctx.lineWidth = strokeLineWidth(stroke.tool, stroke.size, canvasSize);
       ctx.beginPath();
       const last = stroke.points[stroke.points.length - 1];
       ctx.moveTo(last.x * canvasSize, last.y * canvasSize);
@@ -464,6 +492,18 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       if (stroke && stroke.points.length > 0) {
         strokesRef.current.push(stroke);
         setStrokeCount(strokesRef.current.length);
+        // The live gesture just painted this stroke as many separate
+        // per-move segments, each its own destination-out composite - the
+        // anti-aliased caps between them don't sum to full transparency,
+        // leaving a faint dotted trace behind an eraser stroke. Replaying
+        // the finished stroke as ONE continuous path erases it in a single
+        // clean pass. Not the flattening redraw() - this must leave a
+        // genuinely erased spot at alpha 0, not bake it opaque.
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (canvas && ctx) {
+          replayStrokes(ctx, sizeRef.current);
+        }
       }
     }
 
@@ -564,23 +604,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             onPointerCancel={handlePointerUp}
           />
         </div>
-        {/* Task 63 - the whole toolbar in one row: wheel, the two fixed
-            swatches, the three tools and the three sizes, each cluster split
+        {/* Task 63 - the whole toolbar in one row: the two fixed swatches,
+            the wheel, the three tools and the three sizes, each cluster split
             by a thin separator. The wheel sits inline here (never absolute,
             never over the canvas) so criterion 2 holds at every width by
             construction, not by measurement. */}
         <div style={styles.unifiedRow}>
-          <div
-            ref={wheelRef}
-            style={styles.wheel}
-            onPointerDown={handleWheelPointerDown}
-            onPointerMove={handleWheelPointerMove}
-            onPointerUp={handleWheelPointerUp}
-            onPointerCancel={handleWheelPointerUp}
-          >
-            <div style={{ ...styles.wheelCenter, background: color }} />
-            <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
-          </div>
           {SWATCHES.map((swatch) => (
             <button
               key={swatch.color}
@@ -594,6 +623,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
               }}
             />
           ))}
+          <div
+            ref={wheelRef}
+            style={styles.wheel}
+            onPointerDown={handleWheelPointerDown}
+            onPointerMove={handleWheelPointerMove}
+            onPointerUp={handleWheelPointerUp}
+            onPointerCancel={handleWheelPointerUp}
+          >
+            <div style={{ ...styles.wheelCenter, background: color }} />
+            <div style={{ ...styles.wheelIndicator, left: indicatorX, top: indicatorY }} />
+          </div>
           <span style={styles.separator} />
           <button
             type="button"
