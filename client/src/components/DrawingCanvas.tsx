@@ -132,6 +132,21 @@ function colorToHueDegrees(color: string): number {
   return h < 0 ? h + 360 : h;
 }
 
+// Hue is defined as the clockwise angle from north (12 o'clock) - exactly
+// how the wheel's conic-gradient paints it (hue 0 at the top, increasing
+// clockwise). The pointer read and the indicator placement both go through
+// this one pair, so they share a zero point by construction and can't drift
+// apart into their own offsets again.
+function wheelOffsetToHue(dx: number, dy: number): number {
+  const deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  return (deg + 360) % 360;
+}
+
+function hueToWheelOffset(hueDeg: number, radius: number): { dx: number; dy: number } {
+  const rad = (hueDeg * Math.PI) / 180;
+  return { dx: radius * Math.sin(rad), dy: -radius * Math.cos(rad) };
+}
+
 function colorsClose(a: Rgba, b: Rgba, tolerance: number): boolean {
   return (
     Math.abs(a.r - b.r) <= tolerance &&
@@ -451,9 +466,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
       const rect = wheel.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      const angle = (Math.atan2(clientY - cy, clientX - cx) * 180) / Math.PI;
-      const normalized = Math.round((angle + 360) % 360);
-      selectColor(`hsl(${normalized}, 100%, 50%)`);
+      const hue = Math.round(wheelOffsetToHue(clientX - cx, clientY - cy));
+      selectColor(`hsl(${hue}, 100%, 50%)`);
     }
 
     function handleWheelPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -502,9 +516,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     }), []);
 
     const hue = useMemo(() => colorToHueDegrees(color), [color]);
-    const indicatorAngle = (hue * Math.PI) / 180;
-    const indicatorX = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.cos(indicatorAngle);
-    const indicatorY = WHEEL_SIZE / 2 + WHEEL_INDICATOR_RADIUS * Math.sin(indicatorAngle);
+    const { dx: indicatorDx, dy: indicatorDy } = hueToWheelOffset(hue, WHEEL_INDICATOR_RADIUS);
+    const indicatorX = WHEEL_SIZE / 2 + indicatorDx;
+    const indicatorY = WHEEL_SIZE / 2 + indicatorDy;
 
     return (
       <div style={styles.wrapper}>
