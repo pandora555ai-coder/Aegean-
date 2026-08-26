@@ -86,10 +86,10 @@ export function scoreNumericSubmissions(
 
   return withDistance.map((item) => {
     const rank = ranks.get(item.playerId) ?? n;
-    // base = round(400 * (0.25 + 0.75 * (N - rank + 1) / N)) - a single
-    // player is the N<=1 edge case (division by N is otherwise fine, but the
-    // spec calls it out explicitly as always 400).
-    const base = n <= 1 ? 400 : Math.round(400 * (0.25 + (0.75 * (n - rank + 1)) / n));
+    // base = round(400 * (0.25 + 0.75 * (N - rank) / (N - 1))) - last place
+    // always gets a flat 25% of max, at any N. N<=1 is the edge case: N-1
+    // would divide by zero, and the spec calls it out explicitly as 400.
+    const base = n <= 1 ? 400 : Math.round(400 * (0.25 + (0.75 * (n - rank)) / (n - 1)));
     const exact = item.value !== null && item.value === answer;
     return { ...item, rank, exact, pointsAwarded: base + (exact ? 100 : 0) };
   });
