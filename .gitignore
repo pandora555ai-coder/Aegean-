@@ -3,3 +3,4 @@ dist
 .env
 dev/phase-screenshots
 client/public/voice/
+*.tar.gz
