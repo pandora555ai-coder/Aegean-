@@ -1286,15 +1286,18 @@ export interface DevDrawingReceivedPayload {
 // A room needs at least this many CONNECTED players before the mode will
 // prepare/start a game - below it there's no meaningful "guess someone
 // else's drawing" round to run.
-export const DRAW_MIN_PLAYERS = 3;
+export const DRAW_MIN_PLAYERS = 2;
 
 export const DRAW_DURATION_MS = 75_000;
 export const GUESS_DURATION_MS = 20_000;
 export const GUESS_REVEAL_DURATION_MS = 8_000;
 
-// The drawer's reward for a round, scaled by how many guessers got it right
-// - flat per guesser, no speed component (the drawer didn't race anyone).
-export const DRAWER_POINTS_PER_CORRECT_GUESSER = 100;
+// The drawer's reward for a round is a PROPORTION of eligible guessers who
+// got it right, not a flat count - so the max attainable per drawing is the
+// same regardless of how many players are in the room (Task 60). This is
+// the ceiling at 100% correct; tune after playtest.
+// drawerPointsAwarded = round(DRAWER_MAX_POINTS * correctGuessers / eligibleGuessers)
+export const DRAWER_MAX_POINTS = 400;
 
 // { words: [w1, w2, w3, w4], rotatable }. Converted from
 // drawing-word-sets.md at the repo root, which is the source of truth -

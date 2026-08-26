@@ -2,7 +2,7 @@ import {
   DRAW_DURATION_MS,
   DRAW_MIN_PLAYERS,
   DRAW_ROUNDS_OPTIONS,
-  DRAWER_POINTS_PER_CORRECT_GUESSER,
+  DRAWER_MAX_POINTS,
   DRAWING_MAX_BYTES,
   GUESS_DURATION_MS,
   GUESS_REVEAL_DURATION_MS,
@@ -672,8 +672,13 @@ export function buildGuessRevealPayload(room: Room): GuessRevealShowPayload | nu
 // connected guesser guessing) happens first wins, and clearActiveTimer
 // cancels the other path through the shared helper on an early end.
 // Scoring: guessers reuse calculatePoints (the same speed-bonus path
-// QUESTION rounds use); the drawer earns a flat
-// DRAWER_POINTS_PER_CORRECT_GUESSER per guesser who got it right.
+// QUESTION rounds use); the drawer earns a PROPORTION of eligible guessers
+// who got it right (round(DRAWER_MAX_POINTS * correctGuessers /
+// eligibleGuessers)), so the max per drawing is the same regardless of
+// player count - it measures how clear the drawing was, not how many
+// people showed up. `results` (built below from connected non-drawer
+// players) IS the eligible-guesser set: it already excludes the drawer and
+// anyone disconnected by reveal time.
 export function endGuessRound(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'GUESS') {
@@ -713,7 +718,13 @@ export function endGuessRound(code: RoomCode): void {
     });
   }
 
-  const drawerPointsAwarded = correctGuessers * DRAWER_POINTS_PER_CORRECT_GUESSER;
+  // eligibleGuessers is `results.length`, not a fresh count - it must be
+  // EXACTLY the set just scored above, or the proportion and the results
+  // array could disagree. Guarded against 0 (every guesser disconnected
+  // before reveal) so this can never divide by zero.
+  const eligibleGuessers = results.length;
+  const drawerPointsAwarded =
+    eligibleGuessers > 0 ? Math.round((DRAWER_MAX_POINTS * correctGuessers) / eligibleGuessers) : 0;
   if (drawer) {
     drawer.score += drawerPointsAwarded;
   }
