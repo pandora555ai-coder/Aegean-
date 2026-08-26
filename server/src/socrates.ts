@@ -1,4 +1,9 @@
-import type { Difficulty } from '@game/shared';
+import { lineHash, type Difficulty } from '@game/shared';
+
+// Task 61 - same dev/production idiom used elsewhere in the server (see
+// index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
+// the GAME_OVER summary below so neither ever runs in production.
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Socrates: the host persona (Task 37a - renamed from "Game Master", text
 // only, same module) - a teasing text commentator that reacts to what
@@ -15,17 +20,20 @@ import type { Difficulty } from '@game/shared';
 // tappable, which is the hard constraint this whole module exists under.
 
 export type Moment =
-  // HIGH - rare, dramatic. Bypasses the per-player cooldown.
-  | 'EVERYONE_WRONG'
-  | 'ONLY_ONE_CORRECT'
-  | 'EVERYONE_CORRECT'
+  // HIGH - genuinely rare STATES, not common distribution outcomes (Task 62
+  // re-tier: ONLY_ONE_CORRECT/EVERYONE_WRONG/EVERYONE_CORRECT moved to
+  // MEDIUM - those are just the frequent shapes a 4-option question's
+  // scoring takes, not rare events). Bypasses the per-player cooldown.
   | 'BIG_COMEBACK'
   | 'LEAD_CHANGE'
   | 'HOT_STREAK_5'
   | 'PERFECT_GAME_PACE'
-  // MEDIUM
-  | 'HOT_STREAK_3'
   | 'STREAK_BROKEN'
+  // MEDIUM
+  | 'EVERYONE_WRONG'
+  | 'ONLY_ONE_CORRECT'
+  | 'EVERYONE_CORRECT'
+  | 'HOT_STREAK_3'
   | 'SPEED_DEMON'
   | 'EASY_MISS'
   | 'HARD_HIT'
@@ -42,6 +50,11 @@ export type IntroMoment = 'FINAL_QUESTION' | 'HALFWAY_POINT' | 'CATEGORY_CALLOUT
 // 0 = HIGH (bypasses cooldown), 1 = MEDIUM, 2 = LOW.
 type Priority = 0 | 1 | 2;
 
+// Task 62: per-game fire cap, checked in recordRoundAndPickLine - once a
+// moment has fired this many times, it's skipped in favor of the next
+// candidate even if it still qualifies.
+const MOMENT_FIRE_CAP = 2;
+
 export interface SocratesPlayerRoundInput {
   playerId: string;
   name: string;
@@ -56,6 +69,7 @@ export interface SocratesRoundContext {
   questionIndex: number; // 0-based
   totalQuestions: number;
   difficulty: Difficulty;
+  stage: number; // 1-based, matches StageDefinition.stage - dev logging only (Task 61)
 }
 
 export interface SocratesQuestionIntroContext {
@@ -85,15 +99,23 @@ export interface SocratesState {
   // line twice" is a whole-game invariant, not scoped per moment or per
   // surface.
   usedLines: Set<string>;
+  // How many times each REVEAL Moment has actually been picked this game.
+  // Task 61: fed the dev-only GAME_OVER summary in logMomentFireSummary
+  // below. Task 62: now also load-bearing in all environments - the
+  // MOMENT_FIRE_CAP check in recordRoundAndPickLine reads it to skip a
+  // candidate once its moment has already fired twice, so a frequent
+  // moment can't crowd out rarer ones for a whole game.
+  momentFireCounts: Map<Moment, number>;
 }
 
 export function createSocratesState(): SocratesState {
-  return { players: new Map(), usedLines: new Set() };
+  return { players: new Map(), usedLines: new Set(), momentFireCounts: new Map() };
 }
 
 export function resetSocratesState(state: SocratesState): void {
   state.players.clear();
   state.usedLines.clear();
+  state.momentFireCounts.clear();
 }
 
 const MAX_NAME_DISPLAY_LENGTH = 12;
@@ -636,6 +658,132 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.': '[serious]',
 };
 
+// Task 62: a quality rating side table, same shape and rationale as
+// LINE_TAGS above - keyed by exact line TEMPLATE text, entirely separate
+// from the LINES pools themselves (so pool contents/order stay untouched).
+// pickLine below uses this only to WEIGHT which unused line in a pool gets
+// picked (genius 3x as likely as okish) - it never affects whether a line
+// can repeat (usedLines still governs that) or which moment/pool fires.
+// Only genius/okish outliers are marked explicitly; a line with no entry
+// here is 'good' by default, which carries the same weight as 'okish'+1 ==
+// unrated, so writing 'good' explicitly would be redundant - see
+// DEFAULT_LINE_WEIGHT below. Currently rates the REVEAL pools (LINES) only,
+// since those are the moments Task 62 is about; intro/one-shot pools are
+// unrated (all lines equally likely).
+export type LineRating = 'genius' | 'good' | 'okish';
+
+export const LINE_RATINGS: Partial<Record<string, LineRating>> = {
+  // EVERYONE_WRONG
+  'Κοιτάζω γύρω μου και δεν βλέπω ούτε μία σωστή απάντηση. Θα το θυμάμαι όταν έρθει η ώρα να διαλέξω.': 'genius',
+  'Ώστε συμφωνείτε όλοι. Κρίμα που συμφωνείτε στο λάθος.': 'genius',
+  'Τέτοια ομοφωνία την είχαμε μόνο όταν καταδικάζαμε κάποιον.': 'genius',
+  'Κοιτάξτε γύρω σας. Αυτοί είναι οι συνυποψήφιοί σας. Παρηγορηθείτε.': 'okish',
+  // ONLY_ONE_CORRECT
+  'Κάποιος τα κατάφερε, και όλοι οι άλλοι όχι. Αναρωτιέμαι αν το ήξερε ή αν του ήρθε. Μία φορά είναι τύχη· δύο, σοφία.':
+    'genius',
+  'Ένας ξεχώρισε χωρίς καν να το επιδιώξει. Αυτά είναι που προσέχω, και σπάνια τα ξεχνάω.': 'genius',
+  'Ώστε ένας μόνο κατάλαβε τι ρώτησα. Οι υπόλοιποι ξαναδιαβάστε την ερώτηση, με την ησυχία σας.': 'genius',
+  'Ένας ανάμεσα σε τόσους. Έτσι ξεχωρίζει κάποιος.': 'okish',
+  // EVERYONE_CORRECT
+  'Ομοφωνία. Ύποπτο πράγμα σε αίθουσα με τόσους φιλόδοξους.': 'genius',
+  'Το ήξεραν όλοι, άρα δεν έμαθα τίποτα για κανέναν σας. Θα το διορθώσω αυτό αμέσως.': 'genius',
+  'Κανένα λάθος. Θα κάνω την επόμενη δυσκολότερη.': 'okish',
+  'Ομόφωνα σωστό. Βαρετό, αλλά σωστό.': 'okish',
+  // BIG_COMEBACK
+  'Ώστε μπορούσες. Και το κράτησες κρυφό.': 'genius',
+  'Κάποιος γύρισε από εκεί που δεν γυρίζει κανείς. Ομολογώ ότι δεν τον είχα υπολογίσει.': 'genius',
+  'Από την τελευταία θέση ως εδώ, μπροστά σε όλους. Αυτό το εκτιμώ περισσότερο από όποιον καθόταν ήσυχος στην κορυφή.':
+    'genius',
+  'Κάποιος ανέβηκε από το πουθενά. Κοιτάτε, έτσι γίνεται.': 'okish',
+  'Γύρισε το παιχνίδι. Πού ήταν τόση ώρα αυτό;': 'okish',
+  'Κάποιος θυμήθηκε γιατί ήρθε.': 'okish',
+  // LEAD_CHANGE
+  'Άλλαξε η κορυφή. Ο θρόνος στην Αθήνα ποτέ δεν κράτησε πολύ.': 'genius',
+  'Ώστε αλλάζουν τα πράγματα εδώ μέσα. Καλά κάνουν — η βεβαιότητα με κουράζει περισσότερο από την άγνοια.': 'genius',
+  'Κάποιος πέρασε μπροστά, και μαζί πέρασε και ο στόχος στην πλάτη του. Θα το καταλάβει σύντομα.': 'genius',
+  'Κάποιος πέρασε μπροστά. Για πόσο;': 'okish',
+  // HOT_STREAK_5
+  'Πέντε στη σειρά χωρίς δισταγμό. Δεν ξέρω αν είναι γνώση ή πείσμα, και δεν είμαι σίγουρος ποιο προτιμώ.': 'genius',
+  'Πέντε συνεχόμενες σωστές, και το πλήθος σταμάτησε να μιλάει. Αρχίζω να πιστεύω ότι κάποιον τον υποτίμησα.':
+    'genius',
+  'Κάποιος τις παίρνει όλες. Η Αθήνα βρήκε το θέμα της.': 'okish',
+  'Πέντε συνεχόμενες. Οι υπόλοιποι, τι ακριβώς κάνετε;': 'okish',
+  // PERFECT_GAME_PACE
+  'Κανένα λάθος ως τώρα. Αυτό δεν είναι σοφία, είναι υπόσχεση.': 'genius',
+  "Άψογη πορεία μέχρι αυτή τη στιγμή. Και η στιγμή είναι πάντα πιο σύντομη απ' όσο νομίζετε.": 'genius',
+  'Καθαρή πορεία ως εδώ, χωρίς ούτε ένα λάθος. Έχω δει πολλές τέτοιες να λερώνονται, και πάντα ξαφνικά.': 'genius',
+  'Χωρίς λάθος μέχρι στιγμής. Με ανησυχεί.': 'okish',
+  // HOT_STREAK_3
+  'Τρεις σωστές στη σειρά, και άρχισα να παρακολουθώ πιο στενά. Δεν είναι πάντα καλό αυτό.': 'genius',
+  'Τρεις διαδοχικές. Κάτι συμβαίνει εδώ.': 'okish',
+  'Τρεις σωστές. Κάποιος εδώ ξέρει τι κάνει.': 'okish',
+  'Κάποιος δεν σταματάει. Κάντε κάτι.': 'okish',
+  // STREAK_BROKEN
+  'Τελείωσε το σερί. Όλα τελειώνουν, απλώς αυτό τελείωσε δημόσια.': 'genius',
+  'Τόσες σωστές στη σειρά, και μετά τίποτα. Έτσι ακριβώς τελειώνουν όλα τα σερί, και πάντα μπροστά σε κοινό.':
+    'genius',
+  'Σταμάτησε. Ήταν ωραία όσο κράτησε.': 'okish',
+  // SPEED_DEMON
+  'Ταχύτητα. Στην Αγορά ο πρώτος που μιλάει σπάνια έχει δίκιο.': 'genius',
+  'Τόση βιάση για μια ερώτηση που δεν επρόκειτο να φύγει πουθενά. Η γνώση περιμένει· εσείς όχι.': 'genius',
+  'Γρήγορα. Ελπίζω και σωστά.': 'okish',
+  // EASY_MISS
+  'Θα προσποιηθώ ότι δεν το είδα. Οι υπόλοιποι όμως το είδαν.': 'genius',
+  'Δεν χρειαζόταν γνώση εδώ, χρειαζόταν μόνο προσοχή. Και η προσοχή δεν κοστίζει τίποτα σε κανέναν.': 'genius',
+  'Εύκολη ερώτηση. Την έκανες δύσκολη χωρίς λόγο.': 'okish',
+  'Αυτό ήταν από τα εύκολα. Ήταν.': 'okish',
+  'Εύκολη ερώτηση, βαριά αστοχία.': 'okish',
+  // HARD_HIT
+  'Λίγοι θα το ήξεραν. Σημείωσα ποιος.': 'genius',
+  'Αυτό δεν το περίμενα από κανέναν σας, και το λέω χωρίς ειρωνεία. Συνεχίστε έτσι και θα το θυμάμαι.': 'genius',
+  'Σωστή απάντηση σε ερώτημα που θα δυσκόλευε και εμένα. Αυτά είναι που μετράνε στο τέλος, όχι τα εύκολα.': 'genius',
+  'Ώστε διαβάζεις. Επιτέλους κάποιος.': 'okish',
+  // COLD_STREAK_3
+  'Το πλήθος σταμάτησε να ελπίζει.': 'genius',
+  'Τρεις σερί αποτυχίες. Η σταθερότητα σου είναι αξιοθαύμαστη.': 'genius',
+  'Τρία λάθη στη σειρά. Υπάρχει μέθοδος εδώ.': 'okish',
+  'Κάτι δεν πάει καλά. Και το βλέπουν όλοι.': 'okish',
+  // NO_ANSWER
+  "Σιωπή απ' όλη την Αγορά. Θα την εκτιμούσα, αν ήταν επιλογή και όχι πανικός.": 'genius',
+  'Ο χρόνος πέρασε, και κάποιος τον άφησε να περάσει από πάνω του. Αυτό λέει περισσότερα από μια λάθος απάντηση.':
+    'genius',
+  'Σας περίμενα να μιλήσετε και δεν ήρθατε. Ο Σωκράτης έχει συνηθίσει να τον αποφεύγουν.': 'genius',
+  'Απολύτως τίποτα. Και το τίποτα κρύβει είτε σοφία είτε φόβο — ξέρω ποιο από τα δύο ήταν.': 'genius',
+  'Καμία απάντηση. Η σιωπή τουλάχιστον δεν λέει βλακείες.': 'okish',
+  'Ο χρόνος πέρασε. Κάποιος τον άφησε να περάσει.': 'okish',
+  // STUCK_IN_LAST
+  'Ο δρόμος προς τη σοφία ξεκινά εκεί που στέκεστε. Κάποιος στέκεται πολύ πίσω.': 'genius',
+  'Ακόμα εκεί κάτω, γύρο με τον γύρο. Αυτό λέει κάτι για την επιμονή, αν όχι για το μυαλό.': 'genius',
+  'Σας βλέπω όλους από εδώ που στέκομαι. Κάποιον τον βλέπω περισσότερο, και δεν είναι για καλό.': 'genius',
+  'Ακόμα στην τελευταία θέση. Υπάρχει μια σταθερότητα εδώ.': 'okish',
+  'Ο πάτος έχει κι αυτός τον φύλακά του.': 'okish',
+  'Κάποιος πρέπει να ορίζει το κάτω όριο. Ευχαριστούμε.': 'okish',
+  // CLOSE_SCORES
+  'Τόσο κοντά που η επόμενη κρίνει χαρακτήρες, όχι πόντους.': 'genius',
+  'Ισορροπία. Κάποιος πρέπει να τη χαλάσει.': 'okish',
+  'Στενό. Μου αρέσει όταν δεν ξέρω το τέλος.': 'okish',
+  // RUNAWAY_LEAD
+  'Κάποιος ξέφυγε τόσο μπροστά που δεν τον φτάνετε. Στην Αθήνα τέτοιους τους εξοστρακίζαμε, και όχι άδικα.': 'genius',
+  'Ένας τρέχει μόνος του και οι υπόλοιποι τον παρακολουθείτε ευγενικά. Δεν είναι αγώνας αυτό, είναι παρέλαση.':
+    'genius',
+  'Στην Αθήνα τον πρώτο τον εξοστρακίζαμε. Απλή υπενθύμιση.': 'genius',
+  'Κάποιος έχει ξεφύγει και κανείς σας δεν κάνει τίποτα.': 'okish',
+  'Ένας εναντίον όλων. Και κερδίζει.': 'okish',
+  'Σταματήστε τον. Παρακαλώ.': 'okish',
+  // GENERIC_TRANSITION
+  'Συνεχίζουμε. Η άγνοια δεν ξεκουράζεται.': 'genius',
+  'Προχωράμε. Κάποιος πρέπει να ξεχωρίσει.': 'okish',
+  'Επόμενο ερώτημα. Ελπίζω σε καλύτερα.': 'okish',
+};
+
+const RATING_WEIGHTS: Record<LineRating, number> = { genius: 3, good: 2, okish: 1 };
+const DEFAULT_LINE_WEIGHT = 2; // unrated == 'good'
+
+function lineWeight(template: string): number {
+  const rating = LINE_RATINGS[template];
+  return rating ? RATING_WEIGHTS[rating] : DEFAULT_LINE_WEIGHT;
+}
+
 // A picked line, in three forms: `text` is what's shown on screen
 // (placeholders substituted), `template` is the raw, un-substituted pool
 // entry - kept around so the REVEAL beat can hand it to the client for
@@ -648,14 +796,29 @@ export interface PickedLine {
   tag: string | null;
 }
 
+// Task 62: picks a WEIGHTED-random line among the still-unused entries in
+// `pool` (genius 3x as likely as okish - see LINE_RATINGS/lineWeight above).
+// Exhaustion is unaffected by weighting - once every line in the pool has
+// been used this game, this still returns null exactly as the old
+// first-unused-in-order version did.
 function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): PickedLine | null {
-  for (const template of pool) {
-    if (!state.usedLines.has(template)) {
-      state.usedLines.add(template);
-      return { template, text: substitute(template, vars), tag: LINE_TAGS[template] ?? null };
-    }
+  const unused = pool.filter((template) => !state.usedLines.has(template));
+  if (unused.length === 0) {
+    return null; // this moment's whole pool is exhausted this game
   }
-  return null; // this moment's whole pool is exhausted this game
+  const weights = unused.map(lineWeight);
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let roll = Math.random() * totalWeight;
+  let chosen = unused[unused.length - 1];
+  for (let i = 0; i < unused.length; i++) {
+    if (roll < weights[i]) {
+      chosen = unused[i];
+      break;
+    }
+    roll -= weights[i];
+  }
+  state.usedLines.add(chosen);
+  return { template: chosen, text: substitute(chosen, vars), tag: LINE_TAGS[chosen] ?? null };
 }
 
 // Tied scores share the same rank (1,1,3 - not 1,2,3), same convention used
@@ -762,22 +925,24 @@ export function recordRoundAndPickLine(
   const candidates: Candidate[] = [];
   const correctCount = results.filter((r) => r.correct).length;
 
-  // ---- HIGH ----
+  // ---- MEDIUM (distribution outcomes - common, not rare; Task 62) ----
   if (correctCount === 0) {
-    candidates.push({ moment: 'EVERYONE_WRONG', priority: 0, targetId: null, vars: {} });
+    candidates.push({ moment: 'EVERYONE_WRONG', priority: 1, targetId: null, vars: {} });
   }
   if (correctCount === results.length) {
-    candidates.push({ moment: 'EVERYONE_CORRECT', priority: 0, targetId: null, vars: {} });
+    candidates.push({ moment: 'EVERYONE_CORRECT', priority: 1, targetId: null, vars: {} });
   }
   if (correctCount === 1) {
     const only = results.find((r) => r.correct)!;
     candidates.push({
       moment: 'ONLY_ONE_CORRECT',
-      priority: 0,
+      priority: 1,
       targetId: only.playerId,
       vars: { name: safeNameForLine(only.name) },
     });
   }
+
+  // ---- HIGH ----
 
   // BIG_COMEBACK / LEAD_CHANGE need a genuine "before" to compare against -
   // meaningless on the very first question, where every previousRank is null.
@@ -840,6 +1005,20 @@ export function recordRoundAndPickLine(
     }
   }
 
+  // STREAK_BROKEN stayed HIGH in the re-tier (Task 62) - losing a streak is
+  // a genuinely rare turning point, unlike the distribution moments above.
+  for (const r of results) {
+    const p = state.players.get(r.playerId)!;
+    if (!r.correct && (preCorrectStreak.get(r.playerId) ?? 0) >= 3) {
+      candidates.push({
+        moment: 'STREAK_BROKEN',
+        priority: 0,
+        targetId: r.playerId,
+        vars: { name: safeNameForLine(r.name) },
+      });
+    }
+  }
+
   // ---- MEDIUM ----
   for (const r of results) {
     const p = state.players.get(r.playerId)!;
@@ -849,14 +1028,6 @@ export function recordRoundAndPickLine(
         priority: 1,
         targetId: r.playerId,
         vars: { name: safeNameForLine(r.name), n: '3' },
-      });
-    }
-    if (!r.correct && (preCorrectStreak.get(r.playerId) ?? 0) >= 3) {
-      candidates.push({
-        moment: 'STREAK_BROKEN',
-        priority: 1,
-        targetId: r.playerId,
-        vars: { name: safeNameForLine(r.name) },
       });
     }
     if (r.answerRank === 1 && p.fastestAnswerCount >= 3) {
@@ -937,6 +1108,13 @@ export function recordRoundAndPickLine(
   candidates.sort((a, b) => a.priority - b.priority);
 
   for (const candidate of candidates) {
+    // Task 62: cap any single moment at MOMENT_FIRE_CAP fires per game - on
+    // the 3rd qualification, skip to the next candidate instead of letting
+    // a frequent moment (e.g. ONLY_ONE_CORRECT) keep winning the round and
+    // starving rarer ones of a turn.
+    if ((state.momentFireCounts.get(candidate.moment) ?? 0) >= MOMENT_FIRE_CAP) {
+      continue;
+    }
     if (candidate.targetId) {
       const p = state.players.get(candidate.targetId)!;
       const onCooldown = context.questionIndex - p.lastTargetedAtQuestionIndex < 3;
@@ -952,6 +1130,12 @@ export function recordRoundAndPickLine(
     }
     if (candidate.targetId) {
       state.players.get(candidate.targetId)!.lastTargetedAtQuestionIndex = context.questionIndex;
+    }
+    state.momentFireCounts.set(candidate.moment, (state.momentFireCounts.get(candidate.moment) ?? 0) + 1);
+    if (!isProduction) {
+      console.log(
+        `[socrates] fired moment=${candidate.moment} stage=${context.stage} question=${context.questionIndex + 1} lineHash=${lineHash(line.template, line.tag)}`,
+      );
     }
     return line;
   }
@@ -1005,4 +1189,21 @@ export function pickStageIntroLine(state: SocratesState, stage: number): PickedL
 
 export function pickWinnerLine(state: SocratesState): PickedLine | null {
   return pickLine(state, WINNER_LINES, {});
+}
+
+// Task 61, dev-only: called once at GAME_OVER. Prints every Moment from
+// LINES (so rarer moments that never fired still show up as 0) alongside
+// how many times it actually got picked this game - the whole point being
+// to see which pools repeat and which never play in a real game.
+export function logMomentFireSummary(state: SocratesState, roomCode: string): void {
+  if (isProduction) {
+    return;
+  }
+  const allMoments = Object.keys(LINES) as Moment[];
+  const counts = allMoments.map((moment) => `${moment}=${state.momentFireCounts.get(moment) ?? 0}`);
+  const neverFired = allMoments.filter((moment) => !state.momentFireCounts.has(moment));
+  console.log(`[socrates] room ${roomCode} moment summary: ${counts.join(', ')}`);
+  console.log(
+    `[socrates] room ${roomCode} never fired (${neverFired.length}/${allMoments.length}): ${neverFired.length > 0 ? neverFired.join(', ') : 'none'}`,
+  );
 }

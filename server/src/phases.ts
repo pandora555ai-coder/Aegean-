@@ -18,6 +18,7 @@ import { armActiveTimer, clearActiveTimer } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints } from './scoring.js';
 import {
+  logMomentFireSummary,
   pickGameIntroLine,
   pickQuestionIntro,
   pickStageIntroLine,
@@ -427,6 +428,7 @@ export function endQuestion(code: RoomCode): void {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     difficulty: question.difficulty,
+    stage: stageOfQuestion(room.currentQuestionIndex).stage,
   });
 
   room.phase = 'REVEAL';
@@ -715,4 +717,5 @@ function finishGame(room: Room): void {
   const gameOverPayload = buildGameOver(room);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
+  logMomentFireSummary(room.socrates, room.code);
 }
