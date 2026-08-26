@@ -1586,6 +1586,18 @@ export const NUMERIC_QUESTION_DURATION_MS = 20_000;
 // exactly what the review tool's warning count is for.
 export const NUMERIC_ROUND_VALUES = [20, 50, 100, 200, 500, 1000, 2000, 5000] as const;
 export const NUMERIC_REVEAL_DURATION_MS = 8_000;
+// Task 68 - moved here for the SAME reason NUMERIC_ROUND_VALUES was: the
+// /dev/numeric review tool used to keep its own copy of this formula
+// (max / 200, no floor) and silently went stale the moment this one grew a
+// Math.max/Math.round - the tool kept showing fractional steps (0.25, 2.5)
+// after the mechanic itself was fixed. One function now, imported by both.
+// Must never return a fractional step: max/200 alone is only an integer
+// when max is itself a multiple of 200 (200, 1000, 2000, 5000) - max=500,
+// a real table entry, divides to 2.5. Rounding (not flooring) keeps ~200
+// steps across the range for every max, never landing on a fraction.
+export function sliderStepForMax(max: number): number {
+  return Math.max(1, Math.round(max / 200));
+}
 
 export interface NumericSubmitPayload {
   value: number; // clamped server-side to 0..max - never rejected out of range

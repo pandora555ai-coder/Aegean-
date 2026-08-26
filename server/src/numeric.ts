@@ -5,7 +5,7 @@
 // knows this is currently running as its own standalone mode; when Task 66
 // folds numeric estimate into the quiz as a stage, that shell is what gets
 // rewritten - this file should not have to change at all.
-import { NUMERIC_ROUND_VALUES, type PlayerStanding } from '@game/shared';
+import { NUMERIC_ROUND_VALUES, sliderStepForMax, type PlayerStanding } from '@game/shared';
 import { computeCompetitionRanks } from './payloads.js';
 import type {
   NumericQuestionShowHostPayload,
@@ -26,9 +26,9 @@ export function maxForAnswer(answer: number): number {
   return found ?? NUMERIC_ROUND_VALUES[NUMERIC_ROUND_VALUES.length - 1];
 }
 
-export function sliderStepForMax(max: number): number {
-  return max / 200;
-}
+// sliderStepForMax now lives in shared (see its own comment) - Task 68 found
+// the /dev/numeric review tool keeping its own copy of the OLD formula,
+// which had gone stale the moment this one grew a floor/round.
 
 // Out of range is CLAMPED, never rejected (spec) - a player dragging past
 // either end of the slider just lands on that end.
@@ -91,7 +91,15 @@ export function scoreNumericSubmissions(
     // would divide by zero, and the spec calls it out explicitly as 400.
     const base = n <= 1 ? 400 : Math.round(400 * (0.25 + (0.75 * (n - rank)) / (n - 1)));
     const exact = item.value !== null && item.value === answer;
-    return { ...item, rank, exact, pointsAwarded: base + (exact ? 100 : 0) };
+    // Task 68 - the +100 exact bonus is withheld at max<=50 (agree with the
+    // brief, not just deferring to it): at 21-51 whole-number positions,
+    // landing exactly stops measuring estimation and starts measuring
+    // whether you already knew the fact cold - a different thing from what
+    // this mode is for. `exact` itself stays a plain fact either way (the
+    // UI's gold-ring/"nailed it" feedback is harmless and still earned),
+    // only the POINTS are gated.
+    const exactBonus = exact && max > 50 ? 100 : 0;
+    return { ...item, rank, exact, pointsAwarded: base + exactBonus };
   });
 }
 
@@ -179,15 +187,10 @@ export function buildNumericRevealPayload(
   };
 }
 
-// First real content pass (Task 67's source list) - unreviewed. Judge these
-// at /dev/numeric before they ship; Keep/Cut choices there are what decide
-// the real pool, not this array's mere presence. One question from the
-// source list ("πόσους θεατές χωράει το αρχαίο θέατρο της Επιδαύρου" -
-// 14000) is deliberately NOT here: its answer exceeds 2000, so it has no
-// valid entry in NUMERIC_ROUND_VALUES (shared) and would silently get
-// max=5000 - either the table grows a 10000/20000 step, or the question
-// stays cut. Nothing here is time-sensitive (populations, prices, records,
-// "how many exist today") on purpose - those go stale.
+// Task 68 - the reviewed pool: 42 questions kept via /dev/numeric's Keep/Cut
+// out of the 49 Task 67 loaded (7 cut). Nothing here is time-sensitive
+// (populations, prices, records, "how many exist today") on purpose - those
+// go stale.
 export const NUMERIC_QUESTIONS: readonly NumericQuestion[] = [
   buildNumericQuestion('Πόσοι κίονες περιβάλλουν τον Παρθενώνα;', 46, 'Αρχαία Αθήνα'),
   buildNumericQuestion('Πόσα χρόνια έζησε ο Σωκράτης;', 71, 'Αρχαία Αθήνα'),
@@ -213,29 +216,22 @@ export const NUMERIC_QUESTIONS: readonly NumericQuestion[] = [
   buildNumericQuestion('Πόσοι μύες υπάρχουν περίπου στο ανθρώπινο σώμα;', 600, 'Σώμα'),
   buildNumericQuestion('Πόσα λίτρα αίμα έχει ένας ενήλικας;', 5, 'Σώμα'),
   buildNumericQuestion('Πόσες φορές χτυπά η καρδιά σε ένα λεπτό ηρεμίας;', 70, 'Σώμα'),
-  buildNumericQuestion('Πόσα οστά έχει το ανθρώπινο κρανίο;', 22, 'Σώμα'),
-  buildNumericQuestion('Πόσες καρδιές έχει το χταπόδι;', 3, 'Ζώα'),
   buildNumericQuestion('Πόσα δόντια έχει ένας ενήλικος σκύλος;', 42, 'Ζώα'),
   buildNumericQuestion('Πόσους σπονδύλους έχει ο λαιμός της καμηλοπάρδαλης;', 7, 'Ζώα'),
   buildNumericQuestion('Πόσες μέρες κρατά η κύηση του ελέφαντα;', 645, 'Ζώα'),
   buildNumericQuestion('Πόσα χρόνια ζει μια χελώνα των Γαλαπάγκος;', 150, 'Ζώα'),
   buildNumericQuestion('Πόσα μάτια έχει η μέλισσα;', 5, 'Ζώα'),
-  buildNumericQuestion('Πόσα πλοκάμια έχει το καλαμάρι;', 10, 'Ζώα'),
   buildNumericQuestion('Πόσοι πλανήτες υπάρχουν στο ηλιακό σύστημα;', 8, 'Διάστημα'),
   buildNumericQuestion('Πόσα δευτερόλεπτα κάνει το φως να φτάσει από τον Ήλιο στη Γη;', 499, 'Διάστημα'),
   buildNumericQuestion('Πόσες μέρες κάνει ο Άρης να κάνει τον γύρο του Ήλιου;', 687, 'Διάστημα'),
   buildNumericQuestion('Πόσα χρόνια κάνει ο Ποσειδώνας να κάνει τον γύρο του Ήλιου;', 165, 'Διάστημα'),
   buildNumericQuestion('Πόσες μέρες κάνει η Σελήνη να κάνει τον γύρο της Γης;', 27, 'Διάστημα'),
-  buildNumericQuestion('Πόσα φεγγάρια έχει ο Άρης;', 2, 'Διάστημα'),
-  buildNumericQuestion('Πόσες ζώνες ώρας έχει ο πλανήτης;', 24, 'Γεωγραφία'),
   buildNumericQuestion('Πόσα στοιχεία έχει ο περιοδικός πίνακας;', 118, 'Επιστήμη'),
   buildNumericQuestion('Πόσες μοίρες έχουν μαζί οι γωνίες ενός τριγώνου;', 180, 'Επιστήμη'),
-  buildNumericQuestion('Πόσα χρώματα έχει το ουράνιο τόξο;', 7, 'Επιστήμη'),
   buildNumericQuestion('Στους πόσους βαθμούς Κελσίου βράζει το νερό στο επίπεδο της θάλασσας;', 100, 'Επιστήμη'),
   buildNumericQuestion('Πόσα πλήκτρα έχει ένα πιάνο;', 88, 'Μουσική'),
   buildNumericQuestion('Πόσα τετράγωνα έχει η σκακιέρα;', 64, 'Παιχνίδια'),
   buildNumericQuestion('Πόσα πιόνια και κομμάτια έχει το σκάκι στην αρχή;', 32, 'Παιχνίδια'),
-  buildNumericQuestion('Πόσα φύλλα έχει μια τράπουλα με τους τζόκερ;', 54, 'Παιχνίδια'),
   buildNumericQuestion('Πόσες χορδές έχει το βιολί;', 4, 'Μουσική'),
   buildNumericQuestion('Πόσα χιλιόμετρα είναι ο μαραθώνιος;', 42, 'Αθλητισμός'),
 ];

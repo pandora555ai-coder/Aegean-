@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties } from 'react';
-import { ClientEvents, NUMERIC_ROUND_VALUES, ServerEvents, type DevNumericQuestionsPayload } from '@game/shared';
+import {
+  ClientEvents,
+  NUMERIC_ROUND_VALUES,
+  ServerEvents,
+  sliderStepForMax,
+  type DevNumericQuestionsPayload,
+} from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
 
@@ -43,9 +49,12 @@ interface DerivedQuestion {
 }
 
 // The EXACT same climb maxForAnswer (server/src/numeric.ts) runs, against
-// the SAME table (NUMERIC_ROUND_VALUES, shared) - the whole point of this
-// tool is checking the real formula, not a second copy of it that could
-// silently drift from what production actually does.
+// the SAME table AND the same step formula (NUMERIC_ROUND_VALUES /
+// sliderStepForMax, both shared) - the whole point of this tool is checking
+// the real formula, not a second copy of it that could silently drift from
+// what production actually does. It already did once (Task 68): this used
+// to compute `max / 200` inline and kept showing fractional steps for a
+// full deploy cycle after the mechanic itself was fixed to floor/round.
 function deriveQuestion(text: string, category: string, answer: number): DerivedQuestion {
   const threshold = 2.5 * answer;
   const found = NUMERIC_ROUND_VALUES.find((value) => value >= threshold);
@@ -57,7 +66,7 @@ function deriveQuestion(text: string, category: string, answer: number): Derived
     answer,
     max,
     hasValidMax,
-    sliderStep: max / 200,
+    sliderStep: sliderStepForMax(max),
     percent: (answer / max) * 100,
   };
 }
