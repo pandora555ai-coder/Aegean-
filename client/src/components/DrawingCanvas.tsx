@@ -235,7 +235,7 @@ function floodFill(ctx: CanvasRenderingContext2D, startX: number, startY: number
   const stack: number[] = [startX, startY];
   visited[startY * width + startX] = 1;
 
-  function tryPush(x: number, y: number) {
+  function tryPush(x: number, y: number, dx: number, dy: number) {
     if (x < 0 || y < 0 || x >= width || y >= height) {
       return;
     }
@@ -248,6 +248,23 @@ function floodFill(ctx: CanvasRenderingContext2D, startX: number, startY: number
     if (colorsClose(pixel, target, TOLERANCE)) {
       visited[vIdx] = 1;
       stack.push(x, y);
+      return;
+    }
+    // Task 66 - this pixel failed the tolerance test, but so would a solid
+    // stroke pixel one ring in from the fringe. Only paint it if it's still
+    // blending toward something further along the same direction (differs
+    // from that next pixel); one that already matches its neighbour is
+    // solid content, not anti-aliasing, and must be left alone.
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+      return;
+    }
+    const nIdx = (ny * width + nx) * 4;
+    const beyond: Rgba = { r: data[nIdx], g: data[nIdx + 1], b: data[nIdx + 2], a: data[nIdx + 3] };
+    if (!colorsClose(pixel, beyond, 6)) {
+      visited[vIdx] = 1;
+      data[pIdx] = fill.r; data[pIdx + 1] = fill.g; data[pIdx + 2] = fill.b; data[pIdx + 3] = fill.a;
     }
   }
 
@@ -260,10 +277,10 @@ function floodFill(ctx: CanvasRenderingContext2D, startX: number, startY: number
     data[idx + 2] = fill.b;
     data[idx + 3] = fill.a;
 
-    tryPush(x - 1, y);
-    tryPush(x + 1, y);
-    tryPush(x, y - 1);
-    tryPush(x, y + 1);
+    tryPush(x - 1, y, -1, 0);
+    tryPush(x + 1, y, 1, 0);
+    tryPush(x, y - 1, 0, -1);
+    tryPush(x, y + 1, 0, 1);
   }
 
   ctx.putImageData(imageData, 0, 0);
