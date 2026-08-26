@@ -25,8 +25,10 @@ npm install
 npm run dev
 ```
 
-This starts both the server (http://localhost:3001) and the client
-(http://localhost:5173) concurrently.
+This starts both the server (http://localhost:4001) and the client
+(http://localhost:5173) concurrently. Port 3001 is production
+(`party-game.service`) - dev never binds it, so the two can run side by
+side on the same box.
 
 - `/` — host screen (renders "HOST")
 - `/play` — controller screen (renders "PLAYER")

@@ -2,5 +2,6 @@ node_modules
 dist
 .env
 dev/phase-screenshots
-client/public/voice/
+client/public/voice
+client/public/voice-test/
 *.tar.gz
