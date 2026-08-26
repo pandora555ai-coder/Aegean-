@@ -6,6 +6,7 @@ import {
   ServerEvents,
   isDrawHostPayload,
   isGuessHostPayload,
+  isNumericQuestionHostPayload,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
@@ -22,6 +23,10 @@ import {
   type GuessShowHostPayload,
   type GuessShowPayload,
   type LobbyUpdatePayload,
+  type NumericProgressPayload,
+  type NumericQuestionShowHostPayload,
+  type NumericQuestionShowPayload,
+  type NumericRevealShowPayload,
   type PausedPayload,
   type PhaseChangedPayload,
   type PowerUpProgressPayload,
@@ -63,6 +68,8 @@ import { GameOverView } from './host/GameOverView';
 import { DrawView } from './host/DrawView';
 import { GuessView } from './host/GuessView';
 import { GuessRevealView } from './host/GuessRevealView';
+import { NumericQuestionView } from './host/NumericQuestionView';
+import { NumericRevealView } from './host/NumericRevealView';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -111,6 +118,14 @@ export default function HostScreen() {
   const [guessSecondsLeft, setGuessSecondsLeft] = useState(0);
   const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
   const [guessRevealSecondsLeft, setGuessRevealSecondsLeft] = useState(0);
+  // Numeric mode (Task 66) - same two-piece pattern as DRAW: the phase
+  // payload set once per phase/reconnect, and a separate progress ticker so
+  // a submission landing never resets the countdown effect below.
+  const [numericQuestion, setNumericQuestion] = useState<NumericQuestionShowHostPayload | null>(null);
+  const [numericProgress, setNumericProgress] = useState<NumericProgressPayload | null>(null);
+  const [numericQuestionSecondsLeft, setNumericQuestionSecondsLeft] = useState(0);
+  const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
+  const [numericRevealSecondsLeft, setNumericRevealSecondsLeft] = useState(0);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -215,6 +230,9 @@ export default function HostScreen() {
         setGuess(null);
         setGuessProgress(null);
         setGuessReveal(null);
+        setNumericQuestion(null);
+        setNumericProgress(null);
+        setNumericReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -422,6 +440,39 @@ export default function HostScreen() {
       }
     }
 
+    // Numeric mode (Task 66). The host branch of an asymmetric event -
+    // players get their own submitted flag, never sent here (see
+    // isNumericQuestionHostPayload).
+    function handleNumericQuestionShow(payload: NumericQuestionShowPayload) {
+      if (isNumericQuestionHostPayload(payload)) {
+        setGuess(null);
+        setGuessProgress(null);
+        setGuessReveal(null);
+        setNumericReveal(null);
+        setNumericQuestion(payload);
+        setNumericProgress(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    function handleNumericProgress(payload: NumericProgressPayload) {
+      setNumericProgress(payload);
+    }
+
+    // Public and symmetric, like reveal:show - the round is over, so every
+    // player's value and the correct answer are both safe to show now.
+    function handleNumericRevealShow(payload: NumericRevealShowPayload) {
+      setNumericQuestion(null);
+      setNumericProgress(null);
+      setNumericReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+      if (!pausedRef.current) {
+        playRevealCue();
+      }
+    }
+
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -461,6 +512,10 @@ export default function HostScreen() {
         setGuessSecondsLeft(seconds);
       } else if (phaseRef.current === 'GUESS_REVEAL') {
         setGuessRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'NUMERIC_QUESTION') {
+        setNumericQuestionSecondsLeft(seconds);
+      } else if (phaseRef.current === 'NUMERIC_REVEAL') {
+        setNumericRevealSecondsLeft(seconds);
       }
     }
 
@@ -495,6 +550,9 @@ export default function HostScreen() {
       setGuess(null);
       setGuessProgress(null);
       setGuessReveal(null);
+      setNumericQuestion(null);
+      setNumericProgress(null);
+      setNumericReveal(null);
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -591,6 +649,22 @@ export default function HostScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Numeric mode (Task 66) - same live-broadcast builders as the fresh
+        // phase entry, so a reconnect mid-NUMERIC_QUESTION/NUMERIC_REVEAL
+        // restores exactly the same screen (criterion 1).
+        case 'NUMERIC_QUESTION':
+          if (isNumericQuestionHostPayload(payload)) {
+            setNumericQuestion(payload);
+            setNumericProgress(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'NUMERIC_REVEAL':
+          setNumericReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -612,6 +686,9 @@ export default function HostScreen() {
     socket.on(ServerEvents.GUESS_SHOW, handleGuessShow);
     socket.on(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
+    socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
+    socket.on(ServerEvents.NUMERIC_PROGRESS, handleNumericProgress);
+    socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -637,6 +714,9 @@ export default function HostScreen() {
       socket.off(ServerEvents.GUESS_SHOW, handleGuessShow);
       socket.off(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
+      socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
+      socket.off(ServerEvents.NUMERIC_PROGRESS, handleNumericProgress);
+      socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -818,6 +898,45 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [guessReveal, paused]);
 
+  // Numeric mode (Task 66) - same pattern as DRAW/GUESS's above: `durationMs`
+  // is always the server's live remaining time (fresh phase or reconnect
+  // alike), so the interval can key off the phase object alone without a
+  // submission resetting it.
+  useEffect(() => {
+    if (!numericQuestion) {
+      return;
+    }
+    setNumericQuestionSecondsLeft(Math.ceil(numericQuestion.durationMs / 1000));
+  }, [numericQuestion]);
+
+  useEffect(() => {
+    if (!numericQuestion || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setNumericQuestionSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [numericQuestion, paused]);
+
+  // NUMERIC_REVEAL's progress bar - same pattern as REVEAL's above.
+  useEffect(() => {
+    if (!numericReveal) {
+      return;
+    }
+    setNumericRevealSecondsLeft(Math.ceil(numericReveal.autoAdvanceMs / 1000));
+  }, [numericReveal]);
+
+  useEffect(() => {
+    if (!numericReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setNumericRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [numericReveal, paused]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -992,6 +1111,33 @@ export default function HostScreen() {
           paused={paused}
           pausedByName={pausedByName}
           secondsLeft={guessRevealSecondsLeft}
+        />
+      );
+    }
+
+    // Numeric mode (Task 66).
+    if (phase === 'NUMERIC_QUESTION' && numericQuestion) {
+      return (
+        <NumericQuestionView
+          question={numericQuestion}
+          progress={numericProgress}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={numericQuestionSecondsLeft}
+          players={players}
+        />
+      );
+    }
+
+    if (phase === 'NUMERIC_REVEAL' && numericReveal) {
+      return (
+        <NumericRevealView
+          reveal={numericReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={numericRevealSecondsLeft}
         />
       );
     }

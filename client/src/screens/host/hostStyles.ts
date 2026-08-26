@@ -155,6 +155,42 @@ export function answeredAvatarSize(count: number): number {
   return 1.5 * densityScale(count);
 }
 
+// Numeric mode (Task 66) - NUMERIC_REVEAL's number line. Both the avatar
+// marker and the vertical space between stacked lanes shrink by the SAME
+// density-step factor, so their ratio (and therefore whether a lane's
+// content actually fits its own pitch) never changes across player counts -
+// verified against a real 8-player render (criterion 3).
+export function numericMarkerAvatarSize(count: number): number {
+  return 2 * densityScale(count);
+}
+
+export function numericLanePitch(count: number): number {
+  return 3.2 * densityScale(count);
+}
+
+// NUMERIC_TRACK_LANES stacked lanes above the baseline, plus fixed headroom
+// for the answer label above and the 0/max ticks below. 4 (not 3) because a
+// tight real-world cluster - several guesses landing within a few percent of
+// each other - needs one lane PER marker to stay legible; 3 forced a 4th
+// close marker into an already-occupied lane and its name label ran into
+// its neighbour's (verified against a real 8-player render).
+export const NUMERIC_TRACK_LANES = 4;
+
+export function numericTrackHeight(count: number): string {
+  return `${(1.8 + NUMERIC_TRACK_LANES * numericLanePitch(count) + 2.2).toFixed(2)}rem`;
+}
+
+// The marker name label - shrinks with player count like everything else on
+// this file, so a crowded lane's labels take less horizontal room to begin
+// with (on top of assignLanes giving each nearby marker its own lane).
+export function numericMarkerNameStyle(count: number): CSSProperties {
+  const s = densityScale(count);
+  return {
+    fontSize: `${(0.85 * s).toFixed(2)}rem`,
+    maxWidth: `${(5 * s).toFixed(2)}rem`,
+  };
+}
+
 export const styles: Record<string, CSSProperties> = {
   // Task 38 - the fixed two-column layout every in-game phase (QUESTION,
   // POWER_UP, REVEAL, STEAL) renders through: LEFT ~70% for the phase's own
@@ -895,5 +931,76 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '1.75rem',
     fontWeight: 600,
     color: 'var(--text-dim)',
+  },
+  // Numeric mode (Task 66) - NUMERIC_QUESTION's range readout and
+  // NUMERIC_REVEAL's number line. The line IS the reveal (see
+  // NumericRevealView's doc comment) - no separate per-player results list.
+  numericRange: {
+    fontSize: '2rem',
+    fontWeight: 700,
+    color: 'var(--text-dim)',
+    fontFamily: 'monospace',
+  },
+  numericAnswerBanner: {
+    fontSize: '1.75rem',
+    fontWeight: 700,
+    color: 'var(--gold)',
+  },
+  numericTrackWrap: {
+    position: 'relative',
+    width: '92%',
+    maxWidth: '1400px',
+    flexShrink: 0,
+  },
+  numericTrackLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '2.2rem',
+    height: '4px',
+    borderRadius: '999px',
+    background: 'var(--border-strong)',
+  },
+  numericTick: {
+    position: 'absolute',
+    bottom: 0,
+    fontSize: '1.1rem',
+    fontWeight: 700,
+    color: 'var(--text-faint)',
+    fontFamily: 'monospace',
+  },
+  numericAnswerLine: {
+    position: 'absolute',
+    top: '1.8rem',
+    bottom: '2.2rem',
+    width: '3px',
+    background: 'var(--gold)',
+    transform: 'translateX(-50%)',
+  },
+  numericAnswerLabel: {
+    position: 'absolute',
+    top: 0,
+    transform: 'translateX(-50%)',
+    fontSize: '1.1rem',
+    fontWeight: 800,
+    color: 'var(--gold)',
+    whiteSpace: 'nowrap',
+  },
+  numericMarker: {
+    position: 'absolute',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.15rem',
+    transform: 'translateX(-50%)',
+  },
+  numericMarkerName: {
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    color: 'var(--text)',
+    whiteSpace: 'nowrap',
+    maxWidth: '5rem',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
 };

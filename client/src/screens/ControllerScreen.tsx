@@ -15,6 +15,7 @@ import {
   ServerEvents,
   isDrawHostPayload,
   isGuessHostPayload,
+  isNumericQuestionHostPayload,
   isPowerUpHostPayload,
   isQuestionShowHostPayload,
   isRevealHostPayload,
@@ -37,6 +38,9 @@ import {
   type GuessShowPayload,
   type JoinRejectedPayload,
   type LobbyUpdatePayload,
+  type NumericQuestionShowPayload,
+  type NumericQuestionShowPlayerPayload,
+  type NumericRevealShowPayload,
   type PausedPayload,
   type PhaseChangedPayload,
   type PlayerJoinedPayload,
@@ -321,6 +325,16 @@ export default function ControllerScreen() {
   // GUESS_REVEAL - public and symmetric, so every phone (drawer included)
   // gets the same payload the TV does.
   const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
+  // Numeric mode (Task 66). `numericValue` is the ONE state the slider and
+  // the number input both read and write - dragging sets it directly,
+  // typing parses and clamps into it (see handleNumericInputChange). The
+  // send guard is a ref for the same one-send reasoning as drawSentRef.
+  const [numericQuestion, setNumericQuestion] = useState<NumericQuestionShowPlayerPayload | null>(null);
+  const [numericValue, setNumericValue] = useState(0);
+  const numericSentRef = useRef(false);
+  // NUMERIC_REVEAL - public and symmetric, so every phone gets the same
+  // payload the TV does; this phone's own row is found by playerId.
+  const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -367,6 +381,18 @@ export default function ControllerScreen() {
       guessSentRef.current = yourGuess !== null;
     }
 
+    // Numeric mode (Task 66) - set together for the same reason applyDraw
+    // is: the slider/input view and the send guard can never disagree about
+    // whether this phone already submitted. `submitted` is only ever true
+    // on a state:sync catching a phone up after it already locked in.
+    function applyNumericQuestion(payload: NumericQuestionShowPlayerPayload | null) {
+      setNumericQuestion(payload);
+      numericSentRef.current = payload?.submitted ?? false;
+      if (payload && !payload.submitted) {
+        setNumericValue(Math.round(payload.max / 2 / payload.sliderStep) * payload.sliderStep);
+      }
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -382,6 +408,8 @@ export default function ControllerScreen() {
         applyDraw(null);
         applyGuess(null);
         setGuessReveal(null);
+        applyNumericQuestion(null);
+        setNumericReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -541,6 +569,34 @@ export default function ControllerScreen() {
       setPausedByName(payload.pausedByName);
     }
 
+    // Numeric mode (Task 66) - the player branch of an asymmetric event. The
+    // host variant (submission counts, never a value) is not this screen's
+    // business.
+    function handleNumericQuestionShow(payload: NumericQuestionShowPayload) {
+      if (!isNumericQuestionHostPayload(payload)) {
+        setQuestion(null);
+        setReveal(null);
+        applyPowerUp(null);
+        applySteal(null);
+        applyDraw(null);
+        applyGuess(null);
+        setGuessReveal(null);
+        setNumericReveal(null);
+        applyNumericQuestion(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like guess_reveal:show - every phone gets the
+    // same payload the TV does, since the round is over.
+    function handleNumericRevealShow(payload: NumericRevealShowPayload) {
+      applyNumericQuestion(null);
+      setNumericReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
@@ -558,6 +614,8 @@ export default function ControllerScreen() {
       applyDraw(null);
       applyGuess(null);
       setGuessReveal(null);
+      applyNumericQuestion(null);
+      setNumericReveal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -586,6 +644,8 @@ export default function ControllerScreen() {
       applyDraw(null);
       applyGuess(null);
       setGuessReveal(null);
+      applyNumericQuestion(null);
+      setNumericReveal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -682,6 +742,21 @@ export default function ControllerScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Numeric mode (Task 66) - same reconnect reasoning as DRAW/GUESS
+        // above: applyNumericQuestion reads whatever this phone already did
+        // (locked in a value) straight from the server's own state.
+        case 'NUMERIC_QUESTION':
+          if (!isNumericQuestionHostPayload(payload)) {
+            applyNumericQuestion(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'NUMERIC_REVEAL':
+          setNumericReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -699,6 +774,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.DRAW_SHOW, handleDrawShow);
     socket.on(ServerEvents.GUESS_SHOW, handleGuessShow);
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
+    socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
+    socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -722,6 +799,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.DRAW_SHOW, handleDrawShow);
       socket.off(ServerEvents.GUESS_SHOW, handleGuessShow);
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
+      socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
+      socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -933,6 +1012,42 @@ export default function ControllerScreen() {
     guessSentRef.current = true;
     setGuessChoice(index);
     socket.emit(ClientEvents.DRAW_GUESS, { choice: index });
+  }
+
+  // Numeric mode (Task 66). Dragging the slider sets numericValue directly -
+  // a range input's own min/max already keep it in bounds. Typing goes
+  // through a clamp: an out-of-range value is accepted and snapped into
+  // 0..max rather than rejected (criterion 2), which is also what makes a
+  // value typed past max visibly clamp as each digit lands.
+  function handleNumericSliderChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!numericQuestion) {
+      return;
+    }
+    setNumericValue(Math.min(numericQuestion.max, Math.max(0, Number(event.target.value))));
+  }
+
+  function handleNumericInputChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!numericQuestion) {
+      return;
+    }
+    const raw = event.target.value;
+    if (raw === '' || raw === '-') {
+      return; // mid-edit (field cleared to retype) - nothing to clamp yet
+    }
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) {
+      setNumericValue(Math.min(numericQuestion.max, Math.max(0, parsed)));
+    }
+  }
+
+  // One tap, one send, ref-guarded like handleDrawSubmit.
+  function handleNumericSubmit() {
+    if (numericSentRef.current || paused || !numericQuestion) {
+      return;
+    }
+    numericSentRef.current = true;
+    setNumericQuestion((current) => (current ? { ...current, submitted: true } : current));
+    socket.emit(ClientEvents.NUMERIC_SUBMIT, { value: numericValue });
   }
 
   function handleStartGame() {
@@ -1206,6 +1321,131 @@ export default function ControllerScreen() {
             </div>
           </>
         ) : null}
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Numeric mode (Task 66) - NUMERIC_QUESTION. A slider and a number input
+  // drive ONE state (numericValue): dragging sets it directly, typing
+  // parses and clamps into it (see handleNumericInputChange/
+  // handleNumericSliderChange). The current value renders LARGE and ABOVE
+  // the input, since the numeric keyboard covers the lower half of the
+  // screen once that field is focused.
+  if (numericQuestion) {
+    const decimals = numericQuestion.sliderStep < 1 ? 1 : 0;
+    const formattedValue = numericValue.toFixed(decimals);
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        {numericQuestion.submitted ? (
+          <div style={styles.powerUpLocked} data-testid="numeric-submitted">
+            <div style={styles.powerUpLockedIcon}>🔢</div>
+            <div style={styles.powerUpLockedTitle}>Κλειδώθηκε!</div>
+            <div style={styles.powerUpLockedDetail}>Περίμενε τους υπόλοιπους...</div>
+          </div>
+        ) : (
+          <>
+            <div style={styles.category}>{numericQuestion.category}</div>
+            <div style={styles.title} data-testid="numeric-question-text">
+              {numericQuestion.text}
+            </div>
+            <div style={styles.numericValueDisplay} data-testid="numeric-value">
+              {formattedValue}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={numericQuestion.max}
+              step={numericQuestion.sliderStep}
+              value={numericValue}
+              onChange={handleNumericSliderChange}
+              style={styles.numericSlider}
+              data-testid="numeric-slider"
+              disabled={paused}
+            />
+            <div style={styles.numericRangeLabels}>
+              <span>0</span>
+              <span>{numericQuestion.max}</span>
+            </div>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={numericQuestion.max}
+              step={numericQuestion.sliderStep}
+              value={formattedValue}
+              onChange={handleNumericInputChange}
+              style={styles.numericNumberInput}
+              data-testid="numeric-number-input"
+              disabled={paused}
+            />
+            <button
+              type="button"
+              data-testid="numeric-submit-button"
+              style={paused ? styles.buttonDisabled : styles.button}
+              onClick={handleNumericSubmit}
+              disabled={paused}
+            >
+              Υποβολή
+            </button>
+          </>
+        )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+      </div>
+    );
+  }
+
+  // Numeric mode (Task 66) - NUMERIC_REVEAL. Public and symmetric like
+  // guess_reveal:show - every phone gets the same payload the TV does, so
+  // this finds its own row by playerId rather than being told a role.
+  if (numericReveal) {
+    const myResult = numericReveal.results.find((result) => result.playerId === playerId) ?? null;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.revealCorrectOption} data-testid="numeric-reveal-answer">
+          Σωστή απάντηση: {numericReveal.answer}
+        </div>
+        {myResult && (
+          <>
+            <div style={styles.revealTotal} data-testid="numeric-reveal-your-value">
+              {myResult.value !== null ? `Η εκτίμησή σου: ${myResult.value}` : 'Δεν πρόλαβες να απαντήσεις'}
+            </div>
+            <div
+              style={myResult.exact ? styles.revealCorrect : styles.revealTotal}
+              data-testid="numeric-reveal-verdict"
+            >
+              {myResult.exact ? 'Ακριβώς σωστά!' : `Θέση #${myResult.rank}`}
+            </div>
+            <div style={styles.revealPoints} data-testid="numeric-reveal-points">
+              +{myResult.pointsAwarded} πόντοι
+            </div>
+            <div style={styles.revealTotal} data-testid="numeric-reveal-total">
+              Σύνολο: {myResult.totalScore}
+            </div>
+          </>
+        )}
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
@@ -1935,6 +2175,44 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid var(--border-strong)',
     background: 'var(--surface)',
     color: 'var(--text)',
+  },
+  // Numeric mode (Task 66) - the value renders LARGE and ABOVE the slider/
+  // input on purpose: once the number input is focused, the on-screen
+  // keyboard covers roughly the lower half of the phone, and this is the
+  // one thing that still has to be visible above it.
+  numericValueDisplay: {
+    fontSize: '4rem',
+    fontWeight: 800,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+    color: 'var(--gold)',
+  },
+  numericSlider: {
+    width: '100%',
+    accentColor: 'var(--gold)',
+    height: '2.5rem',
+  },
+  numericRangeLabels: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: '-0.5rem',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--text-faint)',
+    fontFamily: 'monospace',
+  },
+  numericNumberInput: {
+    width: '100%',
+    fontSize: '1.5rem',
+    fontWeight: 700,
+    padding: '0.9rem 1rem',
+    boxSizing: 'border-box',
+    borderRadius: '0.5rem',
+    border: '1px solid var(--border-strong)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    textAlign: 'center',
   },
   button: {
     width: '100%',

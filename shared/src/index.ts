@@ -79,6 +79,9 @@ export const ServerEvents = {
   // NUMERIC_REVEAL is the one place it becomes safe to send.
   NUMERIC_QUESTION_SHOW: 'numeric_question:show',
   NUMERIC_REVEAL_SHOW: 'numeric_reveal:show',
+  // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
+  // has locked in, never what they guessed.
+  NUMERIC_PROGRESS: 'numeric:progress',
 } as const;
 
 export type RoomCode = string;
@@ -1576,6 +1579,7 @@ export interface NumericQuestionShowHostPayload {
   durationMs: number;
   submittedCount: number;
   totalPlayers: number;
+  submittedPlayerIds: string[]; // WHO has locked in - never their value
   paused: boolean;
   pausedByName: string | null;
   standings: PlayerStanding[];
@@ -1600,6 +1604,14 @@ export function isNumericQuestionHostPayload(
   payload: NumericQuestionShowPayload,
 ): payload is NumericQuestionShowHostPayload {
   return 'submittedCount' in payload;
+}
+
+// Host-only progress ticker (Task 66), same contract as draw:progress - who
+// has locked in, never their value.
+export interface NumericProgressPayload {
+  submittedCount: number;
+  totalPlayers: number;
+  submittedPlayerIds: string[];
 }
 
 // Public and symmetric, like reveal:show - the round is over, so the real
@@ -1689,4 +1701,5 @@ export type ServerToClientEvents = {
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
   [ServerEvents.NUMERIC_QUESTION_SHOW]: (payload: NumericQuestionShowPayload) => void;
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
+  [ServerEvents.NUMERIC_PROGRESS]: (payload: NumericProgressPayload) => void;
 };

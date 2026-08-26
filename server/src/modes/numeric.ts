@@ -123,6 +123,7 @@ export function buildNumericQuestionHostShow(room: Room): NumericQuestionShowHos
     remainingActiveTimerMs(room),
     state.submissions.size,
     getConnectedPlayers(room).length,
+    Array.from(state.submissions.keys()),
     room.paused,
     room.pausedByName,
     computeStandings(room),
@@ -185,6 +186,7 @@ export function submitNumericAnswer(room: Room, playerId: string, rawValue: numb
 
   const question = currentQuestion(state);
   state.submissions.set(playerId, clampNumericValue(rawValue, question.max));
+  broadcastNumericProgress(room, state);
   console.log(
     `room ${room.code} numeric submit from ${playerId} - ${state.submissions.size}/${getConnectedPlayers(room).length} submitted`,
   );
@@ -193,6 +195,19 @@ export function submitNumericAnswer(room: Room, playerId: string, rawValue: numb
     endNumericQuestion(room.code);
   }
   return true;
+}
+
+// Task 66 - host-only, same shape/discipline as draw.ts's broadcastDrawProgress:
+// WHO has locked in, never their value.
+function broadcastNumericProgress(room: Room, state: NumericState): void {
+  if (!room.hostSocketId) {
+    return;
+  }
+  io.to(room.hostSocketId).emit(ServerEvents.NUMERIC_PROGRESS, {
+    submittedCount: state.submissions.size,
+    totalPlayers: getConnectedPlayers(room).length,
+    submittedPlayerIds: Array.from(state.submissions.keys()),
+  });
 }
 
 // Re-run whenever a player disconnects during NUMERIC_QUESTION - the player
