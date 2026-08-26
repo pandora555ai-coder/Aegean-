@@ -28,6 +28,10 @@ export const ClientEvents = {
   // room/phase check. This one exists so the surface can be tried on a
   // real phone and the wire size measured.
   DEV_SUBMIT_DRAWING: 'dev:submit_drawing',
+  // Task 67 - dev-only content-review harness (/dev/numeric). Same spirit as
+  // DEV_SUBMIT_DRAWING above: no room, no phase, just a request for the raw
+  // question pool so it can be judged before it ships.
+  DEV_GET_NUMERIC_QUESTIONS: 'dev:get_numeric_questions',
   // Task 56a - the real drawing mode. DRAW_SUBMIT carries the finished
   // picture, DRAW_GUESS carries one guesser's pick among that round's 4
   // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
@@ -66,6 +70,8 @@ export const ServerEvents = {
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
   DEV_DRAWING_RECEIVED: 'dev:drawing_received',
+  // Task 67 - the response half of DEV_GET_NUMERIC_QUESTIONS above.
+  DEV_NUMERIC_QUESTIONS: 'dev:numeric_questions',
   // Task 56a - the drawing mode's own phases. DRAW/GUESS are asymmetric like
   // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
   // is finally safe to send), like reveal:show.
@@ -1316,6 +1322,15 @@ export interface DevDrawingReceivedPayload {
   format: string; // 'image/webp' | 'image/jpeg' | 'image/png'
 }
 
+// Task 67 - the /dev/numeric review tool's own request/response pair. The
+// raw pool as authored, nothing computed - max/sliderStep/validity are all
+// re-derived client-side (see NUMERIC_ROUND_VALUES's own comment) so the
+// tool is checking the SAME formula production runs, not trusting a value
+// the server already computed for it.
+export interface DevNumericQuestionsPayload {
+  questions: { text: string; category: string; answer: number }[];
+}
+
 // ----------------------- Drawing mode (Task 56a) --------------------------
 // A room needs at least this many CONNECTED players before the mode will
 // prepare/start a game - below it there's no meaningful "guess someone
@@ -1560,6 +1575,16 @@ export interface GuessRevealShowPayload {
 // merge only ever has to rewrite server/src/modes/numeric.ts, the shell.
 export const NUMERIC_MIN_PLAYERS = 2;
 export const NUMERIC_QUESTION_DURATION_MS = 20_000;
+// The round-value table maxForAnswer (server/src/numeric.ts) climbs to find
+// the smallest value at least 2.5x the answer - kept HERE, not there, so the
+// /dev/numeric review tool (client) can run the exact same "does a valid
+// round value even exist for this answer" check the server does, instead of
+// a second copy of these numbers that could drift. An answer over 2000
+// (2.5x > 5000, the table's own ceiling) has no valid entry - maxForAnswer
+// falls back to 5000 anyway rather than crashing, but that silently breaks
+// the "answer sits at 20-40% of the slider" design invariant, which is
+// exactly what the review tool's warning count is for.
+export const NUMERIC_ROUND_VALUES = [20, 50, 100, 200, 500, 1000, 2000, 5000] as const;
 export const NUMERIC_REVEAL_DURATION_MS = 8_000;
 
 export interface NumericSubmitPayload {
@@ -1661,6 +1686,7 @@ export type ClientToServerEvents = {
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
+  [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
@@ -1694,6 +1720,7 @@ export type ServerToClientEvents = {
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
+  [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
   [ServerEvents.DRAW_PROGRESS]: (payload: DrawProgressPayload) => void;
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;

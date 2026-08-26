@@ -85,6 +85,7 @@ import {
   recheckNumericPhaseOnDisconnect,
   submitNumericAnswer,
 } from './modes/numeric.js';
+import { NUMERIC_QUESTIONS } from './numeric.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -990,6 +991,20 @@ io.on('connection', (socket) => {
     const format = imageDataUrl.slice('data:'.length, imageDataUrl.indexOf(';'));
     console.log(`drawing from ${socket.id}: ${imageDataUrl.length} bytes (${format})`);
     socket.emit(ServerEvents.DEV_DRAWING_RECEIVED, { bytes: imageDataUrl.length, format });
+  });
+
+  // Task 67 - dev-only sink for the /dev/numeric review tool. No room and no
+  // player, same as DEV_SUBMIT_DRAWING above: it just hands back the raw
+  // question pool (text/category/answer only - max/sliderStep/validity are
+  // for the tool itself to derive, see DevNumericQuestionsPayload's comment).
+  socket.on(ClientEvents.DEV_GET_NUMERIC_QUESTIONS, () => {
+    socket.emit(ServerEvents.DEV_NUMERIC_QUESTIONS, {
+      questions: NUMERIC_QUESTIONS.map((question) => ({
+        text: question.text,
+        category: question.category,
+        answer: question.answer,
+      })),
+    });
   });
 
   // Task 56a - the real DRAW phase. All validation (phase, pause, size cap,

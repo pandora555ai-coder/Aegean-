@@ -5,7 +5,7 @@
 // knows this is currently running as its own standalone mode; when Task 66
 // folds numeric estimate into the quiz as a stage, that shell is what gets
 // rewritten - this file should not have to change at all.
-import type { PlayerStanding } from '@game/shared';
+import { NUMERIC_ROUND_VALUES, type PlayerStanding } from '@game/shared';
 import { computeCompetitionRanks } from './payloads.js';
 import type {
   NumericQuestionShowHostPayload,
@@ -17,9 +17,9 @@ import type {
 // The smallest round value at least 2.5x the answer - this keeps the correct
 // value sitting at 20-40% of the slider (never the midpoint, which would
 // give it away). 8 -> 20 is the boundary case: 2.5*8 is exactly 20, and 20
-// itself qualifies ("at least", not "strictly above").
-const NUMERIC_ROUND_VALUES = [20, 50, 100, 200, 500, 1000, 2000, 5000] as const;
-
+// itself qualifies ("at least", not "strictly above"). NUMERIC_ROUND_VALUES
+// itself lives in shared (see its own comment) so the /dev/numeric review
+// tool can run this exact same check client-side.
 export function maxForAnswer(answer: number): number {
   const threshold = 2.5 * answer;
   const found = NUMERIC_ROUND_VALUES.find((value) => value >= threshold);
