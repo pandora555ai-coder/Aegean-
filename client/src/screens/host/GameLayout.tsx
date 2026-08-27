@@ -14,6 +14,9 @@ interface GameLayoutProps {
   // question - the RIGHT column stays mounted throughout so the score
   // column never flashes just because the phase content changed.
   contentKey?: string | number;
+  // Ελαιογραφία palette pass (Task 87) - QUESTION only, opt-in. Every other
+  // phase omits this prop and renders exactly as before.
+  theme?: 'elaiografia';
   children: ReactNode;
 }
 
@@ -30,10 +33,13 @@ export function GameLayout({
   thiefPlayerId = null,
   victimPlayerId = null,
   contentKey,
+  theme,
   children,
 }: GameLayoutProps) {
+  const themedLayout =
+    theme === 'elaiografia' ? { ...styles.gameLayout, background: 'var(--ground)', color: 'var(--cream)' } : styles.gameLayout;
   return (
-    <div style={styles.gameLayout}>
+    <div style={themedLayout}>
       {roomCode && (
         <div style={styles.cornerRoomCode} data-testid="corner-room-code">
           {roomCode}
@@ -52,7 +58,7 @@ export function GameLayout({
       >
         {children}
       </div>
-      <PlayerScoresPanel standings={standings} thiefPlayerId={thiefPlayerId} victimPlayerId={victimPlayerId} />
+      <PlayerScoresPanel standings={standings} thiefPlayerId={thiefPlayerId} victimPlayerId={victimPlayerId} theme={theme} />
     </div>
   );
 }

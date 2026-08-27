@@ -1,0 +1,15 @@
+/* TODO: --gold is defined twice - here and in theme.css - and import
+   order (main.tsx) decides which wins app-wide. theme.css must be deleted
+   once all screens are ported to this palette. */
+:root {
+  --ground: #1B1710;
+  --deep: #0E0B07;
+  --panel: #241B12;
+  --pap-1: #E9D3A0;
+  --pap-2: #C9AC70;
+  --ink: #2A1D0E;
+  --wood: #8A6234;
+  --gold: #D8A75A;
+  --cream: #F2E3C4;
+  --dim: #9A8259;
+}

@@ -129,7 +129,20 @@ function shuffle<T>(items: T[]): T[] {
 export function getQuestionSet(mix: DifficultyMix, count: number): Question[] {
   const allowedDifficulties = DIFFICULTY_MIX_TO_ALLOWED[mix];
   const pool = QUESTIONS.filter((question) => allowedDifficulties.includes(question.difficulty));
-  const shuffled = shuffle(pool);
+  let shuffled = shuffle(pool);
+
+  // Dev-only measurement hook (Task 87) - pins the first question to a known
+  // id so a layout check can screenshot/measure a specific question's text
+  // deterministically instead of whatever the shuffle draws. Gated on
+  // NODE_ENV, not just presence of the var, so it can never fire in prod
+  // even if the env var leaks into that environment.
+  const forcedId = process.env.NODE_ENV !== 'production' ? process.env.FORCE_QUESTION_ID : undefined;
+  if (forcedId) {
+    const forced = QUESTIONS.find((question) => question.id === forcedId);
+    if (forced) {
+      shuffled = [forced, ...shuffled.filter((question) => question.id !== forcedId)];
+    }
+  }
 
   if (shuffled.length < count) {
     console.warn(

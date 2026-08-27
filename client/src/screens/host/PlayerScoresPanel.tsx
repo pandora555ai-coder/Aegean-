@@ -11,6 +11,9 @@ interface PlayerScoresPanelProps {
   // duplicating a second list elsewhere on screen. null outside STEAL.
   thiefPlayerId?: string | null;
   victimPlayerId?: string | null;
+  // Ελαιογραφία palette pass (Task 87) - QUESTION only, opt-in, threaded
+  // down from GameLayout. Every other phase omits this and is unaffected.
+  theme?: 'elaiografia';
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -109,12 +112,14 @@ function ScorePanelRow({
   rowSize,
   isThief,
   isVictim,
+  theme,
 }: {
   standing: PlayerStanding;
   avatarSize: number;
   rowSize: ReturnType<typeof sidebarRowSizeStyle>;
   isThief: boolean;
   isVictim: boolean;
+  theme?: 'elaiografia';
 }) {
   const displayScore = useAnimatedNumber(standing.score);
   const highlightColor = isThief ? 'var(--gold)' : isVictim ? 'var(--danger-text)' : undefined;
@@ -123,6 +128,7 @@ function ScorePanelRow({
     : standing.rank === 1
       ? styles.scorePanelRowLeader
       : styles.scorePanelRow;
+  const themedRowStyle = theme === 'elaiografia' ? { ...rowStyle, color: 'var(--cream)' } : rowStyle;
 
   return (
     <div
@@ -130,9 +136,11 @@ function ScorePanelRow({
       data-row-id={standing.playerId}
       data-thief={isThief}
       data-victim={isVictim}
-      style={{ ...rowStyle, ...rowSize }}
+      style={{ ...themedRowStyle, ...rowSize }}
     >
-      <span style={styles.scorePanelRank}>#{standing.rank}</span>
+      <span style={{ ...styles.scorePanelRank, color: theme === 'elaiografia' ? 'var(--cream)' : styles.scorePanelRank.color }}>
+        #{standing.rank}
+      </span>
       <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={highlightColor} />
       <span style={{ ...styles.scorePanelName, color: highlightColor ?? styles.scorePanelName.color }}>
         {standing.name}
@@ -151,7 +159,12 @@ function ScorePanelRow({
 // position when a score changes: useDisplayOrder holds the reorder back
 // until the counters above have finished tweening, then useFlip glides the
 // rows there via transform so the transfer reads before the standings move.
-export function PlayerScoresPanel({ standings, thiefPlayerId = null, victimPlayerId = null }: PlayerScoresPanelProps) {
+export function PlayerScoresPanel({
+  standings,
+  thiefPlayerId = null,
+  victimPlayerId = null,
+  theme,
+}: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
   const avatarSize = sidebarAvatarSize(count);
@@ -159,9 +172,15 @@ export function PlayerScoresPanel({ standings, thiefPlayerId = null, victimPlaye
   const containerRef = useRef<HTMLDivElement>(null);
   useFlip(containerRef, orderedStandings.map((s) => s.playerId).join('|'));
 
+  const panelStyle =
+    theme === 'elaiografia'
+      ? { ...styles.gameLayoutRight, background: 'var(--panel)', borderRadius: '1rem', padding: '1rem' }
+      : styles.gameLayoutRight;
+  const titleStyle = theme === 'elaiografia' ? { ...styles.scorePanelTitle, color: 'var(--cream)' } : styles.scorePanelTitle;
+
   return (
-    <div style={styles.gameLayoutRight}>
-      <div style={styles.scorePanelTitle}>Βαθμολογία</div>
+    <div style={panelStyle}>
+      <div style={titleStyle}>Βαθμολογία</div>
       <div
         ref={containerRef}
         style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }}
@@ -175,6 +194,7 @@ export function PlayerScoresPanel({ standings, thiefPlayerId = null, victimPlaye
             rowSize={rowSize as CSSVars}
             isThief={standing.playerId === thiefPlayerId}
             isVictim={standing.playerId === victimPlayerId}
+            theme={theme}
           />
         ))}
       </div>
