@@ -195,13 +195,17 @@ Port `3001` is intentionally never opened in ufw - it's only reachable via
 
 ## Updating the app later
 
+`deploy/deploy.sh` (run from the dev checkout, `/root/Aegean-`) is the
+**only supported update path**. It aborts on a dirty working tree or a
+failed `git pull --ff-only`, then rsyncs into `/opt/party-game`, rebuilds,
+and restarts the service.
+
+**`/opt/party-game` is NOT a git working copy.** Never `git pull`, `git`
+anything, or run a dev server there - it is written only by `deploy.sh`.
+
 ```bash
-cd /opt/party-game
-sudo -u partygame git pull
-sudo npm ci
-sudo npm run build
-sudo chown -R partygame:partygame /opt/party-game
-sudo systemctl restart party-game
+cd /root/Aegean-
+./deploy/deploy.sh
 ```
 
 ## Troubleshooting
