@@ -12,7 +12,7 @@
 //   npm run blitz:generate
 //
 // Task 69. Fails loudly (non-zero exit, no write) if the parse does not
-// yield exactly 78 statements split 39/39 - that balance is a spec
+// yield exactly 218 statements split 109/109 - that balance is a spec
 // guarantee the real mode will rely on.
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -55,8 +55,8 @@ console.log(`parsed ${rows.length} statements from blitz-statements.md`);
 console.log(`  isTrue:true  (Σ) = ${trueCount}`);
 console.log(`  isTrue:false (Λ) = ${falseCount}`);
 
-if (rows.length !== 78 || trueCount !== 39 || falseCount !== 39) {
-  console.error('ABORT: expected exactly 78 statements, 39 Σ and 39 Λ. Nothing written.');
+if (rows.length !== 218 || trueCount !== 109 || falseCount !== 109) {
+  console.error('ABORT: expected exactly 218 statements, 109 Σ and 109 Λ. Nothing written.');
   process.exit(1);
 }
 
