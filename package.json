@@ -16,7 +16,8 @@
     "voice:generate": "tsx dev/generate-voice-lines.ts",
     "voice:index": "tsx dev/generate-voice-index.ts",
     "blitz:generate": "tsx dev/generate-blitz-statements.ts",
-    "blitz:draw-check": "tsx dev/blitz-draw-check.ts"
+    "blitz:draw-check": "tsx dev/blitz-draw-check.ts",
+    "blitz:feed-check": "tsx dev/blitz-feed-check.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

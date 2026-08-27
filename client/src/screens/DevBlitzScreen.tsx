@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { BLITZ_DURATIONS_SEC, BLITZ_STATEMENTS, drawBlitzStatements, type BlitzStatement } from '@game/shared';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import {
+  BLITZ_DURATIONS_SEC,
+  advanceBlitzFeed,
+  startBlitzFeed,
+  type BlitzFeedState,
+  type BlitzStatement,
+} from '@game/shared';
 import { getBlitzDeviceId, recordAndUploadRound, retryUnsentBlitzRounds } from '../blitzUpload';
 
 // Task 69 - solo swipe minigame, reachable at /dev/blitz and linked from
@@ -84,6 +90,11 @@ const FLICK_VELOCITY = 0.6; // px per ms - a fast flick commits regardless of di
 const TAP_SLOP = 10; // px of total travel below which a press counts as a tap
 const MAX_TILT_DEG = 12;
 
+// Task 71 - the pose of the scroll mounted BEHIND the current one, and the
+// pose a freshly promoted scroll rises FROM on its way to centre.
+const STACK_ROT_DEG = -4;
+const STACK_SHIFT_PX = 14;
+
 type Screen = 'start' | 'round' | 'end';
 
 interface ExitingCard {
@@ -110,17 +121,21 @@ export default function DevBlitzScreen() {
 
   // round state
   const [current, setCurrent] = useState<BlitzStatement | null>(null);
+  const [buffered, setBuffered] = useState<BlitzStatement | null>(null); // Task 71 - the scroll mounted BEHIND
   const [stmtSeq, setStmtSeq] = useState(0); // bumps each advance so the live text remounts fresh
   const [answered, setAnswered] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(durationSec);
   const [drag, setDrag] = useState({ dx: 0, dy: 0 });
   const [springing, setSpringing] = useState(false);
+  // Task 71 - 0: settled (drags are instant), 1: painted at the stack pose
+  // with no transition, 2: transitioning from the stack pose to centre.
+  const [rise, setRise] = useState<0 | 1 | 2>(0);
   const [exiting, setExiting] = useState<ExitingCard[]>([]);
   const [summary, setSummary] = useState<RoundSummary | null>(null);
   const [copied, setCopied] = useState(false);
 
   // refs the timer / pointer closures read without going stale
-  const seenRef = useRef<string[]>(readList<string>(K_SEEN));
+  const feedRef = useRef<BlitzFeedState>({ current: null, buffer: null, seen: readList<string>(K_SEEN) });
   const currentRef = useRef<BlitzStatement | null>(null);
   const roundSwipesRef = useRef<SwipeEntry[]>([]);
   const roundStartRef = useRef(0);
@@ -133,15 +148,32 @@ export default function DevBlitzScreen() {
     | { id: number; startX: number; startY: number; lastX: number; lastT: number; vx: number; moved: number; done: boolean }
   >(null);
   const springTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const riseRafRef = useRef<number[]>([]);
+  const riseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Task 71 - promote the buffered scroll to current and refill the buffer.
+  // startBlitzFeed/advanceBlitzFeed (shared) own the rule that a statement
+  // is SEEN only once displayed, never while buffered. Then run the "rise":
+  // paint the new scroll at the stack pose for one frame, then let it
+  // transition forward to centre.
   const advance = useCallback(() => {
-    const { picks, seen } = drawBlitzStatements(seenRef.current, 1);
-    seenRef.current = seen;
-    writeJSON(K_SEEN, seen);
-    const next = picks[0] ?? null;
-    currentRef.current = next;
-    setCurrent(next);
+    const next = advanceBlitzFeed(feedRef.current);
+    feedRef.current = next;
+    writeJSON(K_SEEN, next.seen);
+    currentRef.current = next.current;
+    setCurrent(next.current);
+    setBuffered(next.buffer);
     setStmtSeq((n) => n + 1);
+
+    setRise(1);
+    riseRafRef.current.forEach(cancelAnimationFrame);
+    if (riseTimerRef.current) clearTimeout(riseTimerRef.current);
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => setRise(2));
+      riseRafRef.current = [r2];
+    });
+    riseRafRef.current = [r1];
+    riseTimerRef.current = setTimeout(() => setRise(0), 320);
   }, []);
 
   const finishRound = useCallback(() => {
@@ -270,6 +302,11 @@ export default function DevBlitzScreen() {
     };
     if (springTimerRef.current) clearTimeout(springTimerRef.current);
     setSpringing(false);
+    // Task 71 - a grab mid-rise takes instant control: kill the rise so the
+    // scroll is driven by transform only for the rest of the gesture.
+    if (riseTimerRef.current) clearTimeout(riseTimerRef.current);
+    riseRafRef.current.forEach(cancelAnimationFrame);
+    setRise(0);
   };
 
   const onPointerMove = (e: ReactPointerEvent) => {
@@ -318,7 +355,17 @@ export default function DevBlitzScreen() {
     setExiting([]);
     setSummary(null);
     setScreen('round');
-    advance();
+
+    // Task 71 - TWO draws: current (displayed -> seen) and buffer (mounted
+    // behind, NOT seen yet). No rise on the very first scroll of a round.
+    const feed = startBlitzFeed(readList<string>(K_SEEN));
+    feedRef.current = feed;
+    writeJSON(K_SEEN, feed.seen);
+    currentRef.current = feed.current;
+    setCurrent(feed.current);
+    setBuffered(feed.buffer);
+    setStmtSeq((n) => n + 1);
+    setRise(0);
   };
 
   useEffect(() => {
@@ -335,6 +382,8 @@ export default function DevBlitzScreen() {
 
   useEffect(() => () => {
     if (springTimerRef.current) clearTimeout(springTimerRef.current);
+    if (riseTimerRef.current) clearTimeout(riseTimerRef.current);
+    riseRafRef.current.forEach(cancelAnimationFrame);
   }, []);
 
   // Task 70 - on app start, retry any rounds still sent:false (oldest first).
@@ -375,6 +424,27 @@ export default function DevBlitzScreen() {
   const rightWeight = progress > 0.45 ? 800 : 400;
   const leftWeight = progress < -0.45 ? 800 : 400;
 
+  // The dragged (front) scroll. rise 1 = painted at the stack pose, no
+  // transition; rise 2 = transitioning forward to centre; rise 0 = settled,
+  // the pointer drives it. DURING A DRAG (rise 0, not springing) only
+  // `transform` and `opacity` below are non-constant.
+  const stackPose = `translate(0px, ${STACK_SHIFT_PX}px) rotate(${STACK_ROT_DEG}deg)`;
+  const frontTransform =
+    rise === 1
+      ? stackPose
+      : rise === 2
+        ? 'translate(0px, 0px) rotate(0deg)'
+        : `translate(${drag.dx}px, ${drag.dy}px) rotate(${tiltFor(drag.dx)}deg)`;
+  const frontTransition =
+    rise === 2
+      ? 'transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease-out'
+      : rise === 1
+        ? 'none'
+        : springing
+          ? 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)'
+          : 'none';
+  const frontOpacity = rise === 1 ? 0.62 : rise === 2 ? 1 : 1 - 0.28 * Math.min(1, Math.abs(progress));
+
   return (
     <div
       style={styles.roundRoot}
@@ -390,43 +460,68 @@ export default function DevBlitzScreen() {
         {secondsLeft}
       </span>
 
-      <span style={{ ...styles.edgeLabel, ...styles.edgeLeft, opacity: 0.22 + 0.78 * Math.max(0, -progress), fontWeight: leftWeight }}>
+      <span style={{ ...styles.edgeLabel, ...styles.edgeLeft, opacity: 0.18 + 0.72 * Math.max(0, -progress), fontWeight: leftWeight }}>
         ΛΑΘΟΣ
       </span>
-      <span style={{ ...styles.edgeLabel, ...styles.edgeRight, opacity: 0.22 + 0.78 * Math.max(0, progress), fontWeight: rightWeight }}>
+      <span style={{ ...styles.edgeLabel, ...styles.edgeRight, opacity: 0.18 + 0.72 * Math.max(0, progress), fontWeight: rightWeight }}>
         ΣΩΣΤΟ
       </span>
 
       {exiting.map((card) => (
-        <span
+        <Scroll
           key={card.id}
           style={{
-            ...styles.statement,
             pointerEvents: 'none',
             animation: 'none',
-            transform: `translateX(${card.dir * (window.innerWidth * 0.9)}px) rotate(${card.dir * 22}deg)`,
+            transform: `translateX(${card.dir * (window.innerWidth * 0.9)}px) rotate(${card.dir * 20}deg)`,
             opacity: 0,
             transition: 'transform 0.4s ease-out, opacity 0.4s ease-out',
           }}
         >
           {card.text}
-        </span>
+        </Scroll>
       ))}
 
-      {current && (
-        <span
-          key={stmtSeq}
-          data-testid="live-statement"
+      {buffered && (
+        <Scroll
           style={{
-            ...styles.statement,
-            transform: `translate(${drag.dx}px, ${drag.dy}px) rotate(${tiltFor(drag.dx)}deg)`,
-            transition: springing ? 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
-            opacity: 1 - 0.28 * Math.min(1, Math.abs(progress)),
+            pointerEvents: 'none',
+            transform: stackPose,
+            opacity: 0.7,
+            background: PARCHMENT_SCROLL_BEHIND,
+          }}
+        >
+          {buffered.text}
+        </Scroll>
+      )}
+
+      {current && (
+        <Scroll
+          key={stmtSeq}
+          testId="live-statement"
+          style={{
+            transform: frontTransform,
+            transition: frontTransition,
+            opacity: frontOpacity,
           }}
         >
           {current.text}
-        </span>
+        </Scroll>
       )}
+    </div>
+  );
+}
+
+// Task 71 - the papyrus scroll: a plain rounded rect, ONE darker-ochre bar
+// at the top edge and one at the bottom (~10px, the rolled ends). No
+// texture, no torn edges, no shadow, no gradient. The outer element takes
+// the caller's transform/opacity - nothing else animates.
+function Scroll({ style, testId, children }: { style?: CSSProperties; testId?: string; children: ReactNode }) {
+  return (
+    <div style={{ ...styles.scroll, ...style }} data-testid={testId}>
+      <div style={styles.scrollBarTop} />
+      <div style={styles.scrollText}>{children}</div>
+      <div style={styles.scrollBarBottom} />
     </div>
   );
 }
@@ -465,7 +560,7 @@ function StartScreen({
                 ...styles.plainButton,
                 opacity: selected ? 1 : 0.45,
                 fontWeight: selected ? 800 : 400,
-                borderColor: selected ? 'rgba(248,246,251,0.65)' : 'rgba(248,246,251,0.2)',
+                borderColor: selected ? INK_BORDER_STRONG : INK_BORDER,
               }}
             >
               {d}s
@@ -548,13 +643,26 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- styles: weight + opacity only in the round, greyscale everywhere ------
+// --- Task 71 papyrus palette: warm parchment / ochre / marble, well away
+// from blue-purple. Ink is dark brown, never black. Solid fills only - no
+// texture, no gradient, no shadow. NOTHING here encodes correct vs wrong;
+// right/wrong is conveyed by opacity and font-weight alone, as in Task 69.
+const PARCHMENT_PAGE = '#d8c6a0';
+const PARCHMENT_SCROLL = '#f0e8d4';
+const PARCHMENT_SCROLL_BEHIND = '#e4d8bd';
+const OCHRE_BAR = '#c3a367'; // the darker rolled-end bars
+const INK = '#3b2c1a';
+const INK_LINE = 'rgba(59, 44, 26, 0.14)';
+const INK_BORDER = 'rgba(59, 44, 26, 0.30)';
+const INK_BORDER_STRONG = 'rgba(59, 44, 26, 0.62)';
+
+// --- styles: weight + opacity only in the round; parchment surface -------
 const styles: Record<string, CSSProperties> = {
   roundRoot: {
     position: 'fixed',
     inset: 0,
-    background: 'var(--bg-edge)',
-    color: 'var(--text)',
+    background: PARCHMENT_PAGE,
+    color: INK,
     overflow: 'hidden',
     touchAction: 'none',
     userSelect: 'none',
@@ -579,32 +687,52 @@ const styles: Record<string, CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
     opacity: 0.7,
   },
+  // ΛΑΘΟΣ / ΣΩΣΤΟ sit OUTSIDE the scroll, vertical, at the very edges, low
+  // opacity until dragged toward. No colour - opacity + weight only.
   edgeLabel: {
     position: 'absolute',
     top: '50%',
     transform: 'translateY(-50%)',
     fontSize: '0.95rem',
     letterSpacing: '0.14em',
+    color: INK,
     writingMode: 'vertical-rl',
     textOrientation: 'mixed',
   },
-  edgeLeft: { left: '0.5rem' },
-  edgeRight: { right: '0.5rem', transform: 'translateY(-50%) rotate(180deg)' },
-  statement: {
+  edgeLeft: { left: '0.45rem' },
+  edgeRight: { right: '0.45rem', transform: 'translateY(-50%) rotate(180deg)' },
+
+  // The scroll: a plain rounded rect, ochre bar top and bottom (~10px).
+  scroll: {
     position: 'absolute',
-    maxWidth: '78vw',
+    width: 'min(460px, 82vw)',
+    minHeight: '48vh',
+    borderRadius: '14px',
+    background: PARCHMENT_SCROLL,
+    color: INK,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    overflow: 'hidden',
+    willChange: 'transform',
+  },
+  scrollBarTop: { position: 'absolute', top: 0, left: 0, right: 0, height: '10px', background: OCHRE_BAR },
+  scrollBarBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '10px', background: OCHRE_BAR },
+  scrollText: {
+    // system sans only - reading speed is the mechanic, no display face
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     textAlign: 'center',
     fontSize: '1.9rem',
     lineHeight: 1.3,
     fontWeight: 500,
-    padding: '0 1rem',
-    willChange: 'transform',
+    padding: '2.4rem 1.6rem',
   },
 
   centeredRoot: {
     minHeight: '100dvh',
-    background: 'var(--bg-edge)',
-    color: 'var(--text)',
+    background: PARCHMENT_PAGE,
+    color: INK,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -618,12 +746,12 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.05rem',
     padding: '0.7rem 1.3rem',
     borderRadius: '0.6rem',
-    border: '1px solid rgba(248,246,251,0.28)',
+    border: `1px solid ${INK_BORDER}`,
     background: 'transparent',
-    color: 'var(--text)',
+    color: INK,
     cursor: 'pointer',
   },
-  startButton: { fontSize: '1.25rem', fontWeight: 800, padding: '0.85rem 2.6rem', borderColor: 'rgba(248,246,251,0.6)' },
+  startButton: { fontSize: '1.25rem', fontWeight: 800, padding: '0.85rem 2.6rem', borderColor: INK_BORDER_STRONG },
   highscoreBlock: { width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '1rem' },
   highscoreHead: { fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.55, marginBottom: '0.3rem' },
   highscoreRow: { display: 'flex', gap: '0.6rem', fontSize: '1.05rem', padding: '0.15rem 0' },
@@ -635,5 +763,5 @@ const styles: Record<string, CSSProperties> = {
   statLabel: { fontSize: '0.78rem', letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.55 },
   toolbar: { display: 'flex', gap: '0.75rem' },
   perStatementList: { width: 'min(560px, 100%)', display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.5rem' },
-  perRow: { display: 'flex', gap: '0.8rem', fontSize: '0.95rem', padding: '0.25rem 0', borderBottom: '1px solid rgba(248,246,251,0.08)' },
+  perRow: { display: 'flex', gap: '0.8rem', fontSize: '0.95rem', padding: '0.25rem 0', borderBottom: `1px solid ${INK_LINE}` },
 };

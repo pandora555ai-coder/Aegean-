@@ -1977,6 +1977,58 @@ export function drawBlitzStatements(
   return { picks, seen: Array.from(seenSet) };
 }
 
+// --- Task 71: the solo-blitz two-slot feed -------------------------------
+// The screen shows ONE statement and keeps the NEXT already mounted behind
+// it (a Tinder-style stack). A statement counts as SEEN only when it is
+// promoted to `current` and shown - NEVER while it merely sits in `buffer`
+// - so a round that ends mid-stack does not silently burn the buffered one.
+// Same drawBlitzStatements underneath; the client holds one BlitzFeedState
+// in a ref and dev/blitz-feed-check.ts exercises this exact pair.
+export interface BlitzFeedState {
+  current: BlitzStatement | null;
+  buffer: BlitzStatement | null;
+  seen: string[]; // texts of statements that have been DISPLAYED (current), only
+}
+
+// Grow the seen-set by one DISPLAYED statement. Once it covers the whole
+// pool it resets to just that statement, so the no-repeat-until-all-seen
+// cycle restarts without the on-screen statement immediately repeating.
+function appendDisplayed(seen: readonly string[], text: string, poolSize: number): string[] {
+  const next = seen.includes(text) ? [...seen] : [...seen, text];
+  return next.length >= poolSize ? [text] : next;
+}
+
+// Round start: TWO draws. `current` is displayed, so it enters `seen`;
+// `buffer` is drawn from a pool with `current` removed and is NOT seen yet.
+export function startBlitzFeed(
+  seen: readonly string[],
+  rng: () => number = Math.random,
+  pool: readonly BlitzStatement[] = BLITZ_STATEMENTS,
+): BlitzFeedState {
+  const current = drawBlitzStatements(seen, 1, rng, pool).picks[0] ?? null;
+  if (!current) return { current: null, buffer: null, seen: [...seen] };
+  const nextSeen = appendDisplayed(seen, current.text, pool.length);
+  const buffer =
+    drawBlitzStatements(nextSeen, 1, rng, pool.filter((s) => s.text !== current.text)).picks[0] ?? null;
+  return { current, buffer, seen: nextSeen };
+}
+
+// Advance: promote `buffer` -> `current` (NOW it is seen) and refill
+// `buffer` from a pool with the new `current` removed, so the reshuffle on
+// pool exhaustion can never hand back the statement still on screen.
+export function advanceBlitzFeed(
+  state: BlitzFeedState,
+  rng: () => number = Math.random,
+  pool: readonly BlitzStatement[] = BLITZ_STATEMENTS,
+): BlitzFeedState {
+  const current = state.buffer;
+  if (!current) return { current: null, buffer: null, seen: [...state.seen] };
+  const seen = appendDisplayed(state.seen, current.text, pool.length);
+  const buffer =
+    drawBlitzStatements(seen, 1, rng, pool.filter((s) => s.text !== current.text)).picks[0] ?? null;
+  return { current, buffer, seen };
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
