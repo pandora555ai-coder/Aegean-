@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   type AnswerProgressPayload,
   type LobbyPlayer,
@@ -5,6 +6,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
@@ -34,6 +36,12 @@ export function QuestionView({
   const totalCount = answerProgress?.total ?? connectedCount;
 
   const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
+  const questionBlockRef = useRef<HTMLDivElement | null>(null);
+  const questionTextRef = useRef<HTMLDivElement | null>(null);
+  useFitFontSize(questionBlockRef, questionTextRef, [question.question, question.questionIndex, players.length], {
+    maxRem: 6,
+    minRem: 2,
+  });
   return (
     <GameLayout
       roomCode={roomCode}
@@ -59,15 +67,19 @@ export function QuestionView({
           {secondsLeft}
         </div>
       </div>
-      <div className="enter-pop">
-        <div style={styles.category}>{question.category}</div>
-        {/* Task 29: the TV shows the question only - no options. Reading
-            four answers off the TV and then hunting for the matching
-            button on the phone splits attention; the phone already has
-            every option. The options come back at REVEAL, where the TV
-            is the only place the correct one is shown. Render-only: the
-            host payload still carries question.options untouched. */}
-        <div style={styles.questionTextTv} data-testid="question-text">
+      <div className="enter-pop" style={styles.category}>
+        {question.category}
+      </div>
+      {/* Task 29: the TV shows the question only - no options. Reading four
+          answers off the TV and then hunting for the matching button on the
+          phone splits attention; the phone already has every option. The
+          options come back at REVEAL, where the TV is the only place the
+          correct one is shown. Render-only: the host payload still carries
+          question.options untouched. questionBlock is the ONLY child of
+          questionTextRef's fit measurement, so its own flexed height maps
+          1:1 to the text's available space - see useFitFontSize. */}
+      <div className="enter-pop" style={styles.questionBlock} ref={questionBlockRef}>
+        <div style={styles.questionTextTv} data-testid="question-text" ref={questionTextRef}>
           {question.question}
         </div>
       </div>

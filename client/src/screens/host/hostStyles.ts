@@ -535,14 +535,30 @@ export const styles: Record<string, CSSProperties> = {
   },
   // QUESTION only. With the options gone (Task 29) the question is the
   // one thing to read on the TV, so it takes the space they used to.
-  // clamp keeps the longest questions on screen at 1080p.
+  // fontSize is a JS-controlled fallback here - useFitFontSize (see
+  // QuestionView) overwrites it per-render to whatever actually fits
+  // questionBlock's measured height, so a long question shrinks instead
+  // of overflowing past the viewport.
   questionTextTv: {
-    fontSize: 'clamp(4rem, 6vw, 6rem)',
+    fontSize: '6rem',
     fontWeight: 700,
     textAlign: 'center',
     lineHeight: 1.25,
     maxWidth: '85%',
     color: 'var(--text)',
+  },
+  // Wraps questionTextTv so it has a determinate, flexed height to fit
+  // against - a shrink-wrapped container just measures itself, which is
+  // why this needs flex: 1 rather than living inline with its siblings.
+  questionBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: '1 1 0',
+    minHeight: 0,
+    width: '100%',
+    overflow: 'hidden',
   },
   optionsGrid: {
     display: 'grid',
