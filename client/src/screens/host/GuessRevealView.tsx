@@ -1,17 +1,76 @@
-import { Fragment } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 import { ANSWER_IDENTITIES, GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
 import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
-import {
-  SURFACE_GLOW,
-  guessRevealImageWrapStyle,
-  resultAvatarSize,
-  resultRowSizeStyle,
-  resultsListGap,
-  styles,
-  type CSSVars,
-} from './hostStyles';
+import { PapyrusPanel } from './PapyrusPanel';
+import { guessRevealImageWrapStyle, resultAvatarSize, resultRowSizeStyle, resultsListGap, styles } from './hostStyles';
+
+// Ελαιογραφία palette pass - GUESS_REVEAL's own content, mirroring
+// RevealView's redesign exactly: correctness reads as opacity/weight only
+// (no hue), and the picture/word/options all sit on papyrus. optionCard*/
+// resultName*/resultPoints/resultsDivider/progressBarTrack (hostStyles.ts)
+// are now unused by any other phase after this - kept local here instead
+// of edited in place, same reasoning as RevealView's own local overrides.
+const WRONG_OPACITY = 0.42;
+
+const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '1rem',
+  fontSize: '2.25rem',
+  fontWeight: isCorrect ? 800 : 500,
+  opacity: isCorrect ? 1 : WRONG_OPACITY,
+  color: 'var(--ink)',
+  padding: '0.5rem 0',
+});
+
+const correctWordStyle: CSSProperties = {
+  fontSize: '1.75rem',
+  fontWeight: 800,
+  color: 'var(--ink)',
+  textAlign: 'center',
+};
+
+const drawerBonusStyle: CSSProperties = {
+  fontSize: '2.25rem',
+  fontWeight: 700,
+  color: 'var(--cream)',
+};
+
+const resultNameStyle = (correct: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flex: 1,
+  minWidth: 0,
+  color: 'var(--cream)',
+  fontWeight: correct ? 800 : 500,
+  opacity: correct ? 1 : WRONG_OPACITY,
+});
+
+const resultPointsStyle: CSSProperties = {
+  flexShrink: 0,
+  fontFamily: 'monospace',
+  fontWeight: 700,
+  color: 'var(--cream)',
+};
+
+const resultsDividerStyle: CSSProperties = {
+  height: '1px',
+  background: 'var(--dim)',
+  margin: '0.4rem 0',
+  opacity: 0.4,
+};
+
+const progressBarTrackStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: '500px',
+  height: '0.5rem',
+  borderRadius: '999px',
+  background: 'var(--panel)',
+  overflow: 'hidden',
+};
 
 interface GuessRevealViewProps {
   guessReveal: GuessRevealShowPayload;
@@ -38,41 +97,53 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
       <div className="enter-pop" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <Avatar avatarId={guessReveal.drawerAvatarId} sizeRem={2} />
         <span style={styles.category} data-testid="guess-reveal-drawer-name">
-          {guessReveal.drawerName} ζωγράφισε: {guessReveal.correctWord}
+          {guessReveal.drawerName} ζωγράφισε:
         </span>
       </div>
-      <div style={guessRevealImageWrapStyle(guessReveal.standings.length)}>
-        <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
-      </div>
-      <div style={styles.optionsGrid}>
-        {guessReveal.options.map((option, index) => {
-          const identity = ANSWER_IDENTITIES[index];
-          const isCorrect = index === guessReveal.correctIndex;
-          return (
-            <div
-              key={index}
-              data-testid="guess-reveal-option"
-              data-correct={isCorrect}
-              className={isCorrect ? 'glow-pulse correct-pop' : undefined}
-              style={
-                isCorrect
-                  ? ({
-                      ...styles.optionCardCorrect,
-                      borderColor: identity.color,
-                      background: `${identity.color}14`,
-                      '--glow-color': 'rgba(212, 175, 55, 0.55)',
-                    } as CSSVars)
-                  : { ...styles.optionCardWrong, borderColor: identity.color, boxShadow: SURFACE_GLOW }
-              }
-            >
-              <AnswerShape index={index} sizeRem={1.5} muted={!isCorrect} />
-              <span style={styles.optionLabel}>{identity.letter}</span>
-              <span style={isCorrect ? undefined : styles.optionTextWrong}>{option}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={styles.stealAmount} data-testid="guess-reveal-drawer-bonus">
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', justifyContent: 'center' }}>
+        <div style={guessRevealImageWrapStyle(guessReveal.standings.length)}>
+          <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
+        </div>
+      </PapyrusPanel>
+      <PapyrusPanel style={{ flex: '0 1 auto' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            width: '100%',
+          }}
+        >
+          <div style={correctWordStyle} data-testid="guess-reveal-word">
+            {guessReveal.correctWord}
+          </div>
+          <div style={styles.optionsGrid}>
+            {guessReveal.options.map((option, index) => {
+              const identity = ANSWER_IDENTITIES[index];
+              const isCorrect = index === guessReveal.correctIndex;
+              return (
+                <div
+                  key={index}
+                  data-testid="guess-reveal-option"
+                  data-correct={isCorrect}
+                  className={isCorrect ? 'correct-pop' : undefined}
+                  style={optionRowStyle(isCorrect)}
+                >
+                  {/* Same rule as RevealView: identity colour is per-letter,
+                      never a correctness signal - the shape/letter hue
+                      never changes here, only this row's opacity/weight. */}
+                  <AnswerShape index={index} sizeRem={1.5} />
+                  <span style={styles.optionLabel}>{identity.letter}</span>
+                  <span>{option}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </PapyrusPanel>
+      <div style={drawerBonusStyle} data-testid="guess-reveal-drawer-bonus">
         {guessReveal.drawerName}: +{guessReveal.drawerPointsAwarded} ({guessReveal.drawerTotalScore})
       </div>
       <div style={{ ...styles.resultsList, gap: resultsListGap(count) }}>
@@ -81,19 +152,19 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           const enteringWrongOrNoAnswer = !result.correct && (previous === undefined || previous.correct);
           return (
             <Fragment key={result.playerId}>
-              {enteringWrongOrNoAnswer && index > 0 && <div style={styles.resultsDivider} data-testid="results-divider" />}
+              {enteringWrongOrNoAnswer && index > 0 && <div style={resultsDividerStyle} data-testid="results-divider" />}
               <div
                 style={{ ...styles.resultRow, ...resultRowSizeStyle(count, false) }}
                 data-testid="guess-reveal-result"
                 data-correct={result.correct}
               >
-                <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
+                <span style={resultNameStyle(result.correct)}>
                   <Avatar avatarId={result.avatarId} sizeRem={resultAvatarSize(count)} />
                   <span style={styles.resultNameText}>
                     {result.correct ? '✓' : result.choice !== null ? '✗' : '–'} {result.name}
                   </span>
                 </span>
-                <span style={styles.resultPoints}>
+                <span style={resultPointsStyle}>
                   +{result.pointsAwarded} ({result.totalScore})
                 </span>
               </div>
@@ -101,7 +172,7 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           );
         })}
       </div>
-      <div style={styles.progressBarTrack} data-testid="guess-reveal-progress">
+      <div style={progressBarTrackStyle} data-testid="guess-reveal-progress">
         <div
           style={{
             ...styles.progressBarFill,

@@ -1,15 +1,22 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, type CSSProperties } from 'react';
 import { NUMERIC_REVEAL_DURATION_MS, type NumericRevealShowPayload, type RoomCode } from '@game/shared';
-import { Avatar } from '../../components/Avatar';
+import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import {
-  NUMERIC_TRACK_LANES,
-  numericLanePitch,
-  numericMarkerAvatarSize,
-  numericMarkerNameStyle,
-  numericTrackHeight,
-  styles,
-} from './hostStyles';
+import { PapyrusPanel } from './PapyrusPanel';
+import { NUMERIC_TRACK_LANES, numericLanePitch, numericMarkerNameStyle, numericTrackHeight, styles } from './hostStyles';
+
+// progressBarTrack is shared with GuessRevealView (hostStyles.ts) and still
+// carries an old pre-Ελαιογραφία token there - this phase's content is
+// ported on its own, so it gets a local override instead of touching that
+// shared entry.
+const progressBarTrackStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: '500px',
+  height: '0.5rem',
+  borderRadius: '999px',
+  background: 'var(--panel)',
+  overflow: 'hidden',
+};
 
 interface NumericRevealViewProps {
   reveal: NumericRevealShowPayload;
@@ -76,8 +83,13 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
     (result): result is typeof result & { value: number } => result.value !== null,
   );
   const answerPercent = (reveal.answer / reveal.max) * 100;
-  const markerAvatarSize = numericMarkerAvatarSize(count);
   const lanePitch = numericLanePitch(count);
+  const questionBlockRef = useRef<HTMLDivElement | null>(null);
+  const questionTextRef = useRef<HTMLDivElement | null>(null);
+  useFitFontSize(questionBlockRef, questionTextRef, [reveal.text, reveal.questionIndex, count], {
+    maxRem: 6,
+    minRem: 2,
+  });
 
   const laneOf = useMemo(
     () =>
@@ -98,38 +110,58 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       standings={reveal.standings}
       contentKey={reveal.questionIndex}
     >
-      <div className="enter-pop">
-        <div style={styles.category}>{reveal.category}</div>
-        <div style={styles.questionTextTv} data-testid="numeric-reveal-text">
-          {reveal.text}
-        </div>
+      <div className="enter-pop" style={styles.category}>
+        {reveal.category}
       </div>
+      <PapyrusPanel className="enter-pop">
+        <div style={styles.questionBlock} ref={questionBlockRef}>
+          <div
+            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            data-testid="numeric-reveal-text"
+            ref={questionTextRef}
+          >
+            {reveal.text}
+          </div>
+        </div>
+      </PapyrusPanel>
       <div style={styles.numericAnswerBanner} data-testid="numeric-reveal-answer">
         Σωστή απάντηση: {reveal.answer}
       </div>
-      <div style={{ ...styles.numericTrackWrap, height: numericTrackHeight(count) }} data-testid="numeric-track">
-        <div style={styles.numericTrackLine} />
-        <div style={{ ...styles.numericTick, left: '0%' }}>0</div>
-        <div style={{ ...styles.numericTick, left: '100%', transform: 'translateX(-100%)' }}>{reveal.max}</div>
-        <div style={{ ...styles.numericAnswerLine, left: `${answerPercent}%` }} data-testid="numeric-answer-marker" />
-        <div style={{ ...styles.numericAnswerLabel, left: `${answerPercent}%` }}>🎯 {reveal.answer}</div>
-        {submitted.map((result) => {
-          const percent = (result.value / reveal.max) * 100;
-          const lane = laneOf.get(result.playerId) ?? 0;
-          return (
-            <div
-              key={result.playerId}
-              data-testid="numeric-reveal-marker"
-              data-exact={result.exact}
-              style={{ ...styles.numericMarker, left: `${percent}%`, bottom: `${2.2 + lane * lanePitch}rem` }}
-            >
-              <Avatar avatarId={result.avatarId} sizeRem={markerAvatarSize} ringColor={result.exact ? 'var(--gold)' : undefined} />
-              <span style={{ ...styles.numericMarkerName, ...numericMarkerNameStyle(count) }}>{result.name}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={styles.progressBarTrack} data-testid="numeric-reveal-progress">
+      <PapyrusPanel style={{ flex: '0 1 auto', padding: '1.5rem 1.5rem 0.5rem' }}>
+        <div style={{ ...styles.numericTrackWrap, height: numericTrackHeight(count) }} data-testid="numeric-track">
+          <div style={styles.numericTrackLine} />
+          <div style={{ ...styles.numericTick, left: '0%' }}>0</div>
+          <div style={{ ...styles.numericTick, left: '100%', transform: 'translateX(-100%)' }}>{reveal.max}</div>
+          <div style={{ ...styles.numericAnswerLine, left: `${answerPercent}%` }} data-testid="numeric-answer-marker" />
+          <div style={{ ...styles.numericAnswerLabel, left: `${answerPercent}%` }}>🎯 {reveal.answer}</div>
+          {submitted.map((result) => {
+            const percent = (result.value / reveal.max) * 100;
+            const lane = laneOf.get(result.playerId) ?? 0;
+            return (
+              <div
+                key={result.playerId}
+                data-testid="numeric-reveal-marker"
+                data-exact={result.exact}
+                style={{ ...styles.numericMarker, left: `${percent}%`, bottom: `${2.2 + lane * lanePitch}rem` }}
+              >
+                {/* Player identity here is the name text alone - no avatar
+                    art, no hue. "Exact" reads via weight only. */}
+                <div style={styles.numericMarkerDot} />
+                <span
+                  style={{
+                    ...styles.numericMarkerName,
+                    ...numericMarkerNameStyle(count),
+                    fontWeight: result.exact ? 800 : styles.numericMarkerName.fontWeight,
+                  }}
+                >
+                  {result.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </PapyrusPanel>
+      <div style={progressBarTrackStyle} data-testid="numeric-reveal-progress">
         <div
           style={{
             ...styles.progressBarFill,

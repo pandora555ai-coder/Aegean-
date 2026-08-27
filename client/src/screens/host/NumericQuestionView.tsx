@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   type LobbyPlayer,
   type NumericProgressPayload,
@@ -5,7 +6,9 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
+import { PapyrusPanel } from './PapyrusPanel';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
 
 interface NumericQuestionViewProps {
@@ -37,6 +40,12 @@ export function NumericQuestionView({
   const totalCount = progress?.totalPlayers ?? question.totalPlayers;
 
   const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
+  const questionBlockRef = useRef<HTMLDivElement | null>(null);
+  const questionTextRef = useRef<HTMLDivElement | null>(null);
+  useFitFontSize(questionBlockRef, questionTextRef, [question.text, question.questionIndex, players.length], {
+    maxRem: 6,
+    minRem: 2,
+  });
   return (
     <GameLayout
       roomCode={roomCode}
@@ -54,14 +63,22 @@ export function NumericQuestionView({
           {secondsLeft}
         </div>
       </div>
-      <div className="enter-pop">
-        <div style={styles.category}>{question.category}</div>
-        <div style={styles.questionTextTv} data-testid="numeric-question-text">
-          {question.text}
+      <div className="enter-pop" style={styles.category}>
+        {question.category}
+      </div>
+      <PapyrusPanel className="enter-pop">
+        <div style={styles.questionBlock} ref={questionBlockRef}>
+          <div
+            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            data-testid="numeric-question-text"
+            ref={questionTextRef}
+          >
+            {question.text}
+          </div>
         </div>
-        <div style={styles.numericRange} data-testid="numeric-question-range">
-          0 — {question.max}
-        </div>
+      </PapyrusPanel>
+      <div style={styles.numericRange} data-testid="numeric-question-range">
+        0 — {question.max}
       </div>
       <div style={styles.answerCounter} data-testid="numeric-question-progress">
         {submittedCount}/{totalCount} κλείδωσαν
@@ -76,11 +93,7 @@ export function NumericQuestionView({
               data-submitted={submitted}
               style={submitted ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar
-                avatarId={player.avatarId}
-                sizeRem={answeredAvatarSize(players.length)}
-                ringColor={submitted ? 'var(--success)' : undefined}
-              />
+              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
               {submitted ? '🔒 ' : ''}
               {player.name}
             </span>

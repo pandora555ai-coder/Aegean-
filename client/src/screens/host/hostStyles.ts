@@ -115,8 +115,7 @@ export function guessRevealImageWrapStyle(count: number): CSSProperties {
     aspectRatio: '1 / 1',
     borderRadius: '1rem',
     overflow: 'hidden',
-    border: '3px solid var(--border-strong)',
-    boxShadow: SURFACE_GLOW,
+    border: '3px solid var(--wood)',
     flexShrink: 0,
   };
 }
@@ -155,15 +154,12 @@ export function answeredAvatarSize(count: number): number {
   return 1.5 * densityScale(count);
 }
 
-// Numeric mode (Task 66) - NUMERIC_REVEAL's number line. Both the avatar
-// marker and the vertical space between stacked lanes shrink by the SAME
-// density-step factor, so their ratio (and therefore whether a lane's
-// content actually fits its own pitch) never changes across player counts -
-// verified against a real 8-player render (criterion 3).
-export function numericMarkerAvatarSize(count: number): number {
-  return 2 * densityScale(count);
-}
-
+// Numeric mode (Task 66) - NUMERIC_REVEAL's number line. The vertical space
+// between stacked lanes shrinks by the same density-step factor as
+// everything else on this TV, so a crowded lane's pitch shrinks in step
+// with the marker name label below it (Task 92 dropped the avatar marker -
+// player identity there is names only) - verified against a real 8-player
+// render (criterion 3).
 export function numericLanePitch(count: number): number {
   return 3.2 * densityScale(count);
 }
@@ -208,8 +204,8 @@ export const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '3vh 3vw',
     overflow: 'hidden',
-    background: 'var(--bg)',
-    color: 'var(--text)',
+    background: 'var(--ground)',
+    color: 'var(--cream)',
     position: 'relative',
     zIndex: 1,
   },
@@ -237,7 +233,7 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     textAlign: 'center',
     marginBottom: '0.75rem',
   },
@@ -251,8 +247,8 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     width: '100%',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    background: 'var(--ground)',
+    color: 'var(--cream)',
     boxSizing: 'border-box',
   },
   scorePanelRowLeader: {
@@ -262,7 +258,7 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     background: 'rgba(212, 175, 55, 0.1)',
     border: '2px solid var(--gold)',
-    color: 'var(--text)',
+    color: 'var(--cream)',
     boxSizing: 'border-box',
   },
   scorePanelRowDisconnected: {
@@ -270,13 +266,13 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     width: '100%',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    color: 'var(--text-faint)',
+    background: 'var(--ground)',
+    color: 'var(--dim)',
     opacity: 0.5,
     boxSizing: 'border-box',
   },
   scorePanelRank: {
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     minWidth: '1.6rem',
     flexShrink: 0,
     fontWeight: 700,
@@ -307,8 +303,8 @@ export const styles: Record<string, CSSProperties> = {
     height: '100vh',
     overflow: 'hidden',
     width: '100%',
-    background: 'var(--bg)',
-    color: 'var(--text)',
+    background: 'var(--ground)',
+    color: 'var(--cream)',
     // Stacks above the fixed .confetti-piece / .firework-particle layers
     // (both z-index: 0) regardless of DOM order. The background light
     // sweep this originally also stacked above (Task 21) was removed in
@@ -316,14 +312,14 @@ export const styles: Record<string, CSSProperties> = {
     position: 'relative',
     zIndex: 1,
   },
-  status: { fontSize: '1.25rem', color: 'var(--text-faint)' },
+  status: { fontSize: '1.25rem', color: 'var(--dim)' },
   createButton: {
     fontSize: '2rem',
     padding: '1.5rem 3rem',
     borderRadius: '0.75rem',
     border: 'none',
     background: 'var(--gold)',
-    color: '#14161c',
+    color: 'var(--ink)',
     fontWeight: 700,
   },
   createButtonDisabled: {
@@ -331,8 +327,8 @@ export const styles: Record<string, CSSProperties> = {
     padding: '1.5rem 3rem',
     borderRadius: '0.75rem',
     border: 'none',
-    background: 'var(--border)',
-    color: 'var(--text-faint)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     fontWeight: 700,
   },
   code: {
@@ -357,11 +353,10 @@ export const styles: Record<string, CSSProperties> = {
     left: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
-    background: 'var(--surface)',
-    border: '1px solid var(--border-strong)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
     borderRadius: '999px',
     padding: '0.5rem 0.7rem',
-    boxShadow: SURFACE_GLOW,
     cursor: 'pointer',
     zIndex: 50,
   },
@@ -371,11 +366,10 @@ export const styles: Record<string, CSSProperties> = {
     right: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
-    background: 'var(--surface)',
-    border: '1px solid var(--border-strong)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
     borderRadius: '999px',
     padding: '0.5rem 0.7rem',
-    boxShadow: SURFACE_GLOW,
     cursor: 'pointer',
     zIndex: 50,
   },
@@ -389,9 +383,9 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.15em',
-    color: 'var(--text)',
-    background: 'var(--surface)',
-    border: '1px solid var(--border-strong)',
+    color: 'var(--cream)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
     padding: '0.35rem 0.75rem',
     borderRadius: '0.5rem',
     boxShadow: SURFACE_GLOW,
@@ -403,7 +397,7 @@ export const styles: Record<string, CSSProperties> = {
   pauseOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(10, 7, 22, 0.92)',
+    background: 'var(--ground)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -417,7 +411,8 @@ export const styles: Record<string, CSSProperties> = {
   stageOverlay: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(10, 7, 22, 0.9)',
+    background: 'var(--ground)',
+    color: 'var(--cream)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -442,33 +437,33 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: 'clamp(3.5rem, 6vw, 6rem)',
     fontWeight: 900,
     lineHeight: 1.15,
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   stageTagline: {
     fontSize: '2rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   stageRange: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   pauseTitle: {
     fontSize: '5rem',
     fontWeight: 900,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     letterSpacing: '0.15em',
   },
   pauseSubtitle: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   counter: {
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   playerList: {
     display: 'flex',
@@ -488,7 +483,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   playerName: {
     fontWeight: 600,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -496,7 +491,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   playerNameDisconnected: {
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -506,17 +501,17 @@ export const styles: Record<string, CSSProperties> = {
   waitingMessage: {
     fontSize: '2.5rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   settingsSummary: {
     fontSize: '1.25rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   category: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
@@ -531,7 +526,7 @@ export const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     lineHeight: 1.3,
     maxWidth: '90%',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   // QUESTION only. With the options gone (Task 29) the question is the
   // one thing to read on the TV, so it takes the space they used to.
@@ -539,13 +534,16 @@ export const styles: Record<string, CSSProperties> = {
   // QuestionView) overwrites it per-render to whatever actually fits
   // questionBlock's measured height, so a long question shrinks instead
   // of overflowing past the viewport.
+  // Base colour matches what every call site already overrides to (papyrus
+  // ink) - kept in sync so the default itself is never the stray theme.css
+  // token, even though today nothing renders it unoverridden.
   questionTextTv: {
     fontSize: '6rem',
     fontWeight: 700,
     textAlign: 'center',
     lineHeight: 1.25,
     maxWidth: '85%',
-    color: 'var(--text)',
+    color: 'var(--ink)',
   },
   // Wraps questionTextTv so it has a determinate, flexed height to fit
   // against - a shrink-wrapped container just measures itself, which is
@@ -571,13 +569,11 @@ export const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '1rem',
-    fontSize: '2.25rem',
+    fontSize: '1.85rem',
     fontWeight: 600,
-    padding: '1.5rem 2rem',
+    padding: '0.75rem 1.5rem',
     borderRadius: '1rem',
-    background: 'var(--surface)',
-    border: '3px solid var(--border)',
-    color: 'var(--text)',
+    color: 'var(--ink)',
   },
   optionLabel: {
     fontWeight: 800,
@@ -590,7 +586,7 @@ export const styles: Record<string, CSSProperties> = {
     width: '7rem',
     height: '7rem',
     borderRadius: '50%',
-    background: 'var(--surface)',
+    background: 'var(--panel)',
   },
   timer: {
     fontSize: '3rem',
@@ -601,7 +597,7 @@ export const styles: Record<string, CSSProperties> = {
   answerCounter: {
     fontSize: '2rem',
     fontWeight: 700,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   answeredNames: {
     display: 'flex',
@@ -611,45 +607,22 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '1.5rem',
     fontWeight: 600,
   },
+  // "Answered" used to be a green ring on the avatar - a hue signal. Ported
+  // to opacity only: the whole marker (avatar included, since it's a child
+  // of this span) dims until the player has acted, no colour involved.
   nameAnswered: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '0.4rem',
-    color: 'var(--text)',
+    color: 'var(--cream)',
+    opacity: 1,
   },
   nameNotAnswered: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '0.4rem',
-    color: 'var(--text-faint)',
-  },
-  optionCardCorrect: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    fontSize: '2.25rem',
-    fontWeight: 700,
-    padding: '1.5rem 2rem',
-    borderRadius: '1rem',
-    border: '3px solid',
-    color: 'var(--text)',
-  },
-  optionCardWrong: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    fontSize: '2.25rem',
-    fontWeight: 600,
-    padding: '1.5rem 2rem',
-    borderRadius: '1rem',
-    background: 'var(--surface)',
-    border: '3px solid',
-    color: 'var(--text-faint)',
-    opacity: 0.45,
-    filter: 'grayscale(0.6)',
-  },
-  optionTextWrong: {
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
+    opacity: 0.55,
   },
   answerCount: {
     marginLeft: 'auto',
@@ -680,7 +653,7 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: 'clamp(2.5rem, 4vw, 4rem)',
     fontWeight: 800,
     lineHeight: 1.25,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     fontStyle: 'italic',
   },
   socratesIntroBanner: {
@@ -722,40 +695,11 @@ export const styles: Record<string, CSSProperties> = {
     background: 'rgba(212, 175, 55, 0.12)',
     border: '2px solid var(--gold)',
   },
-  resultsDivider: {
-    height: '1px',
-    background: 'var(--border)',
-    margin: '0.4rem 0',
-  },
-  resultNameCorrect: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.6rem',
-    flex: 1,
-    minWidth: 0,
-    color: 'var(--success)',
-  },
-  resultNameWrong: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.6rem',
-    flex: 1,
-    minWidth: 0,
-    // --danger-text, not --danger - the raw answer-A red hex drops under
-    // 4.5:1 as small text on the new, lighter stage background.
-    color: 'var(--danger-text)',
-  },
   resultNameText: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     minWidth: 0,
-  },
-  resultPoints: {
-    flexShrink: 0,
-    fontFamily: 'monospace',
-    fontWeight: 700,
-    color: 'var(--text)',
   },
   standingsList: {
     display: 'flex',
@@ -772,8 +716,8 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
   },
   standingRowDisconnected: {
     display: 'flex',
@@ -783,8 +727,8 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    color: 'var(--text-faint)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     opacity: 0.5,
   },
   standingRowLeader: {
@@ -797,10 +741,10 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     background: 'rgba(212, 175, 55, 0.1)',
     border: '2px solid var(--gold)',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   standingRank: {
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     minWidth: '3rem',
   },
   standingName: {
@@ -836,7 +780,7 @@ export const styles: Record<string, CSSProperties> = {
     zIndex: 1,
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   winnerBanner: {
     position: 'relative',
@@ -856,29 +800,21 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     background: 'rgba(212, 175, 55, 0.14)',
     border: '3px solid var(--gold)',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   wakeLockHint: {
     fontSize: '0.9rem',
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   powerHint: {
     fontSize: '0.85rem',
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     textAlign: 'center',
     cursor: 'pointer',
     maxWidth: '32rem',
   },
   powerHintDismiss: {
     fontWeight: 700,
-  },
-  progressBarTrack: {
-    width: '100%',
-    maxWidth: '500px',
-    height: '0.5rem',
-    borderRadius: '999px',
-    background: 'var(--border)',
-    overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
@@ -891,12 +827,15 @@ export const styles: Record<string, CSSProperties> = {
   // viewport's smaller dimension so it never pushes the options grid or
   // timer off a 100vh screen at any player count (criterion 4).
   drawingImageWrap: {
-    width: 'min(52vh, 46vw)',
+    // Ελαιογραφία palette (Task 94) - shrunk from 52vh/46vw: the picture now
+    // sits on its OWN papyrus panel, stacked above a second papyrus for the
+    // options, so the old size (tuned for a single flat options grid) left
+    // the options panel too little room to fit within 100vh.
+    width: 'min(36vh, 32vw)',
     aspectRatio: '1 / 1',
     borderRadius: '1rem',
     overflow: 'hidden',
-    border: '3px solid var(--border-strong)',
-    boxShadow: SURFACE_GLOW,
+    border: '3px solid var(--wood)',
     flexShrink: 0,
   },
   drawingImage: {
@@ -926,7 +865,7 @@ export const styles: Record<string, CSSProperties> = {
     gap: '1.25rem',
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    color: 'var(--ink)',
   },
   stealMovedAmount: {
     fontSize: 'clamp(4rem, 7vw, 7rem)',
@@ -954,7 +893,7 @@ export const styles: Record<string, CSSProperties> = {
   numericRange: {
     fontSize: '2rem',
     fontWeight: 700,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     fontFamily: 'monospace',
   },
   numericAnswerBanner: {
@@ -975,14 +914,14 @@ export const styles: Record<string, CSSProperties> = {
     bottom: '2.2rem',
     height: '4px',
     borderRadius: '999px',
-    background: 'var(--border-strong)',
+    background: 'var(--wood)',
   },
   numericTick: {
     position: 'absolute',
     bottom: 0,
     fontSize: '1.1rem',
     fontWeight: 700,
-    color: 'var(--text-faint)',
+    color: 'var(--wood)',
     fontFamily: 'monospace',
   },
   numericAnswerLine: {
@@ -990,7 +929,7 @@ export const styles: Record<string, CSSProperties> = {
     top: '1.8rem',
     bottom: '2.2rem',
     width: '3px',
-    background: 'var(--gold)',
+    background: 'var(--ink)',
     transform: 'translateX(-50%)',
   },
   numericAnswerLabel: {
@@ -999,7 +938,7 @@ export const styles: Record<string, CSSProperties> = {
     transform: 'translateX(-50%)',
     fontSize: '1.1rem',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--ink)',
     whiteSpace: 'nowrap',
   },
   numericMarker: {
@@ -1010,10 +949,20 @@ export const styles: Record<string, CSSProperties> = {
     gap: '0.15rem',
     transform: 'translateX(-50%)',
   },
+  // No avatar art on the papyrus track (Task 92) - player identity there is
+  // names only, never a hue, so there is nothing here to encode "exact"
+  // with colour either. fontWeight carries that instead - see
+  // NumericRevealView's markerNameStyle.
+  numericMarkerDot: {
+    width: '0.55rem',
+    height: '0.55rem',
+    borderRadius: '50%',
+    background: 'var(--ink)',
+  },
   numericMarkerName: {
     fontSize: '0.85rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    color: 'var(--ink)',
     whiteSpace: 'nowrap',
     maxWidth: '5rem',
     overflow: 'hidden',

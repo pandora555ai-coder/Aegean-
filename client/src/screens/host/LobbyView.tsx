@@ -12,7 +12,7 @@ import {
 } from '@game/shared';
 import { DIFFICULTY_MIX_LABELS } from '../../difficultyLabels';
 import { Avatar } from '../../components/Avatar';
-import { QR_SIZE_PX, lobbyAvatarSize, lobbyPlayerListStyle, styles } from './hostStyles';
+import { QR_SIZE_PX, densityScale, lobbyAvatarSize, lobbyPlayerListStyle, styles } from './hostStyles';
 
 interface LobbyViewProps {
   connected: boolean;
@@ -57,8 +57,22 @@ export function LobbyView({
   onDismissPowerHint,
 }: LobbyViewProps) {
   const modeLabel = availableModes.find((option) => option.id === mode)?.label ?? mode;
+  // A full room (up to MAX_PLAYERS 8) plus the QR/code/settings stack never
+  // fit 100vh at the old fixed sizes - this scales the same way every other
+  // TV view already does at high player counts, floored so the room code
+  // (criterion 1 - the one thing read from a couch) stays clearly the
+  // largest element on screen even at 8 players, never shrinking as far as
+  // the QR/gap/padding do.
+  const s = densityScale(players.length);
+  const codeScale = Math.max(s, 0.68);
+  const qrScale = Math.max(s, 0.84); // never below QR_SIZE_PX*0.84 (~200px) - the scan-reliability floor
+  const containerStyle = {
+    ...styles.container,
+    gap: `${(0.95 * s).toFixed(2)}rem`,
+    padding: `${(1.75 * Math.max(s, 0.5)).toFixed(2)}rem 2rem`,
+  };
   return (
-    <div style={styles.container} className="screen-fade-in">
+    <div style={containerStyle} className="screen-fade-in">
       {/* LOBBY only, per spec - a fixed top-left chip so it never competes
           with the centred room code / QR column. Only shown once a room
           actually exists (nothing to mute before then). */}
@@ -97,15 +111,28 @@ export function LobbyView({
         )
       ) : (
         <>
-          <div data-testid="room-code" className="text-glow-gold gold-pulse" style={styles.code}>
+          <div
+            data-testid="room-code"
+            className="text-glow-gold gold-pulse"
+            style={{ ...styles.code, fontSize: `${(8 * codeScale).toFixed(2)}rem` }}
+          >
             {roomCode.split('').join(' ')}
           </div>
 
-          <div style={styles.qrWrapper}>
-            <canvas ref={qrCanvasRef} data-testid="qr-code" width={QR_SIZE_PX} height={QR_SIZE_PX} />
+          <div style={{ ...styles.qrWrapper, padding: `${(1 * qrScale).toFixed(2)}rem` }}>
+            <canvas
+              ref={qrCanvasRef}
+              data-testid="qr-code"
+              width={QR_SIZE_PX}
+              height={QR_SIZE_PX}
+              style={{ width: `${Math.round(QR_SIZE_PX * qrScale)}px`, height: `${Math.round(QR_SIZE_PX * qrScale)}px` }}
+            />
           </div>
 
-          <div data-testid="player-counter" style={styles.counter}>
+          <div
+            data-testid="player-counter"
+            style={{ ...styles.counter, fontSize: `${(2.5 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+          >
             {connectedCount}/{MAX_PLAYERS} παίκτες
           </div>
 
@@ -128,38 +155,53 @@ export function LobbyView({
             ))}
           </div>
 
-          <div data-testid="room-mode-summary" style={styles.settingsSummary}>
+          <div
+            data-testid="room-mode-summary"
+            style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+          >
             {modeLabel}
           </div>
           {/* Task 57 - quiz-only settings, hidden for any other mode rather
               than a hardcoded `=== 'draw'` check, so a future third mode
               doesn't inherit a stale quiz summary by accident. */}
           {mode === 'quiz' && (
-            <div data-testid="room-settings-summary" style={styles.settingsSummary}>
+            <div
+              data-testid="room-settings-summary"
+              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+            >
               {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
               {stagesForLength(roomSettings.gameLength).length} στάδια ·{' '}
               {roomSettings.questionTimeMs / 1000}΄΄ · {DIFFICULTY_MIX_LABELS[roomSettings.difficultyMix]}
             </div>
           )}
           {mode === 'draw' && (
-            <div data-testid="room-settings-summary" style={styles.settingsSummary}>
+            <div
+              data-testid="room-settings-summary"
+              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+            >
               {roomSettings.drawRounds} {roomSettings.drawRounds > 1 ? 'γύροι' : 'γύρος'}
             </div>
           )}
 
           {vip ? (
-            <div data-testid="waiting-message" style={styles.waitingMessage}>
+            <div
+              data-testid="waiting-message"
+              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}
+            >
               Ο/Η {vip.name} ξεκινά το παιχνίδι
             </div>
           ) : (
-            <div data-testid="waiting-message" style={styles.waitingMessage}>
+            <div
+              data-testid="waiting-message"
+              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}
+            >
               Περιμένουμε παίκτες...
             </div>
           )}
 
           {!powerHintDismissed && (
             <div
-              style={styles.powerHint}
+              style={{ ...styles.powerHint, fontSize: `${(0.85 * Math.max(s, 0.8)).toFixed(2)}rem` }}
               data-testid="power-hint"
               onClick={onDismissPowerHint}
               role="button"

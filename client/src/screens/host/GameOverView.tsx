@@ -1,7 +1,9 @@
-import type { GameOverPayload } from '@game/shared';
+import { ANSWER_IDENTITIES, type GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { PapyrusPanel } from './PapyrusPanel';
 import {
   SURFACE_GLOW,
+  densityScale,
   standingAvatarSize,
   standingRowSizeStyle,
   standingsListGap,
@@ -23,7 +25,10 @@ import {
 // read as a launched BURST rather than an ambient drizzle that was already
 // running before you looked. Finite iteration count (2-3 falls) per piece
 // so it settles rather than raining for the entire GAME_OVER screen.
-const CONFETTI_COLORS = ['#d4af37', '#ef4444', '#3b82f6', '#eab308', '#22c55e'];
+// Gold plus the 4 answer identities' own colours (shared/src/index.ts) -
+// referenced, not copied, so this can never drift from the identity
+// mapping the TV and phones already share.
+const CONFETTI_COLORS = ['var(--gold)', ...ANSWER_IDENTITIES.map((identity) => identity.color)];
 const CONFETTI_COUNT = 72;
 const CONFETTI_PIECES = Array.from({ length: CONFETTI_COUNT }, (_, i) => {
   const left = (i * 13.7) % 100;
@@ -95,32 +100,48 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
   const winners = sortedFinalStandings.filter((standing) => standing.rank === 1);
   const count = sortedFinalStandings.length;
   const rowSize = standingRowSizeStyle(count);
+  // Up to MAX_PLAYERS (8) standing rows have to share 100vh with the whole
+  // celebration header (title/avatar/winner papyrus) above them - the same
+  // density-step scaling every other TV view uses at high player counts,
+  // applied here to the header since standingRowSizeStyle already covers
+  // the list itself.
+  const s = densityScale(count);
+  const containerStyle = { ...styles.container, padding: `${(3 * Math.max(s, 0.55)).toFixed(2)}rem 2rem` };
+  const titleWrapStyle = {
+    ...styles.gameOverTitleWrap,
+    gap: `${(1 * Math.max(s, 0.6)).toFixed(2)}rem`,
+    padding: `${(1.5 * Math.max(s, 0.5)).toFixed(2)}rem 0`,
+  };
+  const winnerAvatarSize = 6 * Math.max(s, 0.55);
 
   return (
-    <div style={styles.container} className="screen-fade-in">
+    <div style={containerStyle} className="screen-fade-in">
       {CONFETTI_PIECES.map((piece) => (
         <div key={piece.id} className="confetti-piece" aria-hidden="true" style={piece.style} />
       ))}
       {FIREWORK_PARTICLES.map((particle) => (
         <div key={particle.id} className="firework-particle" aria-hidden="true" style={particle.style} />
       ))}
-      <div style={styles.gameOverTitleWrap}>
-        <div style={styles.gameOverTitle}>Τέλος παιχνιδιού!</div>
+      <div style={titleWrapStyle}>
+        <div style={{ ...styles.gameOverTitle, fontSize: `${(2.5 * Math.max(s, 0.7)).toFixed(2)}rem` }}>
+          Τέλος παιχνιδιού!
+        </div>
         <div style={styles.winnerAvatarRow} data-testid="winner-avatars">
           {winners.map((winner) => (
             <div key={winner.playerId} className="glow-pulse gold-pulse" style={{ '--glow-color': 'rgba(212, 175, 55, 0.6)' } as CSSVars}>
-              <Avatar avatarId={winner.avatarId} sizeRem={6} ringColor="var(--gold)" />
+              <Avatar avatarId={winner.avatarId} sizeRem={winnerAvatarSize} ringColor="var(--gold)" />
             </div>
           ))}
         </div>
-        <div
-          className="text-glow-gold gold-pulse enter-pop"
-          style={styles.winnerBanner}
-          data-testid="winner-banner"
-        >
-          {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
-          {gameOver.winnerName}
-        </div>
+        <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
+          <div
+            style={{ ...styles.winnerBanner, color: 'var(--ink)', fontSize: `${(3.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
+            data-testid="winner-banner"
+          >
+            {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
+            {gameOver.winnerName}
+          </div>
+        </PapyrusPanel>
       </div>
       <div style={{ ...styles.standingsList, gap: standingsListGap(count) }}>
         {sortedFinalStandings.map((standing, index) => (

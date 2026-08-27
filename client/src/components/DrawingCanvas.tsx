@@ -67,7 +67,10 @@ function strokeLineWidth(tool: Tool, size: SizeKey, canvasSize: number): number 
 }
 
 const INK = '#12102a';
-const PAPER = '#ffffff';
+// Ελαιογραφία palette (Task 93) - was pure white; now matches the papyrus
+// paper the TV renders drawings against, so a white stroke and an erased
+// (transparent, then flattened) hole bake to the exact same pixel value.
+const PAPER = '#F6EEDC';
 
 // Task 63 - every colour but these two now comes from the wheel, which is
 // always on-screen (no more popup), so the swatch list shrinks to just the

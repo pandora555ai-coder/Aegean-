@@ -11,9 +11,6 @@ interface PlayerScoresPanelProps {
   // duplicating a second list elsewhere on screen. null outside STEAL.
   thiefPlayerId?: string | null;
   victimPlayerId?: string | null;
-  // Ελαιογραφία palette pass (Task 87) - QUESTION only, opt-in, threaded
-  // down from GameLayout. Every other phase omits this and is unaffected.
-  theme?: 'elaiografia';
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -112,23 +109,22 @@ function ScorePanelRow({
   rowSize,
   isThief,
   isVictim,
-  theme,
 }: {
   standing: PlayerStanding;
   avatarSize: number;
   rowSize: ReturnType<typeof sidebarRowSizeStyle>;
   isThief: boolean;
   isVictim: boolean;
-  theme?: 'elaiografia';
 }) {
   const displayScore = useAnimatedNumber(standing.score);
-  const highlightColor = isThief ? 'var(--gold)' : isVictim ? 'var(--danger-text)' : undefined;
+  // STEAL (Task 91) - thief and victim get the SAME spotlight, weight only:
+  // no hue distinguishes which is which, and no red marks the victim.
+  const involved = isThief || isVictim;
   const rowStyle = !standing.connected
     ? styles.scorePanelRowDisconnected
     : standing.rank === 1
       ? styles.scorePanelRowLeader
       : styles.scorePanelRow;
-  const themedRowStyle = theme === 'elaiografia' ? { ...rowStyle, color: 'var(--cream)' } : rowStyle;
 
   return (
     <div
@@ -136,16 +132,16 @@ function ScorePanelRow({
       data-row-id={standing.playerId}
       data-thief={isThief}
       data-victim={isVictim}
-      style={{ ...themedRowStyle, ...rowSize }}
+      style={{ ...rowStyle, ...rowSize }}
     >
-      <span style={{ ...styles.scorePanelRank, color: theme === 'elaiografia' ? 'var(--cream)' : styles.scorePanelRank.color }}>
+      <span style={styles.scorePanelRank}>
         #{standing.rank}
       </span>
-      <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={highlightColor} />
-      <span style={{ ...styles.scorePanelName, color: highlightColor ?? styles.scorePanelName.color }}>
+      <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={involved ? 'var(--gold)' : undefined} />
+      <span style={{ ...styles.scorePanelName, fontWeight: involved ? 800 : styles.scorePanelName.fontWeight }}>
         {standing.name}
       </span>
-      <span style={{ ...styles.scorePanelScore, color: highlightColor ?? styles.scorePanelScore.color }}>
+      <span style={{ ...styles.scorePanelScore, fontWeight: involved ? 800 : styles.scorePanelScore.fontWeight }}>
         {displayScore}
       </span>
     </div>
@@ -163,7 +159,6 @@ export function PlayerScoresPanel({
   standings,
   thiefPlayerId = null,
   victimPlayerId = null,
-  theme,
 }: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
@@ -172,15 +167,11 @@ export function PlayerScoresPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   useFlip(containerRef, orderedStandings.map((s) => s.playerId).join('|'));
 
-  const panelStyle =
-    theme === 'elaiografia'
-      ? { ...styles.gameLayoutRight, background: 'var(--panel)', borderRadius: '1rem', padding: '1rem' }
-      : styles.gameLayoutRight;
-  const titleStyle = theme === 'elaiografia' ? { ...styles.scorePanelTitle, color: 'var(--cream)' } : styles.scorePanelTitle;
+  const panelStyle = { ...styles.gameLayoutRight, background: 'var(--panel)', borderRadius: '1rem', padding: '1rem' };
 
   return (
     <div style={panelStyle}>
-      <div style={titleStyle}>Βαθμολογία</div>
+      <div style={styles.scorePanelTitle}>Βαθμολογία</div>
       <div
         ref={containerRef}
         style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }}
@@ -194,7 +185,6 @@ export function PlayerScoresPanel({
             rowSize={rowSize as CSSVars}
             isThief={standing.playerId === thiefPlayerId}
             isVictim={standing.playerId === victimPlayerId}
-            theme={theme}
           />
         ))}
       </div>

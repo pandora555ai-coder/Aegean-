@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from 'react';
+import { useRef } from 'react';
 import {
   type AnswerProgressPayload,
   type LobbyPlayer,
@@ -8,33 +8,8 @@ import {
 import { Avatar } from '../../components/Avatar';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
+import { PapyrusPanel } from './PapyrusPanel';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
-
-// Ελαιογραφία palette pass (Task 87) - QUESTION only. Scene base is --ground
-// (set on GameLayout via theme="elaiografia"); the question itself sits on a
-// papyrus panel with a wood roller flanking each side. Local to this file so
-// no other phase (which all share hostStyles.ts's questionTextTv/category/
-// timer entries) is touched.
-const papyrusPanelStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'row',
-  alignItems: 'stretch',
-  gap: '1rem',
-  flex: '1 1 0',
-  minHeight: 0,
-  width: '100%',
-  padding: '1.5rem',
-  borderRadius: '1rem',
-  background: 'linear-gradient(160deg, var(--pap-1), var(--pap-2))',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-};
-
-const woodRollerStyle: CSSProperties = {
-  flexShrink: 0,
-  width: '1.25rem',
-  borderRadius: '999px',
-  background: 'var(--wood)',
-};
 
 interface QuestionViewProps {
   question: QuestionShowHostPayload;
@@ -75,7 +50,6 @@ export function QuestionView({
       pausedByName={pausedByName}
       standings={question.standings}
       contentKey={question.questionIndex}
-      theme="elaiografia"
     >
       {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY, briefly shown
           then fades on its own via CSS (socrates-intro-fade, see
@@ -105,8 +79,7 @@ export function QuestionView({
           question.options untouched. questionBlock is the ONLY child of
           questionTextRef's fit measurement, so its own flexed height maps
           1:1 to the text's available space - see useFitFontSize. */}
-      <div className="enter-pop" style={papyrusPanelStyle}>
-        <div style={woodRollerStyle} />
+      <PapyrusPanel className="enter-pop">
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
@@ -116,8 +89,7 @@ export function QuestionView({
             {question.question}
           </div>
         </div>
-        <div style={woodRollerStyle} />
-      </div>
+      </PapyrusPanel>
       <div style={styles.answerCounter} data-testid="answer-progress">
         {answeredCount}/{totalCount} απάντησαν
       </div>
@@ -131,11 +103,7 @@ export function QuestionView({
               data-answered={answered}
               style={answered ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar
-                avatarId={player.avatarId}
-                sizeRem={answeredAvatarSize(players.length)}
-                ringColor={answered ? 'var(--success)' : undefined}
-              />
+              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
               {answered ? '✓ ' : ''}
               {player.name}
             </span>

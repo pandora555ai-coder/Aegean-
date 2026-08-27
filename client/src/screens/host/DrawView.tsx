@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import {
   type DrawProgressPayload,
   type DrawShowHostPayload,
@@ -6,7 +7,22 @@ import {
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
+import { PapyrusPanel } from './PapyrusPanel';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
+
+// questionTextTv/progress are shared with other phases (hostStyles.ts) and
+// still carry pre-Ελαιογραφία tokens there - this phase's content is ported
+// on its own, so the papyrus text gets local ink overrides instead of
+// touching those shared entries. Same layout as PowerUpView's identical
+// "instruction card" pattern.
+const papyrusTextBlockStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  width: '100%',
+};
 
 interface DrawViewProps {
   draw: DrawShowHostPayload;
@@ -35,15 +51,19 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
           {secondsLeft}
         </div>
       </div>
-      <div className="enter-pop">
-        <div style={styles.category}>Ζωγραφική</div>
-        <div style={styles.questionTextTv} data-testid="draw-title">
-          Ζωγραφίστε!
-        </div>
-        <div style={styles.progress} data-testid="draw-subtitle">
-          Στα κινητά σας
-        </div>
+      <div className="enter-pop" style={styles.category}>
+        Ζωγραφική
       </div>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+        <div style={papyrusTextBlockStyle}>
+          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="draw-title">
+            Ζωγραφίστε!
+          </div>
+          <div style={{ ...styles.progress, color: 'var(--ink)' }} data-testid="draw-subtitle">
+            Στα κινητά σας
+          </div>
+        </div>
+      </PapyrusPanel>
       <div style={styles.answerCounter} data-testid="draw-progress">
         {submittedCount}/{totalCount} υπέβαλαν
       </div>
@@ -57,11 +77,7 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
               data-submitted={submitted}
               style={submitted ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar
-                avatarId={player.avatarId}
-                sizeRem={answeredAvatarSize(players.length)}
-                ringColor={submitted ? 'var(--success)' : undefined}
-              />
+              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
               {submitted ? '✓ ' : ''}
               {player.name}
             </span>

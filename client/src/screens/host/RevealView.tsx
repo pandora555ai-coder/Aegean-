@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 import {
   ANSWER_IDENTITIES,
   REVEAL_DURATION_MS,
@@ -9,14 +9,66 @@ import {
 import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
-import {
-  SURFACE_GLOW,
-  resultAvatarSize,
-  resultRowSizeStyle,
-  resultsListGap,
-  styles,
-  type CSSVars,
-} from './hostStyles';
+import { PapyrusPanel } from './PapyrusPanel';
+import { resultAvatarSize, resultRowSizeStyle, resultsListGap, styles, type CSSVars } from './hostStyles';
+
+// Ελαιογραφία palette pass - REVEAL's own content (the shared chrome
+// - score panel, timer, category, answered-names - is ported in
+// hostStyles.ts already). Correctness is never colour-coded here: it reads
+// purely as full-opacity/bold (correct) vs 42%-opacity/regular (wrong) -
+// see WRONG_OPACITY below - so nothing here needs a correctness hue.
+const WRONG_OPACITY = 0.42;
+
+const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '1rem',
+  fontSize: '2.25rem',
+  fontWeight: isCorrect ? 800 : 500,
+  opacity: isCorrect ? 1 : WRONG_OPACITY,
+  color: 'var(--ink)',
+  padding: '0.5rem 0',
+});
+
+const answerCountStyle: CSSProperties = {
+  marginLeft: 'auto',
+  fontWeight: 800,
+  color: 'var(--ink)',
+};
+
+const resultNameStyle = (correct: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flex: 1,
+  minWidth: 0,
+  color: 'var(--cream)',
+  fontWeight: correct ? 800 : 500,
+  opacity: correct ? 1 : WRONG_OPACITY,
+});
+
+const resultPointsStyle: CSSProperties = {
+  flexShrink: 0,
+  fontFamily: 'monospace',
+  fontWeight: 700,
+  color: 'var(--cream)',
+};
+
+const resultsDividerStyle: CSSProperties = {
+  height: '1px',
+  background: 'var(--dim)',
+  margin: '0.4rem 0',
+  opacity: 0.4,
+};
+
+const progressBarTrackStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: '500px',
+  height: '0.5rem',
+  borderRadius: '999px',
+  background: 'var(--panel)',
+  overflow: 'hidden',
+};
 
 interface RevealViewProps {
   reveal: RevealHostPayload;
@@ -41,47 +93,34 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
       {/* Socrates' commentary is NOT here any more (Task 39): it gets its
           own phase after this one, alone on screen, instead of a banner
           crowding the results. */}
-      <div style={styles.optionsGrid}>
-        {question.options.map((option, index) => {
-          const identity = ANSWER_IDENTITIES[index];
-          const isCorrect = index === reveal.correctIndex;
-          return (
-            <div
-              key={index}
-              data-testid="reveal-option"
-              data-correct={isCorrect}
-              className={isCorrect ? 'glow-pulse correct-pop' : undefined}
-              style={
-                isCorrect
-                  ? ({
-                      ...styles.optionCardCorrect,
-                      borderColor: identity.color,
-                      background: `${identity.color}14`,
-                      // The burst glow is GOLD (not the identity colour) -
-                      // gold means "this matters", and it's what makes the
-                      // correct card read as CELEBRATED rather than just
-                      // "still coloured like it was during the question".
-                      '--glow-color': 'rgba(212, 175, 55, 0.55)',
-                    } as CSSVars)
-                  : { ...styles.optionCardWrong, borderColor: identity.color, boxShadow: SURFACE_GLOW }
-              }
-            >
-              <AnswerShape index={index} sizeRem={1.75} muted={!isCorrect} />
-              {/* Letter text is always neutral, never the identity colour -
-                  red/blue as small TEXT drop under 4.5:1 on this lighter
-                  stage background (see theme.css's --danger-text comment).
-                  The identity colour still pops via the shape, the full
-                  border, and (when correct) the tinted background + gold
-                  glow. */}
-              <span style={styles.optionLabel}>{identity.letter}</span>
-              <span style={isCorrect ? undefined : styles.optionTextWrong}>{option}</span>
-              <span style={styles.answerCount} data-testid="answer-count">
-                {reveal.answerCounts[index]}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+        <div style={styles.optionsGrid}>
+          {question.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            const isCorrect = index === reveal.correctIndex;
+            return (
+              <div
+                key={index}
+                data-testid="reveal-option"
+                data-correct={isCorrect}
+                className={isCorrect ? 'correct-pop' : undefined}
+                style={optionRowStyle(isCorrect)}
+              >
+                {/* The shape/letter identity colour never changes with
+                    correctness - it's the same per-slot hue on every option
+                    regardless of which one is right. Correctness itself
+                    reads purely via this row's opacity/weight above. */}
+                <AnswerShape index={index} sizeRem={1.75} />
+                <span style={styles.optionLabel}>{identity.letter}</span>
+                <span>{option}</span>
+                <span style={answerCountStyle} data-testid="answer-count">
+                  {reveal.answerCounts[index]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </PapyrusPanel>
       <div style={{ ...styles.resultsList, gap: resultsListGap(count) }}>
         {/* Rendered in the order the server sent them - correct-by-speed,
             then wrong, then non-answerers. Never re-sorted here. */}
@@ -91,7 +130,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           const isFastest = result.answerRank === 1;
           return (
             <Fragment key={result.playerId}>
-              {enteringWrongOrNoAnswer && <div style={styles.resultsDivider} data-testid="results-divider" />}
+              {enteringWrongOrNoAnswer && <div style={resultsDividerStyle} data-testid="results-divider" />}
               <div
                 className={isFastest ? 'glow-pulse' : undefined}
                 style={
@@ -107,7 +146,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                 data-correct={result.correct}
                 data-answer-rank={result.answerRank ?? ''}
               >
-                <span style={result.correct ? styles.resultNameCorrect : styles.resultNameWrong}>
+                <span style={resultNameStyle(result.correct)}>
                   <Avatar avatarId={result.avatarId} sizeRem={resultAvatarSize(count)} />
                   <span style={styles.resultNameText}>
                     {result.correct
@@ -115,7 +154,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                       : `${result.timeMs !== null ? '✗' : '–'} ${result.name}`}
                   </span>
                 </span>
-                <span style={styles.resultPoints}>
+                <span style={resultPointsStyle}>
                   +{result.pointsAwarded} ({result.totalScore})
                 </span>
               </div>
@@ -123,7 +162,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           );
         })}
       </div>
-      <div style={styles.progressBarTrack} data-testid="reveal-progress">
+      <div style={progressBarTrackStyle} data-testid="reveal-progress">
         <div
           style={{
             ...styles.progressBarFill,

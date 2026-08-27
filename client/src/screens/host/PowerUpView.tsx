@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import {
   type LobbyPlayer,
   type PowerUpProgressPayload,
@@ -6,7 +7,21 @@ import {
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
+import { PapyrusPanel } from './PapyrusPanel';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
+
+// questionTextTv/progress are shared with other phases (hostStyles.ts) and
+// still carry pre-Ελαιογραφία tokens there - this phase's content is ported
+// on its own, so the papyrus text gets local ink overrides instead of
+// touching those shared entries.
+const papyrusTextBlockStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.75rem',
+  width: '100%',
+};
 
 interface PowerUpViewProps {
   powerUp: PowerUpShowHostPayload;
@@ -46,15 +61,19 @@ export function PowerUpView({
           {secondsLeft}
         </div>
       </div>
-      <div className="enter-pop">
-        <div style={styles.category}>Σαμποτάζ</div>
-        <div style={styles.questionTextTv} data-testid="power-up-title">
-          Διάλεξε το όπλο σου!
-        </div>
-        <div style={styles.progress} data-testid="power-up-subtitle">
-          Στα κινητά σας
-        </div>
+      <div className="enter-pop" style={styles.category}>
+        Σαμποτάζ
       </div>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+        <div style={papyrusTextBlockStyle}>
+          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="power-up-title">
+            Διάλεξε το όπλο σου!
+          </div>
+          <div style={{ ...styles.progress, color: 'var(--ink)' }} data-testid="power-up-subtitle">
+            Στα κινητά σας
+          </div>
+        </div>
+      </PapyrusPanel>
       <div style={styles.answerCounter} data-testid="power-up-progress">
         {chosenCount}/{totalCount} διάλεξαν
       </div>
@@ -68,11 +87,7 @@ export function PowerUpView({
               data-chosen={chosen}
               style={chosen ? styles.nameAnswered : styles.nameNotAnswered}
             >
-              <Avatar
-                avatarId={player.avatarId}
-                sizeRem={answeredAvatarSize(players.length)}
-                ringColor={chosen ? 'var(--success)' : undefined}
-              />
+              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
               {chosen ? '🔒 ' : ''}
               {player.name}
             </span>

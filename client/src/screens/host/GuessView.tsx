@@ -2,6 +2,7 @@ import { ANSWER_IDENTITIES, type GuessProgressPayload, type GuessShowHostPayload
 import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
+import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
 
 interface GuessViewProps {
@@ -41,21 +42,25 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName, sec
           {guess.drawerName} ζωγράφισε αυτό
         </span>
       </div>
-      <div style={styles.drawingImageWrap} className="enter-pop">
-        <img src={guess.image} alt="" style={styles.drawingImage} data-testid="guess-drawing" />
-      </div>
-      <div style={styles.optionsGrid}>
-        {guess.options.map((option, index) => {
-          const identity = ANSWER_IDENTITIES[index];
-          return (
-            <div key={index} data-testid="guess-option" style={{ ...styles.optionCard, borderColor: identity.color }}>
-              <AnswerShape index={index} sizeRem={1.75} />
-              <span style={styles.optionLabel}>{identity.letter}</span>
-              <span>{option}</span>
-            </div>
-          );
-        })}
-      </div>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', justifyContent: 'center', padding: '1rem' }}>
+        <div style={styles.drawingImageWrap}>
+          <img src={guess.image} alt="" style={styles.drawingImage} data-testid="guess-drawing" />
+        </div>
+      </PapyrusPanel>
+      <PapyrusPanel style={{ flex: '0 1 auto', padding: '1rem 1.5rem' }}>
+        <div style={{ ...styles.optionsGrid, gap: '0.75rem' }}>
+          {guess.options.map((option, index) => {
+            const identity = ANSWER_IDENTITIES[index];
+            return (
+              <div key={index} data-testid="guess-option" style={styles.optionCard}>
+                <AnswerShape index={index} sizeRem={1.75} />
+                <span style={styles.optionLabel}>{identity.letter}</span>
+                <span>{option}</span>
+              </div>
+            );
+          })}
+        </div>
+      </PapyrusPanel>
       <div style={styles.answerCounter} data-testid="guess-progress">
         {guessedCount}/{totalGuessers} μάντεψαν
       </div>
