@@ -1,5 +1,5 @@
 import { type CSSProperties } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { getStoredHostRoomCode } from '../hostRoomCode';
 
 export default function LandingScreen() {
@@ -32,6 +32,11 @@ export default function LandingScreen() {
           Σύνδεση σε δωμάτιο
         </button>
       </div>
+      {/* Task 72 - friends use the dev/test pages, so they must be findable.
+          Plain text link, no button styling. */}
+      <Link to="/dev" style={styles.devLink} data-testid="landing-dev">
+        Δοκιμές
+      </Link>
     </div>
   );
 }
@@ -83,5 +88,11 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--gold)',
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  devLink: {
+    fontSize: '1rem',
+    color: 'var(--text)',
+    opacity: 0.65,
+    textDecoration: 'underline',
   },
 };

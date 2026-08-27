@@ -23,9 +23,10 @@ const K_SWIPES = 'swipes';
 const K_ROUNDS = 'rounds';
 const K_HIGHSCORES = 'highscores';
 const K_SEEN = 'blitz:seen';
-// Task 70 - the player's name is only PROMPTED when a round makes the top 5,
-// so it is stashed here on the way past and reused for the upload payload of
-// every later round (empty string until they have ever entered one).
+// Task 72 - the name is asked ONCE, on the first ever visit, before the
+// start screen (see NameScreen). It is reused by the top-5 board and the
+// upload payload of every round. Skipping is allowed: the key is then set to
+// "" so it still counts as collected and is never asked again.
 const K_NAME = 'blitz:name';
 
 function readName(): string {
@@ -40,6 +41,16 @@ function writeName(name: string) {
     localStorage.setItem(K_NAME, name);
   } catch {
     // best-effort
+  }
+}
+// null => never asked; "" or a value => asked (a skip writes ""). If storage
+// is unavailable, treat it as collected so the player is never trapped
+// behind a prompt we could not persist anyway.
+function nameCollected(): boolean {
+  try {
+    return localStorage.getItem(K_NAME) !== null;
+  } catch {
+    return true;
   }
 }
 
@@ -116,6 +127,7 @@ interface RoundSummary {
 
 export default function DevBlitzScreen() {
   const [screen, setScreen] = useState<Screen>('start');
+  const [needName, setNeedName] = useState(() => !nameCollected());
   const [durationSec, setDurationSec] = useState<number>(45);
   const [highscores, setHighscores] = useState<HighscoreEntry[]>(() => readList<HighscoreEntry>(K_HIGHSCORES));
 
@@ -194,15 +206,14 @@ export default function DevBlitzScreen() {
     };
     writeJSON(K_ROUNDS, [...readList<RoundEntry>(K_ROUNDS), roundEntry]);
 
-    // highscore - top 5 by correct, name prompted ONLY when this round makes the cut
+    // highscore - top 5 by correct. The name was collected once on first
+    // visit (blitz:name); there is no prompt here any more. A skipped name
+    // shows on the board as "Ανώνυμος".
     const board = readList<HighscoreEntry>(K_HIGHSCORES);
     const qualifies = answeredCount > 0 && (board.length < 5 || correct > Math.min(...board.map((h) => h.correct)));
-    let roundName = readName();
+    const roundName = readName().trim() || 'Ανώνυμος';
     if (qualifies) {
-      const name = (window.prompt('Μπήκες στο top 5! Όνομα;', roundName) ?? '').trim() || 'Ανώνυμος';
-      roundName = name;
-      writeName(name);
-      const nextBoard = [...board, { name, correct }].sort((a, b) => b.correct - a.correct).slice(0, 5);
+      const nextBoard = [...board, { name: roundName, correct }].sort((a, b) => b.correct - a.correct).slice(0, 5);
       writeJSON(K_HIGHSCORES, nextBoard);
       setHighscores(nextBoard);
     } else {
@@ -392,6 +403,19 @@ export default function DevBlitzScreen() {
     retryUnsentBlitzRounds();
   }, []);
 
+  // Task 72 - first ever visit: ask for a name once, before anything else.
+  // Skipping is fine (writes "") and it is never asked again.
+  if (needName) {
+    return (
+      <NameScreen
+        onDone={(name) => {
+          writeName(name);
+          setNeedName(false);
+        }}
+      />
+    );
+  }
+
   if (screen === 'start') {
     return <StartScreen durationSec={durationSec} onPick={setDurationSec} onStart={startRound} highscores={highscores} />;
   }
@@ -529,6 +553,45 @@ function Scroll({ style, testId, children }: { style?: CSSProperties; testId?: s
 function tiltFor(dx: number): number {
   const raw = dx * 0.04;
   return Math.max(-MAX_TILT_DEG, Math.min(MAX_TILT_DEG, raw));
+}
+
+// --------------------------------------------------------------------------
+// Task 72 - shown once, before the start screen, on the first ever visit.
+// "Συνέχεια" saves the trimmed name; "Παράλειψη" saves "". Either way the
+// name is considered collected and this screen never returns.
+function NameScreen({ onDone }: { onDone: (name: string) => void }) {
+  const [value, setValue] = useState('');
+  return (
+    <div style={styles.centeredRoot}>
+      <h1 style={styles.title}>Το όνομά σου;</h1>
+      <input
+        type="text"
+        data-testid="name-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onDone(value.trim());
+        }}
+        placeholder="Όνομα"
+        maxLength={24}
+        autoFocus
+        style={styles.nameInput}
+      />
+      <div style={styles.toolbar}>
+        <button
+          type="button"
+          data-testid="name-save"
+          onClick={() => onDone(value.trim())}
+          style={{ ...styles.plainButton, ...styles.startButton }}
+        >
+          Συνέχεια
+        </button>
+        <button type="button" data-testid="name-skip" onClick={() => onDone('')} style={styles.plainButton}>
+          Παράλειψη
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -752,6 +815,16 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer',
   },
   startButton: { fontSize: '1.25rem', fontWeight: 800, padding: '0.85rem 2.6rem', borderColor: INK_BORDER_STRONG },
+  nameInput: {
+    fontSize: '1.3rem',
+    padding: '0.7rem 1rem',
+    borderRadius: '0.6rem',
+    border: `1px solid ${INK_BORDER_STRONG}`,
+    background: PARCHMENT_SCROLL,
+    color: INK,
+    width: 'min(320px, 82vw)',
+    textAlign: 'center',
+  },
   highscoreBlock: { width: 'min(420px, 100%)', display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '1rem' },
   highscoreHead: { fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.55, marginBottom: '0.3rem' },
   highscoreRow: { display: 'flex', gap: '0.6rem', fontSize: '1.05rem', padding: '0.15rem 0' },
