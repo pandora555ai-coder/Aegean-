@@ -108,6 +108,7 @@ import {
   toDisplayChoice,
 } from './sabotage.js';
 import { initRealtime, io, httpServer } from './realtime.js';
+import { registerBlitzLog } from './blitzLog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -119,6 +120,10 @@ const corsOptions = { origin: isProduction ? PRODUCTION_ORIGIN : true };
 
 const app = express();
 app.use(cors(corsOptions));
+
+// Task 70 - blitz round upload sink (POST-only, own JSON body parser).
+// Registered before the production SPA catch-all so it is never swallowed.
+registerBlitzLog(app);
 
 if (isProduction) {
   // In production, Caddy proxies both the built client and the API through

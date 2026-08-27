@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { BLITZ_DURATIONS_SEC, BLITZ_STATEMENTS, drawBlitzStatements, type BlitzStatement } from '@game/shared';
+import { getBlitzDeviceId, recordAndUploadRound, retryUnsentBlitzRounds } from '../blitzUpload';
 
 // Task 69 - solo swipe minigame, reachable at /dev/blitz and linked from
 // nowhere, same gated spirit as /dev/draw and /dev/numeric. NO server, NO
@@ -16,6 +17,25 @@ const K_SWIPES = 'swipes';
 const K_ROUNDS = 'rounds';
 const K_HIGHSCORES = 'highscores';
 const K_SEEN = 'blitz:seen';
+// Task 70 - the player's name is only PROMPTED when a round makes the top 5,
+// so it is stashed here on the way past and reused for the upload payload of
+// every later round (empty string until they have ever entered one).
+const K_NAME = 'blitz:name';
+
+function readName(): string {
+  try {
+    return localStorage.getItem(K_NAME) ?? '';
+  } catch {
+    return '';
+  }
+}
+function writeName(name: string) {
+  try {
+    localStorage.setItem(K_NAME, name);
+  } catch {
+    // best-effort
+  }
+}
 
 interface SwipeEntry {
   statementText: string;
@@ -145,14 +165,35 @@ export default function DevBlitzScreen() {
     // highscore - top 5 by correct, name prompted ONLY when this round makes the cut
     const board = readList<HighscoreEntry>(K_HIGHSCORES);
     const qualifies = answeredCount > 0 && (board.length < 5 || correct > Math.min(...board.map((h) => h.correct)));
+    let roundName = readName();
     if (qualifies) {
-      const name = (window.prompt('Μπήκες στο top 5! Όνομα;', '') ?? '').trim() || 'Ανώνυμος';
+      const name = (window.prompt('Μπήκες στο top 5! Όνομα;', roundName) ?? '').trim() || 'Ανώνυμος';
+      roundName = name;
+      writeName(name);
       const nextBoard = [...board, { name, correct }].sort((a, b) => b.correct - a.correct).slice(0, 5);
       writeJSON(K_HIGHSCORES, nextBoard);
       setHighscores(nextBoard);
     } else {
       setHighscores(board);
     }
+
+    // Task 70 - localStorage above stays the source of truth; this also
+    // records the round as sent:false and fires a best-effort upload. It
+    // never throws and never awaits - the end screen renders regardless.
+    recordAndUploadRound({
+      deviceId: getBlitzDeviceId(),
+      name: roundName,
+      durationSec,
+      answered: answeredCount,
+      correct,
+      medianMs: median(swipes.map((s) => s.msSincePrevious)),
+      endedAt: roundEntry.endedAt,
+      swipes: swipes.map((s) => ({
+        statementText: s.statementText,
+        correct: s.correct,
+        msSincePrevious: s.msSincePrevious,
+      })),
+    });
 
     setSummary({
       durationSec,
@@ -294,6 +335,12 @@ export default function DevBlitzScreen() {
 
   useEffect(() => () => {
     if (springTimerRef.current) clearTimeout(springTimerRef.current);
+  }, []);
+
+  // Task 70 - on app start, retry any rounds still sent:false (oldest first).
+  // Fire-and-forget; guarded internally against StrictMode's double effect.
+  useEffect(() => {
+    retryUnsentBlitzRounds();
   }, []);
 
   if (screen === 'start') {

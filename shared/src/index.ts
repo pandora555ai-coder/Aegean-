@@ -1694,6 +1694,15 @@ export interface BlitzStatement {
 // is TIME-BOUND ONLY - there is no target number of statements.
 export const BLITZ_DURATIONS_SEC = [30, 45, 60, 90] as const;
 
+// Task 70 - the blitz round-upload endpoint. localStorage stays the source
+// of truth; at the end of every round the client also fire-and-forgets the
+// round here and the server appends ONE JSON line to a .jsonl on disk. The
+// random path segment is the ONLY gate (unguessable, no other auth) and is
+// defined HERE so client and server can never drift. No GET - the log is
+// read over ssh. Bodies over 32KB are rejected; the server stops appending
+// past 50MB (507).
+export const BLITZ_LOG_PATH = '/api/blitz-log/378857bcc8436b3a395a8033062b12cb';
+
 // BLITZ_STATEMENTS is GENERATED from blitz-statements.md at the repo root by
 // `npm run blitz:generate` (dev/generate-blitz-statements.ts), which parses
 // it line-by-line with /^([ΣΛ])\s\s(\S.+)$/ - Σ => isTrue:true, Λ =>
