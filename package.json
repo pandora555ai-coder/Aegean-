@@ -14,7 +14,9 @@
     "typecheck": "npm run typecheck -w @game/shared && npm run typecheck -w @game/server && npm run typecheck -w @game/client",
     "screenshot:phases": "tsx dev/screenshot-phases.ts",
     "voice:generate": "tsx dev/generate-voice-lines.ts",
-    "voice:index": "tsx dev/generate-voice-index.ts"
+    "voice:index": "tsx dev/generate-voice-index.ts",
+    "blitz:generate": "tsx dev/generate-blitz-statements.ts",
+    "blitz:draw-check": "tsx dev/blitz-draw-check.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

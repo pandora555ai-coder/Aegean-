@@ -1679,6 +1679,155 @@ export interface NumericRevealShowPayload {
   standings: PlayerStanding[];
 }
 
+// ----------------------- Blitz mode (Task 69) --------------------------
+// Solo swipe minigame: one statement at a time, swipe RIGHT for ΣΩΣΤΟ
+// (true) or LEFT for ΛΑΘΟΣ (false), time-bound round. Standalone dev route
+// (/dev/blitz) for now - no server, no room, all state local - but the pool
+// lives HERE, not in the client, because the real mode will draw from the
+// same one.
+export interface BlitzStatement {
+  readonly text: string;
+  readonly isTrue: boolean; // true => the correct swipe is RIGHT (ΣΩΣΤΟ)
+}
+
+// The four round lengths the start screen offers, in seconds. A blitz round
+// is TIME-BOUND ONLY - there is no target number of statements.
+export const BLITZ_DURATIONS_SEC = [30, 45, 60, 90] as const;
+
+// BLITZ_STATEMENTS is GENERATED from blitz-statements.md at the repo root by
+// `npm run blitz:generate` (dev/generate-blitz-statements.ts), which parses
+// it line-by-line with /^([ΣΛ])\s\s(\S.+)$/ - Σ => isTrue:true, Λ =>
+// isTrue:false. Edit the .md and re-run; never hand-edit the block below.
+// <BLITZ_STATEMENTS:GENERATED>
+export const BLITZ_STATEMENTS: readonly BlitzStatement[] = [
+  { text: "Ένα τρίγωνο έχει τρεις πλευρές.", isTrue: true },
+  { text: "Ένας κύκλος έχει τέσσερις γωνίες.", isTrue: false },
+  { text: "Όλα τα τετράγωνα είναι ορθογώνια.", isTrue: true },
+  { text: "Όλα τα ορθογώνια είναι τετράγωνα.", isTrue: false },
+  { text: "Μια ώρα έχει εξήντα λεπτά.", isTrue: true },
+  { text: "Το μισό του πενήντα είναι είκοσι.", isTrue: false },
+  { text: "Το επτά είναι πρώτος αριθμός.", isTrue: true },
+  { text: "Το εννιά είναι πρώτος αριθμός.", isTrue: false },
+  { text: "Το ελληνικό αλφάβητο έχει είκοσι τέσσερα γράμματα.", isTrue: true },
+  { text: "Ο Φεβρουάριος έχει πάντα είκοσι οκτώ μέρες.", isTrue: false },
+  { text: "Ένα λεπτό σιωπής διαρκεί εξήντα δευτερόλεπτα.", isTrue: true },
+  { text: "Μια δωδεκάδα έχει δεκατρία.", isTrue: false },
+  { text: "Το χταπόδι έχει τρεις καρδιές.", isTrue: true },
+  { text: "Οι νυχτερίδες είναι τυφλές.", isTrue: false },
+  { text: "Οι σαλίγκαροι έχουν δόντια.", isTrue: true },
+  { text: "Η καμήλα αποθηκεύει νερό στην καμπούρα της.", isTrue: false },
+  { text: "Οι πεταλούδες γεύονται με τα πόδια τους.", isTrue: true },
+  { text: "Ο ελέφαντας μπορεί να πηδήξει.", isTrue: false },
+  { text: "Το κουνούπι που τσιμπάει είναι πάντα θηλυκό.", isTrue: true },
+  { text: "Το δελφίνι είναι ψάρι.", isTrue: false },
+  { text: "Η μέλισσα πεθαίνει αφού τσιμπήσει.", isTrue: true },
+  { text: "Οι στρουθοκάμηλοι κρύβουν το κεφάλι στην άμμο.", isTrue: false },
+  { text: "Οι γαρίδες έχουν την καρδιά στο κεφάλι.", isTrue: true },
+  { text: "Το φλαμίνγκο γεννιέται ροζ.", isTrue: false },
+  { text: "Η αγελάδα έχει τέσσερα στομάχια.", isTrue: true },
+  { text: "Ο καρχαρίας έχει κόκαλα.", isTrue: false },
+  { text: "Ο σκύλος ιδρώνει από τις πατούσες του.", isTrue: true },
+  { text: "Το κόκκινο χρώμα εξοργίζει τους ταύρους.", isTrue: false },
+  { text: "Το ζώο με το μεγαλύτερο μάτι είναι το καλαμάρι.", isTrue: true },
+  { text: "Η καμηλοπάρδαλη έχει περισσότερους σπονδύλους στον λαιμό από τον άνθρωπο.", isTrue: false },
+  { text: "Ο ενήλικας άνθρωπος έχει διακόσια έξι κόκαλα.", isTrue: true },
+  { text: "Χρησιμοποιούμε μόνο το δέκα τοις εκατό του εγκεφάλου μας.", isTrue: false },
+  { text: "Όταν γεννιέσαι έχεις περισσότερα κόκαλα από ό,τι τώρα.", isTrue: true },
+  { text: "Τα νύχια συνεχίζουν να μεγαλώνουν μετά τον θάνατο.", isTrue: false },
+  { text: "Πάνω από τα μισά του σώματός σου είναι νερό.", isTrue: true },
+  { text: "Η γλώσσα είναι ο πιο δυνατός μυς του σώματος.", isTrue: false },
+  { text: "Οι ενήλικες έχουν λιγότερες γευστικές θηλές από τα παιδιά.", isTrue: true },
+  { text: "Είναι αδύνατο να φτερνιστείς με ανοιχτά μάτια.", isTrue: false },
+  { text: "Η Ανταρκτική είναι έρημος.", isTrue: true },
+  { text: "Το Σινικό Τείχος φαίνεται από το διάστημα με γυμνό μάτι.", isTrue: false },
+  { text: "Ο ήλιος είναι αστέρι.", isTrue: true },
+  { text: "Το Λος Άντζελες είναι η πρωτεύουσα των ΗΠΑ.", isTrue: false },
+  { text: "Η Αυστραλία είναι ταυτόχρονα χώρα και ήπειρος.", isTrue: true },
+  { text: "Ο κεραυνός δεν χτυπάει ποτέ δύο φορές στο ίδιο σημείο.", isTrue: false },
+  { text: "Ο Έβερεστ είναι το ψηλότερο βουνό του κόσμου.", isTrue: true },
+  { text: "Το νερό βράζει στους εκατό βαθμούς σε κάθε υψόμετρο.", isTrue: false },
+  { text: "Η Λέσβος είναι το τρίτο μεγαλύτερο νησί της Ελλάδας.", isTrue: true },
+  { text: "Το γυαλί είναι υγρό που ρέει πολύ αργά.", isTrue: false },
+  { text: "Ο Άρης λέγεται και Κόκκινος Πλανήτης.", isTrue: true },
+  { text: "Το φεγγάρι έχει ατμόσφαιρα σαν της Γης.", isTrue: false },
+  { text: "Ο Πύργος του Άιφελ ψηλώνει το καλοκαίρι.", isTrue: true },
+  { text: "Η Σαχάρα είναι η μεγαλύτερη έρημος του πλανήτη.", isTrue: false },
+  { text: "Οι αστροναύτες ψηλώνουν στο διάστημα.", isTrue: true },
+  { text: "Η Ελλάδα έχει λιγότερα από εκατό νησιά.", isTrue: false },
+  { text: "Το μέλι δεν χαλάει ποτέ.", isTrue: true },
+  { text: "Ο ανανάς φυτρώνει πάνω σε δέντρο.", isTrue: false },
+  { text: "Η ντομάτα είναι φρούτο.", isTrue: true },
+  { text: "Το κόκκινο κρασί σερβίρεται πιο κρύο από το λευκό.", isTrue: false },
+  { text: "Το διαμάντι είναι το σκληρότερο φυσικό υλικό.", isTrue: true },
+  { text: "Το ζεστό νερό είναι πιο βαρύ από το κρύο.", isTrue: false },
+  { text: "Ο πιο σύντομος πόλεμος στην ιστορία κράτησε λιγότερο από μία ώρα.", isTrue: true },
+  { text: "Το αλάτι λιώνει τον πάγο επειδή τον ζεσταίνει.", isTrue: false },
+  { text: "Το ξίδι με τη σόδα κάνουν αφρό.", isTrue: true },
+  { text: "Το γάλα είναι λευκό επειδή η αγελάδα τρώει χορτάρι.", isTrue: false },
+  { text: "Ο Σωκράτης πέθανε πίνοντας κώνειο.", isTrue: true },
+  { text: "Ο Σωκράτης έγραψε ο ίδιος τα βιβλία του.", isTrue: false },
+  { text: "Ο Πλάτωνας ήταν μαθητής του Σωκράτη.", isTrue: true },
+  { text: "Ο Δίας ήταν θεός της θάλασσας.", isTrue: false },
+  { text: "Η Αθηνά ήταν θεά της σοφίας.", isTrue: true },
+  { text: "Στην αρχαία Αθήνα ψήφιζαν όλοι οι κάτοικοι.", isTrue: false },
+  { text: "Ο Παρθενώνας χτίστηκε για την Αθηνά.", isTrue: true },
+  { text: "Τα αρχαία ελληνικά αγάλματα ήταν πάντα λευκά.", isTrue: false },
+  { text: "Ο Αριστοτέλης ήταν δάσκαλος του Μεγάλου Αλεξάνδρου.", isTrue: true },
+  { text: "Οι Ολυμπιακοί Αγώνες ξεκίνησαν στη Ρώμη.", isTrue: false },
+  { text: "Ο Μαραθώνας πήρε το όνομά του από μια μάχη.", isTrue: true },
+  { text: "Ο Όμηρος έγραψε την Αινειάδα.", isTrue: false },
+  { text: "Οι αρχαίοι Ολυμπιακοί γίνονταν κάθε τέσσερα χρόνια.", isTrue: true },
+  { text: "Ο Σωκράτης ήταν βασιλιάς της Αθήνας.", isTrue: false },
+];
+// </BLITZ_STATEMENTS:GENERATED>
+
+export interface BlitzDraw {
+  picks: BlitzStatement[];
+  seen: string[]; // updated seen-set (statement texts), to persist and pass back in
+}
+
+// Pure, seeded-if-you-want statement selection. `seen` is the cross-round
+// memory (localStorage on the client): a statement is not shown again while
+// any UNSEEN statement remains. When the unseen pool runs dry mid-draw the
+// seen-set silently resets and a fresh shuffle begins - picks already made
+// in THIS call stay excluded so a single draw never repeats itself. Same
+// function the client and dev/blitz-draw-check.ts both call.
+export function drawBlitzStatements(
+  seen: readonly string[],
+  count: number,
+  rng: () => number = Math.random,
+  pool: readonly BlitzStatement[] = BLITZ_STATEMENTS,
+): BlitzDraw {
+  const shuffle = (list: BlitzStatement[]): BlitzStatement[] => {
+    for (let i = list.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  };
+
+  const seenSet = new Set(seen);
+  const picks: BlitzStatement[] = [];
+  let bag = shuffle(pool.filter((s) => !seenSet.has(s.text)));
+
+  for (let i = 0; i < count; i += 1) {
+    if (bag.length === 0) {
+      // Unseen pool exhausted - reshuffle silently. The seen-set resets to
+      // just what this draw has already handed out, so the next cycle can
+      // use every statement again without repeating one still on screen.
+      seenSet.clear();
+      for (const p of picks) seenSet.add(p.text);
+      bag = shuffle(pool.filter((s) => !seenSet.has(s.text)));
+      if (bag.length === 0) break; // pool itself is empty - nothing to do
+    }
+    const next = bag.pop() as BlitzStatement;
+    picks.push(next);
+    seenSet.add(next.text);
+  }
+
+  return { picks, seen: Array.from(seenSet) };
+}
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
