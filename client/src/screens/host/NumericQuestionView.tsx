@@ -66,7 +66,9 @@ export function NumericQuestionView({
       <div className="enter-pop" style={styles.category}>
         {question.category}
       </div>
-      <PapyrusPanel className="enter-pop">
+      {/* flex:1 1 0 opts back into filling available height - useFitFontSize
+          below needs a determinate, flexed container to shrink text against. */}
+      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
@@ -94,7 +96,7 @@ export function NumericQuestionView({
               style={submitted ? styles.nameAnswered : styles.nameNotAnswered}
             >
               <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
-              {submitted ? '🔒 ' : ''}
+              {submitted ? '✓ ' : ''}
               {player.name}
             </span>
           );

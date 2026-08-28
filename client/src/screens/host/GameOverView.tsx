@@ -133,7 +133,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
             </div>
           ))}
         </div>
-        <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
+        <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
           <div
             style={{ ...styles.winnerBanner, color: 'var(--ink)', fontSize: `${(3.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
             data-testid="winner-banner"

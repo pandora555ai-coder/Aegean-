@@ -64,7 +64,7 @@ export function PowerUpView({
       <div className="enter-pop" style={styles.category}>
         Σαμποτάζ
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle}>
           <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="power-up-title">
             Διάλεξε το όπλο σου!
@@ -88,7 +88,7 @@ export function PowerUpView({
               style={chosen ? styles.nameAnswered : styles.nameNotAnswered}
             >
               <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
-              {chosen ? '🔒 ' : ''}
+              {chosen ? '✓ ' : ''}
               {player.name}
             </span>
           );

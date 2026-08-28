@@ -57,19 +57,23 @@ export function LobbyView({
   onDismissPowerHint,
 }: LobbyViewProps) {
   const modeLabel = availableModes.find((option) => option.id === mode)?.label ?? mode;
-  // A full room (up to MAX_PLAYERS 8) plus the QR/code/settings stack never
-  // fit 100vh at the old fixed sizes - this scales the same way every other
-  // TV view already does at high player counts, floored so the room code
-  // (criterion 1 - the one thing read from a couch) stays clearly the
-  // largest element on screen even at 8 players, never shrinking as far as
-  // the QR/gap/padding do.
-  const s = densityScale(players.length);
+  // Fixed at MAX_PLAYERS' own density step, NOT players.length (Task 103) -
+  // the code/QR/counter/settings/waiting-message/power-hint stack is the
+  // SAME height regardless of how many players have joined (the player
+  // list is the only part of this screen that actually grows), so scaling
+  // it by players.length left the very first frame of every game - VIP
+  // alone, 0-2 players, before the list has anything to shrink - at full
+  // (unscaled) size, which alone already overflowed 100vh. Fixed compact
+  // sizing from frame one also means the screen never visibly resizes as
+  // players join. Floored so the room code (criterion 1 - the one thing
+  // read from a couch) still reads clearly as the largest element.
+  const s = densityScale(MAX_PLAYERS);
   const codeScale = Math.max(s, 0.68);
   const qrScale = Math.max(s, 0.84); // never below QR_SIZE_PX*0.84 (~200px) - the scan-reliability floor
   const containerStyle = {
     ...styles.container,
-    gap: `${(0.95 * s).toFixed(2)}rem`,
-    padding: `${(1.75 * Math.max(s, 0.5)).toFixed(2)}rem 2rem`,
+    gap: `${(0.65 * s).toFixed(2)}rem`,
+    padding: `${(1.1 * Math.max(s, 0.45)).toFixed(2)}rem 2rem`,
   };
   return (
     <div style={containerStyle} className="screen-fade-in">
@@ -84,7 +88,10 @@ export function LobbyView({
           style={styles.muteToggle}
           aria-label={muted ? 'Ενεργοποίηση ήχου' : 'Σίγαση ήχου'}
         >
-          {muted ? '🔇' : '🔊'}
+          {/* Ελαιογραφία palette (Task 96) - no colour emoji: the same
+              monochrome note glyph both ways, muted state read via opacity
+              only (styles.muteToggle), same rule as everywhere else. */}
+          <span style={{ opacity: muted ? 0.45 : 1 }}>♪</span>
         </button>
       )}
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
@@ -131,7 +138,7 @@ export function LobbyView({
 
           <div
             data-testid="player-counter"
-            style={{ ...styles.counter, fontSize: `${(2.5 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+            style={{ ...styles.counter, fontSize: `${(2.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
           >
             {connectedCount}/{MAX_PLAYERS} παίκτες
           </div>
@@ -147,7 +154,9 @@ export function LobbyView({
               >
                 <Avatar avatarId={player.avatarId} sizeRem={lobbyAvatarSize(players.length)} />
                 <span style={player.connected ? styles.playerName : styles.playerNameDisconnected}>
-                  {player.isVip && '👑 '}
+                  {/* Was a colour crown emoji - plain text reads the same
+                      info without any colour (Task 96). */}
+                  {player.isVip && 'VIP '}
                   {player.name}
                   {!player.connected && ' (αποσυνδέθηκε)'}
                 </span>
@@ -157,7 +166,7 @@ export function LobbyView({
 
           <div
             data-testid="room-mode-summary"
-            style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+            style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.6)).toFixed(2)}rem` }}
           >
             {modeLabel}
           </div>
@@ -167,7 +176,7 @@ export function LobbyView({
           {mode === 'quiz' && (
             <div
               data-testid="room-settings-summary"
-              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.6)).toFixed(2)}rem` }}
             >
               {totalQuestionsForLength(roomSettings.gameLength)} ερωτήσεις σε{' '}
               {stagesForLength(roomSettings.gameLength).length} στάδια ·{' '}
@@ -177,7 +186,7 @@ export function LobbyView({
           {mode === 'draw' && (
             <div
               data-testid="room-settings-summary"
-              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.75)).toFixed(2)}rem` }}
+              style={{ ...styles.settingsSummary, fontSize: `${(1.25 * Math.max(s, 0.6)).toFixed(2)}rem` }}
             >
               {roomSettings.drawRounds} {roomSettings.drawRounds > 1 ? 'γύροι' : 'γύρος'}
             </div>
@@ -186,14 +195,14 @@ export function LobbyView({
           {vip ? (
             <div
               data-testid="waiting-message"
-              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}
+              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.5)).toFixed(2)}rem` }}
             >
               Ο/Η {vip.name} ξεκινά το παιχνίδι
             </div>
           ) : (
             <div
               data-testid="waiting-message"
-              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}
+              style={{ ...styles.waitingMessage, fontSize: `${(2.5 * Math.max(s, 0.5)).toFixed(2)}rem` }}
             >
               Περιμένουμε παίκτες...
             </div>
@@ -201,7 +210,7 @@ export function LobbyView({
 
           {!powerHintDismissed && (
             <div
-              style={{ ...styles.powerHint, fontSize: `${(0.85 * Math.max(s, 0.8)).toFixed(2)}rem` }}
+              style={{ ...styles.powerHint, fontSize: `${(0.85 * Math.max(s, 0.65)).toFixed(2)}rem` }}
               data-testid="power-hint"
               onClick={onDismissPowerHint}
               role="button"

@@ -1023,13 +1023,7 @@ export default function HostScreen() {
     // it follows is already gone by the time this renders.
     if (phase === 'SOCRATES' && socrates) {
       return (
-        <SocratesView
-          socrates={socrates}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          secondsLeft={socratesSecondsLeft}
-        />
+        <SocratesView socrates={socrates} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
     }
 

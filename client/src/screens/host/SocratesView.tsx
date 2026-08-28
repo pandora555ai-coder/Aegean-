@@ -1,27 +1,12 @@
-import type { CSSProperties } from 'react';
 import { type RoomCode, type SocratesShowPayload } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { styles } from './hostStyles';
-
-// progressBarTrack is shared with GuessRevealView/NumericRevealView
-// (hostStyles.ts) and still carries an old pre-Ελαιογραφία token there -
-// this phase's content is ported on its own, so it gets a local override
-// instead of touching that shared entry.
-const progressBarTrackStyle: CSSProperties = {
-  width: '100%',
-  maxWidth: '500px',
-  height: '0.5rem',
-  borderRadius: '999px',
-  background: 'var(--panel)',
-  overflow: 'hidden',
-};
 
 interface SocratesViewProps {
   socrates: SocratesShowPayload;
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
 }
 
 // Task 39 - the whole view of the SOCRATES phase: the host alone with the
@@ -32,7 +17,12 @@ interface SocratesViewProps {
 // "Scene lit" pass (Task 90) - he speaks alone: the score column is
 // suppressed for this phase only (GameLayout's hideScorePanel), reversing
 // Task 38's shared two-column shell just for this one view.
-export function SocratesView({ socrates, roomCode, paused, pausedByName, secondsLeft }: SocratesViewProps) {
+// No progress bar (Task 96) - unlike REVEAL/GUESS_REVEAL/NUMERIC_REVEAL,
+// this phase does NOT actually advance when a timer fills: it ends on
+// socrates:audio_ended from the host, the countdown is only a backstop for
+// when audio fails to fire that event. A filling bar implied a real
+// running timer that isn't what's driving the phase here.
+export function SocratesView({ socrates, roomCode, paused, pausedByName }: SocratesViewProps) {
   return (
     <GameLayout
       roomCode={roomCode}
@@ -47,16 +37,6 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName, seconds
         <div style={styles.socratesStageQuote} data-testid="socrates-line">
           «{socrates.line}»
         </div>
-      </div>
-      <div style={progressBarTrackStyle} data-testid="socrates-progress">
-        <div
-          style={{
-            ...styles.progressBarFill,
-            // Task 42b - the bar's denominator is THIS line's own duration
-            // (audio length, clamped), not a fixed span shared by every line.
-            width: `${(secondsLeft / Math.ceil(socrates.totalDurationMs / 1000)) * 100}%`,
-          }}
-        />
       </div>
     </GameLayout>
   );

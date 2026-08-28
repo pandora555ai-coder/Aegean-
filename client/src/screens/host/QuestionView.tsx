@@ -79,7 +79,9 @@ export function QuestionView({
           question.options untouched. questionBlock is the ONLY child of
           questionTextRef's fit measurement, so its own flexed height maps
           1:1 to the text's available space - see useFitFontSize. */}
-      <PapyrusPanel className="enter-pop">
+      {/* flex:1 1 0 opts back into filling available height - useFitFontSize
+          below needs a determinate, flexed container to shrink text against. */}
+      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--ink)' }}

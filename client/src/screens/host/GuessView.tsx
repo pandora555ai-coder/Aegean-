@@ -42,12 +42,12 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName, sec
           {guess.drawerName} ζωγράφισε αυτό
         </span>
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', justifyContent: 'center', padding: '1rem' }}>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center', padding: '1rem' }}>
         <div style={styles.drawingImageWrap}>
           <img src={guess.image} alt="" style={styles.drawingImage} data-testid="guess-drawing" />
         </div>
       </PapyrusPanel>
-      <PapyrusPanel style={{ flex: '0 1 auto', padding: '1rem 1.5rem' }}>
+      <PapyrusPanel style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
         <div style={{ ...styles.optionsGrid, gap: '0.75rem' }}>
           {guess.options.map((option, index) => {
             const identity = ANSWER_IDENTITIES[index];

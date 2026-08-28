@@ -54,7 +54,7 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
       <div className="enter-pop" style={styles.category}>
         Ζωγραφική
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle}>
           <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="draw-title">
             Ζωγραφίστε!

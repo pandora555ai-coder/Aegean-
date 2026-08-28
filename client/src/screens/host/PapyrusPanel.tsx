@@ -6,12 +6,29 @@ import type { CSSProperties, ReactNode } from 'react';
 // QuestionView's question text; extracted here so REVEAL's correct-answer
 // panel (and any future phase) reuses the exact same styles instead of
 // copying them.
+// Sizes to its content by default (Task 96) - a scroll should only be as
+// tall as what it holds, never stretch to fill whatever's left in the
+// column. The one exception is a papyrus wrapping fit-shrunk question text
+// (useFitFontSize needs a determinate, flexed height to measure against) -
+// those call sites pass `flex: '1 1 0'` explicitly to opt back in.
+//
+// flexShrink: 0, not the shorthand's default 1 (Task 103) - a papyrus
+// panel's content is TEXT: it can't compress the way a results list or a
+// gap can, so when the outer column (GameLayout's flex column) ran a hair
+// short of 100vh, the flex-shrink algorithm proportionally shrank EVERY
+// flex-shrink:1 child in it, papyrus panels included - the panel's own box
+// came out a few px shorter than the text it holds, which just kept
+// bleeding past the parchment edge onto the dark ground behind it. The
+// page's own total height was never over 720 (confirmed) - this was
+// shrinkage nothing downstream needed, applied anyway because flex-basis
+// (content size) is only ever the STARTING point for flex-shrink:1, not a
+// floor. A papyrus panel must never be one of the things that gives.
 const panelStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'row',
   alignItems: 'stretch',
   gap: '1rem',
-  flex: '1 1 0',
+  flex: '0 0 auto',
   minHeight: 0,
   width: '100%',
   padding: '1.5rem',

@@ -19,14 +19,33 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   alignItems: 'center',
   gap: '1rem',
   fontSize: '2.25rem',
+  lineHeight: 1.15,
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--ink)',
   padding: '0.5rem 0',
+  minWidth: 0,
 });
+
+// Task 103 - independent fix, not the overflow bug's cause (see
+// PapyrusPanel.tsx for that): a long option word had nowhere to shrink to,
+// so it wrapped to a second line inside its cell instead of eating the
+// panel's spare width. A flex item's `min-width` defaults to `auto` (its
+// own content size), not 0 - nested one level deep (row -> cell -> this
+// span), EVERY level needs its own `flex`+`minWidth:0` or the ellipsis
+// truncation below never engages. Keeps every option on one line
+// regardless of word length ("Υδραγωγείο", "Κρεμάστρα" verified).
+const optionTextStyle: CSSProperties = {
+  flex: '1 1 0',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
 
 const correctWordStyle: CSSProperties = {
   fontSize: '1.75rem',
+  lineHeight: 1.15,
   fontWeight: 800,
   color: 'var(--ink)',
   textAlign: 'center',
@@ -100,47 +119,48 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           {guessReveal.drawerName} ζωγράφισε:
         </span>
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto', justifyContent: 'center' }}>
+      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center' }}>
         <div style={guessRevealImageWrapStyle(guessReveal.standings.length)}>
           <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
         </div>
       </PapyrusPanel>
-      <PapyrusPanel style={{ flex: '0 1 auto' }}>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.75rem',
-            width: '100%',
-          }}
-        >
+      <PapyrusPanel style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+        {/* Task 103 - flattened to ONE flex column (word heading + the two
+            option rows as direct siblings), not word-wrapper > rows-wrapper
+            > row - one fewer level of flex-in-flex nesting, kept for its
+            own sake. The actual overflow bug this panel had wasn't nesting
+            depth at all: it was PapyrusPanel's flex-shrink (see that
+            file's own comment) - fixed there, not here. */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', width: '100%' }}>
           <div style={correctWordStyle} data-testid="guess-reveal-word">
             {guessReveal.correctWord}
           </div>
-          <div style={styles.optionsGrid}>
-            {guessReveal.options.map((option, index) => {
-              const identity = ANSWER_IDENTITIES[index];
-              const isCorrect = index === guessReveal.correctIndex;
-              return (
-                <div
-                  key={index}
-                  data-testid="guess-reveal-option"
-                  data-correct={isCorrect}
-                  className={isCorrect ? 'correct-pop' : undefined}
-                  style={optionRowStyle(isCorrect)}
-                >
-                  {/* Same rule as RevealView: identity colour is per-letter,
-                      never a correctness signal - the shape/letter hue
-                      never changes here, only this row's opacity/weight. */}
-                  <AnswerShape index={index} sizeRem={1.5} />
-                  <span style={styles.optionLabel}>{identity.letter}</span>
-                  <span>{option}</span>
-                </div>
-              );
-            })}
-          </div>
+          {[0, 1].map((rowStart) => (
+            <div key={rowStart} style={{ display: 'flex', gap: '1.5rem', width: '100%', maxWidth: '1100px' }}>
+              {guessReveal.options.slice(rowStart * 2, rowStart * 2 + 2).map((option, colIndex) => {
+                const index = rowStart * 2 + colIndex;
+                const identity = ANSWER_IDENTITIES[index];
+                const isCorrect = index === guessReveal.correctIndex;
+                return (
+                  <div
+                    key={index}
+                    data-testid="guess-reveal-option"
+                    data-correct={isCorrect}
+                    className={isCorrect ? 'correct-pop' : undefined}
+                    style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
+                  >
+                    {/* Same rule as RevealView: identity colour is
+                        per-letter, never a correctness signal - the
+                        shape/letter hue never changes here, only this
+                        row's opacity/weight. */}
+                    <AnswerShape index={index} sizeRem={1.5} />
+                    <span style={styles.optionLabel}>{identity.letter}</span>
+                    <span style={optionTextStyle}>{option}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </PapyrusPanel>
       <div style={drawerBonusStyle} data-testid="guess-reveal-drawer-bonus">

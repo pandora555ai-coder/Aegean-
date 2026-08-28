@@ -113,7 +113,9 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       <div className="enter-pop" style={styles.category}>
         {reveal.category}
       </div>
-      <PapyrusPanel className="enter-pop">
+      {/* flex:1 1 0 opts back into filling available height - useFitFontSize
+          below needs a determinate, flexed container to shrink text against. */}
+      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
@@ -127,13 +129,13 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       <div style={styles.numericAnswerBanner} data-testid="numeric-reveal-answer">
         Σωστή απάντηση: {reveal.answer}
       </div>
-      <PapyrusPanel style={{ flex: '0 1 auto', padding: '1.5rem 1.5rem 0.5rem' }}>
+      <PapyrusPanel style={{ flex: '0 0 auto', padding: '1.5rem 1.5rem 0.5rem' }}>
         <div style={{ ...styles.numericTrackWrap, height: numericTrackHeight(count) }} data-testid="numeric-track">
           <div style={styles.numericTrackLine} />
           <div style={{ ...styles.numericTick, left: '0%' }}>0</div>
           <div style={{ ...styles.numericTick, left: '100%', transform: 'translateX(-100%)' }}>{reveal.max}</div>
           <div style={{ ...styles.numericAnswerLine, left: `${answerPercent}%` }} data-testid="numeric-answer-marker" />
-          <div style={{ ...styles.numericAnswerLabel, left: `${answerPercent}%` }}>🎯 {reveal.answer}</div>
+          <div style={{ ...styles.numericAnswerLabel, left: `${answerPercent}%` }}>{reveal.answer}</div>
           {submitted.map((result) => {
             const percent = (result.value / reveal.max) * 100;
             const lane = laneOf.get(result.playerId) ?? 0;
@@ -142,7 +144,7 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
                 key={result.playerId}
                 data-testid="numeric-reveal-marker"
                 data-exact={result.exact}
-                style={{ ...styles.numericMarker, left: `${percent}%`, bottom: `${2.2 + lane * lanePitch}rem` }}
+                style={{ ...styles.numericMarker, left: `${percent}%`, bottom: `${1.1 + lane * lanePitch}rem` }}
               >
                 {/* Player identity here is the name text alone - no avatar
                     art, no hue. "Exact" reads via weight only. */}

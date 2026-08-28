@@ -56,7 +56,7 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
       <div style={styles.category}>Κλοπή Πόντων</div>
 
       {resolved ? (
-        <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }} data-testid="steal-resolved">
+        <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }} data-testid="steal-resolved">
           <div style={papyrusTextBlockStyle}>
             {resolved.victimName === null ? (
               <>
@@ -120,7 +120,7 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
               {secondsLeft}
             </div>
           </div>
-          <PapyrusPanel className="enter-pop" style={{ flex: '0 1 auto' }}>
+          <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
             <div style={papyrusTextBlockStyle}>
               <div
                 style={{ ...styles.stealThiefRow, color: 'var(--ink)', fontSize: `${(3 * s).toFixed(2)}rem` }}

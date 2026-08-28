@@ -161,7 +161,7 @@ export function answeredAvatarSize(count: number): number {
 // player identity there is names only) - verified against a real 8-player
 // render (criterion 3).
 export function numericLanePitch(count: number): number {
-  return 3.2 * densityScale(count);
+  return 1.6 * densityScale(count);
 }
 
 // NUMERIC_TRACK_LANES stacked lanes above the baseline, plus fixed headroom
@@ -172,8 +172,12 @@ export function numericLanePitch(count: number): number {
 // its neighbour's (verified against a real 8-player render).
 export const NUMERIC_TRACK_LANES = 4;
 
+// Ελαιογραφία palette (Task 96) - roughly halved: the papyrus panel now
+// sizes to its content (PapyrusPanel's flex default), so this formula IS
+// the panel's height, not just an inner box inside a panel that filled
+// available space regardless.
 export function numericTrackHeight(count: number): string {
-  return `${(1.8 + NUMERIC_TRACK_LANES * numericLanePitch(count) + 2.2).toFixed(2)}rem`;
+  return `${(0.9 + NUMERIC_TRACK_LANES * numericLanePitch(count) + 1.1).toFixed(2)}rem`;
 }
 
 // The marker name label - shrinks with player count like everything else on
@@ -911,7 +915,7 @@ export const styles: Record<string, CSSProperties> = {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: '2.2rem',
+    bottom: '1.1rem',
     height: '4px',
     borderRadius: '999px',
     background: 'var(--wood)',
@@ -926,8 +930,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   numericAnswerLine: {
     position: 'absolute',
-    top: '1.8rem',
-    bottom: '2.2rem',
+    top: '0.9rem',
+    bottom: '1.1rem',
     width: '3px',
     background: 'var(--ink)',
     transform: 'translateX(-50%)',
