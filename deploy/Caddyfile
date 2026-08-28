@@ -3,7 +3,7 @@ demboyz11.duckdns.org {
 		path /dev* /voice-index.html
 	}
 	basic_auth @protected {
-		argyrios $2a$14$Y.jG3jJFAnWNvfC/.c0nJeYRQRTbjxj6IB.hXwSOwbZZtOLqr6MwK
+		argyrios $2a$14$Xe42InBbMQNExB1LisnlBODYBJZL1LSCzf5XA3cXcurCDcGbD6tBC
 	}
 
 	reverse_proxy localhost:3001
