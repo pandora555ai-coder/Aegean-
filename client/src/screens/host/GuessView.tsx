@@ -1,8 +1,32 @@
-import { ANSWER_IDENTITIES, type GuessProgressPayload, type GuessShowHostPayload, type RoomCode } from '@game/shared';
+import type { CSSProperties } from 'react';
+import { type GuessProgressPayload, type GuessShowHostPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
+
+// Boxed options, no letters - same treatment as RevealView (see that file's
+// own optionsGridStyle/optionRowStyle). The correct index never reaches
+// this payload, so there's no correctness to signal here.
+const optionsGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '0.75rem',
+  width: '100%',
+  maxWidth: '1100px',
+};
+
+const optionBoxStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '1rem',
+  fontSize: '1.85rem',
+  fontWeight: 600,
+  color: 'var(--ink)',
+  padding: '0.75rem 1.25rem',
+  border: '1px solid var(--wood)',
+  borderRadius: '0.5rem',
+};
 
 interface GuessViewProps {
   guess: GuessShowHostPayload;
@@ -47,16 +71,12 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName, sec
         </div>
       </PapyrusPanel>
       <PapyrusPanel style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
-        <div style={{ ...styles.optionsGrid, gap: '0.75rem' }}>
-          {guess.options.map((option, index) => {
-            const identity = ANSWER_IDENTITIES[index];
-            return (
-              <div key={index} data-testid="guess-option" style={styles.optionCard}>
-                <span style={styles.optionLabel}>{identity.letter}</span>
-                <span>{option}</span>
-              </div>
-            );
-          })}
+        <div style={optionsGridStyle}>
+          {guess.options.map((option, index) => (
+            <div key={index} data-testid="guess-option" style={optionBoxStyle}>
+              <span>{option}</span>
+            </div>
+          ))}
         </div>
       </PapyrusPanel>
       <div style={styles.answerCounter} data-testid="guess-progress">

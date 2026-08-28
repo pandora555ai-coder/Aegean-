@@ -2,10 +2,10 @@ import type { CSSProperties, ReactNode } from 'react';
 
 // Ελαιογραφία palette (Task 87) - the papyrus scroll treatment shared by
 // every /host phase that puts Greek-facing text on parchment: a --pap-1 to
-// --pap-2 gradient panel flanked by two --wood rollers. First used by
-// QuestionView's question text; extracted here so REVEAL's correct-answer
-// panel (and any future phase) reuses the exact same styles instead of
-// copying them.
+// --pap-2 gradient panel flanked by two marble columns (see MarbleColumn
+// below). First used by QuestionView's question text; extracted here so
+// REVEAL's correct-answer panel (and any future phase) reuses the exact
+// same styles instead of copying them.
 // Sizes to its content by default (Task 96) - a scroll should only be as
 // tall as what it holds, never stretch to fill whatever's left in the
 // column. The one exception is a papyrus wrapping fit-shrunk question text
@@ -37,12 +37,45 @@ const panelStyle: CSSProperties = {
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
 };
 
-const rollerStyle: CSSProperties = {
+// Marble column, not a wood roller: a fluted shaft (repeating --cream/--dim
+// stripes, vertical grooves) between a capital and a base block. Left and
+// right sides only - never rendered top or bottom, so the column carries no
+// border of its own, just the three stacked pieces below.
+const columnStyle: CSSProperties = {
   flexShrink: 0,
   width: '1.25rem',
-  borderRadius: '999px',
-  background: 'var(--wood)',
+  display: 'flex',
+  flexDirection: 'column',
 };
+
+const columnCapitalStyle: CSSProperties = {
+  flexShrink: 0,
+  height: '0.6rem',
+  borderRadius: '0.2rem 0.2rem 0 0',
+  background: 'var(--cream)',
+};
+
+const columnBaseStyle: CSSProperties = {
+  flexShrink: 0,
+  height: '0.6rem',
+  borderRadius: '0 0 0.2rem 0.2rem',
+  background: 'var(--cream)',
+};
+
+const columnShaftStyle: CSSProperties = {
+  flex: '1 1 auto',
+  backgroundImage: 'repeating-linear-gradient(90deg, var(--cream) 0, var(--cream) 2px, var(--dim) 2px, var(--dim) 4px)',
+};
+
+function MarbleColumn() {
+  return (
+    <div style={columnStyle}>
+      <div style={columnCapitalStyle} />
+      <div style={columnShaftStyle} />
+      <div style={columnBaseStyle} />
+    </div>
+  );
+}
 
 interface PapyrusPanelProps {
   className?: string;
@@ -54,9 +87,9 @@ interface PapyrusPanelProps {
 export function PapyrusPanel({ className, style, children, ...rest }: PapyrusPanelProps) {
   return (
     <div className={className} style={style ? { ...panelStyle, ...style } : panelStyle} {...rest}>
-      <div style={rollerStyle} />
+      <MarbleColumn />
       {children}
-      <div style={rollerStyle} />
+      <MarbleColumn />
     </div>
   );
 }

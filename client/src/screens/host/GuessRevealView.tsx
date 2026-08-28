@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties } from 'react';
-import { ANSWER_IDENTITIES, GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
+import { GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
@@ -13,6 +13,8 @@ import { guessRevealImageWrapStyle, resultAvatarSize, resultRowSizeStyle, result
 // of edited in place, same reasoning as RevealView's own local overrides.
 const WRONG_OPACITY = 0.42;
 
+// Boxed option, no letter - same treatment as RevealView. Border colour is
+// fixed regardless of correctness; only opacity/weight signal it.
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
@@ -22,7 +24,13 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--ink)',
-  padding: '0.5rem 0',
+  // Tighter vertical padding than RevealView's box - this panel already
+  // stacks a heading word and the drawer's bonus line above the results
+  // list, with no vertical room to spare (Task 103's flex-shrink:0 rule
+  // means this panel never gives it back either).
+  padding: '0.25rem 1.25rem',
+  border: '1px solid var(--wood)',
+  borderRadius: '0.5rem',
   minWidth: 0,
 });
 
@@ -138,7 +146,6 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
             <div key={rowStart} style={{ display: 'flex', gap: '1.5rem', width: '100%', maxWidth: '1100px' }}>
               {guessReveal.options.slice(rowStart * 2, rowStart * 2 + 2).map((option, colIndex) => {
                 const index = rowStart * 2 + colIndex;
-                const identity = ANSWER_IDENTITIES[index];
                 const isCorrect = index === guessReveal.correctIndex;
                 return (
                   <div
@@ -148,7 +155,6 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
                     className={isCorrect ? 'correct-pop' : undefined}
                     style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
                   >
-                    <span style={styles.optionLabel}>{identity.letter}</span>
                     <span style={optionTextStyle}>{option}</span>
                   </div>
                 );
