@@ -1,6 +1,5 @@
 import { Fragment, type CSSProperties } from 'react';
 import {
-  ANSWER_IDENTITIES,
   REVEAL_DURATION_MS,
   type QuestionShowHostPayload,
   type RevealHostPayload,
@@ -18,6 +17,17 @@ import { resultAvatarSize, resultRowSizeStyle, resultsListGap, styles, type CSSV
 // see WRONG_OPACITY below - so nothing here needs a correctness hue.
 const WRONG_OPACITY = 0.42;
 
+// Task: each option gets its own bordered box (--wood, on papyrus) instead
+// of a bare row - the border colour never changes with correctness, only
+// this row's opacity/weight does (see WRONG_OPACITY).
+const optionsGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: '1rem',
+  width: '100%',
+  maxWidth: '1100px',
+};
+
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
@@ -26,7 +36,9 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--ink)',
-  padding: '0.5rem 0',
+  padding: '0.75rem 1.25rem',
+  border: '1px solid var(--wood)',
+  borderRadius: '0.5rem',
 });
 
 const answerCountStyle: CSSProperties = {
@@ -93,9 +105,8 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           own phase after this one, alone on screen, instead of a banner
           crowding the results. */}
       <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
-        <div style={styles.optionsGrid}>
+        <div style={optionsGridStyle}>
           {question.options.map((option, index) => {
-            const identity = ANSWER_IDENTITIES[index];
             const isCorrect = index === reveal.correctIndex;
             return (
               <div
@@ -105,7 +116,6 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                 className={isCorrect ? 'correct-pop' : undefined}
                 style={optionRowStyle(isCorrect)}
               >
-                <span style={styles.optionLabel}>{identity.letter}</span>
                 <span>{option}</span>
                 <span style={answerCountStyle} data-testid="answer-count">
                   {reveal.answerCounts[index]}
