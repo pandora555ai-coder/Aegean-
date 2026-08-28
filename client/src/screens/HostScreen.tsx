@@ -70,6 +70,7 @@ import { GuessView } from './host/GuessView';
 import { GuessRevealView } from './host/GuessRevealView';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
+import { SceneLayer } from './host/SceneLayer';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -1168,6 +1169,7 @@ export default function HostScreen() {
 
   return (
     <>
+      <SceneLayer phase={phase} />
       {showFullscreenToggle && (
         <button
           type="button"
