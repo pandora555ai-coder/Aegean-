@@ -11,6 +11,10 @@ interface PlayerScoresPanelProps {
   // duplicating a second list elsewhere on screen. null outside STEAL.
   thiefPlayerId?: string | null;
   victimPlayerId?: string | null;
+  // REVEAL/GUESS_REVEAL only - this round's points per playerId, shown as a
+  // small +N next to the score. Every other phase passes nothing, so the
+  // badge just isn't there rather than needing an explicit clear step.
+  pointsThisRound?: Record<string, number> | null;
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -109,12 +113,14 @@ function ScorePanelRow({
   rowSize,
   isThief,
   isVictim,
+  delta,
 }: {
   standing: PlayerStanding;
   avatarSize: number;
   rowSize: ReturnType<typeof sidebarRowSizeStyle>;
   isThief: boolean;
   isVictim: boolean;
+  delta?: number;
 }) {
   const displayScore = useAnimatedNumber(standing.score);
   // STEAL (Task 91) - thief and victim get the SAME spotlight, weight only:
@@ -144,6 +150,11 @@ function ScorePanelRow({
       <span style={{ ...styles.scorePanelScore, fontWeight: involved ? 800 : styles.scorePanelScore.fontWeight }}>
         {displayScore}
       </span>
+      {Boolean(delta) && (
+        <span style={styles.scorePanelDelta} data-testid="score-panel-delta">
+          +{delta}
+        </span>
+      )}
     </div>
   );
 }
@@ -159,6 +170,7 @@ export function PlayerScoresPanel({
   standings,
   thiefPlayerId = null,
   victimPlayerId = null,
+  pointsThisRound = null,
 }: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
@@ -185,6 +197,7 @@ export function PlayerScoresPanel({
             rowSize={rowSize as CSSVars}
             isThief={standing.playerId === thiefPlayerId}
             isVictim={standing.playerId === victimPlayerId}
+            delta={pointsThisRound?.[standing.playerId]}
           />
         ))}
       </div>

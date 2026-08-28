@@ -204,7 +204,9 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: '7fr 3fr',
     gap: '2.5%',
     width: '100%',
-    height: '100vh',
+    // Short by the TV overscan safe area (theme.css, --tv-safe-bottom) so
+    // the bottom-most row of any phase clears a real set's cropped edge.
+    height: 'calc(100vh - var(--tv-safe-bottom))',
     boxSizing: 'border-box',
     padding: '3vh 3vw',
     overflow: 'hidden',
@@ -294,6 +296,17 @@ export const styles: Record<string, CSSProperties> = {
     fontFamily: 'monospace',
     fontWeight: 700,
   },
+  // REVEAL/GUESS_REVEAL only (Task: round points in the score column) -
+  // never passed a value on any other phase, so it just doesn't render
+  // there instead of needing its own clear-on-next-question logic.
+  scorePanelDelta: {
+    flexShrink: 0,
+    fontFamily: 'monospace',
+    fontWeight: 700,
+    fontSize: '0.8em',
+    color: 'var(--gold)',
+    marginLeft: '0.35rem',
+  },
   container: {
     display: 'flex',
     flexDirection: 'column',
@@ -302,9 +315,9 @@ export const styles: Record<string, CSSProperties> = {
     padding: '3rem 2rem',
     // Fixed to the viewport, not just a floor - every host view must fit
     // within 100vh at up to MAX_PLAYERS (8) players with no scrollbar,
-    // since nobody can scroll a TV. The 3rem/2rem padding IS the overscan
-    // safe margin (content never sits flush to a real TV's clipped edge).
-    height: '100vh',
+    // since nobody can scroll a TV. The padding keeps content off the side
+    // edges; the bottom crop itself is --tv-safe-bottom (theme.css).
+    height: 'calc(100vh - var(--tv-safe-bottom))',
     overflow: 'hidden',
     width: '100%',
     background: 'var(--ground)',
@@ -400,7 +413,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   pauseOverlay: {
     position: 'fixed',
-    inset: 0,
+    // Bottom edge inset by the TV overscan safe area (theme.css).
+    inset: '0 0 var(--tv-safe-bottom) 0',
     background: 'var(--ground)',
     display: 'flex',
     flexDirection: 'column',
@@ -414,7 +428,8 @@ export const styles: Record<string, CSSProperties> = {
   // (50), which must never be covered.
   stageOverlay: {
     position: 'fixed',
-    inset: 0,
+    // Bottom edge inset by the TV overscan safe area (theme.css).
+    inset: '0 0 var(--tv-safe-bottom) 0',
     background: 'var(--ground)',
     color: 'var(--cream)',
     display: 'flex',

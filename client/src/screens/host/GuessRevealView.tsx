@@ -1,16 +1,22 @@
-import { Fragment, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
-import { guessRevealImageWrapStyle, resultAvatarSize, resultRowSizeStyle, resultsListGap, styles } from './hostStyles';
+import { guessRevealImageWrapStyle, styles } from './hostStyles';
 
 // Ελαιογραφία palette pass - GUESS_REVEAL's own content, mirroring
 // RevealView's redesign exactly: correctness reads as opacity/weight only
-// (no hue), and the picture/word/options all sit on papyrus. optionCard*/
-// resultName*/resultPoints/resultsDivider/progressBarTrack (hostStyles.ts)
-// are now unused by any other phase after this - kept local here instead
-// of edited in place, same reasoning as RevealView's own local overrides.
+// (no hue), and the picture/word/options all sit on papyrus. optionCard*
+// (hostStyles.ts) is now unused by any other phase after this - kept local
+// here instead of edited in place, same reasoning as RevealView's own local
+// overrides.
+//
+// The per-player result list was deleted (names/scores already live in the
+// score column - see GameLayout) because at 8 players it pushed this
+// panel's bottom edge to 717px of a 720px TV, and real TVs crop 2-3% at
+// the edges - it was already off-screen there. Only the guessed-correctly
+// COUNT survives; who and how many points is standings-column-only now.
 const WRONG_OPACITY = 0.42;
 
 // Boxed option, no letter - same treatment as RevealView. Border colour is
@@ -64,29 +70,11 @@ const drawerBonusStyle: CSSProperties = {
   color: 'var(--cream)',
 };
 
-const resultNameStyle = (correct: boolean): CSSProperties => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.6rem',
-  flex: 1,
-  minWidth: 0,
+const correctCountStyle: CSSProperties = {
+  fontSize: '1.5rem',
+  fontWeight: 600,
   color: 'var(--cream)',
-  fontWeight: correct ? 800 : 500,
-  opacity: correct ? 1 : WRONG_OPACITY,
-});
-
-const resultPointsStyle: CSSProperties = {
-  flexShrink: 0,
-  fontFamily: 'monospace',
-  fontWeight: 700,
-  color: 'var(--cream)',
-};
-
-const resultsDividerStyle: CSSProperties = {
-  height: '1px',
-  background: 'var(--dim)',
-  margin: '0.4rem 0',
-  opacity: 0.4,
+  opacity: 0.85,
 };
 
 const progressBarTrackStyle: CSSProperties = {
@@ -110,7 +98,7 @@ interface GuessRevealViewProps {
 // right, and points - both the guessers' and the drawer's own bonus. The
 // round is over, so the drawing and the correct index are both safe here.
 export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, secondsLeft }: GuessRevealViewProps) {
-  const count = guessReveal.results.length;
+  const correctCount = guessReveal.results.filter((result) => result.correct).length;
 
   return (
     <GameLayout
@@ -166,31 +154,8 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
       <div style={drawerBonusStyle} data-testid="guess-reveal-drawer-bonus">
         {guessReveal.drawerName}: +{guessReveal.drawerPointsAwarded} ({guessReveal.drawerTotalScore})
       </div>
-      <div style={{ ...styles.resultsList, gap: resultsListGap(count) }}>
-        {guessReveal.results.map((result, index) => {
-          const previous = guessReveal.results[index - 1];
-          const enteringWrongOrNoAnswer = !result.correct && (previous === undefined || previous.correct);
-          return (
-            <Fragment key={result.playerId}>
-              {enteringWrongOrNoAnswer && index > 0 && <div style={resultsDividerStyle} data-testid="results-divider" />}
-              <div
-                style={{ ...styles.resultRow, ...resultRowSizeStyle(count, false) }}
-                data-testid="guess-reveal-result"
-                data-correct={result.correct}
-              >
-                <span style={resultNameStyle(result.correct)}>
-                  <Avatar avatarId={result.avatarId} sizeRem={resultAvatarSize(count)} />
-                  <span style={styles.resultNameText}>
-                    {result.correct ? '✓' : result.choice !== null ? '✗' : '–'} {result.name}
-                  </span>
-                </span>
-                <span style={resultPointsStyle}>
-                  +{result.pointsAwarded} ({result.totalScore})
-                </span>
-              </div>
-            </Fragment>
-          );
-        })}
+      <div style={correctCountStyle} data-testid="guess-reveal-correct-count">
+        {correctCount}/{guessReveal.results.length} μάντεψαν σωστά
       </div>
       <div style={progressBarTrackStyle} data-testid="guess-reveal-progress">
         <div

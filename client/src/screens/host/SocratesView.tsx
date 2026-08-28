@@ -30,7 +30,6 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName }: Socra
       pausedByName={pausedByName}
       standings={socrates.standings}
       contentKey={`socrates-${socrates.questionIndex}`}
-      hideScorePanel
     >
       <div className="enter-pop" style={styles.socratesStageCard} data-testid="socrates-stage">
         <div style={styles.socratesStageKicker}>ΣΩΚΡΑΤΗΣ</div>

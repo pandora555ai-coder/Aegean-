@@ -62,8 +62,12 @@ const columnBaseStyle: CSSProperties = {
   background: 'var(--cream)',
 };
 
+// minWidth, not just the column's own fixed width above - a hard floor so
+// the flute stripes (4px period) can never end up rendering as a single
+// blurred line if this column is ever squeezed by a future layout change.
 const columnShaftStyle: CSSProperties = {
   flex: '1 1 auto',
+  minWidth: '1.25rem',
   backgroundImage: 'repeating-linear-gradient(90deg, var(--cream) 0, var(--cream) 2px, var(--dim) 2px, var(--dim) 4px)',
 };
 

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import {
   type DrawProgressPayload,
   type DrawShowHostPayload,
@@ -6,6 +6,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
 import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
@@ -44,6 +45,11 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
   const totalCount = progress?.totalPlayers ?? draw.totalPlayers;
 
   const timerCritical = !paused && secondsLeft <= 10 && secondsLeft > 0;
+  const titleBlockRef = useRef<HTMLDivElement | null>(null);
+  const titleTextRef = useRef<HTMLDivElement | null>(null);
+  // "Ζωγραφίστε!" is one unbroken word - no space to wrap on, so a fixed
+  // 6rem (questionTextTv) ran it past the panel's width with no fallback.
+  useFitFontSize(titleBlockRef, titleTextRef, [], { maxRem: 6, minRem: 2 });
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={draw.standings}>
       <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
@@ -55,8 +61,8 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
         Ζωγραφική
       </div>
       <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
-        <div style={papyrusTextBlockStyle}>
-          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="draw-title">
+        <div style={papyrusTextBlockStyle} ref={titleBlockRef}>
+          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="draw-title" ref={titleTextRef}>
             Ζωγραφίστε!
           </div>
           <div style={{ ...styles.progress, color: 'var(--ink)' }} data-testid="draw-subtitle">

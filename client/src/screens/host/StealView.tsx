@@ -50,8 +50,6 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
       paused={paused}
       pausedByName={pausedByName}
       standings={steal.standings}
-      thiefPlayerId={steal.thiefPlayerId}
-      victimPlayerId={resolved?.victimPlayerId ?? null}
     >
       <div style={styles.category}>Κλοπή Πόντων</div>
 

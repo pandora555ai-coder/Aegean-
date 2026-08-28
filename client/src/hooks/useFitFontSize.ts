@@ -6,10 +6,14 @@ interface FitFontSizeOptions {
   stepRem?: number;
 }
 
-// Shrinks textRef's font-size (in rem) until its natural (unclamped)
-// height fits inside containerRef's own box. containerRef must have a
-// determinate height (e.g. flex: 1 in a column) for this to mean anything -
-// measuring against a shrink-wrapped container just measures itself.
+// Shrinks textRef's font-size (in rem) until its natural (unclamped) height
+// AND width both fit inside containerRef's own box. containerRef must have
+// a determinate height (e.g. flex: 1 in a column) for this to mean anything -
+// measuring against a shrink-wrapped container just measures itself. Width
+// is checked the same way: a single unbroken word (no space to wrap on)
+// overflows scrollWidth past clientWidth with no line-break to fall back on,
+// so it needs the same shrink loop the height check already gets, not a
+// separate mechanism.
 // Driven by the actual rendered overflow, not by character count, so a
 // question can be edited to any length without this drifting out of date.
 export function useFitFontSize(
@@ -27,7 +31,10 @@ export function useFitFontSize(
 
     let size = maxRem;
     text.style.fontSize = `${size}rem`;
-    while (text.scrollHeight > container.clientHeight && size > minRem) {
+    while (
+      (text.scrollHeight > container.clientHeight || text.scrollWidth > container.clientWidth) &&
+      size > minRem
+    ) {
       size = Math.max(minRem, size - stepRem);
       text.style.fontSize = `${size}rem`;
     }

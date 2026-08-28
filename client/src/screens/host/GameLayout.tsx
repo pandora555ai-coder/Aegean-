@@ -1,48 +1,40 @@
 import type { PlayerStanding, RoomCode } from '@game/shared';
 import type { ReactNode } from 'react';
-import { PlayerScoresPanel } from './PlayerScoresPanel';
 import { containerGap, styles } from './hostStyles';
 
 interface GameLayoutProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
+  // Only for spacing the left column's own children by player count - the
+  // score column itself is no longer rendered here (see below).
   standings: PlayerStanding[];
-  thiefPlayerId?: string | null;
-  victimPlayerId?: string | null;
   // Forces the LEFT column (only) to remount and re-fade, e.g. on every new
-  // question - the RIGHT column stays mounted throughout so the score
-  // column never flashes just because the phase content changed.
+  // question - the score column lives outside this component entirely, so
+  // it never flashes just because the phase content changed.
   contentKey?: string | number;
-  // SOCRATES only - he speaks alone, not next to the score column, so this
-  // drops the right-hand PlayerScoresPanel and lets the left column take
-  // the full width instead of its usual 7fr share.
-  hideScorePanel?: boolean;
   children: ReactNode;
 }
 
-// Task 38 - the fixed two-column shell shared by every in-game phase
-// (QUESTION, POWER_UP, REVEAL, STEAL): phase content on the left, the
-// always-visible score column on the right. Pause overlay and the corner
-// room code are viewport-fixed, so they live here once instead of being
-// duplicated in every phase view.
-export function GameLayout({
-  roomCode,
-  paused,
-  pausedByName,
-  standings,
-  thiefPlayerId = null,
-  victimPlayerId = null,
-  contentKey,
-  hideScorePanel = false,
-  children,
-}: GameLayoutProps) {
-  const layoutStyle = {
-    ...styles.gameLayout,
-    ...(hideScorePanel ? { gridTemplateColumns: '1fr' } : {}),
-  };
+// Task 38 - the left-hand half of the fixed two-column in-game shell:
+// phase content, plus the viewport-fixed room code and pause overlay, which
+// live here once instead of being duplicated in every phase view.
+//
+// The score column is NOT rendered here any more. It used to be, but every
+// phase view returns a DIFFERENT component from HostScreen's phase switch,
+// so React saw a new element type at that position on every phase change and
+// unmounted this whole subtree - the panel included. That discarded
+// PlayerScoresPanel's own state (useDisplayOrder's held-back row order,
+// useAnimatedNumber's tween, useFlip's previous rects), so its "counters
+// settle for 900ms, THEN rows glide for 400ms" sequence could never run
+// across the one transition where scores actually change (QUESTION ->
+// REVEAL): the panel simply remounted already in final order. HostScreen now
+// owns the grid container AND the panel, so the panel keeps its identity
+// while only its data changes. Measured: the reordered row now reaches its
+// final position ~1.3s after reveal:show, not ~84ms.
+export function GameLayout({ roomCode, paused, pausedByName, standings, contentKey, children }: GameLayoutProps) {
   return (
-    <div style={layoutStyle}>
+    <>
       {roomCode && (
         <div style={styles.cornerRoomCode} data-testid="corner-room-code">
           {roomCode}
@@ -61,9 +53,6 @@ export function GameLayout({
       >
         {children}
       </div>
-      {!hideScorePanel && (
-        <PlayerScoresPanel standings={standings} thiefPlayerId={thiefPlayerId} victimPlayerId={victimPlayerId} />
-      )}
-    </div>
+    </>
   );
 }

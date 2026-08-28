@@ -43,6 +43,21 @@
   --danger-text: #f87171;
   --danger-strong: #b91c1c;
   --success: #22c55e;
+
+  /* TV overscan safe area. Real sets crop roughly 2-3% of the panel, so
+     anything drawn in the last few percent of a 100vh host screen is simply
+     not on screen in a living room, however well it measures in a browser.
+     THE one value: every full-height host root subtracts it (gameLayout,
+     container) and every full-bleed overlay insets its bottom edge by it
+     (stageOverlay, pauseOverlay), so no individual phase view ever has to
+     tighten its own content to stay clear of the crop.
+     5vh = 36px at 720p. The binding case is a full-bleed overlay, whose own
+     box IS the inset viewport: it needs at least 30px to land under 690px,
+     and 5vh leaves it at 684px. Every phase inside the two-column shell has
+     far more room than that (the tightest measures 662px). Raising it costs
+     every screen height, so it is deliberately only a little over the ~4.2%
+     the 690px target implies. */
+  --tv-safe-bottom: 5vh;
 }
 
 * {

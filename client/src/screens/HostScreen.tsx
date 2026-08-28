@@ -37,6 +37,7 @@ import {
   type ResumedPayload,
   type RevealHostPayload,
   type RevealShowPayload,
+  type PlayerStanding,
   type RoomCode,
   type RoomCreatedPayload,
   type RoomSettings,
@@ -71,6 +72,7 @@ import { GuessRevealView } from './host/GuessRevealView';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { SceneLayer } from './host/SceneLayer';
+import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -995,6 +997,54 @@ export default function HostScreen() {
   const connectedCount = players.filter((player) => player.connected).length;
   const vip = players.find((player) => player.isVip) ?? null;
 
+  // Standings for the persistent score column, read from whichever payload
+  // the CURRENT phase carries - never "first non-null", since a previous
+  // phase's payload lingers in state and would show stale scores. null means
+  // this phase has no two-column shell at all (LOBBY/STAGE_ANNOUNCE/
+  // GAME_OVER render alone).
+  function standingsForPhase(): PlayerStanding[] | null {
+    switch (phase) {
+      case 'QUESTION':
+        return question?.standings ?? null;
+      case 'REVEAL':
+        return reveal?.standings ?? null;
+      case 'POWER_UP':
+        return powerUp?.standings ?? null;
+      case 'STEAL':
+        return steal?.standings ?? null;
+      case 'SOCRATES':
+        return socrates?.standings ?? null;
+      case 'DRAW':
+        return draw?.standings ?? null;
+      case 'GUESS':
+        return guess?.standings ?? null;
+      case 'GUESS_REVEAL':
+        return guessReveal?.standings ?? null;
+      case 'NUMERIC_QUESTION':
+        return numericQuestion?.standings ?? null;
+      case 'NUMERIC_REVEAL':
+        return numericReveal?.standings ?? null;
+      default:
+        return null;
+    }
+  }
+
+  // This round's points, as a +N badge beside each score. REVEAL and
+  // GUESS_REVEAL only - every other phase passes null, so the badge just
+  // isn't there rather than needing an explicit clear step.
+  function pointsThisRound(): Record<string, number> | null {
+    if (phase === 'REVEAL' && reveal) {
+      return Object.fromEntries(reveal.results.map((result) => [result.playerId, result.pointsAwarded]));
+    }
+    if (phase === 'GUESS_REVEAL' && guessReveal) {
+      return {
+        ...Object.fromEntries(guessReveal.results.map((result) => [result.playerId, result.pointsAwarded])),
+        [guessReveal.drawerPlayerId]: guessReveal.drawerPointsAwarded,
+      };
+    }
+    return null;
+  }
+
   function renderPhaseView() {
     // The announcement is a phase of its own (Task 35), so it renders ALONE:
     // the question it precedes hasn't started server-side yet, and nothing
@@ -1167,6 +1217,19 @@ export default function HostScreen() {
   const isPlayPhase = phase !== 'LOBBY' && phase !== 'GAME_OVER';
   const showFullscreenToggle = fullscreenSupported && !(isPlayPhase && isFullscreen);
 
+  // The two-column in-game shell. Owned HERE, not inside GameLayout, so the
+  // score column below keeps its React identity across a phase change -
+  // every phase view is a different component type, so anything rendered
+  // inside one is unmounted when the phase advances. See GameLayout's own
+  // comment: that unmount was silently defeating the panel's 900ms-settle /
+  // 400ms-glide reorder on the one transition that changes scores.
+  // SOCRATES uses the shell but drops the column (he speaks alone).
+  const scorePanelStandings = standingsForPhase();
+  const showShell = scorePanelStandings !== null;
+  const hideScorePanel = phase === 'SOCRATES';
+
+  const phaseView = renderPhaseView();
+
   return (
     <>
       <SceneLayer phase={phase} />
@@ -1181,7 +1244,21 @@ export default function HostScreen() {
           {isFullscreen ? '⤡' : '⤢'}
         </button>
       )}
-      {renderPhaseView()}
+      {showShell ? (
+        <div style={{ ...hostStyles.gameLayout, ...(hideScorePanel ? { gridTemplateColumns: '1fr' } : {}) }}>
+          {phaseView}
+          {!hideScorePanel && (
+            <PlayerScoresPanel
+              standings={scorePanelStandings}
+              thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
+              victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
+              pointsThisRound={pointsThisRound()}
+            />
+          )}
+        </div>
+      ) : (
+        phaseView
+      )}
     </>
   );
 }
