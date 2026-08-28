@@ -356,10 +356,11 @@ export const styles: Record<string, CSSProperties> = {
     color: 'var(--gold)',
   },
   qrWrapper: {
-    // Explicit white background regardless of theme - QR scanning fails on
+    // A light, near-white ground regardless of theme - QR scanning fails on
     // dark/inverted codes on many phone cameras, so this can't just inherit
-    // whatever the page background happens to be.
-    background: '#ffffff',
+    // whatever the page background happens to be. The canvas paints its own
+    // white quiet zone (margin: 2), so --cream here only frames it.
+    background: 'var(--cream)',
     padding: '1rem',
     borderRadius: '1rem',
     lineHeight: 0,
@@ -537,7 +538,9 @@ export const styles: Record<string, CSSProperties> = {
   progress: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    // --dim, not --text-faint (theme.css only). Papyrus call sites override
+    // this with --ink; --dim is the muted reading on the dark ground.
+    color: 'var(--dim)',
   },
   questionText: {
     fontSize: '4rem',
@@ -646,7 +649,7 @@ export const styles: Record<string, CSSProperties> = {
   answerCount: {
     marginLeft: 'auto',
     fontWeight: 800,
-    color: 'var(--text-dim)',
+    color: 'var(--cream)',
   },
   // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
   // above other content: the card fills the left column on its own, and the
@@ -862,7 +865,9 @@ export const styles: Record<string, CSSProperties> = {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
-    background: '#ffffff',
+    // Matches the paper the drawing is baked onto (PAPER in DrawingCanvas),
+    // so objectFit:contain's letterbox bars are invisible against it.
+    background: 'var(--cream)',
   },
   // Steal (Task 32) - the TV during and after a theft.
   stealThiefRow: {
@@ -876,7 +881,7 @@ export const styles: Record<string, CSSProperties> = {
   stealAmount: {
     fontSize: '2.25rem',
     fontWeight: 700,
-    color: 'var(--text-dim)',
+    color: 'var(--cream)',
   },
   stealVictimRow: {
     display: 'flex',
@@ -894,17 +899,17 @@ export const styles: Record<string, CSSProperties> = {
   stealNothing: {
     fontSize: '3rem',
     fontWeight: 700,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   stealClampNote: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   stealScoreLine: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--cream)',
   },
   // Numeric mode (Task 66) - NUMERIC_QUESTION's range readout and
   // NUMERIC_REVEAL's number line. The line IS the reveal (see

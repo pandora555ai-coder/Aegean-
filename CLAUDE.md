@@ -8,7 +8,7 @@ in Ancient Athens. All player-facing text is Greek.
 TypeScript monorepo, npm workspaces: /shared /server /client
 Server: Node + Express + Socket.IO (tsx, no build step, systemd)
 Client: Vite + React. Routes: / (landing), /host (TV), /play (phone),
-/dev/draw (canvas test route)
+plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz (devRoutes.tsx)
 
 ## WHERE YOU WORK — read this before running anything
 
@@ -23,9 +23,21 @@ Client: Vite + React. Routes: / (landing), /host (TV), /play (phone),
 - **Never use pkill or killall.** Find the PID (lsof -i :4001) and kill
   that exact PID. A pattern match protecting production by coincidence of
   path is not protection.
-- Deploy: `~/deploy.sh` — cds into /root/Aegean-, `git pull --ff-only`,
-  aborts loudly on a dirty tree or failed pull, then rsyncs into
-  /opt/party-game excluding .git, voice and voice-test.
+- Deploy is `deploy/deploy.sh`, inside the repo (the only path DEPLOY.md
+  gives). Aborts loudly on a dirty tree. **You do not run it — Argyrios does.**
+
+## Visual verification
+
+- **Use Playwright** — already a devDependency, zero setup.
+- Browse **localhost:5173 and localhost:4001 ONLY.** Never
+  demboyz11.duckdns.org: that is a live room real people play in.
+- **chrome-devtools-mcp does not work here** (every call fails with
+  `Target closed`). Do not re-add it.
+- **Report NUMBERS in words** — bounding boxes, heights, counts.
+  Never screenshots: they are the most expensive thing entering context.
+- `npm run screenshot:phases` reads bot count from the `BOT_COUNT` env var
+  (default 4) but captures at a hardcoded 1920x1080, so measuring at
+  1280x720 needs its own short throwaway script.
 
 ## Where things live
 
@@ -43,15 +55,36 @@ server/src/steal.ts      STEAL thief selection + the clamped point transfer
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
-server/src/questions.ts  Loads questions.json, difficulty filtering
+server/src/questions.ts  Loads questions.json, difficulty filtering. Also holds
+                         FORCE_QUESTION_ID — dev hook pinning the served question, NODE_ENV-guarded. Keep it.
 server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS
 server/src/scoring.ts    Pure scoring function
 server/src/numeric.ts    maxForAnswer, clamping, scoring, pure payload builders. MODE-AGNOSTIC — keep it that way.
 server/src/data/questions.json  899 questions, 49 categories
-client/src/screens/HostScreen.tsx        TV, all phases (LARGE)
+client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the score column
+client/src/screens/host/                 One file per TV phase, plus GameLayout/PapyrusPanel
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
 client/src/components/DrawingCanvas.tsx  Canvas, tools, colour wheel
-client/src/theme.css     Gameshow theme
+client/src/palette-elaiografia.css       THE colour source
+client/src/theme.css                     Legacy theme, being retired
+
+## Colour
+
+- **palette-elaiografia.css is the single source** — ten :root tokens:
+  --ground --deep --panel --pap-1 --pap-2 --ink --wood --gold --cream --dim.
+- On any screen you touch: zero raw hex, and **no `var(--x)` naming a token
+  the palette does not define.** Check by inversion, not by a blocklist —
+  a blocklist of five names passed clean while `--surface-strong`,
+  `--text-faint` and `--text-dim` were live on the TV:
+  `comm -23 <(grep -aroE "var\(--[a-z0-9-]+" <files> | sed 's/.*var(//' | sort -u) \`
+  `  <(grep -aoE "^ +--[a-z0-9-]+" client/src/palette-elaiografia.css | tr -d ' ' | sort -u)`
+- **Colour NEVER encodes correctness.** Correct = opacity 1 + heavier
+  weight, wrong = opacity 0.42. Same rule on TV and phone.
+- **Trap: `--gold` is defined twice** — palette AND theme.css. Import order
+  in main.tsx decides which wins.
+- **Trap: `--tv-safe-bottom: 5vh` still lives in theme.css.** Move it to the
+  palette BEFORE theme.css is deleted or the TV safe area dies with it.
+  theme.css goes only once the phone screens are ported.
 
 ## Core rules — do not break these
 
@@ -83,11 +116,11 @@ Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
 
 `paused` is a boolean flag, NOT a phase.
-**There is no mid-game SCOREBOARD.** It was deleted — scores live in the
-TV's right-hand column at all times. Do not reintroduce it.
+**There is no mid-game SCOREBOARD** — scores live in the TV's right-hand
+column at all times. Do not reintroduce one.
 Every quiz question is entered via enterQuestionOrPowerUp() — the only gate.
-STAGE_ANNOUNCE is a real held phase: the TV shows the stage card alone and
-the question timer starts only after it.
+STAGE_ANNOUNCE is a real held phase: the stage card shows alone and the
+question timer starts only after it.
 continueAfterReveal() is the one function deciding what follows a REVEAL.
 SOCRATES is skipped entirely when no moment fires.
 
@@ -103,46 +136,57 @@ of the stages. room.stage is server-side; the TV announces each stage once.
 Landed effects STACK per target: ice in duration (10s cap), ink in
 intensity (cap 3), both via addAppliedSabotage().
 
+## TV layout
+
+- **Fit within 690px, not 720px** — real TVs crop 2-3% of the panel.
+  `--tv-safe-bottom` is the single knob; never tighten screens one by one.
+- **Centered flex overflow is INVISIBLE to scrollHeight.** The host
+  container is overflow:hidden, so content is clipped silently. Only
+  per-element bounding-box checks against the viewport catch it.
+- **PapyrusPanel must stay `flex: 0 0 auto`.** Its content is text and
+  cannot compress; let it shrink and the text bleeds off the parchment.
+- **The score column lives in HostScreen, NOT inside a phase view.** Put it
+  back inside one and it unmounts on every phase change, silently killing
+  the 900ms-settle-then-400ms-glide row reorder.
+
 ## Drawing mode
 
-Guess-from-options, not free text. Everyone draws simultaneously, then each
-drawing goes up in turn and everyone else picks from four words.
+Guess-from-options, not free text. Everyone draws at once, then each drawing
+goes up in turn and everyone else picks from four words.
 WORD_SETS rows are { words: [4], rotatable }; the target is chosen at deal
 time, and two players must never get the same target word.
 The drawer scores round(400 * correct / eligible) — a proportion, so it
-measures clarity rather than player count.
-Export bakes the canvas background (flattenToPaper) so an erased area and
-a white stroke render identically on the TV.
+measures clarity, not player count. Export bakes the canvas background
+(flattenToPaper) so an erased area and a white stroke render identically.
 
 ## Numeric mode
 
-Standalone for now, for testing in isolation — it is meant to become a quiz
-STAGE later. server/src/numeric.ts must import nothing from modes/, so that
-merge is a rewrite of the mode shell (modes/numeric.ts) only. `max` is
-derived from the answer, never authored directly.
+Standalone for now; meant to become a quiz STAGE later. server/src/numeric.ts
+must import nothing from modes/, so that merge is a rewrite of the mode shell
+(modes/numeric.ts) only. `max` is derived from the answer, never authored.
 
 ## Voice
 
-193 -> 186 pre-generated ElevenLabs mp3s in client/public/voice, named by
+~186 pre-generated ElevenLabs mp3s in client/public/voice, named by
 lineHash(text, tag). **They are gitignored and cost credits to rebuild.**
 In the dev copy that path is a SYMLINK — the .gitignore entry is `voice`
 with NO trailing slash, because a trailing slash does not match a symlink.
-The SOCRATES phase ends on socrates:audio_ended from the host; the timer
-is only a backstop.
-`npm run voice:generate` regenerates only changed lines and reports the
-longest clip. `npm run voice:index` builds the rating page.
+SOCRATES ends on socrates:audio_ended from the host; the timer is only a
+backstop. `npm run voice:generate` regenerates only changed lines and
+reports the longest clip; `npm run voice:index` builds the rating page.
 
 ## Traps that have bitten before
 
+- **`grep` here is ugrep, and it reports NO MATCH — silently, exit 1, no
+  stderr — on any file holding a NUL byte.** Not a Greek or locale problem.
+  Two source files carry NUL deliberately (shared/src/index.ts,
+  dev/screenshot-phases.ts, which use `\0` as a key separator). Grep those
+  with `grep -a`, or a "not found" there is worthless.
 - A commit deleting a file does NOT remove an untracked copy of it.
   After a rename or deletion, check `git status` for the ghost.
-- Centered flex overflow is invisible to scrollHeight. The host container
-  is overflow:hidden, so content is clipped silently. Test TV layouts with
-  per-element bounding-box checks against the viewport.
 - destination-out over an anti-aliased edge only attenuates alpha to
   a*(1-a), never 0. More passes will not clear it.
-- The screenshot harness has twice accused the game wrongly. Suspect the
-  harness first.
+- Suspect the screenshot harness first — it has twice accused the game wrongly.
 - computeCompetitionRanks does standard 1,2,2,4 ranking. Duplicate rank
   numbers are genuine ties. Reported as a bug twice; it is not one.
 
@@ -150,9 +194,11 @@ longest clip. `npm run voice:index` builds the rating page.
 
 - Read only the files you need. Do not explore the whole repo.
 - Keep final reports under 8 lines.
-- **Report on EVERY acceptance criterion, individually.** "Typecheck
-  passes" is not evidence for a behavioural criterion.
+- **Report on EVERY acceptance criterion, individually**, with numbers.
+  "Typecheck passes" is not evidence for a behavioural criterion.
+- A criterion must always name its fallback value, never a bare pass:
+  "report anything over 720px; if none, report the tallest element".
 - Verify by running things, not by reading code and reasoning about it.
-- When a task copies content from a document into code, count the rows and
-  report the count.
+- When a task copies content from a document into code, count the rows.
 - Move code rather than rewriting it during refactors.
+- One task = one file at `tasks/NNN-name.md`, committed with its work.
