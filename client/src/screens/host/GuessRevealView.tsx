@@ -1,6 +1,5 @@
 import { Fragment, type CSSProperties } from 'react';
 import { ANSWER_IDENTITIES, GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
-import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
@@ -149,11 +148,6 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
                     className={isCorrect ? 'correct-pop' : undefined}
                     style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
                   >
-                    {/* Same rule as RevealView: identity colour is
-                        per-letter, never a correctness signal - the
-                        shape/letter hue never changes here, only this
-                        row's opacity/weight. */}
-                    <AnswerShape index={index} sizeRem={1.5} />
                     <span style={styles.optionLabel}>{identity.letter}</span>
                     <span style={optionTextStyle}>{option}</span>
                   </div>

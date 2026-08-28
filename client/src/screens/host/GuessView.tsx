@@ -1,5 +1,4 @@
 import { ANSWER_IDENTITIES, type GuessProgressPayload, type GuessShowHostPayload, type RoomCode } from '@game/shared';
-import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
@@ -53,7 +52,6 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName, sec
             const identity = ANSWER_IDENTITIES[index];
             return (
               <div key={index} data-testid="guess-option" style={styles.optionCard}>
-                <AnswerShape index={index} sizeRem={1.75} />
                 <span style={styles.optionLabel}>{identity.letter}</span>
                 <span>{option}</span>
               </div>

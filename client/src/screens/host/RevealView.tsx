@@ -6,7 +6,6 @@ import {
   type RevealHostPayload,
   type RoomCode,
 } from '@game/shared';
-import { AnswerShape } from '../../components/AnswerShape';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
@@ -106,11 +105,6 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                 className={isCorrect ? 'correct-pop' : undefined}
                 style={optionRowStyle(isCorrect)}
               >
-                {/* The shape/letter identity colour never changes with
-                    correctness - it's the same per-slot hue on every option
-                    regardless of which one is right. Correctness itself
-                    reads purely via this row's opacity/weight above. */}
-                <AnswerShape index={index} sizeRem={1.75} />
                 <span style={styles.optionLabel}>{identity.letter}</span>
                 <span>{option}</span>
                 <span style={answerCountStyle} data-testid="answer-count">
@@ -151,7 +145,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                   <span style={styles.resultNameText}>
                     {result.correct
                       ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`
-                      : `${result.timeMs !== null ? '✗' : '–'} ${result.name}`}
+                      : result.name}
                   </span>
                 </span>
                 <span style={resultPointsStyle}>
