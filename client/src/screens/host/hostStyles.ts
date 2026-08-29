@@ -77,29 +77,6 @@ export function standingsListGap(count: number): string {
   return `${(0.75 * densityScale(count)).toFixed(2)}rem`;
 }
 
-// REVEAL's per-player results list - the tallest, most player-count-sensitive
-// section on that screen (up to 8 rows + a divider), so it gets the most
-// aggressive shrink.
-export function resultRowSizeStyle(count: number, fastest: boolean): CSSProperties {
-  const s = densityScale(count);
-  const baseFont = fastest ? 1.9 : 1.75;
-  const padY = fastest ? 0.6 : 0.5;
-  const padX = fastest ? 1.25 : 1;
-  return {
-    fontSize: `${(baseFont * s).toFixed(2)}rem`,
-    padding: `${(padY * s).toFixed(2)}rem ${(padX * s).toFixed(2)}rem`,
-    gap: `${(0.75 * s).toFixed(2)}rem`,
-  };
-}
-
-export function resultAvatarSize(count: number): number {
-  return 1.75 * densityScale(count);
-}
-
-export function resultsListGap(count: number): string {
-  return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
-}
-
 // Drawing mode (Task 56b) - GUESS_REVEAL stacks the picture ABOVE a
 // player-count-sensitive results list (up to 7 guesser rows), unlike plain
 // GUESS which has vertical room to spare for a big square image. Verified
@@ -139,19 +116,6 @@ export function sidebarAvatarSize(count: number): number {
 
 export function sidebarListGap(count: number): string {
   return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
-}
-
-// QUESTION/POWER_UP's per-player "who's answered" strip.
-export function answeredNamesSizeStyle(count: number): CSSProperties {
-  const s = densityScale(count);
-  return {
-    fontSize: `${(1.5 * s).toFixed(2)}rem`,
-    gap: `${(0.75 * s).toFixed(2)}rem`,
-  };
-}
-
-export function answeredAvatarSize(count: number): number {
-  return 1.5 * densityScale(count);
 }
 
 export const styles: Record<string, CSSProperties> = {
@@ -588,36 +552,6 @@ export const styles: Record<string, CSSProperties> = {
     fontFamily: 'monospace',
     color: 'var(--gold)',
   },
-  answerCounter: {
-    fontSize: '2rem',
-    fontWeight: 700,
-    color: 'var(--dim)',
-  },
-  answeredNames: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: '0.75rem',
-    fontSize: '1.5rem',
-    fontWeight: 600,
-  },
-  // "Answered" used to be a green ring on the avatar - a hue signal. Ported
-  // to opacity only: the whole marker (avatar included, since it's a child
-  // of this span) dims until the player has acted, no colour involved.
-  nameAnswered: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    color: 'var(--cream)',
-    opacity: 1,
-  },
-  nameNotAnswered: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    color: 'var(--dim)',
-    opacity: 0.55,
-  },
   // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
   // above other content: the card fills the left column on its own, and the
   // line is set at question-sized type because it IS the screen.
@@ -655,40 +589,6 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     maxWidth: '700px',
-  },
-  resultsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    width: '100%',
-    maxWidth: '700px',
-  },
-  resultRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '0.75rem',
-    fontSize: '1.75rem',
-    fontWeight: 600,
-    padding: '0.5rem 1rem',
-  },
-  resultRowFastest: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '0.75rem',
-    fontSize: '1.9rem',
-    fontWeight: 800,
-    padding: '0.6rem 1.25rem',
-    borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.12)',
-    border: '2px solid var(--gold)',
-  },
-  resultNameText: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    minWidth: 0,
   },
   // GAME_OVER's whole celebration stack, as ONE block so useFitScale has a
   // single thing to measure and scale (the container itself also holds the

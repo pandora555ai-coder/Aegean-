@@ -13,12 +13,10 @@ import {
   isSocratesHostPayload,
   isStealHostPayload,
   type AnswerProgressPayload,
-  type DrawProgressPayload,
   type DrawShowHostPayload,
   type DrawShowPayload,
   type GameOverPayload,
   type GamePhase,
-  type GuessProgressPayload,
   type GuessRevealShowPayload,
   type GuessShowHostPayload,
   type GuessShowPayload,
@@ -28,7 +26,6 @@ import {
   type NumericRevealShowPayload,
   type PausedPayload,
   type PhaseChangedPayload,
-  type PowerUpProgressPayload,
   type PowerUpShowHostPayload,
   type PowerUpShowPayload,
   type QuestionShowHostPayload,
@@ -80,18 +77,16 @@ export default function HostScreen() {
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
-  const [answerProgress, setAnswerProgress] = useState<AnswerProgressPayload | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
-  // Power-up (Task 30b). Two pieces of state, exactly like question/
-  // answerProgress: the phase payload is set ONCE per phase, and the ticker
-  // that follows updates only the progress - so the countdown below can key
-  // off `powerUp` alone without every new chooser resetting it.
+  // Power-up (Task 30b). One piece of state: the phase payload, set once per
+  // phase - Task 115 deleted the TV's chosen counter and avatar strip, the
+  // only thing power_up:progress fed, so there is no progress state left to
+  // reset the countdown below.
   const [powerUp, setPowerUp] = useState<PowerUpShowHostPayload | null>(null);
-  const [powerUpProgress, setPowerUpProgress] = useState<PowerUpProgressPayload | null>(null);
   const [powerUpSecondsLeft, setPowerUpSecondsLeft] = useState(0);
   // Steal (Task 32) - ONE piece of state for both beats of the phase: the
   // payload carries `resolved`, so the announcement is just a later version of
@@ -110,14 +105,13 @@ export default function HostScreen() {
   // countdown below can key off the object alone.
   const [socrates, setSocrates] = useState<SocratesShowPayload | null>(null);
   const [socratesSecondsLeft, setSocratesSecondsLeft] = useState(0);
-  // Drawing mode (Task 56b) - same two-piece pattern as POWER_UP: the phase
-  // payload set once per phase/reconnect, and a separate progress ticker so
-  // a submission/guess landing never resets the countdown effect below.
+  // Drawing mode (Task 56b) - the phase payload, set once per phase/reconnect.
+  // The submitted/guessed progress tickers went with the counters and avatar
+  // strips they fed (Task 115); the server still counts both and still ends
+  // either phase early once everyone has acted.
   const [draw, setDraw] = useState<DrawShowHostPayload | null>(null);
-  const [drawProgress, setDrawProgress] = useState<DrawProgressPayload | null>(null);
   const [drawSecondsLeft, setDrawSecondsLeft] = useState(0);
   const [guess, setGuess] = useState<GuessShowHostPayload | null>(null);
-  const [guessProgress, setGuessProgress] = useState<GuessProgressPayload | null>(null);
   const [guessSecondsLeft, setGuessSecondsLeft] = useState(0);
   const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
   const [guessRevealSecondsLeft, setGuessRevealSecondsLeft] = useState(0);
@@ -221,18 +215,14 @@ export default function HostScreen() {
         // so the lobby renders cleanly instead of a stale QUESTION/REVEAL/
         // GAME_OVER screen flashing first.
         setQuestion(null);
-        setAnswerProgress(null);
         setReveal(null);
         setGameOver(null);
         setPowerUp(null);
-        setPowerUpProgress(null);
         setSteal(null);
         setStageAnnounce(null);
         setSocrates(null);
         setDraw(null);
-        setDrawProgress(null);
         setGuess(null);
-        setGuessProgress(null);
         setGuessReveal(null);
         setNumericQuestion(null);
         setNumericReveal(null);
@@ -255,12 +245,10 @@ export default function HostScreen() {
         // A fresh question:show always means "just started" - nothing has
         // elapsed yet, so the full duration IS the correct countdown start.
         applySecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
-        setAnswerProgress(null);
         setReveal(null);
         // The question a POWER_UP phase preceded starts the instant that
         // phase ends - drop its view rather than leaving it behind.
         setPowerUp(null);
-        setPowerUpProgress(null);
         // A steal belonged to the PREVIOUS question - it's over by now, and
         // so is the commentary beat that followed it.
         setSteal(null);
@@ -286,18 +274,14 @@ export default function HostScreen() {
     function handlePowerUpShow(payload: PowerUpShowPayload) {
       if (isPowerUpHostPayload(payload)) {
         setQuestion(null);
-        setAnswerProgress(null);
         setReveal(null);
         setPowerUp(payload);
-        setPowerUpProgress(payload);
         setSocrates(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
     }
 
-    // WHO has locked in, never what they picked or at whom - that is all the
-    // server sends the host, and all the TV ever shows.
     function handleStageAnnounce(payload: StageAnnouncePayload) {
       setStageAnnounce(payload);
     }
@@ -326,20 +310,14 @@ export default function HostScreen() {
       }
     }
 
-    function handlePowerUpProgress(payload: PowerUpProgressPayload) {
-      setPowerUpProgress(payload);
-    }
-
     // Steal (Task 32) - the host branch of an asymmetric event. The thief's
     // target list is never sent to the TV at all, so there is nothing here
     // that could give the pick away before it happens.
     function handleStealShow(payload: StealShowPayload) {
       if (isStealHostPayload(payload)) {
         setQuestion(null);
-        setAnswerProgress(null);
         setReveal(null);
         setPowerUp(null);
-        setPowerUpProgress(null);
         setSteal(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
@@ -356,8 +334,9 @@ export default function HostScreen() {
       }
     }
 
+    // Kept for the sound alone (Task 115): the TV shows no answered counter
+    // any more, but each landing answer still gets its blip.
     function handleAnswerProgress(payload: AnswerProgressPayload) {
-      setAnswerProgress(payload);
       if (!pausedRef.current) {
         playAnswerBlip(payload.answered);
       }
@@ -395,17 +374,11 @@ export default function HostScreen() {
     function handleDrawShow(payload: DrawShowPayload) {
       if (isDrawHostPayload(payload)) {
         setGuess(null);
-        setGuessProgress(null);
         setGuessReveal(null);
         setDraw(payload);
-        setDrawProgress(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
-    }
-
-    function handleDrawProgress(payload: DrawProgressPayload) {
-      setDrawProgress(payload);
     }
 
     // The host branch of GUESS's three-way asymmetric event - the drawing
@@ -413,28 +386,17 @@ export default function HostScreen() {
     function handleGuessShow(payload: GuessShowPayload) {
       if (isGuessHostPayload(payload)) {
         setDraw(null);
-        setDrawProgress(null);
         setGuessReveal(null);
         setGuess(payload);
-        // No guessedPlayerIds to seed here (GuessShowHostPayload only
-        // carries the counts, never who - see buildGuessHostPayload) -
-        // GuessView reads guess.guessedCount/totalGuessers directly until
-        // the first guess:progress tick arrives.
-        setGuessProgress(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
-    }
-
-    function handleGuessProgress(payload: GuessProgressPayload) {
-      setGuessProgress(payload);
     }
 
     // Public and symmetric, like reveal:show - the round is over, so the
     // drawing and the correct index are both safe to show now.
     function handleGuessRevealShow(payload: GuessRevealShowPayload) {
       setGuess(null);
-      setGuessProgress(null);
       setGuessReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
@@ -449,7 +411,6 @@ export default function HostScreen() {
     function handleNumericQuestionShow(payload: NumericQuestionShowPayload) {
       if (isNumericQuestionHostPayload(payload)) {
         setGuess(null);
-        setGuessProgress(null);
         setGuessReveal(null);
         setNumericReveal(null);
         setNumericQuestion(payload);
@@ -534,18 +495,14 @@ export default function HostScreen() {
       setPhase(payload.phase);
       phaseRef.current = payload.phase;
       setQuestion(null);
-      setAnswerProgress(null);
       setReveal(null);
       setGameOver(null);
       setPowerUp(null);
-      setPowerUpProgress(null);
       setSteal(null);
       setStageAnnounce(null);
       setSocrates(null);
       setDraw(null);
-      setDrawProgress(null);
       setGuess(null);
-      setGuessProgress(null);
       setGuessReveal(null);
       setNumericQuestion(null);
       setNumericReveal(null);
@@ -578,8 +535,7 @@ export default function HostScreen() {
           // up mid-phase rather than restarting from a full 10s.
           if (isPowerUpHostPayload(payload)) {
             setPowerUp(payload);
-            setPowerUpProgress(payload);
-            setPaused(payload.paused);
+                setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
           break;
@@ -627,15 +583,13 @@ export default function HostScreen() {
         case 'DRAW':
           if (isDrawHostPayload(payload)) {
             setDraw(payload);
-            setDrawProgress(payload);
-            setPaused(payload.paused);
+                setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
           break;
         case 'GUESS':
           if (isGuessHostPayload(payload)) {
             setGuess(payload);
-            setGuessProgress(null); // see handleGuessShow's comment
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -670,16 +624,13 @@ export default function HostScreen() {
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
-    socket.on(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
     socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
     socket.on(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
     socket.on(ServerEvents.DRAW_SHOW, handleDrawShow);
-    socket.on(ServerEvents.DRAW_PROGRESS, handleDrawProgress);
     socket.on(ServerEvents.GUESS_SHOW, handleGuessShow);
-    socket.on(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
@@ -697,16 +648,13 @@ export default function HostScreen() {
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
-      socket.off(ServerEvents.POWER_UP_PROGRESS, handlePowerUpProgress);
       socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
       socket.off(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
       socket.off(ServerEvents.DRAW_SHOW, handleDrawShow);
-      socket.off(ServerEvents.DRAW_PROGRESS, handleDrawProgress);
       socket.off(ServerEvents.GUESS_SHOW, handleGuessShow);
-      socket.off(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
@@ -775,8 +723,8 @@ export default function HostScreen() {
   // POWER_UP's own countdown (Task 30b) - same pattern as the one above, and
   // for the same reason it can key off `powerUp`: that object is set once per
   // phase, and its durationMs is always the server's live remaining time
-  // (fresh phase or reconnect alike). Progress ticks live in separate state,
-  // so a player locking in never rewinds the clock on screen.
+  // (fresh phase or reconnect alike) - no progress tick ever lands in this
+  // screen's state now, so a player locking in cannot rewind the clock.
   useEffect(() => {
     if (!powerUp) {
       return;
@@ -1085,55 +1033,26 @@ export default function HostScreen() {
 
     if (phase === 'POWER_UP' && powerUp) {
       return (
-        <PowerUpView
-          powerUp={powerUp}
-          progress={powerUpProgress}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          players={players}
-          connectedCount={connectedCount}
-        />
+        <PowerUpView powerUp={powerUp} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
     }
 
     if (phase === 'QUESTION' && question) {
       return (
-        <QuestionView
-          question={question}
-          answerProgress={answerProgress}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          players={players}
-          connectedCount={connectedCount}
-        />
+        <QuestionView question={question} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
     }
 
     // Drawing mode (Task 56b).
     if (phase === 'DRAW' && draw) {
       return (
-        <DrawView
-          draw={draw}
-          progress={drawProgress}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          players={players}
-        />
+        <DrawView draw={draw} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
     }
 
     if (phase === 'GUESS' && guess) {
       return (
-        <GuessView
-          guess={guess}
-          progress={guessProgress}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-        />
+        <GuessView guess={guess} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
     }
 

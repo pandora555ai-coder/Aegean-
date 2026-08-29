@@ -1,15 +1,9 @@
 import { useRef, type CSSProperties } from 'react';
-import {
-  type DrawProgressPayload,
-  type DrawShowHostPayload,
-  type LobbyPlayer,
-  type RoomCode,
-} from '@game/shared';
-import { Avatar } from '../../components/Avatar';
+import { type DrawShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
-import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
+import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
 // still carry pre-Ελαιογραφία tokens there - this phase's content is ported
@@ -27,22 +21,20 @@ const papyrusTextBlockStyle: CSSProperties = {
 
 interface DrawViewProps {
   draw: DrawShowHostPayload;
-  progress: DrawProgressPayload | null;
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  players: LobbyPlayer[];
 }
 
-// Task 56b - the TV during DRAW: who has submitted, nothing else. Deliberately
-// the same shape as PowerUpView's answered-markers strip - WHAT anyone is
-// drawing is never sent to the host at all (see buildDrawHostPayload), so
-// there is nothing here that could spoil it before the GUESS phase.
-export function DrawView({ draw, progress, roomCode, paused, pausedByName, players }: DrawViewProps) {
-  const submittedIds = new Set(progress?.submittedPlayerIds ?? draw.submittedPlayerIds);
-  const submittedCount = progress?.submittedCount ?? draw.submittedCount;
-  const totalCount = progress?.totalPlayers ?? draw.totalPlayers;
-
+// Task 56b - the TV during DRAW. WHAT anyone is drawing is never sent to the
+// host at all (see buildDrawHostPayload), so there is nothing here that could
+// spoil it before the GUESS phase.
+//
+// Task 115 deleted the "N/M υπέβαλαν" counter and the submitted-avatar strip
+// under it, with NO replacement: the score column already names everyone in
+// the room. The server still counts submissions and still ends the phase
+// early once everyone has submitted.
+export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps) {
   const titleBlockRef = useRef<HTMLDivElement | null>(null);
   const titleTextRef = useRef<HTMLDivElement | null>(null);
   // "Ζωγραφίστε!" is one unbroken word - no space to wrap on, so a fixed
@@ -63,26 +55,6 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, playe
           </div>
         </div>
       </PapyrusPanel>
-      <div style={styles.answerCounter} data-testid="draw-progress">
-        {submittedCount}/{totalCount} υπέβαλαν
-      </div>
-      <div style={{ ...styles.answeredNames, ...answeredNamesSizeStyle(players.length) }}>
-        {players.map((player) => {
-          const submitted = submittedIds.has(player.playerId);
-          return (
-            <span
-              key={player.playerId}
-              data-testid="draw-marker"
-              data-submitted={submitted}
-              style={submitted ? styles.nameAnswered : styles.nameNotAnswered}
-            >
-              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
-              {submitted ? '✓ ' : ''}
-              {player.name}
-            </span>
-          );
-        })}
-      </div>
     </GameLayout>
   );
 }

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { type GuessProgressPayload, type GuessShowHostPayload, type RoomCode } from '@game/shared';
+import { type GuessShowHostPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
@@ -30,7 +30,6 @@ const optionBoxStyle: CSSProperties = {
 
 interface GuessViewProps {
   guess: GuessShowHostPayload;
-  progress: GuessProgressPayload | null;
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
@@ -40,10 +39,13 @@ interface GuessViewProps {
 // countdown moved to the score column, Task 112). The correct index never reaches this payload at all (see
 // buildGuessHostPayload) - every option renders identically until
 // GUESS_REVEAL.
-export function GuessView({ guess, progress, roomCode, paused, pausedByName }: GuessViewProps) {
-  const guessedCount = progress?.guessedCount ?? guess.guessedCount;
-  const totalGuessers = progress?.totalGuessers ?? guess.totalGuessers;
-
+//
+// Task 115 deleted the "N/M μάντεψαν" counter under the options, with NO
+// replacement. The drawer heading ABOVE the drawing stays: it is not a
+// duplicate of the score column, it says whose sketch this is, which is the
+// whole point of the phase. The server still counts guesses and still ends
+// the phase early once every guesser has answered.
+export function GuessView({ guess, roomCode, paused, pausedByName }: GuessViewProps) {
   return (
     <GameLayout
       roomCode={roomCode}
@@ -72,9 +74,6 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName }: G
           ))}
         </div>
       </PapyrusPanel>
-      <div style={styles.answerCounter} data-testid="guess-progress">
-        {guessedCount}/{totalGuessers} μάντεψαν
-      </div>
     </GameLayout>
   );
 }

@@ -15,8 +15,13 @@ import { guessRevealImageWrapStyle, styles } from './hostStyles';
 // The per-player result list was deleted (names/scores already live in the
 // score column - see GameLayout) because at 8 players it pushed this
 // panel's bottom edge to 717px of a 720px TV, and real TVs crop 2-3% at
-// the edges - it was already off-screen there. Only the guessed-correctly
-// COUNT survives; who and how many points is standings-column-only now.
+// the edges - it was already off-screen there.
+//
+// Task 115 finished that: the drawer's own bonus line and the aggregate
+// "N/M μάντεψαν σωστά" are gone too. Nothing under the papyrus names a
+// player or counts them - the drawer's +N is in the score column like
+// everyone else's. The drawer heading ABOVE the drawing stays: it says whose
+// sketch this is, not who scored.
 const WRONG_OPACITY = 0.42;
 
 // Boxed option, no letter - same treatment as RevealView. Border colour is
@@ -64,19 +69,6 @@ const correctWordStyle: CSSProperties = {
   textAlign: 'center',
 };
 
-const drawerBonusStyle: CSSProperties = {
-  fontSize: '2.25rem',
-  fontWeight: 700,
-  color: 'var(--cream)',
-};
-
-const correctCountStyle: CSSProperties = {
-  fontSize: '1.5rem',
-  fontWeight: 600,
-  color: 'var(--cream)',
-  opacity: 0.85,
-};
-
 const progressBarTrackStyle: CSSProperties = {
   width: '100%',
   maxWidth: '500px',
@@ -98,8 +90,6 @@ interface GuessRevealViewProps {
 // right, and points - both the guessers' and the drawer's own bonus. The
 // round is over, so the drawing and the correct index are both safe here.
 export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, secondsLeft }: GuessRevealViewProps) {
-  const correctCount = guessReveal.results.filter((result) => result.correct).length;
-
   return (
     <GameLayout
       roomCode={roomCode}
@@ -151,12 +141,6 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           ))}
         </div>
       </PapyrusPanel>
-      <div style={drawerBonusStyle} data-testid="guess-reveal-drawer-bonus">
-        {guessReveal.drawerName}: +{guessReveal.drawerPointsAwarded} ({guessReveal.drawerTotalScore})
-      </div>
-      <div style={correctCountStyle} data-testid="guess-reveal-correct-count">
-        {correctCount}/{guessReveal.results.length} μάντεψαν σωστά
-      </div>
       <div style={progressBarTrackStyle} data-testid="guess-reveal-progress">
         <div
           style={{

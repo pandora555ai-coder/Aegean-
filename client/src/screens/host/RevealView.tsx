@@ -1,19 +1,18 @@
-import { Fragment, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import {
   REVEAL_DURATION_MS,
   type QuestionShowHostPayload,
   type RevealHostPayload,
   type RoomCode,
 } from '@game/shared';
-import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
-import { resultAvatarSize, resultRowSizeStyle, resultsListGap, styles, type CSSVars } from './hostStyles';
+import { styles } from './hostStyles';
 
 // Ελαιογραφία palette pass - REVEAL's own content (the shared chrome
-// - score panel, timer, category, answered-names - is ported in
-// hostStyles.ts already). Correctness is never colour-coded here: it reads
-// purely as full-opacity/bold (correct) vs 42%-opacity/regular (wrong) -
+// - score panel, timer, category - is ported in hostStyles.ts already).
+// Correctness is never colour-coded here: it reads purely as
+// full-opacity/bold (correct) vs 42%-opacity/regular (wrong) -
 // see WRONG_OPACITY below - so nothing here needs a correctness hue.
 const WRONG_OPACITY = 0.42;
 
@@ -47,31 +46,6 @@ const answerCountStyle: CSSProperties = {
   color: 'var(--ink)',
 };
 
-const resultNameStyle = (correct: boolean): CSSProperties => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.6rem',
-  flex: 1,
-  minWidth: 0,
-  color: 'var(--cream)',
-  fontWeight: correct ? 800 : 500,
-  opacity: correct ? 1 : WRONG_OPACITY,
-});
-
-const resultPointsStyle: CSSProperties = {
-  flexShrink: 0,
-  fontFamily: 'monospace',
-  fontWeight: 700,
-  color: 'var(--cream)',
-};
-
-const resultsDividerStyle: CSSProperties = {
-  height: '1px',
-  background: 'var(--dim)',
-  margin: '0.4rem 0',
-  opacity: 0.4,
-};
-
 const progressBarTrackStyle: CSSProperties = {
   width: '100%',
   maxWidth: '500px',
@@ -90,9 +64,13 @@ interface RevealViewProps {
   revealSecondsLeft: number;
 }
 
+// Task 115 - the papyrus reads, the column carries players: the per-player
+// results list under the options is gone (name, avatar, answer rank, time and
+// +N per row). Every one of those rows named a player the right-hand score
+// column already lists, with the same +N beside the same name. What survives
+// on the papyrus is the four options and how many picked each - an aggregate
+// of the answers, not a roll-call of the room.
 export function RevealView({ reveal, question, roomCode, paused, pausedByName, revealSecondsLeft }: RevealViewProps) {
-  const count = reveal.results.length;
-
   return (
     <GameLayout
       roomCode={roomCode}
@@ -125,47 +103,6 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
           })}
         </div>
       </PapyrusPanel>
-      <div style={{ ...styles.resultsList, gap: resultsListGap(count) }}>
-        {/* Rendered in the order the server sent them - correct-by-speed,
-            then wrong, then non-answerers. Never re-sorted here. */}
-        {reveal.results.map((result, index) => {
-          const previous = reveal.results[index - 1];
-          const enteringWrongOrNoAnswer = !result.correct && (previous === undefined || previous.correct);
-          const isFastest = result.answerRank === 1;
-          return (
-            <Fragment key={result.playerId}>
-              {enteringWrongOrNoAnswer && <div style={resultsDividerStyle} data-testid="results-divider" />}
-              <div
-                className={isFastest ? 'glow-pulse' : undefined}
-                style={
-                  isFastest
-                    ? ({
-                        ...styles.resultRowFastest,
-                        ...resultRowSizeStyle(count, true),
-                        '--glow-color': 'rgba(212, 175, 55, 0.35)',
-                      } as CSSVars)
-                    : { ...styles.resultRow, ...resultRowSizeStyle(count, false) }
-                }
-                data-testid="reveal-result"
-                data-correct={result.correct}
-                data-answer-rank={result.answerRank ?? ''}
-              >
-                <span style={resultNameStyle(result.correct)}>
-                  <Avatar avatarId={result.avatarId} sizeRem={resultAvatarSize(count)} />
-                  <span style={styles.resultNameText}>
-                    {result.correct
-                      ? `${result.answerRank}. ${result.name}${result.timeMs !== null ? ` — ${(result.timeMs / 1000).toFixed(1)}΄΄` : ''}`
-                      : result.name}
-                  </span>
-                </span>
-                <span style={resultPointsStyle}>
-                  +{result.pointsAwarded} ({result.totalScore})
-                </span>
-              </div>
-            </Fragment>
-          );
-        })}
-      </div>
       <div style={progressBarTrackStyle} data-testid="reveal-progress">
         <div
           style={{

@@ -313,15 +313,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
       shell(
         powerUp.standings,
         { secondsLeft: 7, critical: false },
-        <PowerUpView
-          powerUp={powerUp}
-          progress={null}
-          roomCode={ROOM_CODE}
-          paused={false}
-          pausedByName={null}
-          players={PLAYERS}
-          connectedCount={CONNECTED_COUNT}
-        />,
+        <PowerUpView powerUp={powerUp} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
   },
@@ -331,15 +323,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
       shell(
         question.standings,
         { secondsLeft: 14, critical: false },
-        <QuestionView
-          question={question}
-          answerProgress={{ answered: 2, total: 5, answeredPlayerIds: ['p1', 'p2'] }}
-          roomCode={ROOM_CODE}
-          paused={false}
-          pausedByName={null}
-          players={PLAYERS}
-          connectedCount={CONNECTED_COUNT}
-        />,
+        <QuestionView question={question} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
   },
@@ -378,7 +362,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
       shell(
         draw.standings,
         { secondsLeft: 42, critical: false },
-        <DrawView draw={draw} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} players={PLAYERS} />,
+        <DrawView draw={draw} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
   },
@@ -388,7 +372,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
       shell(
         guess.standings,
         { secondsLeft: 18, critical: false },
-        <GuessView guess={guess} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
+        <GuessView guess={guess} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       ),
   },
   {

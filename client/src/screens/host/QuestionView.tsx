@@ -1,45 +1,34 @@
 import { useRef } from 'react';
-import {
-  type AnswerProgressPayload,
-  type LobbyPlayer,
-  type QuestionShowHostPayload,
-  type RoomCode,
-} from '@game/shared';
-import { Avatar } from '../../components/Avatar';
+import { type QuestionShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
-import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
+import { styles } from './hostStyles';
 
 interface QuestionViewProps {
   question: QuestionShowHostPayload;
-  answerProgress: AnswerProgressPayload | null;
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  players: LobbyPlayer[];
-  connectedCount: number;
 }
 
-export function QuestionView({
-  question,
-  answerProgress,
-  roomCode,
-  paused,
-  pausedByName,
-  players,
-  connectedCount,
-}: QuestionViewProps) {
-  const answeredIds = new Set(answerProgress?.answeredPlayerIds ?? []);
-  const answeredCount = answerProgress?.answered ?? 0;
-  const totalCount = answerProgress?.total ?? connectedCount;
-
+// Task 115 - the papyrus reads, the column carries players: the
+// "N/M απάντησαν" counter and the answered-avatar strip under it are gone,
+// with NO replacement on the TV. Both named the same people the right-hand
+// score column already lists. The server-side count is untouched - it still
+// ends the phase early once everyone has answered.
+export function QuestionView({ question, roomCode, paused, pausedByName }: QuestionViewProps) {
   const questionBlockRef = useRef<HTMLDivElement | null>(null);
   const questionTextRef = useRef<HTMLDivElement | null>(null);
-  useFitFontSize(questionBlockRef, questionTextRef, [question.question, question.questionIndex, players.length], {
-    maxRem: 6,
-    minRem: 2,
-  });
+  useFitFontSize(
+    questionBlockRef,
+    questionTextRef,
+    [question.question, question.questionIndex, question.standings.length],
+    {
+      maxRem: 6,
+      minRem: 2,
+    },
+  );
   return (
     <GameLayout
       roomCode={roomCode}
@@ -84,26 +73,6 @@ export function QuestionView({
           </div>
         </div>
       </PapyrusPanel>
-      <div style={styles.answerCounter} data-testid="answer-progress">
-        {answeredCount}/{totalCount} απάντησαν
-      </div>
-      <div style={{ ...styles.answeredNames, ...answeredNamesSizeStyle(players.length) }}>
-        {players.map((player) => {
-          const answered = answeredIds.has(player.playerId);
-          return (
-            <span
-              key={player.playerId}
-              data-testid="answered-marker"
-              data-answered={answered}
-              style={answered ? styles.nameAnswered : styles.nameNotAnswered}
-            >
-              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
-              {answered ? '✓ ' : ''}
-              {player.name}
-            </span>
-          );
-        })}
-      </div>
     </GameLayout>
   );
 }

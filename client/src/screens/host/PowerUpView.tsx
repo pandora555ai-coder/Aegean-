@@ -1,14 +1,8 @@
 import type { CSSProperties } from 'react';
-import {
-  type LobbyPlayer,
-  type PowerUpProgressPayload,
-  type PowerUpShowHostPayload,
-  type RoomCode,
-} from '@game/shared';
-import { Avatar } from '../../components/Avatar';
+import { type PowerUpShowHostPayload, type RoomCode } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
-import { answeredAvatarSize, answeredNamesSizeStyle, styles } from './hostStyles';
+import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
 // still carry pre-Ελαιογραφία tokens there - this phase's content is ported
@@ -25,32 +19,21 @@ const papyrusTextBlockStyle: CSSProperties = {
 
 interface PowerUpViewProps {
   powerUp: PowerUpShowHostPayload;
-  progress: PowerUpProgressPayload | null;
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  players: LobbyPlayer[];
-  connectedCount: number;
 }
 
-// Task 30b - the TV during POWER_UP. Deliberately the same shape as
-// QuestionView's answered-markers strip: an avatar per player that lights up
-// as they commit. WHAT anyone picked and WHO they aimed at are never sent to
-// the host at all (see buildPowerUpProgress), so there is nothing here that
-// could leak them - the surprise only breaks on the next question.
-export function PowerUpView({
-  powerUp,
-  progress,
-  roomCode,
-  paused,
-  pausedByName,
-  players,
-  connectedCount,
-}: PowerUpViewProps) {
-  const chosenIds = new Set(progress?.chosenPlayerIds ?? powerUp.chosenPlayerIds);
-  const chosenCount = progress?.chosenCount ?? powerUp.chosenCount;
-  const totalCount = progress?.totalPlayers ?? powerUp.totalPlayers ?? connectedCount;
-
+// Task 30b - the TV during POWER_UP. WHAT anyone picked and WHO they aimed at
+// are never sent to the host at all (see buildPowerUpProgress), so there is
+// nothing here that could leak them - the surprise only breaks on the next
+// question.
+//
+// Task 115 deleted the "N/M διάλεξαν" counter and the chosen-avatar strip
+// under it, with NO replacement: every one of those names is already in the
+// right-hand score column. The server still counts choices and still ends the
+// phase early once everyone has committed.
+export function PowerUpView({ powerUp, roomCode, paused, pausedByName }: PowerUpViewProps) {
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={powerUp.standings}>
       <div className="enter-pop" style={styles.category}>
@@ -66,26 +49,6 @@ export function PowerUpView({
           </div>
         </div>
       </PapyrusPanel>
-      <div style={styles.answerCounter} data-testid="power-up-progress">
-        {chosenCount}/{totalCount} διάλεξαν
-      </div>
-      <div style={{ ...styles.answeredNames, ...answeredNamesSizeStyle(players.length) }}>
-        {players.map((player) => {
-          const chosen = chosenIds.has(player.playerId);
-          return (
-            <span
-              key={player.playerId}
-              data-testid="power-up-marker"
-              data-chosen={chosen}
-              style={chosen ? styles.nameAnswered : styles.nameNotAnswered}
-            >
-              <Avatar avatarId={player.avatarId} sizeRem={answeredAvatarSize(players.length)} />
-              {chosen ? '✓ ' : ''}
-              {player.name}
-            </span>
-          );
-        })}
-      </div>
     </GameLayout>
   );
 }
