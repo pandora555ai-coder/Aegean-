@@ -24,7 +24,11 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz (devRoutes.tsx)
   that exact PID. A pattern match protecting production by coincidence of
   path is not protection.
 - Deploy is `deploy/deploy.sh`, inside the repo (the only path DEPLOY.md
-  gives). Aborts loudly on a dirty tree. **You do not run it — Argyrios does.**
+  gives). Aborts loudly on a dirty tree. **Run it only when Argyrios says to
+  in that turn** — "deploy", "run deploy.sh". Never on your own initiative,
+  never rolled into another task because the work looks finished, and never
+  carried over from an earlier turn's permission. Anything else about
+  /opt/party-game stays off limits, deploy.sh included as a thing to edit.
 
 ## Visual verification
 
