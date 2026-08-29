@@ -154,43 +154,6 @@ export function answeredAvatarSize(count: number): number {
   return 1.5 * densityScale(count);
 }
 
-// Numeric mode (Task 66) - NUMERIC_REVEAL's number line. The vertical space
-// between stacked lanes shrinks by the same density-step factor as
-// everything else on this TV, so a crowded lane's pitch shrinks in step
-// with the marker name label below it (Task 92 dropped the avatar marker -
-// player identity there is names only) - verified against a real 8-player
-// render (criterion 3).
-export function numericLanePitch(count: number): number {
-  return 1.6 * densityScale(count);
-}
-
-// NUMERIC_TRACK_LANES stacked lanes above the baseline, plus fixed headroom
-// for the answer label above and the 0/max ticks below. 4 (not 3) because a
-// tight real-world cluster - several guesses landing within a few percent of
-// each other - needs one lane PER marker to stay legible; 3 forced a 4th
-// close marker into an already-occupied lane and its name label ran into
-// its neighbour's (verified against a real 8-player render).
-export const NUMERIC_TRACK_LANES = 4;
-
-// Ελαιογραφία palette (Task 96) - roughly halved: the papyrus panel now
-// sizes to its content (PapyrusPanel's flex default), so this formula IS
-// the panel's height, not just an inner box inside a panel that filled
-// available space regardless.
-export function numericTrackHeight(count: number): string {
-  return `${(0.9 + NUMERIC_TRACK_LANES * numericLanePitch(count) + 1.1).toFixed(2)}rem`;
-}
-
-// The marker name label - shrinks with player count like everything else on
-// this file, so a crowded lane's labels take less horizontal room to begin
-// with (on top of assignLanes giving each nearby marker its own lane).
-export function numericMarkerNameStyle(count: number): CSSProperties {
-  const s = densityScale(count);
-  return {
-    fontSize: `${(0.85 * s).toFixed(2)}rem`,
-    maxWidth: `${(5 * s).toFixed(2)}rem`,
-  };
-}
-
 export const styles: Record<string, CSSProperties> = {
   // Task 38 - the fixed two-column layout every in-game phase (QUESTION,
   // POWER_UP, REVEAL, STEAL) renders through: LEFT ~70% for the phase's own
@@ -655,11 +618,6 @@ export const styles: Record<string, CSSProperties> = {
     color: 'var(--dim)',
     opacity: 0.55,
   },
-  answerCount: {
-    marginLeft: 'auto',
-    fontWeight: 800,
-    color: 'var(--cream)',
-  },
   // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
   // above other content: the card fills the left column on its own, and the
   // line is set at question-sized type because it IS the screen.
@@ -926,14 +884,9 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     color: 'var(--dim)',
   },
-  stealScoreLine: {
-    fontSize: '1.75rem',
-    fontWeight: 600,
-    color: 'var(--cream)',
-  },
   // Numeric mode (Task 66) - NUMERIC_QUESTION's range readout and
-  // NUMERIC_REVEAL's number line. The line IS the reveal (see
-  // NumericRevealView's doc comment) - no separate per-player results list.
+  // NUMERIC_REVEAL's answer banner. Task 114 deleted the number line and
+  // every style it used: it re-rendered what the score column already says.
   numericRange: {
     fontSize: '2rem',
     fontWeight: 700,
@@ -944,72 +897,5 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '1.75rem',
     fontWeight: 700,
     color: 'var(--gold)',
-  },
-  numericTrackWrap: {
-    position: 'relative',
-    width: '92%',
-    maxWidth: '1400px',
-    flexShrink: 0,
-  },
-  numericTrackLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: '1.1rem',
-    height: '4px',
-    borderRadius: '999px',
-    background: 'var(--wood)',
-  },
-  numericTick: {
-    position: 'absolute',
-    bottom: 0,
-    fontSize: '1.1rem',
-    fontWeight: 700,
-    color: 'var(--wood)',
-    fontFamily: 'monospace',
-  },
-  numericAnswerLine: {
-    position: 'absolute',
-    top: '0.9rem',
-    bottom: '1.1rem',
-    width: '3px',
-    background: 'var(--ink)',
-    transform: 'translateX(-50%)',
-  },
-  numericAnswerLabel: {
-    position: 'absolute',
-    top: 0,
-    transform: 'translateX(-50%)',
-    fontSize: '1.1rem',
-    fontWeight: 800,
-    color: 'var(--ink)',
-    whiteSpace: 'nowrap',
-  },
-  numericMarker: {
-    position: 'absolute',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.15rem',
-    transform: 'translateX(-50%)',
-  },
-  // No avatar art on the papyrus track (Task 92) - player identity there is
-  // names only, never a hue, so there is nothing here to encode "exact"
-  // with colour either. fontWeight carries that instead - see
-  // NumericRevealView's markerNameStyle.
-  numericMarkerDot: {
-    width: '0.55rem',
-    height: '0.55rem',
-    borderRadius: '50%',
-    background: 'var(--ink)',
-  },
-  numericMarkerName: {
-    fontSize: '0.85rem',
-    fontWeight: 700,
-    color: 'var(--ink)',
-    whiteSpace: 'nowrap',
-    maxWidth: '5rem',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
   },
 };

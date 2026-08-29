@@ -407,14 +407,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
       shell(
         numericQuestion.standings,
         { secondsLeft: 12, critical: false },
-        <NumericQuestionView
-          question={numericQuestion}
-          progress={null}
-          roomCode={ROOM_CODE}
-          paused={false}
-          pausedByName={null}
-          players={PLAYERS}
-        />,
+        <NumericQuestionView question={numericQuestion} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
   },

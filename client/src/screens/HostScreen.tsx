@@ -23,7 +23,6 @@ import {
   type GuessShowHostPayload,
   type GuessShowPayload,
   type LobbyUpdatePayload,
-  type NumericProgressPayload,
   type NumericQuestionShowHostPayload,
   type NumericQuestionShowPayload,
   type NumericRevealShowPayload,
@@ -122,11 +121,12 @@ export default function HostScreen() {
   const [guessSecondsLeft, setGuessSecondsLeft] = useState(0);
   const [guessReveal, setGuessReveal] = useState<GuessRevealShowPayload | null>(null);
   const [guessRevealSecondsLeft, setGuessRevealSecondsLeft] = useState(0);
-  // Numeric mode (Task 66) - same two-piece pattern as DRAW: the phase
-  // payload set once per phase/reconnect, and a separate progress ticker so
-  // a submission landing never resets the countdown effect below.
+  // Numeric mode (Task 66) - the phase payload, set once per phase/reconnect.
+  // There is no progress ticker state any more: Task 114 deleted the TV's
+  // locked-in counter and avatar strip, the only thing numeric:progress fed.
+  // The server still counts submissions and still ends the phase early once
+  // everyone has locked in - that path never went through this screen.
   const [numericQuestion, setNumericQuestion] = useState<NumericQuestionShowHostPayload | null>(null);
-  const [numericProgress, setNumericProgress] = useState<NumericProgressPayload | null>(null);
   const [numericQuestionSecondsLeft, setNumericQuestionSecondsLeft] = useState(0);
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
   const [numericRevealSecondsLeft, setNumericRevealSecondsLeft] = useState(0);
@@ -235,7 +235,6 @@ export default function HostScreen() {
         setGuessProgress(null);
         setGuessReveal(null);
         setNumericQuestion(null);
-        setNumericProgress(null);
         setNumericReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
@@ -454,21 +453,15 @@ export default function HostScreen() {
         setGuessReveal(null);
         setNumericReveal(null);
         setNumericQuestion(payload);
-        setNumericProgress(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
-    }
-
-    function handleNumericProgress(payload: NumericProgressPayload) {
-      setNumericProgress(payload);
     }
 
     // Public and symmetric, like reveal:show - the round is over, so every
     // player's value and the correct answer are both safe to show now.
     function handleNumericRevealShow(payload: NumericRevealShowPayload) {
       setNumericQuestion(null);
-      setNumericProgress(null);
       setNumericReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
@@ -555,7 +548,6 @@ export default function HostScreen() {
       setGuessProgress(null);
       setGuessReveal(null);
       setNumericQuestion(null);
-      setNumericProgress(null);
       setNumericReveal(null);
 
       switch (payload.phase) {
@@ -659,7 +651,6 @@ export default function HostScreen() {
         case 'NUMERIC_QUESTION':
           if (isNumericQuestionHostPayload(payload)) {
             setNumericQuestion(payload);
-            setNumericProgress(payload);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -691,7 +682,6 @@ export default function HostScreen() {
     socket.on(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
-    socket.on(ServerEvents.NUMERIC_PROGRESS, handleNumericProgress);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
@@ -719,7 +709,6 @@ export default function HostScreen() {
       socket.off(ServerEvents.GUESS_PROGRESS, handleGuessProgress);
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
-      socket.off(ServerEvents.NUMERIC_PROGRESS, handleNumericProgress);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
@@ -1165,11 +1154,9 @@ export default function HostScreen() {
       return (
         <NumericQuestionView
           question={numericQuestion}
-          progress={numericProgress}
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          players={players}
         />
       );
     }
