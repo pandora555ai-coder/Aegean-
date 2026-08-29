@@ -732,6 +732,17 @@ export const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
     minWidth: 0,
   },
+  // GAME_OVER's whole celebration stack, as ONE block so useFitScale has a
+  // single thing to measure and scale (the container itself also holds the
+  // absolutely-positioned confetti, which must not be scaled with it).
+  gameOverFitBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1.5rem',
+    width: '100%',
+    minHeight: 0,
+  },
   standingsList: {
     display: 'flex',
     flexDirection: 'column',

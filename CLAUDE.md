@@ -148,6 +148,10 @@ intensity (cap 3), both via addAppliedSabotage().
 - **The score column lives in HostScreen, NOT inside a phase view.** Put it
   back inside one and it unmounts on every phase change, silently killing
   the 900ms-settle-then-400ms-glide row reorder.
+- **densityScale steps at player-count thresholds (<=3 → 1, <=5 → 0.82,
+  <=6 → 0.68, 7-8 → 0.56), so the worst case is the count just BELOW a
+  threshold, not MAX_PLAYERS.** GAME_OVER overflowed 720p at 5, not at 8.
+  Height checks must sample 3, 5, 6 and 8.
 
 ## Drawing mode
 

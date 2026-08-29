@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import { ANSWER_IDENTITIES, type GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { useFitScale } from '../../hooks/useFitScale';
 import { PapyrusPanel } from './PapyrusPanel';
 import {
   SURFACE_GLOW,
@@ -114,14 +116,26 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
   };
   const winnerAvatarSize = 6 * Math.max(s, 0.55);
 
+  // The density steps above shrink the parts; this shrinks whatever is
+  // still left over. GAME_OVER is the one host screen whose content is a
+  // celebration header AND a list that grows with the room, and at 720p
+  // (where the TV safe area now costs 10vh, Task 112) the two together ran
+  // past the panel from 5 players up - measured, not assumed. Centred flex
+  // overflow is invisible to scrollHeight, so nothing here would have said
+  // so on its own.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const fitRef = useRef<HTMLDivElement | null>(null);
+  useFitScale(containerRef, fitRef, [count, gameOver.winnerName, gameOver.isTie]);
+
   return (
-    <div style={containerStyle} className="screen-fade-in">
+    <div style={containerStyle} className="screen-fade-in" ref={containerRef}>
       {CONFETTI_PIECES.map((piece) => (
         <div key={piece.id} className="confetti-piece" aria-hidden="true" style={piece.style} />
       ))}
       {FIREWORK_PARTICLES.map((particle) => (
         <div key={particle.id} className="firework-particle" aria-hidden="true" style={particle.style} />
       ))}
+      <div ref={fitRef} style={styles.gameOverFitBlock}>
       <div style={titleWrapStyle}>
         <div style={{ ...styles.gameOverTitle, fontSize: `${(2.5 * Math.max(s, 0.7)).toFixed(2)}rem` }}>
           Τέλος παιχνιδιού!
@@ -166,6 +180,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
             <span style={styles.standingScore}>{standing.score}</span>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );
