@@ -17,12 +17,11 @@ interface NumericQuestionViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
   players: LobbyPlayer[];
 }
 
 // Task 66 - the TV during NUMERIC_QUESTION: the question, the 0..max range,
-// the timer, and who has locked in - deliberately the same answered-markers
+// and who has locked in - deliberately the same answered-markers
 // strip as DrawView/PowerUpView. WHAT anyone typed is never sent to the host
 // at all (see NumericQuestionShowHostPayload), so there is nothing here that
 // could give a guess away before NUMERIC_REVEAL.
@@ -32,14 +31,12 @@ export function NumericQuestionView({
   roomCode,
   paused,
   pausedByName,
-  secondsLeft,
   players,
 }: NumericQuestionViewProps) {
   const submittedIds = new Set(progress?.submittedPlayerIds ?? question.submittedPlayerIds);
   const submittedCount = progress?.submittedCount ?? question.submittedCount;
   const totalCount = progress?.totalPlayers ?? question.totalPlayers;
 
-  const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
   const questionBlockRef = useRef<HTMLDivElement | null>(null);
   const questionTextRef = useRef<HTMLDivElement | null>(null);
   useFitFontSize(questionBlockRef, questionTextRef, [question.text, question.questionIndex, players.length], {
@@ -54,15 +51,6 @@ export function NumericQuestionView({
       standings={question.standings}
       contentKey={question.questionIndex}
     >
-      <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
-        <div
-          className={timerCritical ? 'timer-critical' : undefined}
-          style={styles.timer}
-          data-testid="numeric-question-countdown"
-        >
-          {secondsLeft}
-        </div>
-      </div>
       <div className="enter-pop" style={styles.category}>
         {question.category}
       </div>

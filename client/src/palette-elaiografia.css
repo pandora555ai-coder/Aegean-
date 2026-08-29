@@ -12,4 +12,31 @@
   --gold: #D8A75A;
   --cream: #F2E3C4;
   --dim: #9A8259;
+
+  /* TV overscan safe area. Real sets crop roughly 2-3% of the panel on
+     EVERY edge, so anything drawn in the first or last few percent of a
+     100vh host screen is simply not on screen in a living room, however
+     well it measures in a browser. THE two values: every full-height host
+     root subtracts both (gameLayout, container) and offsets its top by
+     --tv-safe-top, and every full-bleed overlay insets its top and bottom
+     edges by them (stageOverlay, pauseOverlay), so no individual phase view
+     ever has to tighten its own content to stay clear of the crop.
+     5vh = 36px at 720p. The binding case is a full-bleed overlay, whose own
+     box IS the inset viewport: it needs at least 30px to land under 690px,
+     and 5vh leaves it at 684px. Every phase inside the two-column shell has
+     far more room than that. Raising it costs every screen height, so it is
+     deliberately only a little over the ~4.2% the 690px target implies.
+     These live HERE, not in theme.css, which is being retired. */
+  --tv-safe-top: 5vh;
+  --tv-safe-bottom: 5vh;
+}
+
+/* The host roots take --tv-safe-top as a MARGIN, and a child's top margin
+   collapses out through a plain block parent - which pushed #root itself
+   (height: 100%) down by that margin and made the page 36px scrollable at
+   720p. flow-root contains the margin instead. Lives here, not theme.css,
+   for the same reason the safe-area values do: it must survive that file's
+   deletion. */
+#root {
+  display: flow-root;
 }

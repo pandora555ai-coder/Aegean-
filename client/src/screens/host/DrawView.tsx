@@ -31,7 +31,6 @@ interface DrawViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
   players: LobbyPlayer[];
 }
 
@@ -39,12 +38,11 @@ interface DrawViewProps {
 // the same shape as PowerUpView's answered-markers strip - WHAT anyone is
 // drawing is never sent to the host at all (see buildDrawHostPayload), so
 // there is nothing here that could spoil it before the GUESS phase.
-export function DrawView({ draw, progress, roomCode, paused, pausedByName, secondsLeft, players }: DrawViewProps) {
+export function DrawView({ draw, progress, roomCode, paused, pausedByName, players }: DrawViewProps) {
   const submittedIds = new Set(progress?.submittedPlayerIds ?? draw.submittedPlayerIds);
   const submittedCount = progress?.submittedCount ?? draw.submittedCount;
   const totalCount = progress?.totalPlayers ?? draw.totalPlayers;
 
-  const timerCritical = !paused && secondsLeft <= 10 && secondsLeft > 0;
   const titleBlockRef = useRef<HTMLDivElement | null>(null);
   const titleTextRef = useRef<HTMLDivElement | null>(null);
   // "Ζωγραφίστε!" is one unbroken word - no space to wrap on, so a fixed
@@ -52,11 +50,6 @@ export function DrawView({ draw, progress, roomCode, paused, pausedByName, secon
   useFitFontSize(titleBlockRef, titleTextRef, [], { maxRem: 6, minRem: 2 });
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={draw.standings}>
-      <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
-        <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="draw-countdown">
-          {secondsLeft}
-        </div>
-      </div>
       <div className="enter-pop" style={styles.category}>
         Ζωγραφική
       </div>

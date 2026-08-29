@@ -24,6 +24,9 @@ import { GameOverView } from './host/GameOverView';
 import { GuessRevealView } from './host/GuessRevealView';
 import { GuessView } from './host/GuessView';
 import { LobbyView } from './host/LobbyView';
+import { PlayerScoresPanel } from './host/PlayerScoresPanel';
+import { styles as hostStyles } from './host/hostStyles';
+import type { TimerState } from './host/TimerRing';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { PowerUpView } from './host/PowerUpView';
@@ -265,6 +268,19 @@ const gameOver: GameOverPayload = {
 // CLAUDE.md's Phases section has it), then DRAW/GUESS/GUESS_REVEAL,
 // NUMERIC_QUESTION/NUMERIC_REVEAL (both modes skip STAGE_ANNOUNCE - see
 // CLAUDE.md), and GAME_OVER last since every mode ends there.
+// Task 112 - the same two-column shell HostScreen owns, so this stepper
+// shows what a real TV shows: phase content left, score column (with the
+// countdown now at the top of it) right. Without this the views render
+// alone and the timer is simply absent from the preview.
+function shell(standings: PlayerStanding[], timer: TimerState | null, content: ReactElement): ReactElement {
+  return (
+    <div style={hostStyles.gameLayout}>
+      {content}
+      <PlayerScoresPanel standings={standings} timer={timer} />
+    </div>
+  );
+}
+
 const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
   {
     phase: 'LOBBY',
@@ -294,81 +310,122 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
   {
     phase: 'POWER_UP',
     render: () => (
-      <PowerUpView
-        powerUp={powerUp}
-        progress={null}
-        roomCode={ROOM_CODE}
-        paused={false}
-        pausedByName={null}
-        secondsLeft={7}
-        players={PLAYERS}
-        connectedCount={CONNECTED_COUNT}
-      />
+      shell(
+        powerUp.standings,
+        { secondsLeft: 7, critical: false },
+        <PowerUpView
+          powerUp={powerUp}
+          progress={null}
+          roomCode={ROOM_CODE}
+          paused={false}
+          pausedByName={null}
+          players={PLAYERS}
+          connectedCount={CONNECTED_COUNT}
+        />,
+      )
     ),
   },
   {
     phase: 'QUESTION',
     render: () => (
-      <QuestionView
-        question={question}
-        answerProgress={{ answered: 2, total: 5, answeredPlayerIds: ['p1', 'p2'] }}
-        roomCode={ROOM_CODE}
-        paused={false}
-        pausedByName={null}
-        secondsLeft={14}
-        players={PLAYERS}
-        connectedCount={CONNECTED_COUNT}
-      />
+      shell(
+        question.standings,
+        { secondsLeft: 14, critical: false },
+        <QuestionView
+          question={question}
+          answerProgress={{ answered: 2, total: 5, answeredPlayerIds: ['p1', 'p2'] }}
+          roomCode={ROOM_CODE}
+          paused={false}
+          pausedByName={null}
+          players={PLAYERS}
+          connectedCount={CONNECTED_COUNT}
+        />,
+      )
     ),
   },
   {
     phase: 'REVEAL',
     render: () => (
-      <RevealView reveal={reveal} question={question} roomCode={ROOM_CODE} paused={false} pausedByName={null} revealSecondsLeft={5} />
+      shell(
+        reveal.standings,
+        null,
+        <RevealView reveal={reveal} question={question} roomCode={ROOM_CODE} paused={false} pausedByName={null} revealSecondsLeft={5} />,
+      )
     ),
   },
   {
     phase: 'STEAL',
-    render: () => <StealView steal={steal} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={4} />,
+    render: () =>
+      shell(
+        steal.standings,
+        { secondsLeft: 4, critical: false },
+        <StealView steal={steal} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
+      ),
   },
   {
     phase: 'SOCRATES',
-    render: () => <SocratesView socrates={socrates} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
+    // SOCRATES keeps the shell but drops the column (he speaks alone) -
+    // same as HostScreen, so the height this previews is the real one.
+    render: () => (
+      <div style={{ ...hostStyles.gameLayout, gridTemplateColumns: '1fr' }}>
+        <SocratesView socrates={socrates} roomCode={ROOM_CODE} paused={false} pausedByName={null} />
+      </div>
+    ),
   },
   {
     phase: 'DRAW',
     render: () => (
-      <DrawView draw={draw} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={42} players={PLAYERS} />
+      shell(
+        draw.standings,
+        { secondsLeft: 42, critical: false },
+        <DrawView draw={draw} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} players={PLAYERS} />,
+      )
     ),
   },
   {
     phase: 'GUESS',
-    render: () => <GuessView guess={guess} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={18} />,
+    render: () =>
+      shell(
+        guess.standings,
+        { secondsLeft: 18, critical: false },
+        <GuessView guess={guess} progress={null} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
+      ),
   },
   {
     phase: 'GUESS_REVEAL',
     render: () => (
-      <GuessRevealView guessReveal={guessReveal} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={5} />
+      shell(
+        guessReveal.standings,
+        null,
+        <GuessRevealView guessReveal={guessReveal} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={5} />,
+      )
     ),
   },
   {
     phase: 'NUMERIC_QUESTION',
     render: () => (
-      <NumericQuestionView
-        question={numericQuestion}
-        progress={null}
-        roomCode={ROOM_CODE}
-        paused={false}
-        pausedByName={null}
-        secondsLeft={12}
-        players={PLAYERS}
-      />
+      shell(
+        numericQuestion.standings,
+        { secondsLeft: 12, critical: false },
+        <NumericQuestionView
+          question={numericQuestion}
+          progress={null}
+          roomCode={ROOM_CODE}
+          paused={false}
+          pausedByName={null}
+          players={PLAYERS}
+        />,
+      )
     ),
   },
   {
     phase: 'NUMERIC_REVEAL',
     render: () => (
-      <NumericRevealView reveal={numericReveal} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={6} />
+      shell(
+        numericReveal.standings,
+        null,
+        <NumericRevealView reveal={numericReveal} roomCode={ROOM_CODE} paused={false} pausedByName={null} secondsLeft={6} />,
+      )
     ),
   },
   { phase: 'GAME_OVER', render: () => <GameOverView gameOver={gameOver} /> },

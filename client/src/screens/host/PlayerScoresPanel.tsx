@@ -3,6 +3,7 @@ import type { PlayerStanding } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { DEFAULT_DURATION_MS, useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { sidebarAvatarSize, sidebarListGap, sidebarRowSizeStyle, styles, type CSSVars } from './hostStyles';
+import { TimerRing, type TimerState } from './TimerRing';
 
 interface PlayerScoresPanelProps {
   standings: PlayerStanding[];
@@ -15,6 +16,11 @@ interface PlayerScoresPanelProps {
   // small +N next to the score. Every other phase passes nothing, so the
   // badge just isn't there rather than needing an explicit clear step.
   pointsThisRound?: Record<string, number> | null;
+  // Task 112 - the phase countdown, which now lives at the TOP of this
+  // column instead of the top of the scene (a real set cropped it there).
+  // null for a phase that has no timer of its own, so the rows simply sit
+  // where they always did.
+  timer?: TimerState | null;
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -171,6 +177,7 @@ export function PlayerScoresPanel({
   thiefPlayerId = null,
   victimPlayerId = null,
   pointsThisRound = null,
+  timer = null,
 }: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
@@ -183,6 +190,7 @@ export function PlayerScoresPanel({
 
   return (
     <div style={panelStyle}>
+      {timer && <TimerRing timer={timer} playerCount={count} />}
       <div style={styles.scorePanelTitle}>Βαθμολογία</div>
       <div
         ref={containerRef}

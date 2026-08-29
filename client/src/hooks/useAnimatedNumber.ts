@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 // Exported so callers that need to sequence something AFTER the tween
 // finishes (e.g. the TV score column re-sorting rows once STEAL's counters
 // have settled) can key off the same duration instead of hand-guessing it.
-export const DEFAULT_DURATION_MS = 900;
+// Doubled from 900ms in Task 112 - at 900ms the count was over before the
+// room had looked at it. REORDER_DELAY_MS (PlayerScoresPanel) is defined AS
+// this value, so it moves with it and rows still never reorder mid-count.
+export const DEFAULT_DURATION_MS = 1800;
 
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);

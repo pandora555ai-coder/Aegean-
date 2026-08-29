@@ -26,12 +26,15 @@ interface GameLayoutProps {
 // unmounted this whole subtree - the panel included. That discarded
 // PlayerScoresPanel's own state (useDisplayOrder's held-back row order,
 // useAnimatedNumber's tween, useFlip's previous rects), so its "counters
-// settle for 900ms, THEN rows glide for 400ms" sequence could never run
-// across the one transition where scores actually change (QUESTION ->
-// REVEAL): the panel simply remounted already in final order. HostScreen now
-// owns the grid container AND the panel, so the panel keeps its identity
-// while only its data changes. Measured: the reordered row now reaches its
-// final position ~1.3s after reveal:show, not ~84ms.
+// settle, THEN rows glide for 400ms" sequence could never run across the one
+// transition where scores actually change (QUESTION -> REVEAL): the panel
+// simply remounted already in final order. HostScreen now owns the grid
+// container AND the panel, so the panel keeps its identity while only its
+// data changes - and, since Task 112, also holds the shell mounted through
+// the one render where the new phase's payload hasn't arrived yet, which was
+// still unmounting it on every reveal. Measured after that fix: the reordered
+// row reaches its final position 2177-2200ms after reveal:show (1800ms tween
+// + 400ms glide), against 0ms - no tween at all - before it.
 export function GameLayout({ roomCode, paused, pausedByName, standings, contentKey, children }: GameLayoutProps) {
   return (
     <>

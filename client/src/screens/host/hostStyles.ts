@@ -204,9 +204,11 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: '7fr 3fr',
     gap: '2.5%',
     width: '100%',
-    // Short by the TV overscan safe area (theme.css, --tv-safe-bottom) so
-    // the bottom-most row of any phase clears a real set's cropped edge.
-    height: 'calc(100vh - var(--tv-safe-bottom))',
+    // Short by the TV overscan safe area on BOTH edges (palette, Task 112)
+    // so the top-most and bottom-most row of any phase clears a real set's
+    // cropped edge - the timer used to be the casualty at the top.
+    height: 'calc(100vh - var(--tv-safe-top) - var(--tv-safe-bottom))',
+    marginTop: 'var(--tv-safe-top)',
     boxSizing: 'border-box',
     padding: '3vh 3vw',
     overflow: 'hidden',
@@ -316,8 +318,9 @@ export const styles: Record<string, CSSProperties> = {
     // Fixed to the viewport, not just a floor - every host view must fit
     // within 100vh at up to MAX_PLAYERS (8) players with no scrollbar,
     // since nobody can scroll a TV. The padding keeps content off the side
-    // edges; the bottom crop itself is --tv-safe-bottom (theme.css).
-    height: 'calc(100vh - var(--tv-safe-bottom))',
+    // edges; the crop itself is --tv-safe-top/-bottom (palette).
+    height: 'calc(100vh - var(--tv-safe-top) - var(--tv-safe-bottom))',
+    marginTop: 'var(--tv-safe-top)',
     overflow: 'hidden',
     width: '100%',
     background: 'var(--ground)',
@@ -367,7 +370,9 @@ export const styles: Record<string, CSSProperties> = {
   },
   muteToggle: {
     position: 'fixed',
-    top: '1rem',
+    // Below the TV overscan crop (Task 112), same as the other two fixed
+    // corner controls.
+    top: 'calc(var(--tv-safe-top) + 0.5rem)',
     left: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
@@ -380,7 +385,9 @@ export const styles: Record<string, CSSProperties> = {
   },
   fullscreenToggle: {
     position: 'fixed',
-    top: '1rem',
+    // Below the TV overscan crop (Task 112) - it is fixed to the viewport,
+    // so the shell's own top inset doesn't reach it.
+    top: 'calc(var(--tv-safe-top) + 0.5rem)',
     right: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
@@ -393,7 +400,9 @@ export const styles: Record<string, CSSProperties> = {
   },
   cornerRoomCode: {
     position: 'fixed',
-    top: '1rem',
+    // Below the TV overscan crop (Task 112), same as fullscreenToggle - a
+    // room code a real set clips off the top is a room nobody can join.
+    top: 'calc(var(--tv-safe-top) + 0.5rem)',
     // Cleared of fullscreenToggle's own top-right corner (same fixed
     // position) so the two badges never overlap/clip each other.
     right: '4.75rem',
@@ -414,8 +423,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   pauseOverlay: {
     position: 'fixed',
-    // Bottom edge inset by the TV overscan safe area (theme.css).
-    inset: '0 0 var(--tv-safe-bottom) 0',
+    // Top and bottom edges inset by the TV overscan safe area (palette).
+    inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
     background: 'var(--ground)',
     display: 'flex',
     flexDirection: 'column',
@@ -429,8 +438,8 @@ export const styles: Record<string, CSSProperties> = {
   // (50), which must never be covered.
   stageOverlay: {
     position: 'fixed',
-    // Bottom edge inset by the TV overscan safe area (theme.css).
-    inset: '0 0 var(--tv-safe-bottom) 0',
+    // Top and bottom edges inset by the TV overscan safe area (palette).
+    inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
     background: 'var(--ground)',
     color: 'var(--cream)',
     display: 'flex',

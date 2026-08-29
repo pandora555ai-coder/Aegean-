@@ -189,6 +189,11 @@ reports the longest clip; `npm run voice:index` builds the rating page.
 - Suspect the screenshot harness first — it has twice accused the game wrongly.
 - computeCompetitionRanks does standard 1,2,2,4 ranking. Duplicate rank
   numbers are genuine ties. Reported as a bug twice; it is not one.
+- **PHASE_CHANGED is emitted BEFORE the phase's own payload at all 18 emit
+  sites** — the house pattern, every mode. The host therefore renders once
+  with no payload for the new phase; HostScreen holds the last standings to
+  cover that render. Any new phase view must tolerate a first render with
+  no payload of its own.
 
 ## Working style
 

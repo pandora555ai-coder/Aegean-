@@ -29,7 +29,6 @@ interface PowerUpViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
   players: LobbyPlayer[];
   connectedCount: number;
 }
@@ -45,7 +44,6 @@ export function PowerUpView({
   roomCode,
   paused,
   pausedByName,
-  secondsLeft,
   players,
   connectedCount,
 }: PowerUpViewProps) {
@@ -53,14 +51,8 @@ export function PowerUpView({
   const chosenCount = progress?.chosenCount ?? powerUp.chosenCount;
   const totalCount = progress?.totalPlayers ?? powerUp.totalPlayers ?? connectedCount;
 
-  const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={powerUp.standings}>
-      <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
-        <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="power-up-countdown">
-          {secondsLeft}
-        </div>
-      </div>
       <div className="enter-pop" style={styles.category}>
         Σαμποτάζ
       </div>

@@ -73,6 +73,7 @@ import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { SceneLayer } from './host/SceneLayer';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
+import type { TimerState } from './host/TimerRing';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -997,6 +998,10 @@ export default function HostScreen() {
   const connectedCount = players.filter((player) => player.connected).length;
   const vip = players.find((player) => player.isVip) ?? null;
 
+  // Survives the one-render gap between a phase:changed and the payload
+  // that carries that phase's standings - see its use below.
+  const lastStandingsRef = useRef<PlayerStanding[] | null>(null);
+
   // Standings for the persistent score column, read from whichever payload
   // the CURRENT phase carries - never "first non-null", since a previous
   // phase's payload lingers in state and would show stale scores. null means
@@ -1085,7 +1090,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={stealSecondsLeft}
         />
       );
     }
@@ -1098,7 +1102,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={powerUpSecondsLeft}
           players={players}
           connectedCount={connectedCount}
         />
@@ -1113,7 +1116,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={secondsLeft}
           players={players}
           connectedCount={connectedCount}
         />
@@ -1129,7 +1131,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={drawSecondsLeft}
           players={players}
         />
       );
@@ -1143,7 +1144,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={guessSecondsLeft}
         />
       );
     }
@@ -1169,7 +1169,6 @@ export default function HostScreen() {
           roomCode={roomCode}
           paused={paused}
           pausedByName={pausedByName}
-          secondsLeft={numericQuestionSecondsLeft}
           players={players}
         />
       );
@@ -1221,10 +1220,56 @@ export default function HostScreen() {
   // score column below keeps its React identity across a phase change -
   // every phase view is a different component type, so anything rendered
   // inside one is unmounted when the phase advances. See GameLayout's own
-  // comment: that unmount was silently defeating the panel's 900ms-settle /
-  // 400ms-glide reorder on the one transition that changes scores.
+  // comment: that unmount was silently defeating the panel's settle-then-
+  // glide reorder (now 1800ms + 400ms, Task 112) on the one transition that
+  // changes scores.
   // SOCRATES uses the shell but drops the column (he speaks alone).
-  const scorePanelStandings = standingsForPhase();
+  // Task 112 - the phase countdown, hoisted out of the phase views and into
+  // the score column. Each phase keeps its OWN "nearly out" threshold (the
+  // one thing that differed between the six rings this replaced), and a
+  // phase with no clock of its own returns null so the column just shows
+  // rows. STEAL's clock stops existing the moment the theft resolves, which
+  // is exactly when its view swaps to the announcement.
+  function timerForPhase(): TimerState | null {
+    const ring = (secondsLeftValue: number, criticalAt: number): TimerState => ({
+      secondsLeft: secondsLeftValue,
+      critical: !paused && secondsLeftValue <= criticalAt && secondsLeftValue > 0,
+    });
+    switch (phase) {
+      case 'QUESTION':
+        return ring(secondsLeft, 5);
+      case 'POWER_UP':
+        return ring(powerUpSecondsLeft, 5);
+      case 'STEAL':
+        return steal?.resolved ? null : ring(stealSecondsLeft, 3);
+      case 'DRAW':
+        return ring(drawSecondsLeft, 10);
+      case 'GUESS':
+        return ring(guessSecondsLeft, 5);
+      case 'NUMERIC_QUESTION':
+        return ring(numericQuestionSecondsLeft, 5);
+      default:
+        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL show their remaining time as
+        // the progress bar at the foot of their own panel, not as a ring.
+        return null;
+    }
+  }
+
+  // The phase's own standings, with the LAST ones as a fallback while an
+  // in-game phase's payload is still in flight. phase:changed always lands
+  // before the payload that follows it (endQuestion emits PHASE_CHANGED,
+  // then REVEAL_SHOW), and handleQuestionShow has already cleared the
+  // previous reveal - so without this fallback the shell had null standings
+  // for exactly one render on EVERY question->reveal, unmounting the score
+  // column and remounting it with the new scores already in place. That is
+  // what silently killed the counter tween (measured: 0ms, one frame) that
+  // Task 41 built and this task doubles.
+  const phaseStandings = standingsForPhase();
+  const inGamePhase = phase !== 'LOBBY' && phase !== 'STAGE_ANNOUNCE' && phase !== 'GAME_OVER';
+  if (phaseStandings) {
+    lastStandingsRef.current = phaseStandings;
+  }
+  const scorePanelStandings = phaseStandings ?? (inGamePhase ? lastStandingsRef.current : null);
   const showShell = scorePanelStandings !== null;
   const hideScorePanel = phase === 'SOCRATES';
 
@@ -1253,6 +1298,7 @@ export default function HostScreen() {
               thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
               victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
               pointsThisRound={pointsThisRound()}
+              timer={timerForPhase()}
             />
           )}
         </div>

@@ -17,7 +17,6 @@ interface QuestionViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
   players: LobbyPlayer[];
   connectedCount: number;
 }
@@ -28,7 +27,6 @@ export function QuestionView({
   roomCode,
   paused,
   pausedByName,
-  secondsLeft,
   players,
   connectedCount,
 }: QuestionViewProps) {
@@ -36,7 +34,6 @@ export function QuestionView({
   const answeredCount = answerProgress?.answered ?? 0;
   const totalCount = answerProgress?.total ?? connectedCount;
 
-  const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
   const questionBlockRef = useRef<HTMLDivElement | null>(null);
   const questionTextRef = useRef<HTMLDivElement | null>(null);
   useFitFontSize(questionBlockRef, questionTextRef, [question.question, question.questionIndex, players.length], {
@@ -63,11 +60,6 @@ export function QuestionView({
           {question.socratesIntro}
         </div>
       )}
-      <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
-        <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="countdown">
-          {secondsLeft}
-        </div>
-      </div>
       <div className="enter-pop" style={styles.category}>
         {question.category}
       </div>

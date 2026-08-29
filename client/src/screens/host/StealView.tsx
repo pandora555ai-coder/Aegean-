@@ -25,7 +25,6 @@ interface StealViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
 }
 
 // Task 32 - the TV during STEAL. Two beats in one view, driven entirely by
@@ -33,9 +32,8 @@ interface StealViewProps {
 // only WHO is choosing and for how much - never the target list, which lives
 // on their phone alone), and once it's set the theft is announced. The TV is
 // a display: it learns the victim only after the points have already moved.
-export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }: StealViewProps) {
+export function StealView({ steal, roomCode, paused, pausedByName }: StealViewProps) {
   const resolved = steal.resolved;
-  const timerCritical = !paused && !resolved && secondsLeft <= 3 && secondsLeft > 0;
   const count = steal.standings.length;
   // The banner used to share the screen with its own standings strip - now
   // that the persistent right column (Task 38) covers that, it just shrinks
@@ -102,22 +100,6 @@ export function StealView({ steal, roomCode, paused, pausedByName, secondsLeft }
         </PapyrusPanel>
       ) : (
         <>
-          <div
-            className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'}
-            style={{
-              ...styles.timerRingWrap,
-              width: `${(7 * s).toFixed(2)}rem`,
-              height: `${(7 * s).toFixed(2)}rem`,
-            }}
-          >
-            <div
-              className={timerCritical ? 'timer-critical' : undefined}
-              style={{ ...styles.timer, fontSize: `${(3 * s).toFixed(2)}rem` }}
-              data-testid="steal-countdown"
-            >
-              {secondsLeft}
-            </div>
-          </div>
           <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
             <div style={papyrusTextBlockStyle}>
               <div

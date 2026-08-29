@@ -34,17 +34,15 @@ interface GuessViewProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  secondsLeft: number;
 }
 
-// Task 56b - the TV during GUESS: the drawing large, the 4 options, the
-// timer. The correct index never reaches this payload at all (see
+// Task 56b - the TV during GUESS: the drawing large and the 4 options (the
+// countdown moved to the score column, Task 112). The correct index never reaches this payload at all (see
 // buildGuessHostPayload) - every option renders identically until
 // GUESS_REVEAL.
-export function GuessView({ guess, progress, roomCode, paused, pausedByName, secondsLeft }: GuessViewProps) {
+export function GuessView({ guess, progress, roomCode, paused, pausedByName }: GuessViewProps) {
   const guessedCount = progress?.guessedCount ?? guess.guessedCount;
   const totalGuessers = progress?.totalGuessers ?? guess.totalGuessers;
-  const timerCritical = !paused && secondsLeft <= 5 && secondsLeft > 0;
 
   return (
     <GameLayout
@@ -54,11 +52,6 @@ export function GuessView({ guess, progress, roomCode, paused, pausedByName, sec
       standings={guess.standings}
       contentKey={guess.roundIndex}
     >
-      <div className={timerCritical ? 'timer-ring timer-ring-critical' : 'timer-ring'} style={styles.timerRingWrap}>
-        <div className={timerCritical ? 'timer-critical' : undefined} style={styles.timer} data-testid="guess-countdown">
-          {secondsLeft}
-        </div>
-      </div>
       <div className="enter-pop" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <Avatar avatarId={guess.drawerAvatarId} sizeRem={2} />
         <span style={styles.category} data-testid="guess-drawer-name">
