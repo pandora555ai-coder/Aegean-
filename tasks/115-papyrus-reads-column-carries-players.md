@@ -60,17 +60,25 @@ same two counts, for reference: SOCRATES 496/528, STEAL 506/506, GAME_OVER
 
 ## 3. The early-advance path, observed after the counters were gone
 
-Every bot answers; elapsed is `*_show` on a player socket → `phase:changed`
-away from that phase.
+First run made every bot answer inside 2s of a 20000ms phase, which cannot
+tell "ended on the last player" from "ended fast". Re-run with the last
+player answering LATE: every other bot answers at 400ms, the last at
+13000ms — past the halfway mark of both phases. Elapsed is `*_show` on the
+HOST socket -> `phase:changed` away from that phase.
 
-- **QUESTION**, configured `questionTimeMs` 20000ms — 12 questions per game:
-  4 players 909–1824ms (median ~1450ms); 5 players 1023–1892ms
-  (median ~1730ms).
-- **NUMERIC_QUESTION**, `NUMERIC_QUESTION_DURATION_MS` 20000ms —
-  4 players 3126ms; 5 players 3465ms.
+| mode | players | configured | last answer at | elapsed |
+| --- | --- | --- | --- | --- |
+| QUESTION | 4 | 20000ms | 13000ms | 13016, 13007, 13006ms |
+| QUESTION | 5 | 20000ms | 13000ms | 13018, 13015, 13008ms |
+| NUMERIC_QUESTION | 4 | 20000ms | 13000ms | 13008, 13012ms |
+| NUMERIC_QUESTION | 5 | 20000ms | 13000ms | 13009, 13006ms |
 
-Both end when the last player acts (bots answer at 200ms/400–1900ms, and
-submit numbers at 1500–3500ms), never at the configured 20s.
+6-18ms after the last answer lands, 7 seconds before the timer would have
+fired. The phase tracks the last player, not a short fuse.
+
+For reference, the original all-bots-answer-fast run: QUESTION 4p
+909-1824ms / 5p 1023-1892ms over 12 questions each; NUMERIC_QUESTION 4p
+3126ms / 5p 3465ms.
 
 ## 4. Deleted because nothing referenced them any more
 
@@ -97,13 +105,35 @@ at y=97. GUESS_REVEAL's kept heading, `Μαρία ζωγράφισε:`, at y=102
 
 Typecheck clean across shared, server and client.
 
-### Findings
+### `answer:progress`'s remaining consumer
 
-- The server still emits `power_up:progress`, `draw:progress` and
-  `guess:progress` to the host, which now has no listener for any of them.
-  Left in place, exactly as task 114 left `numeric:progress`: the same counts
-  drive the early-advance path, and removing the emits is a server/contract
-  change, not a TV layout one.
+Nothing renders from it. It feeds ONE thing: `playAnswerBlip`
+(client/src/hooks/useGameAudio.ts:292-295, called at
+client/src/screens/HostScreen.tsx:341) — a 55ms sine tone at peakGain 0.08
+on the host's AudioContext, pitched up the 8-note `ANSWER_BLIP_SCALE`
+(useGameAudio.ts:27) by the running answered count, so the room hears the
+answers land. Audible output on the TV, no DOM. Muted by `mutedRef`
+(playToneAt, useGameAudio.ts:197). The count is used for pitch only.
+
+### The five progress events — every consumer
+
+All five are emitted to the host socket alone (`io.to(room.hostSocketId)`),
+never to a phone. Repo-wide listeners:
+
+| event | server emit sites | client listeners | other route to the host |
+| --- | --- | --- | --- |
+| `answer:progress` | index.ts:772 | HostScreen.tsx:625/649 — `playAnswerBlip` only | none |
+| `power_up:progress` | index.ts:545, 845, 1251 | NONE | `buildPowerUpProgress` is also spread into the POWER_UP show payload (payloads.ts:234) |
+| `draw:progress` | modes/draw.ts:373 (from :358) | NONE | `DrawShowHostPayload` carries submittedCount/totalPlayers/submittedPlayerIds |
+| `guess:progress` | modes/draw.ts:584 (from :624) | NONE | `GuessShowHostPayload` carries guessedCount/totalGuessers |
+| `numeric:progress` | modes/numeric.ts:206 (from :189) | NONE | `NumericQuestionShowHostPayload` carries submittedCount/totalPlayers/submittedPlayerIds (shared:1617-1619) |
+
+No phone listener for any of the five (ControllerScreen references none).
+The early-advance path does NOT read these emits: it goes through
+`haveAllConnectedPlayersAnswered` / `haveAllConnectedPlayersChosenPowerUp`
+(state.ts:447/457, called at index.ts:777/849/1243/1253) and the modes' own
+equivalents. Deleting the four listener-less emits would not touch it.
+Nothing removed — list only, pending a call.
 - `optionCard`, `optionLabel`, `optionsGrid`, `playerList`,
   `standingRowDisconnected` and `standingRowLeader` in hostStyles.ts are
   unreferenced too, but they were already dead before this task and are
