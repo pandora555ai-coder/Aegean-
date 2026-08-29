@@ -91,7 +91,6 @@ import {
   buildRevealPlayerPayload,
   buildPowerUpHostPayload,
   buildPowerUpPlayerPayload,
-  buildPowerUpProgress,
   buildSocratesPayload,
   buildStageAnnounce,
   buildStealHostPayload,
@@ -539,11 +538,6 @@ io.on('connection', (socket) => {
           socket.emit(ServerEvents.STATE_SYNC, syncPayload);
         }
       }
-      // A reconnect mid-POWER_UP changes the denominator the TV is showing
-      // (and the one the phase is waiting on), so re-tick the host.
-      if (room.phase === 'POWER_UP' && room.hostSocketId) {
-        io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
-      }
       // A reconnect mid-STEAL adds a name back to the thief's target list -
       // re-send it, so they can rob someone who just walked back in.
       if (room.phase === 'STEAL' && room.steal && !room.steal.resolved) {
@@ -841,9 +835,6 @@ io.on('connection', (socket) => {
 
     const acceptedPayload: PowerUpChoiceAcceptedPayload = { effect, targetPlayerId };
     socket.emit(ServerEvents.POWER_UP_CHOICE_ACCEPTED, acceptedPayload);
-    if (room.hostSocketId) {
-      io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
-    }
     console.log(`player ${playerId} chose power-up in room ${room.code} (hidden until it lands)`);
 
     if (haveAllConnectedPlayersChosenPowerUp(room)) {
@@ -1246,13 +1237,8 @@ io.on('connection', (socket) => {
 
       // Same reasoning for the power-up phase: the player who just left might
       // have been the only one still deciding.
-      if (room && room.phase === 'POWER_UP') {
-        if (room.hostSocketId) {
-          io.to(room.hostSocketId).emit(ServerEvents.POWER_UP_PROGRESS, buildPowerUpProgress(room));
-        }
-        if (haveAllConnectedPlayersChosenPowerUp(room)) {
-          endPowerUp(room.code);
-        }
+      if (room && room.phase === 'POWER_UP' && haveAllConnectedPlayersChosenPowerUp(room)) {
+        endPowerUp(room.code);
       }
 
       // Steal (Task 32): once there is nobody left to rob, the picker has

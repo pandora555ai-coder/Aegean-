@@ -355,7 +355,6 @@ export function submitDrawing(room: Room, playerId: string, image: string): bool
   }
 
   state.drawings.set(playerId, image);
-  broadcastDrawProgress(room, state);
   console.log(
     `room ${room.code} draw:submit from ${playerId} - ${state.drawings.size}/${state.assignment.size} submitted`,
   );
@@ -364,17 +363,6 @@ export function submitDrawing(room: Room, playerId: string, image: string): bool
     endDrawPhase(room.code);
   }
   return true;
-}
-
-function broadcastDrawProgress(room: Room, state: DrawState): void {
-  if (!room.hostSocketId) {
-    return;
-  }
-  io.to(room.hostSocketId).emit(ServerEvents.DRAW_PROGRESS, {
-    submittedCount: state.drawings.size,
-    totalPlayers: state.assignment.size,
-    submittedPlayerIds: Array.from(state.drawings.keys()),
-  });
 }
 
 // Re-run whenever a player disconnects during DRAW (server/src/index.ts) -
@@ -576,18 +564,6 @@ function broadcastGuessShow(room: Room): void {
   }
 }
 
-function broadcastGuessProgress(room: Room, state: DrawState): void {
-  if (!room.hostSocketId) {
-    return;
-  }
-  const drawerId = state.queue[state.roundIndex];
-  io.to(room.hostSocketId).emit(ServerEvents.GUESS_PROGRESS, {
-    guessedCount: state.guesses.size,
-    totalGuessers: guesserCount(room, drawerId),
-    guessedPlayerIds: Array.from(state.guesses.keys()),
-  });
-}
-
 // Every CONNECTED player except the drawer has guessed - same identity-based
 // reasoning as allConnectedParticipantsSubmitted above.
 function allConnectedGuessersHaveGuessed(room: Room, state: DrawState, drawerId: string): boolean {
@@ -621,7 +597,6 @@ export function submitGuess(room: Room, playerId: string, choice: number): boole
 
   const timeMs = Date.now() - state.roundStartedAt;
   state.guesses.set(playerId, { choice, timeMs });
-  broadcastGuessProgress(room, state);
   console.log(`room ${room.code} draw:guess from ${playerId} - choice ${choice}`);
 
   if (allConnectedGuessersHaveGuessed(room, state, drawerId)) {

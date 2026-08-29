@@ -63,7 +63,6 @@ export const ServerEvents = {
   ROOM_PEEK_RESULT: 'room:peek_result',
   POWER_UP_SHOW: 'power_up:show',
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
-  POWER_UP_PROGRESS: 'power_up:progress',
   STAGE_ANNOUNCE: 'stage:announce',
   SOCRATES_SHOW: 'socrates:show',
   STEAL_SHOW: 'steal:show',
@@ -76,9 +75,7 @@ export const ServerEvents = {
   // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
   // is finally safe to send), like reveal:show.
   DRAW_SHOW: 'draw:show',
-  DRAW_PROGRESS: 'draw:progress',
   GUESS_SHOW: 'guess:show',
-  GUESS_PROGRESS: 'guess:progress',
   GUESS_REVEAL_SHOW: 'guess_reveal:show',
   // Task 65 - the numeric-estimate mode's own phases, symmetric like
   // draw:show/guess_reveal:show: NUMERIC_QUESTION never carries the answer,
@@ -87,7 +84,6 @@ export const ServerEvents = {
   NUMERIC_REVEAL_SHOW: 'numeric_reveal:show',
   // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
   // has locked in, never what they guessed.
-  NUMERIC_PROGRESS: 'numeric:progress',
 } as const;
 
 export type RoomCode = string;
@@ -655,14 +651,6 @@ export type PowerUpShowPayload = PowerUpShowHostPayload | PowerUpShowPlayerPaylo
 
 export function isPowerUpHostPayload(payload: PowerUpShowPayload): payload is PowerUpShowHostPayload {
   return 'chosenPlayerIds' in payload;
-}
-
-// Host-only progress ticker, same contract as answer:progress - who has
-// committed, never what they committed to.
-export interface PowerUpProgressPayload {
-  chosenCount: number;
-  totalPlayers: number;
-  chosenPlayerIds: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1459,14 +1447,6 @@ export function isDrawHostPayload(payload: DrawShowPayload): payload is DrawShow
   return 'submittedCount' in payload;
 }
 
-// Host-only progress ticker, same contract as answer:progress - who has
-// submitted, never the drawing itself.
-export interface DrawProgressPayload {
-  submittedCount: number;
-  totalPlayers: number;
-  submittedPlayerIds: string[];
-}
-
 // 'guess:show' is asymmetric in THREE ways, not two: the host gets the
 // drawing plus the 4 shuffled options; a guessing player gets the options
 // only (no image); the drawer themselves gets neither - just a spectator
@@ -1525,14 +1505,6 @@ export function isGuessDrawerPayload(
   payload: GuessShowGuesserPayload | GuessShowDrawerPayload,
 ): payload is GuessShowDrawerPayload {
   return payload.isDrawer;
-}
-
-// Host-only progress ticker for the GUESS phase - who has guessed, never
-// what they picked.
-export interface GuessProgressPayload {
-  guessedCount: number;
-  totalGuessers: number;
-  guessedPlayerIds: string[];
 }
 
 export interface GuessRevealResult {
@@ -1641,14 +1613,6 @@ export function isNumericQuestionHostPayload(
   payload: NumericQuestionShowPayload,
 ): payload is NumericQuestionShowHostPayload {
   return 'submittedCount' in payload;
-}
-
-// Host-only progress ticker (Task 66), same contract as draw:progress - who
-// has locked in, never their value.
-export interface NumericProgressPayload {
-  submittedCount: number;
-  totalPlayers: number;
-  submittedPlayerIds: string[];
 }
 
 // Public and symmetric, like reveal:show - the round is over, so the real
@@ -2075,7 +2039,6 @@ export type ServerToClientEvents = {
   [ServerEvents.ROOM_PEEK_RESULT]: (payload: RoomPeekResultPayload) => void;
   [ServerEvents.POWER_UP_SHOW]: (payload: PowerUpShowPayload) => void;
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
-  [ServerEvents.POWER_UP_PROGRESS]: (payload: PowerUpProgressPayload) => void;
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
   [ServerEvents.SOCRATES_SHOW]: (payload: SocratesShowPayload) => void;
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
@@ -2084,11 +2047,8 @@ export type ServerToClientEvents = {
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
-  [ServerEvents.DRAW_PROGRESS]: (payload: DrawProgressPayload) => void;
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
-  [ServerEvents.GUESS_PROGRESS]: (payload: GuessProgressPayload) => void;
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
   [ServerEvents.NUMERIC_QUESTION_SHOW]: (payload: NumericQuestionShowPayload) => void;
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
-  [ServerEvents.NUMERIC_PROGRESS]: (payload: NumericProgressPayload) => void;
 };

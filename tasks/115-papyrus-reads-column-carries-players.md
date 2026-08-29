@@ -105,7 +105,34 @@ at y=97. GUESS_REVEAL's kept heading, `Μαρία ζωγράφισε:`, at y=102
 
 Typecheck clean across shared, server and client.
 
-### `answer:progress`'s remaining consumer
+### `answer:progress`'s remaining consumer — observed
+
+There is NO `CUES_ENABLED` flag anywhere in the repo (nor any `CUE_*` /
+`cuesEnabled` constant, and no tasks/090 file); nothing gates the cues as a
+set. The blip's only gate is the host mute toggle, `mutedRef` in `playToneAt`
+(useGameAudio.ts:197), whose stored default is unmuted
+(hostAudioPreference.ts: `getStoredHostMuted()` is `=== 'true'`, so an unset
+key is false).
+
+Observed on a real host at 1280x720, `AudioContext.prototype.createOscillator`
+instrumented, 4 players answering 1.5s apart:
+
+```
+MUTE localStorage hostMuted=null        (unmuted)
+CTX  state=running
+OSC 440Hz, 554.37Hz, 739.99Hz  t=-471ms   question-start cue (A4/C#5/F#5)
+OSC 659.25Hz  t=1017ms                    blip 1  (E5)
+OSC 739.99Hz  t=2516ms                    blip 2  (F#5)
+OSC 880Hz     t=4017ms                    blip 3  (A5)
+OSC 987.77Hz  t=5517ms                    blip 4  (B5)
+OSC 440Hz, 554.37Hz, 659.25Hz  t=5523ms   reveal chord
+```
+
+Four blips for four answers, ascending the first four notes of
+`ANSWER_BLIP_SCALE`, on a running context. It sounds. QUESTION's answered
+indicator is audible, not visual.
+
+### `answer:progress` — what it feeds
 
 Nothing renders from it. It feeds ONE thing: `playAnswerBlip`
 (client/src/hooks/useGameAudio.ts:292-295, called at
@@ -132,8 +159,60 @@ No phone listener for any of the five (ControllerScreen references none).
 The early-advance path does NOT read these emits: it goes through
 `haveAllConnectedPlayersAnswered` / `haveAllConnectedPlayersChosenPowerUp`
 (state.ts:447/457, called at index.ts:777/849/1243/1253) and the modes' own
-equivalents. Deleting the four listener-less emits would not touch it.
-Nothing removed — list only, pending a call.
+equivalents.
+
+### The four listener-less events, deleted
+
+`answer:progress` kept. Deleted symbol by symbol:
+
+shared/src/index.ts (-40 lines)
+- `ServerEvents.POWER_UP_PROGRESS` (`'power_up:progress'`)
+- `ServerEvents.DRAW_PROGRESS` (`'draw:progress'`)
+- `ServerEvents.GUESS_PROGRESS` (`'guess:progress'`)
+- `ServerEvents.NUMERIC_PROGRESS` (`'numeric:progress'`)
+- `interface PowerUpProgressPayload`, `interface DrawProgressPayload`,
+  `interface GuessProgressPayload`, `interface NumericProgressPayload`
+- their four `ServerToClientEvents` entries
+
+server/src/index.ts (-18)
+- the three `POWER_UP_PROGRESS` emits: the reconnect re-tick (old :542-546,
+  the whole `if` block), the one after `POWER_UP_CHOICE_ACCEPTED`
+  (old :844-846), and the one in the disconnect handler (old :1250-1252 —
+  the surrounding `if (room && room.phase === 'POWER_UP')` collapsed into the
+  `haveAllConnectedPlayersChosenPowerUp` check it wrapped)
+- the `buildPowerUpProgress` import
+
+server/src/payloads.ts (-19/+9)
+- `export function buildPowerUpProgress` — its last caller was
+  `buildPowerUpHostPayload`'s own spread, so its three fields are inlined
+  there; `PowerUpShowHostPayload` already declares them
+- the `PowerUpProgressPayload` import
+
+server/src/modes/draw.ts (-25)
+- `function broadcastDrawProgress` and its call in the draw:submit path
+- `function broadcastGuessProgress` and its call in the draw:guess path
+
+server/src/modes/numeric.ts (-14)
+- `function broadcastNumericProgress` and its call in the numeric submit path
+
+`guesserCount` survives (still used at draw.ts:500 and :520). No import
+became unused beyond the two named above (checked by usage count, since no
+tsconfig here sets `noUnusedLocals`). Typecheck clean across all three
+workspaces.
+
+### Early advance after the deletion — one run per mode, late last actor
+
+Every participant but one acts at 400ms; the last acts past the halfway mark.
+
+| mode | phase | configured | last action | elapsed |
+| --- | --- | --- | --- | --- |
+| quiz | QUESTION | 20000ms | 13000ms | 13017, 13015ms |
+| numeric | NUMERIC_QUESTION | 20000ms | 13000ms | 13010, 13011ms |
+| draw | DRAW | 75000ms | 45000ms | 45002ms |
+| draw | GUESS | 20000ms | 13000ms | 13011, 13004, 13001ms |
+
+One GUESS round read 402ms: that is the round whose DRAWER is the late bot,
+so the three early guessers were the whole set. Correct, not a miss.
 - `optionCard`, `optionLabel`, `optionsGrid`, `playerList`,
   `standingRowDisconnected` and `standingRowLeader` in hostStyles.ts are
   unreferenced too, but they were already dead before this task and are

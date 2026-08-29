@@ -7,7 +7,6 @@ import {
   type GameOverPayload,
   type GameOverStanding,
   type PlayerStanding,
-  type PowerUpProgressPayload,
   type PowerUpShowHostPayload,
   type PowerUpShowPlayerPayload,
   type PowerUpTarget,
@@ -231,7 +230,13 @@ export function buildPowerUpHostPayload(room: Room): PowerUpShowHostPayload {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     durationMs: remainingActiveTimerMs(room),
-    ...buildPowerUpProgress(room),
+    // WHO has committed, never what to - the host is a display, and this is
+    // the only power-up information it ever receives (inlined when
+    // power_up:progress was deleted, task 115 - this payload was its last
+    // caller).
+    chosenCount: room.powerUpChoices.size,
+    totalPlayers: getConnectedPlayers(room).length,
+    chosenPlayerIds: Array.from(room.powerUpChoices.keys()),
     paused: room.paused,
     pausedByName: room.pausedByName,
     standings: computeStandings(room),
@@ -257,16 +262,6 @@ export function buildPowerUpPlayerPayload(room: Room, playerId: string): PowerUp
     yourChoice: choice ? { effect: choice.effect, targetPlayerId: choice.targetPlayerId } : null,
     paused: room.paused,
     pausedByName: room.pausedByName,
-  };
-}
-
-// WHO has committed, never what to - the host is a display, and this is the
-// only power-up information it ever receives.
-export function buildPowerUpProgress(room: Room): PowerUpProgressPayload {
-  return {
-    chosenCount: room.powerUpChoices.size,
-    totalPlayers: getConnectedPlayers(room).length,
-    chosenPlayerIds: Array.from(room.powerUpChoices.keys()),
   };
 }
 
