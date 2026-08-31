@@ -82,13 +82,18 @@ client/src/theme.css                     Legacy theme, being retired
   `--text-faint` and `--text-dim` were live on the TV:
   `comm -23 <(grep -aroE "var\(--[a-z0-9-]+" <files> | sed 's/.*var(//' | sort -u) \`
   `  <(grep -aoE "^ +--[a-z0-9-]+" client/src/palette-elaiografia.css | tr -d ' ' | sort -u)`
+  On phone screens the inversion also turns up the LOCAL inline animation
+  vars a component sets on itself — `--i --delay --w --h --spin --drift
+  --duration --iterations --fx --fy --glow-color`. Those are not palette
+  tokens and are not violations; exclude them.
 - **Colour NEVER encodes correctness.** Correct = opacity 1 + heavier
   weight, wrong = opacity 0.42. Same rule on TV and phone.
 - **Trap: `--gold` is defined twice** — palette AND theme.css. Import order
-  in main.tsx decides which wins.
-- **Trap: `--tv-safe-bottom: 5vh` still lives in theme.css.** Move it to the
-  palette BEFORE theme.css is deleted or the TV safe area dies with it.
-  theme.css goes only once the phone screens are ported.
+  in main.tsx decides which wins. That duplication, not the safe area, is
+  why theme.css cannot be deleted yet: both `--tv-safe-top` and
+  `--tv-safe-bottom` already live in the palette (theme.css:47 is only a
+  comment saying they moved). theme.css goes only once the phone screens
+  are ported.
 
 ## Core rules — do not break these
 
@@ -102,7 +107,11 @@ client/src/theme.css                     Legacy theme, being retired
 - One function decides what follows REVEAL; auto-advance and vip:next both use it.
 - A resumed timer's continuation comes from the MODE's continuations table,
   never a switch — a phase that arms a timer must have an entry or pause breaks.
-- Audio: host only, ONE AudioContext, reused.
+- Audio: host only, ONE AudioContext, reused. **There is no CUES_ENABLED
+  flag** — the cues in client/src/hooks/useGameAudio.ts are LIVE, gated
+  only by the host mute toggle (every play* function checks mutedRef).
+  They retire only when the crowd subsystem plays. `answer:progress`
+  STAYS: it drives playAnswerBlip.
 - React StrictMode double-invokes effects in dev — guard anything that fires once.
 - Relative imports need explicit .js extensions. tsx runs ESM; typecheck
   passes without them but the server will not boot.
@@ -143,7 +152,8 @@ intensity (cap 3), both via addAppliedSabotage().
 ## TV layout
 
 - **Fit within 690px, not 720px** — real TVs crop 2-3% of the panel.
-  `--tv-safe-bottom` is the single knob; never tighten screens one by one.
+  `--tv-safe-top` and `--tv-safe-bottom`, both in the palette, are the two
+  knobs; never tighten screens one by one.
 - **Centered flex overflow is INVISIBLE to scrollHeight.** The host
   container is overflow:hidden, so content is clipped silently. Only
   per-element bounding-box checks against the viewport catch it.
@@ -151,11 +161,17 @@ intensity (cap 3), both via addAppliedSabotage().
   cannot compress; let it shrink and the text bleeds off the parchment.
 - **The score column lives in HostScreen, NOT inside a phase view.** Put it
   back inside one and it unmounts on every phase change, silently killing
-  the 900ms-settle-then-400ms-glide row reorder.
+  the 1800ms-settle-then-400ms-glide row reorder (REORDER_DELAY_MS =
+  useAnimatedNumber's DEFAULT_DURATION_MS = 1800, GLIDE_MS = 400).
 - **densityScale steps at player-count thresholds (<=3 → 1, <=5 → 0.82,
   <=6 → 0.68, 7-8 → 0.56), so the worst case is the count just BELOW a
   threshold, not MAX_PLAYERS.** GAME_OVER overflowed 720p at 5, not at 8.
   Height checks must sample 3, 5, 6 and 8.
+
+## Phone layout
+
+- The 690px rule is TV-ONLY. The phone criteria are 44px minimum tap
+  targets and zero horizontal overflow at 360px wide.
 
 ## Drawing mode
 
