@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ANSWER_IDENTITIES,
   AVATAR_CATALOGUE,
   ClientEvents,
   DEFAULT_GAME_MODE,
@@ -70,7 +69,6 @@ import { useSocketConnection } from '../useSocketConnection';
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
-import { AnswerShape } from '../components/AnswerShape';
 import { Avatar } from '../components/Avatar';
 import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
@@ -1242,18 +1240,14 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.revealVerdictRow}>
-          <AnswerShape index={reveal.correctIndex} sizeRem={2.75} />
           <div style={reveal.yourCorrect ? styles.revealCorrect : styles.revealWrong} data-testid="reveal-verdict">
             {reveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
           </div>
         </div>
-        <div style={styles.revealCorrectOption}>
-          Σωστή απάντηση: {ANSWER_IDENTITIES[reveal.correctIndex].letter}. {reveal.correctOption}
-        </div>
-        {!reveal.yourCorrect && reveal.yourChoice !== null && (
+        <div style={styles.revealCorrectOption}>Σωστή απάντηση: {reveal.correctOption}</div>
+        {!reveal.yourCorrect && reveal.yourChoice !== null && question && (
           <div style={styles.revealYourChoice} data-testid="reveal-your-choice">
-            <AnswerShape index={reveal.yourChoice} sizeRem={1.1} muted />
-            Η επιλογή σου: {ANSWER_IDENTITIES[reveal.yourChoice].letter}
+            Η επιλογή σου: {question.options[reveal.yourChoice]}
           </div>
         )}
         <div style={styles.revealPoints} data-testid="reveal-points">
@@ -1554,7 +1548,6 @@ export default function ControllerScreen() {
         </div>
         <div style={styles.answerGrid}>
           {guess.options.map((option, index) => {
-            const identity = ANSWER_IDENTITIES[index];
             const isMine = index === guessChoice;
             const dimmed = answered && !isMine;
             const disabled = answered || paused;
@@ -1567,22 +1560,17 @@ export default function ControllerScreen() {
                 className={isMine ? 'glow' : undefined}
                 style={
                   dimmed
-                    ? { ...styles.answerButtonDim, borderColor: identity.color }
+                    ? styles.answerButtonDim
                     : ({
                         ...styles.answerButton,
-                        borderColor: identity.color,
-                        background: isMine ? `${identity.color}1a` : 'var(--panel)',
+                        ...(isMine ? styles.answerButtonSelected : undefined),
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
-                        ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
                       } as CSSVars)
                 }
                 onClick={() => handleGuessTap(index)}
                 disabled={disabled}
               >
-                <span style={styles.answerShapeRow}>
-                  <AnswerShape index={index} sizeRem={2.25} muted={dimmed} />
-                  <span style={styles.answerLabel}>{identity.letter}</span>
-                </span>
                 <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
               </button>
             );
@@ -1758,7 +1746,6 @@ export default function ControllerScreen() {
         </div>
         <div style={styles.answerGrid}>
           {question.options.map((option, index) => {
-            const identity = ANSWER_IDENTITIES[index];
             const isMine = index === myChoice;
             const dimmed = answered && !isMine;
             const disabled = answered || paused || icedMs > 0;
@@ -1771,31 +1758,17 @@ export default function ControllerScreen() {
                 className={isMine ? 'glow' : undefined}
                 style={
                   dimmed
-                    ? { ...styles.answerButtonDim, borderColor: identity.color }
+                    ? styles.answerButtonDim
                     : ({
-                        // Plain --panel when not selected - a same-hue
-                        // wash behind a full-strength shape crushes its own
-                        // contrast against its background; the full-colour
-                        // border already reads clearly.
                         ...styles.answerButton,
-                        borderColor: identity.color,
-                        background: isMine ? `${identity.color}1a` : 'var(--panel)',
+                        ...(isMine ? styles.answerButtonSelected : undefined),
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
-                        ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
                       } as CSSVars)
                 }
                 onClick={() => handleAnswerTap(index)}
                 disabled={disabled}
               >
-                <span style={styles.answerShapeRow}>
-                  <AnswerShape index={index} sizeRem={2.25} muted={dimmed} />
-                  {/* Letter stays neutral, never the identity colour - red
-                      and blue drop under 4.5:1 as small text on this
-                      lighter stage background. The identity colour still
-                      pops via the shape, the full border, and the tinted
-                      background. */}
-                  <span style={styles.answerLabel}>{identity.letter}</span>
-                </span>
                 <span style={{ ...(dimmed ? styles.answerTextDim : styles.answerText), ...inkStyle }}>{option}</span>
               </button>
             );
@@ -2531,10 +2504,8 @@ const styles: Record<string, CSSProperties> = {
   },
   answerButton: {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
     width: '100%',
     height: '100%',
     minHeight: '44px',
@@ -2543,16 +2514,19 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
+    borderColor: 'var(--wood)',
     background: 'var(--panel)',
     color: 'var(--cream)',
     textAlign: 'center',
   },
+  answerButtonSelected: {
+    borderColor: 'var(--gold)',
+    background: 'color-mix(in srgb, var(--gold) 12%, var(--panel))',
+  },
   answerButtonDim: {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.5rem',
     width: '100%',
     height: '100%',
     minHeight: '44px',
@@ -2561,19 +2535,12 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
+    borderColor: 'var(--wood)',
     background: 'var(--panel)',
     color: 'var(--dim)',
     textAlign: 'center',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
-  },
-  answerShapeRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  answerLabel: {
-    fontWeight: 800,
   },
   answerText: {
     color: 'var(--cream)',
