@@ -69,8 +69,9 @@ client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the score
 client/src/screens/host/                 One file per TV phase, plus GameLayout/PapyrusPanel
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
 client/src/components/DrawingCanvas.tsx  Canvas, tools, colour wheel
-client/src/palette-elaiografia.css       THE colour source
-client/src/theme.css                     Legacy theme, being retired
+client/src/palette-elaiografia.css       THE colour source: tokens, base reset, AND all
+                         keyframes (moved in 123) — not tokens-only, don't
+                         "clean" the keyframes out
 
 ## Colour
 
@@ -85,15 +86,22 @@ client/src/theme.css                     Legacy theme, being retired
   On phone screens the inversion also turns up the LOCAL inline animation
   vars a component sets on itself — `--i --delay --w --h --spin --drift
   --duration --iterations --fx --fy --glow-color`. Those are not palette
-  tokens and are not violations; exclude them.
+  tokens and are not violations; exclude them. Now that theme.css is gone,
+  these resolve via their own `var(--x, default)` fallback (e.g.
+  `animation-delay: var(--delay, 0s)` in palette-elaiografia.css) rather
+  than a theme.css definition.
 - **Colour NEVER encodes correctness.** Correct = opacity 1 + heavier
   weight, wrong = opacity 0.42. Same rule on TV and phone.
-- **Trap: `--gold` is defined twice** — palette AND theme.css. Import order
-  in main.tsx decides which wins. That duplication, not the safe area, is
-  why theme.css cannot be deleted yet: both `--tv-safe-top` and
-  `--tv-safe-bottom` already live in the palette (theme.css:47 is only a
-  comment saying they moved). theme.css goes only once the phone screens
-  are ported.
+- **One sanctioned raw hex: `#ef4444`, TimerRing's urgency-pulse red**
+  (`.timer-critical` / `.timer-ring-critical` in palette-elaiografia.css).
+  Urgency is not correctness, so this stays a literal on purpose rather
+  than inventing a token nothing else would use — the palette has no red
+  token by design. Grep confirms it's the only one:
+  `grep -aroE "#[0-9a-fA-F]{3,8}" client/src --include=*.tsx --include=*.ts --include=*.css`
+  turns up palette-elaiografia.css's own ten root tokens plus `#ef4444`
+  (x2, both TimerRing); the rest are outside this rule's scope — canvas
+  fillStyle literals (DrawingCanvas ink/paper, HostScreen's QR code) and
+  /dev/* debug routes.
 
 ## Core rules — do not break these
 
@@ -172,6 +180,11 @@ intensity (cap 3), both via addAppliedSabotage().
 
 - The 690px rule is TV-ONLY. The phone criteria are 44px minimum tap
   targets and zero horizontal overflow at 360px wide.
+- Answer options render as a plain 2x2 text-only grid — no shapes, colours,
+  or numbers (AnswerShape deleted in 120).
+- DrawingCanvas's toolbar is TWO rows — colour (swatches + wheel), then
+  action (tools + sizes) — each control wrapped in a 44px hit-area box
+  around its unchanged visual (122).
 
 ## Drawing mode
 
@@ -181,7 +194,9 @@ WORD_SETS rows are { words: [4], rotatable }; the target is chosen at deal
 time, and two players must never get the same target word.
 The drawer scores round(400 * correct / eligible) — a proportion, so it
 measures clarity, not player count. Export bakes the canvas background
-(flattenToPaper) so an erased area and a white stroke render identically.
+(flattenToPaper) so an erased area and a paper-colour stroke render
+identically — PAPER = #F6EEDC (landed in a75b2e6; the white swatch reuses
+this same value, it is not literal white).
 
 ## Numeric mode
 
