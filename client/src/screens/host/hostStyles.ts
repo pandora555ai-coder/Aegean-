@@ -3,8 +3,9 @@ import type { CSSProperties } from 'react';
 export const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
-// `--glow-color` variable the .glow/.glow-pulse classes read (see theme.css)
-// be set inline per-element, since each glow needs a different colour.
+// `--glow-color` variable the .glow/.glow-pulse classes read (in
+// palette-elaiografia.css) be set inline per-element, since each glow needs
+// a different colour.
 export type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
 // "Slightly lighter panels with a subtle inner glow, so cards feel lit
@@ -474,8 +475,9 @@ export const styles: Record<string, CSSProperties> = {
   progress: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    // --dim, not --text-faint (theme.css only). Papyrus call sites override
-    // this with --ink; --dim is the muted reading on the dark ground.
+    // --dim, not --text-faint (a token that only ever lived in the retired
+    // theme stylesheet). Papyrus call sites override this with --ink; --dim
+    // is the muted reading on the dark ground.
     color: 'var(--dim)',
   },
   questionText: {
@@ -493,8 +495,9 @@ export const styles: Record<string, CSSProperties> = {
   // questionBlock's measured height, so a long question shrinks instead
   // of overflowing past the viewport.
   // Base colour matches what every call site already overrides to (papyrus
-  // ink) - kept in sync so the default itself is never the stray theme.css
-  // token, even though today nothing renders it unoverridden.
+  // ink) - kept in sync so the default itself is never a stray token from
+  // the retired theme stylesheet, even though today nothing renders it
+  // unoverridden.
   questionTextTv: {
     fontSize: '6rem',
     fontWeight: 700,

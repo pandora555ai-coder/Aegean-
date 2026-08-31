@@ -36,8 +36,8 @@ const styles: Record<string, CSSProperties> = {
     minHeight: '100vh',
     padding: '1.5rem 1rem',
     boxSizing: 'border-box',
-    background: 'var(--bg)',
-    color: 'var(--text)',
+    background: 'var(--deep)',
+    color: 'var(--cream)',
   },
   title: {
     fontSize: '1.75rem',
@@ -59,8 +59,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.7rem 0.9rem',
     borderRadius: '0.7rem',
     border: '2px solid var(--gold)',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     textDecoration: 'none',
   },
   rowHead: {

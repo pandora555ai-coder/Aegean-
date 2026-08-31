@@ -75,8 +75,9 @@ import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
 import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
-// `--glow-color` variable the .glow-pulse class reads (see theme.css) be set
-// inline per-element, since each glow needs a different colour.
+// `--glow-color` variable the .glow-pulse class reads (in
+// palette-elaiografia.css) be set inline per-element, since each glow needs
+// a different colour.
 type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
 // "Slightly lighter panels with a subtle inner glow, so cards feel lit

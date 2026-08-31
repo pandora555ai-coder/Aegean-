@@ -36,12 +36,13 @@ export function Avatar({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    // --panel/--dim below, not --surface-strong/--text-faint: those two live
-    // only in the legacy theme.css and would vanish with it, same as --border.
+    // --panel/--dim below, not --surface-strong/--text-faint: those two only
+    // ever lived in the retired theme stylesheet and are gone for good.
     background: 'var(--panel)',
-    // --wood, not --border: --border exists only in the legacy theme.css, so
-    // this rim vanished silently the day that file went. Avatar draws on every
-    // /host score-column row, so the fallback branch is live on every frame.
+    // --wood, not --border: --border only ever lived in the retired theme
+    // stylesheet, so this rim vanished silently the day that file went.
+    // Avatar draws on every /host score-column row, so the fallback branch
+    // is live on every frame.
     border: ringColor ? `2px solid ${ringColor}` : '1px solid var(--wood)',
     fontSize: `${sizeRem * 0.55}rem`,
     color: 'var(--dim)',
