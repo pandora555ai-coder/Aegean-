@@ -87,6 +87,11 @@ type CSSVars = CSSProperties & Record<`--${string}`, string>;
 // CSS class's boxShadow and would silently clobber the glow ring.
 const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
 
+// Ελαιογραφία palette pass - matches RevealView.tsx's own WRONG_OPACITY on
+// the TV: correctness reads as full-opacity/bold vs 42%-opacity/regular,
+// never as a colour swap.
+const WRONG_OPACITY = 0.42;
+
 // Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
 // side ("freeze them"), unlike the victim-side banner during QUESTION.
 const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blurb: string }> = {
@@ -1566,7 +1571,7 @@ export default function ControllerScreen() {
                     : ({
                         ...styles.answerButton,
                         borderColor: identity.color,
-                        background: isMine ? `${identity.color}1a` : 'var(--surface)',
+                        background: isMine ? `${identity.color}1a` : 'var(--panel)',
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
                         ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
                       } as CSSVars)
@@ -1768,13 +1773,13 @@ export default function ControllerScreen() {
                   dimmed
                     ? { ...styles.answerButtonDim, borderColor: identity.color }
                     : ({
-                        // Plain --surface when not selected - a same-hue
+                        // Plain --panel when not selected - a same-hue
                         // wash behind a full-strength shape crushes its own
                         // contrast against its background; the full-colour
                         // border already reads clearly.
                         ...styles.answerButton,
                         borderColor: identity.color,
-                        background: isMine ? `${identity.color}1a` : 'var(--surface)',
+                        background: isMine ? `${identity.color}1a` : 'var(--panel)',
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
                         ...(isMine ? { '--glow-color': `${identity.color}80` } : {}),
                       } as CSSVars)
@@ -2103,23 +2108,23 @@ const styles: Record<string, CSSProperties> = {
     padding: '2rem 1.25rem',
     maxWidth: '480px',
     margin: '0 auto',
-    background: 'var(--bg)',
-    color: 'var(--text)',
+    background: 'var(--deep)',
+    color: 'var(--cream)',
     minHeight: '100dvh',
     boxSizing: 'border-box',
   },
-  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--text)' },
-  status: { textAlign: 'center', color: 'var(--text-faint)' },
-  subtitle: { fontSize: '1.1rem', color: 'var(--text-dim)', textAlign: 'center' },
-  lobbyCount: { fontSize: '1rem', color: 'var(--text-faint)', textAlign: 'center' },
+  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--cream)' },
+  status: { textAlign: 'center', color: 'var(--dim)' },
+  subtitle: { fontSize: '1.1rem', color: 'var(--dim)', textAlign: 'center' },
+  lobbyCount: { fontSize: '1rem', color: 'var(--dim)', textAlign: 'center' },
   settingsPanel: {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.6rem',
     padding: '0.9rem',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
     boxShadow: SURFACE_GLOW,
   },
   settingsRow: {
@@ -2131,7 +2136,7 @@ const styles: Record<string, CSSProperties> = {
   settingsRowLabel: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   settingsRowValue: {
     fontSize: '0.9rem',
@@ -2149,21 +2154,21 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: '2px solid var(--gold)',
     background: 'var(--gold)',
-    color: '#14161c',
+    color: 'var(--ink)',
   },
   segmentInactive: {
     fontSize: '0.85rem',
     fontWeight: 700,
     padding: '0.4rem 0.7rem',
     borderRadius: '0.5rem',
-    border: '2px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text-dim)',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
   },
   estimatedLength: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     textAlign: 'center',
   },
   input: {
@@ -2172,9 +2177,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.9rem 1rem',
     boxSizing: 'border-box',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    border: '1px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
   },
   // Numeric mode (Task 66) - the value renders LARGE and ABOVE the slider/
   // input on purpose: once the number input is focused, the on-screen
@@ -2199,7 +2204,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: '-0.5rem',
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     fontFamily: 'monospace',
   },
   numericNumberInput: {
@@ -2209,9 +2214,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.9rem 1rem',
     boxSizing: 'border-box',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    border: '1px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     textAlign: 'center',
   },
   button: {
@@ -2221,7 +2226,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: 'none',
     background: 'var(--gold)',
-    color: '#14161c',
+    color: 'var(--ink)',
     fontWeight: 600,
   },
   buttonDisabled: {
@@ -2230,8 +2235,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: 'var(--border)',
-    color: 'var(--text-faint)',
+    background: 'var(--wood)',
+    color: 'var(--dim)',
     fontWeight: 600,
     cursor: 'not-allowed',
   },
@@ -2239,7 +2244,7 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: 'center',
     fontSize: '1rem',
     fontWeight: 700,
-    color: '#14161c',
+    color: 'var(--ink)',
     background: 'var(--gold)',
     borderRadius: '999px',
     padding: '0.25rem 0.9rem',
@@ -2258,23 +2263,23 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto',
     padding: '0.4rem',
     borderRadius: '0.5rem',
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
   },
   nameOption: {
     fontSize: '1.1rem',
     fontWeight: 600,
     padding: '0.65rem 0.9rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
-    background: 'var(--surface-strong)',
-    color: 'var(--text)',
+    border: '1px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     textAlign: 'left',
   },
   nameListEmpty: {
     padding: '0.75rem',
     textAlign: 'center',
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
   customNameButton: {
@@ -2282,9 +2287,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.7rem',
     borderRadius: '0.5rem',
-    border: '1px dashed var(--border-strong)',
+    border: '1px dashed var(--wood)',
     background: 'transparent',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
   previewRow: {
@@ -2293,15 +2298,15 @@ const styles: Record<string, CSSProperties> = {
     gap: '1rem',
     padding: '0.75rem',
     borderRadius: '0.75rem',
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
+    background: 'var(--panel)',
+    border: '1px solid var(--wood)',
   },
   previewName: {
     flex: 1,
     minWidth: 0,
     fontSize: '1.4rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -2314,8 +2319,8 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'var(--surface-strong)',
-    color: 'var(--text-faint)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     fontSize: '1.75rem',
     fontWeight: 700,
   },
@@ -2331,9 +2336,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.3rem',
     padding: '0.5rem',
     borderRadius: '0.75rem',
-    border: '2px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text-dim)',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
   },
   avatarOptionSelected: {
     display: 'flex',
@@ -2344,7 +2349,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     border: '2px solid var(--gold)',
     background: 'rgba(212, 175, 55, 0.12)',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   avatarOptionTaken: {
     display: 'flex',
@@ -2353,9 +2358,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.3rem',
     padding: '0.5rem',
     borderRadius: '0.75rem',
-    border: '2px solid var(--border)',
-    background: 'var(--surface)',
-    color: 'var(--text-faint)',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
   },
@@ -2373,9 +2378,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
+    border: '1px solid var(--wood)',
     background: 'transparent',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
   pauseButton: {
@@ -2383,9 +2388,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
+    border: '1px solid var(--wood)',
     background: 'transparent',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
   pausedNotice: {
@@ -2398,18 +2403,18 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
   },
+  // Ελαιογραφία pass - the palette has no red. A destructive action reads
+  // as heavier, not hued: --wood (a solid fill, not the thin outline every
+  // other button on this screen uses) is the one border/background this
+  // screen reserves for "this commits something irreversible".
   resetToLobbyButton: {
     width: '100%',
     fontSize: '0.85rem',
     padding: '0.5rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--danger)',
+    border: '1px solid var(--wood)',
     background: 'transparent',
-    // --danger-text, not --danger - the raw red hex drops under 4.5:1 as
-    // small text on the new, lighter stage background. The border can stay
-    // the stronger --danger since border colour isn't held to text-contrast
-    // rules.
-    color: 'var(--danger-text)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
   resetConfirmBox: {
@@ -2418,13 +2423,13 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.5rem',
     padding: '0.75rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--danger)',
-    background: 'rgba(239, 68, 68, 0.1)',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
   },
   resetConfirmText: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     textAlign: 'center',
   },
   resetConfirmButtons: {
@@ -2437,10 +2442,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.5rem',
     borderRadius: '0.5rem',
     border: 'none',
-    // --danger-strong, not --danger - white text on the raw #ef4444 fill
-    // measures 3.76:1; the deeper red clears 4.5:1 with room to spare.
-    background: 'var(--danger-strong)',
-    color: 'white',
+    background: 'var(--wood)',
+    color: 'var(--cream)',
     fontWeight: 700,
   },
   resetCancelButton: {
@@ -2448,16 +2451,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.85rem',
     padding: '0.5rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text-dim)',
+    border: '1px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     fontWeight: 600,
   },
-  error: { color: 'var(--danger-text)', fontWeight: 600, textAlign: 'center' },
+  error: { color: 'var(--cream)', fontWeight: 700, textAlign: 'center' },
   category: {
     fontSize: '1rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -2466,7 +2469,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   questionContainer: {
     display: 'flex',
@@ -2477,8 +2480,8 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 auto',
     height: '100dvh',
     boxSizing: 'border-box',
-    background: 'var(--bg)',
-    color: 'var(--text)',
+    background: 'var(--deep)',
+    color: 'var(--cream)',
   },
   questionHeader: {
     display: 'flex',
@@ -2493,9 +2496,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--text)',
-    background: 'var(--surface)',
-    border: '2px solid #7c3aed',
+    color: 'var(--cream)',
+    background: 'var(--panel)',
+    border: '2px solid var(--wood)',
     borderRadius: '0.6rem',
     padding: '0.3rem 0.7rem',
   },
@@ -2527,8 +2530,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     textAlign: 'center',
   },
   answerButtonDim: {
@@ -2545,8 +2548,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
-    background: 'var(--surface)',
-    color: 'var(--text-faint)',
+    background: 'var(--panel)',
+    color: 'var(--dim)',
     textAlign: 'center',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
@@ -2560,10 +2563,10 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
   },
   answerText: {
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   answerTextDim: {
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   revealVerdictRow: {
     display: 'flex',
@@ -2571,24 +2574,28 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     gap: '0.75rem',
   },
+  // Ελαιογραφία pass - correctness is never colour-coded, matching the TV
+  // (see RevealView.tsx's WRONG_OPACITY): both read as the same --cream,
+  // and only opacity/weight tell correct from wrong.
   revealCorrect: {
     fontSize: '2.5rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--success)',
+    color: 'var(--cream)',
+    opacity: 1,
   },
   revealWrong: {
     fontSize: '2.5rem',
-    fontWeight: 800,
+    fontWeight: 500,
     textAlign: 'center',
-    // --danger-text, not --danger - the raw red hex is under 4.5:1 here.
-    color: 'var(--danger-text)',
+    color: 'var(--cream)',
+    opacity: WRONG_OPACITY,
   },
   revealCorrectOption: {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   revealYourChoice: {
     display: 'flex',
@@ -2598,25 +2605,25 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--text-faint)',
+    color: 'var(--dim)',
   },
   revealPoints: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   revealTotal: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   revealRank: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
   revealSpeedRank: {
     fontSize: '1.1rem',
@@ -2634,7 +2641,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--text)',
+    color: 'var(--cream)',
   },
   // Power-up (Task 30b) - big tap targets, since both steps are decided
   // under a 10 second clock the phone doesn't even display.
@@ -2650,9 +2657,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.35rem',
     padding: '1.25rem 1rem',
     borderRadius: '1rem',
-    border: '3px solid #7c3aed',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    border: '3px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     boxShadow: SURFACE_GLOW,
   },
   powerUpEffectIcon: {
@@ -2666,7 +2673,7 @@ const styles: Record<string, CSSProperties> = {
   powerUpEffectBlurb: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     textAlign: 'center',
   },
   powerUpTargetList: {
@@ -2682,9 +2689,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.9rem',
     padding: '0.7rem 1rem',
     borderRadius: '0.9rem',
-    border: '2px solid var(--border-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text)',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
     textAlign: 'left',
   },
   powerUpTargetName: {
@@ -2703,8 +2710,8 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.4rem',
     padding: '1.5rem 1rem',
     borderRadius: '1rem',
-    border: '3px solid #7c3aed',
-    background: 'var(--surface)',
+    border: '3px solid var(--wood)',
+    background: 'var(--panel)',
     boxShadow: SURFACE_GLOW,
   },
   powerUpLockedIcon: {
@@ -2719,13 +2726,13 @@ const styles: Record<string, CSSProperties> = {
   powerUpLockedDetail: {
     fontSize: '1.2rem',
     fontWeight: 700,
-    color: 'var(--text)',
+    color: 'var(--cream)',
     textAlign: 'center',
   },
   powerUpLockedHint: {
     fontSize: '0.95rem',
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
     textAlign: 'center',
   },
   // Steal (Task 32) - what this target actually stands to lose, already
@@ -2745,6 +2752,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--text-dim)',
+    color: 'var(--dim)',
   },
 };
