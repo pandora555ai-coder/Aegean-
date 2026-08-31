@@ -628,86 +628,100 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             onPointerCancel={handlePointerUp}
           />
         </div>
-        {/* Task 63 - the whole toolbar in one row: the two fixed swatches,
-            the wheel, the three tools and the three sizes, each cluster split
-            by a thin separator. The wheel sits inline here (never absolute,
-            never over the canvas) so criterion 2 holds at every width by
-            construction, not by measurement. */}
-        <div style={styles.unifiedRow}>
-          {SWATCHES.map((swatch) => (
-            <button
-              key={swatch.color}
-              type="button"
-              aria-label={swatch.label}
-              onClick={() => selectColor(swatch.color)}
-              style={{
-                ...styles.swatch,
-                background: swatch.color,
-                ...(color === swatch.color ? styles.swatchActive : null),
-              }}
-            />
-          ))}
-          <div
-            ref={wheelRef}
-            style={styles.wheel}
-            onPointerDown={handleWheelPointerDown}
-            onPointerMove={handleWheelPointerMove}
-            onPointerUp={handleWheelPointerUp}
-            onPointerCancel={handleWheelPointerUp}
-          >
-            <div style={{ ...styles.wheelCenter, background: color }} />
+        {/* Task 122 - two rows, not one: 9 interactive controls at a 44px
+            hit-area floor is 396px minimum before gaps, which cannot fit a
+            360px phone in a single row (task 63/121's one-row layout got
+            there by leaving hit areas under 44px). Row 1 is colour (the two
+            swatches + wheel), row 2 is action (tools + sizes). Every hit box
+            grew via a bigger wrapper around an unchanged-size visible
+            control (swatch circle, wheel gradient, size dot) rather than by
+            enlarging what's actually drawn, per the task instructions. The
+            wheel still sits in normal flow (never absolute, never over the
+            canvas) so criterion 2 holds at every width by construction. */}
+        <div style={styles.toolbar}>
+          <div style={styles.colorRow}>
+            {SWATCHES.map((swatch) => (
+              <button
+                key={swatch.color}
+                type="button"
+                aria-label={swatch.label}
+                onClick={() => selectColor(swatch.color)}
+                style={styles.swatchHit}
+              >
+                <span
+                  style={{
+                    ...styles.swatch,
+                    background: swatch.color,
+                    ...(color === swatch.color ? styles.swatchActive : null),
+                  }}
+                />
+              </button>
+            ))}
             <div
-              style={{ ...styles.wheelIndicator, left: `${indicatorLeftPct}%`, top: `${indicatorTopPct}%` }}
-            />
-          </div>
-          <span style={styles.separator} />
-          <button
-            type="button"
-            aria-label="Στυλό"
-            aria-pressed={tool === 'pen'}
-            style={{ ...styles.iconButton, ...(tool === 'pen' ? styles.iconButtonActive : null) }}
-            onClick={() => setTool('pen')}
-          >
-            <PenIcon />
-          </button>
-          <button
-            type="button"
-            aria-label="Γόμα"
-            aria-pressed={tool === 'eraser'}
-            style={{ ...styles.iconButton, ...(tool === 'eraser' ? styles.iconButtonActive : null) }}
-            onClick={() => setTool('eraser')}
-          >
-            <EraserIcon />
-          </button>
-          <button
-            type="button"
-            aria-label="Γέμισμα"
-            aria-pressed={tool === 'fill'}
-            style={{ ...styles.iconButton, ...(tool === 'fill' ? styles.iconButtonActive : null) }}
-            onClick={() => setTool('fill')}
-          >
-            <FillIcon />
-          </button>
-          <span style={styles.separator} />
-          {SIZE_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              aria-label={key}
-              aria-pressed={brushSize === key}
-              style={{ ...styles.sizeButton, ...(brushSize === key ? styles.iconButtonActive : null) }}
-              onClick={() => setBrushSize(key)}
+              ref={wheelRef}
+              style={styles.wheelHit}
+              onPointerDown={handleWheelPointerDown}
+              onPointerMove={handleWheelPointerMove}
+              onPointerUp={handleWheelPointerUp}
+              onPointerCancel={handleWheelPointerUp}
             >
-              <span
-                style={{
-                  ...styles.sizeDot,
-                  width: SIZE_DOT_PX[key],
-                  height: SIZE_DOT_PX[key],
-                  background: brushSize === key ? 'var(--ink)' : 'var(--dim)',
-                }}
-              />
+              <div style={styles.wheel}>
+                <div style={{ ...styles.wheelCenter, background: color }} />
+                <div
+                  style={{ ...styles.wheelIndicator, left: `${indicatorLeftPct}%`, top: `${indicatorTopPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <div style={styles.toolRow}>
+            <button
+              type="button"
+              aria-label="Στυλό"
+              aria-pressed={tool === 'pen'}
+              style={{ ...styles.iconButton, ...(tool === 'pen' ? styles.iconButtonActive : null) }}
+              onClick={() => setTool('pen')}
+            >
+              <PenIcon />
             </button>
-          ))}
+            <button
+              type="button"
+              aria-label="Γόμα"
+              aria-pressed={tool === 'eraser'}
+              style={{ ...styles.iconButton, ...(tool === 'eraser' ? styles.iconButtonActive : null) }}
+              onClick={() => setTool('eraser')}
+            >
+              <EraserIcon />
+            </button>
+            <button
+              type="button"
+              aria-label="Γέμισμα"
+              aria-pressed={tool === 'fill'}
+              style={{ ...styles.iconButton, ...(tool === 'fill' ? styles.iconButtonActive : null) }}
+              onClick={() => setTool('fill')}
+            >
+              <FillIcon />
+            </button>
+            <span style={styles.separator} />
+            {SIZE_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                aria-label={key}
+                aria-pressed={brushSize === key}
+                style={{ ...styles.sizeButton, ...(brushSize === key ? styles.iconButtonActive : null) }}
+                onClick={() => setBrushSize(key)}
+              >
+                <span
+                  style={{
+                    ...styles.sizeDot,
+                    width: SIZE_DOT_PX[key],
+                    height: SIZE_DOT_PX[key],
+                    background: brushSize === key ? 'var(--ink)' : 'var(--dim)',
+                  }}
+                />
+              </button>
+            ))}
+          </div>
         </div>
         <div style={styles.buttonRow}>
           <button type="button" style={styles.button} onClick={undo} disabled={strokeCount === 0}>
@@ -741,21 +755,46 @@ const styles: Record<string, CSSProperties> = {
     border: '2px solid var(--wood)',
     background: PAPER,
   },
-  // Task 63 - wheel, swatches, tools and sizes all in one row, wrapped in
-  // nowrap so it can never spill onto a second line and reclaim the
-  // vertical space the old 3-row toolbar spent. Every child is inline in
-  // normal flow (nothing absolute), so the wheel can never overlap the
-  // canvas above it at any width - criterion 2 holds by construction, not
-  // by measurement.
-  unifiedRow: {
+  // Task 122 - the two rows (colour, action) stacked with a small gap.
+  // Each row is itself nowrap so it can never spill onto a third line.
+  toolbar: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  colorRow: {
     display: 'flex',
     flexWrap: 'nowrap',
     alignItems: 'center',
     justifyContent: 'center',
-    // Flat 2px, not 0.2rem (3.2px) - at the smallest real phone widths every
-    // fixed px in this row competes with the clamp()'d controls for space.
     gap: '2px',
     overflowX: 'auto',
+  },
+  toolRow: {
+    display: 'flex',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '2px',
+    overflowX: 'auto',
+  },
+  // Task 122 - the wheel's touch/click target. Sized to the 44px floor
+  // independently of the gradient circle it wraps, so the hit area can grow
+  // without the visible wheel growing with it. updateHueFromPointer() reads
+  // this element's own bounding rect for its center, and centering the
+  // (smaller) inner wheel inside it via flex keeps that center identical to
+  // the visible wheel's center, so the angle math is unaffected by the
+  // wrapper's extra size.
+  wheelHit: {
+    position: 'relative',
+    width: 'clamp(44px, 12vw, 50px)',
+    height: 'clamp(44px, 12vw, 50px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    touchAction: 'none',
+    flexShrink: 0,
   },
   wheel: {
     position: 'relative',
@@ -764,7 +803,6 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '50%',
     background:
       'conic-gradient(hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))',
-    touchAction: 'none',
     flexShrink: 0,
   },
   wheelCenter: {
@@ -790,6 +828,22 @@ const styles: Record<string, CSSProperties> = {
     transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
   },
+  // Task 122 - the swatch's touch target. Sized to the 44px floor
+  // independently of the colour circle it wraps (styles.swatch, unchanged
+  // in visible size), the same hit-area-grows-not-the-control approach as
+  // wheelHit below.
+  swatchHit: {
+    width: 'clamp(44px, 12vw, 48px)',
+    height: 'clamp(44px, 12vw, 48px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    background: 'transparent',
+    border: 'none',
+    flexShrink: 0,
+    touchAction: 'manipulation',
+  },
   swatch: {
     width: 'clamp(28px, 8.5vw, 34px)',
     height: 'clamp(28px, 8.5vw, 34px)',
@@ -797,7 +851,7 @@ const styles: Record<string, CSSProperties> = {
     border: '2px solid color-mix(in srgb, var(--cream) 50%, transparent)',
     padding: 0,
     flexShrink: 0,
-    touchAction: 'manipulation',
+    display: 'block',
   },
   swatchActive: {
     border: '2px solid var(--cream)',
@@ -810,8 +864,8 @@ const styles: Record<string, CSSProperties> = {
     background: 'var(--wood)',
   },
   iconButton: {
-    width: 'clamp(34px, 11vw, 44px)',
-    height: 'clamp(34px, 11vw, 44px)',
+    width: 'clamp(44px, 12vw, 48px)',
+    height: 'clamp(44px, 12vw, 48px)',
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
@@ -822,12 +876,12 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.6rem',
     touchAction: 'manipulation',
   },
-  // Size buttons show a dot, not an icon - they don't need the tool
-  // buttons' 44px touch target to stay legible, so they're sized down to
-  // claw back row width instead.
+  // Task 122 - the button (hit area) now meets the 44px floor same as
+  // iconButton; sizeDot (the visible dot, 6/10/16px) is unchanged, so only
+  // the invisible tap target grew, not what's drawn.
   sizeButton: {
-    width: 'clamp(26px, 7.5vw, 30px)',
-    height: 'clamp(26px, 7.5vw, 30px)',
+    width: 'clamp(44px, 12vw, 48px)',
+    height: 'clamp(44px, 12vw, 48px)',
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
