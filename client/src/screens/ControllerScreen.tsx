@@ -508,6 +508,15 @@ export default function ControllerScreen() {
         // was chosen is now the server's business, and lands right here.
         applyPowerUp(null);
         applySteal(null); // any steal belonged to the previous question
+        // Full mode (Task 134) only: this is also the FIRST event of the
+        // quiz stage that follows the numeric stage, and numericReveal is
+        // never otherwise cleared past the numeric segment's own last round
+        // (nothing else ever fires a fresh numeric_question:show to clear
+        // it). Left set, it outranks `question` in the render order below
+        // and the phone gets stuck showing the last numeric reveal forever -
+        // no answer buttons at this question OR, since nothing after this
+        // clears it either, at the trial that follows it (Task 140).
+        setNumericReveal(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
         applySabotages(payload.yourSabotages);
