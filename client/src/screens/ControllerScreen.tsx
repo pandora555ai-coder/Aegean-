@@ -2615,6 +2615,10 @@ const styles: Record<string, CSSProperties> = {
   },
   pauseButton: {
     width: '100%',
+    minHeight: '2.75rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
