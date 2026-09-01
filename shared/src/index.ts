@@ -325,8 +325,12 @@ export interface LobbyUpdatePayload {
 // game and, for now, the only one. Adding a mode means adding an id HERE
 // (and its phases to GamePhase below), then a module under server/src/modes/
 // that registers itself - nothing in state.ts/timers.ts/realtime.ts moves.
-export type GameModeId = 'quiz' | 'draw' | 'numeric';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric'];
+// Task 134 - 'full' is THE game: one show that runs the quiz, one drawing
+// round, a numeric segment, a stealing quiz stage and the trial back to back.
+// The other three stay registered and VIP-selectable as the dev harness for
+// their own mechanics; 'full' composes them rather than copying any of it.
+export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
 
 // Task 57 - one mode as the LOBBY needs to know it: its own display label
@@ -405,9 +409,18 @@ export interface CrowdMoodPayload {
 // questions get a POWER_UP phase in front of them is a per-stage flag rather
 // than a special case anywhere in the phase machine. Adding stage 4 means
 // adding a row here.
+// Task 134 - WHICH mechanic a stage runs. Absent means 'quiz' (see
+// stageSegment below), so the quiz's own table needed no edit: only the full
+// mode's table has stages that are a drawing round, a numeric segment or the
+// trial. questionCount is 0 for all three - they draw no quiz questions - and
+// that is exactly what makes stageForQuestionIndex skip straight over them
+// when it maps a quiz question index onto the table.
+export type StageSegment = 'quiz' | 'draw' | 'numeric' | 'trial';
+
 export interface StageDefinition {
   stage: number; // 1-based - matches Room.stage server-side
   questionCount: number;
+  segment?: StageSegment;
   // When true, EVERY question of this stage is preceded by its own POWER_UP
   // phase in which every connected player picks one power-up. There is no
   // economy and nothing is held over: a power-up is chosen and spent inside
@@ -520,6 +533,108 @@ export function firstQuestionIndexOfStage(
     firstIndex += definition.questionCount;
   }
   return 0;
+}
+
+// The one place a stage's mechanic is read, so 'quiz' stays the default for
+// every row that predates Task 134 rather than being spelled out 3 times.
+export function stageSegment(definition: StageDefinition): StageSegment {
+  return definition.segment ?? 'quiz';
+}
+
+// Η Δίκη as a STAGE ROW. The trial has always been announced through the
+// STAGE_ANNOUNCE phase (Task 127) but was never IN a stage table - its number
+// was computed as "one past the quiz stages" at two separate call sites. It is
+// a row now, appended to whatever table a mode hands out, so "the trial is the
+// last card of the night" is one fact in one place and totalStages is simply
+// the table's length in every mode. `stage` is a parameter because the number
+// depends on how many stages precede it (4 for a medium quiz, 5 for the full
+// show).
+export function trialStageRow(stage: number): StageDefinition {
+  return {
+    stage,
+    // Not a fixed run of questions: the trial lasts until one player is left
+    // standing, so it draws nothing from room.questions and every quiz index
+    // maps straight past it.
+    questionCount: 0,
+    segment: 'trial',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
+    title: TRIAL_STAGE_TITLE,
+    tagline: TRIAL_STAGE_TAGLINE,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The full show (Task 134)
+// ---------------------------------------------------------------------------
+
+// How many quiz questions EACH of the full mode's two quiz stages asks. The
+// VIP's gameLength maps to this and nothing else: the drawing round and the
+// numeric segment are fixed, and every stage always runs (unlike the quiz
+// mode, where gameLength picks a SLICE of the table).
+export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
+  short: 2,
+  medium: 3,
+  long: 5,
+};
+
+// Fixed, not a setting and not gameLength-dependent - the show's shape is the
+// show's shape.
+export const FULL_DRAW_ROUNDS = 1;
+export const FULL_NUMERIC_QUESTION_COUNT = 3;
+
+// The show, in order. questionCount on the two quiz rows is the MEDIUM figure;
+// fullStagesForLength substitutes the real one, which is why every consumer
+// must go through that function rather than reading this table directly.
+export const FULL_STAGES: readonly StageDefinition[] = [
+  {
+    stage: 1,
+    questionCount: FULL_QUIZ_QUESTION_COUNTS.medium,
+    segment: 'quiz',
+    powerUpBeforeEveryQuestion: true,
+    stealAfterEveryQuestion: false,
+    title: 'Γύρος 1 — Η Αγορά',
+    tagline: 'Ανοιχτή αντιπαράθεση. Πριν από κάθε ερώτηση διαλέγετε σοφιστικό τέχνασμα.',
+  },
+  {
+    stage: 2,
+    questionCount: 0,
+    segment: 'draw',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
+    title: 'Γύρος 2 — Ζωγραφική',
+    tagline: 'Σχεδιάζετε όλοι μαζί. Μετά κρίνεται ένα ένα το έργο σας.',
+  },
+  {
+    stage: 3,
+    questionCount: 0,
+    segment: 'numeric',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
+    title: 'Γύρος 3 — Εκτίμηση',
+    tagline: 'Κανείς δεν ξέρει τον αριθμό. Πλησιάστε τον περισσότερο από τους άλλους.',
+  },
+  {
+    stage: 4,
+    questionCount: FULL_QUIZ_QUESTION_COUNTS.medium,
+    segment: 'quiz',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: true,
+    title: 'Γύρος 4 — Η Συκοφαντία',
+    tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον κρίνει ένοχο.',
+  },
+  // Stage 5 is the trial row, built by fullStagesForLength - one definition of
+  // that card, shared with the quiz mode.
+] as const;
+
+// The full mode's table for a given length: every stage, always, with the two
+// quiz rows' counts substituted and Η Δίκη appended as the last card.
+export function fullStagesForLength(length: GameLength): readonly StageDefinition[] {
+  const questionCount = FULL_QUIZ_QUESTION_COUNTS[length];
+  const stages = FULL_STAGES.map((definition) =>
+    stageSegment(definition) === 'quiz' ? { ...definition, questionCount } : definition,
+  );
+  return [...stages, trialStageRow(FULL_STAGES.length + 1)];
 }
 
 // Fired at the room the moment a game ENTERS a stage - exactly once per stage

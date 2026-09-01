@@ -6,17 +6,19 @@ import {
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
   TRIAL_MAX_QUESTIONS,
-  QUIZ_STAGES,
   ServerEvents,
   stageForQuestionIndex,
-  stagesForLength,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
   type RoomCode,
+  type StageDefinition,
   type TrialRevealResult,
 } from '@game/shared';
 import { getConnectedPlayers, getRoom, type Room, type TrialState } from './state.js';
+// The registry only - a leaf module (see modes/registry.ts), so this keeps the
+// graph acyclic even though the modes themselves import THIS file.
+import { modeForRoom, stagesForRoom } from './modes/registry.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
 import { calculatePoints, sortAndRankResults } from './scoring.js';
@@ -83,11 +85,22 @@ function armQuizTimer(room: Room, kind: QuizTimerKind, durationMs: number, onFir
   armActiveTimer(room, kind, durationMs, onFire);
 }
 
-// The stage table this mode reads. Every @game/shared stage helper takes the
-// table as its last argument since Task 52; passing the quiz's explicitly
-// (rather than leaning on the default) is what makes this file's dependency
-// on ONE mode's shape visible.
-const stageOfQuestion = (questionIndex: number) => stageForQuestionIndex(questionIndex, QUIZ_STAGES);
+// The stage table this file reads. Every @game/shared stage helper takes the
+// table as its last argument since Task 52; Task 134 makes it the ROOM'S table
+// (registry.ts's stagesForRoom) rather than the quiz's, which is the whole
+// reason this question machine can also run the full show's two quiz stages -
+// stages 2 and 3 of that table draw no questions at all, so a quiz question
+// index maps straight past them.
+const stageOfQuestion = (room: Room, questionIndex: number): StageDefinition =>
+  stageForQuestionIndex(questionIndex, stagesForRoom(room));
+
+// The LAST card of the night, in whichever mode: Η Δίκη is a row of every
+// table now (see trialStageRow in @game/shared), so its stage number is simply
+// the table's last one instead of arithmetic repeated at each call site.
+function trialStageNumber(room: Room): number {
+  const table = stagesForRoom(room);
+  return table[table.length - 1].stage;
+}
 
 // Stages (Task 31a, Task 35). Brings room.stage in line with whatever
 // question is about to be entered, and when it actually changes, HOLDS the
@@ -101,11 +114,22 @@ const stageOfQuestion = (questionIndex: number) => stageForQuestionIndex(questio
 // the card, which is what keeps the announcement and the question from
 // rendering on top of each other.
 function announceStageIfChanged(room: Room): boolean {
-  const definition = stageOfQuestion(room.currentQuestionIndex);
+  const definition = stageOfQuestion(room, room.currentQuestionIndex);
   if (room.stage === definition.stage) {
     return false;
   }
-  room.stage = definition.stage;
+  enterStageAnnounce(room, definition.stage);
+  return true;
+}
+
+// The announcement beat itself, held on the shared timer. Task 134 moved it
+// out of announceStageIfChanged unchanged: the trial already entered this
+// exact phase with its own copy of this block, and the full show enters it for
+// a drawing round and a numeric segment too - stages that have no question
+// index to detect a change from, which is the only thing the caller above
+// adds. Exported so a MODE can announce a stage of its own (modes/full.ts).
+export function enterStageAnnounce(room: Room, stage: number): void {
+  room.stage = stage;
 
   room.phase = 'STAGE_ANNOUNCE';
   // The shared helper, exactly like every other phase - so pausing during
@@ -120,10 +144,10 @@ function announceStageIfChanged(room: Room): boolean {
   // it learns the phase - otherwise there's a frame with a phase and no card.
   // Room-wide, but only the TV renders it: the phones are controllers and
   // are about to be busy with a power-up choice or an answer.
-  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, buildStageAnnounce(room));
+  const card = buildStageAnnounce(room);
+  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, card);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  console.log(`room ${room.code} entering stage ${definition.stage} — ${definition.title}`);
-  return true;
+  console.log(`room ${room.code} entering stage ${card.stage}/${card.totalStages} — ${card.title}`);
 }
 
 // Ends the announcement beat exactly once - guarded by the phase check, the
@@ -145,7 +169,14 @@ export function endStageAnnounce(code: RoomCode): void {
     startTrialQuestion(room);
     return;
   }
-  const stage = stageOfQuestion(room.currentQuestionIndex).stage;
+  // Task 134 - a stage of the full show that is NOT a quiz stage starts its
+  // own mechanic here (the drawing round, the numeric segment) instead of a
+  // question. Absent on the three standalone modes, so this is a no-op for
+  // them and the quiz path below is reached exactly as before.
+  if (modeForRoom(room).beginStage?.(room)) {
+    return;
+  }
+  const stage = stageOfQuestion(room, room.currentQuestionIndex).stage;
   if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stage))) {
     return; // advanceFromSocrates calls beginRound once the beat is over
   }
@@ -210,7 +241,7 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
 // Everything the gate does once any stage announcement is out of the way -
 // reached either directly (mid-stage) or from endStageAnnounce.
 function beginRound(room: Room): void {
-  if (stageOfQuestion(room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
+  if (stageOfQuestion(room, room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
     startPowerUp(room);
     return;
   }
@@ -423,7 +454,7 @@ export function endQuestion(code: RoomCode): void {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     difficulty: question.difficulty,
-    stage: stageOfQuestion(room.currentQuestionIndex).stage,
+    stage: stageOfQuestion(room, room.currentQuestionIndex).stage,
   });
 
   room.phase = 'REVEAL';
@@ -504,7 +535,7 @@ export function advanceFromReveal(code: RoomCode): void {
 // Returns whether the phase actually began, so the caller knows whether to
 // carry on to the next question itself.
 function startStealIfEligible(room: Room): boolean {
-  if (!stageOfQuestion(room.currentQuestionIndex).stealAfterEveryQuestion) {
+  if (!stageOfQuestion(room, room.currentQuestionIndex).stealAfterEveryQuestion) {
     return false;
   }
   const steal = buildStealState(room);
@@ -685,6 +716,21 @@ export function advanceFromSocrates(code: RoomCode): void {
 // either the next question starts, or - on the final question - Socrates
 // names the winner (Task 48) before the game actually ends.
 function advanceToNextQuestionOrGameOver(room: Room): void {
+  // Task 134 - a quiz STAGE that has just run out of questions while the game
+  // has not. In the quiz mode that is simply the next stage of the same
+  // question list (the hook is absent, so nothing below changes); in the full
+  // show the next card is a drawing round or the trial, and the mode routes
+  // there itself. It declines - returns false - when what follows really is
+  // the end of the quiz content, which is what leaves the trial/WINNER/
+  // GAME_OVER tail below as the ONE way a game ends.
+  const nextIndex = room.currentQuestionIndex + 1;
+  const atStageEnd =
+    nextIndex >= room.questions.length ||
+    stageOfQuestion(room, nextIndex).stage !== stageOfQuestion(room, room.currentQuestionIndex).stage;
+  if (atStageEnd && modeForRoom(room).advanceAfterSegment?.(room)) {
+    return;
+  }
+
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
   if (isLastQuestion) {
     // Task 127 - Η Δίκη sits HERE, between the last quiz question and the end
@@ -757,20 +803,14 @@ function startTrial(room: Room): boolean {
     lastReveal: null,
   };
   room.trial = trial;
-  // One past however many quiz stages this length included - the trial is
-  // always the last card of the night.
-  room.stage = stagesForLength(room.settings.gameLength, QUIZ_STAGES).length + 1;
+  // The trial is the last row of whichever table this room's mode hands out
+  // (see trialStageRow) - one past the quiz's stages for the quiz, stage 5 of
+  // 5 for the full show. enterStageAnnounce emits the card, which
+  // buildStageAnnounce builds as Η Δίκη because room.trial is set above, and
+  // holds the beat on the same pause-aware timer as every other stage.
+  enterStageAnnounce(room, trialStageNumber(room));
+  setCrowdMood(room, 'tension'); // not the calm every other card gets
 
-  room.phase = 'STAGE_ANNOUNCE';
-  armQuizTimer(room, 'STAGE_ANNOUNCE', STAGE_ANNOUNCE_DURATION_MS, () => endStageAnnounce(room.code));
-  setCrowdMood(room, 'tension');
-
-  // Card BEFORE the phase change, exactly like announceStageIfChanged: the TV
-  // renders the card as the STAGE_ANNOUNCE phase's whole view, so it must
-  // already hold it when it learns the phase. buildStageAnnounce reads
-  // room.trial (set above) and therefore builds the Η Δίκη card.
-  io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, buildStageAnnounce(room));
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   console.log(
     `room ${room.code} entering the trial — ${trial.livingPlayerIds.length} on trial, ` +
       `${questions.length} unused question(s) drawn`,

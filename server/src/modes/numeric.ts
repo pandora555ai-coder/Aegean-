@@ -25,7 +25,7 @@ import {
   type NumericSubmission,
 } from '../numeric.js';
 import { io } from '../realtime.js';
-import { registerGameMode } from './registry.js';
+import { modeForRoom, registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
 
 // The numeric-estimate mode (Task 65), standalone for now - see numeric.ts
@@ -83,9 +83,20 @@ function shuffle<T>(items: readonly T[]): T[] {
 // as draw's - a second game (via "play again", the same Room object) must
 // never see a trace of the first game's submissions.
 function prepareGame(room: Room): void {
+  // NUMERIC_QUESTION_COUNT is THIS mode's length, and stays 5. Task 134 made
+  // the count a parameter of the builder below rather than a constant read
+  // inside it, so the full show can ask for its own three without either
+  // number becoming the other's business.
+  prepareNumericGame(room, NUMERIC_QUESTION_COUNT);
+}
+
+// Task 134 - the draw, callable by a composing mode with its own count. Fresh
+// every game (never mutated in place) for the same reason draw's deal is: "play
+// again" reuses the same Room object.
+export function prepareNumericGame(room: Room, questionCount: number): void {
   numericStateByRoom.delete(room);
   numericStateByRoom.set(room, {
-    questions: shuffle(NUMERIC_QUESTIONS).slice(0, NUMERIC_QUESTION_COUNT),
+    questions: shuffle(NUMERIC_QUESTIONS).slice(0, questionCount),
     questionIndex: -1,
     submissions: new Map(),
     lastReveal: null,
@@ -94,6 +105,12 @@ function prepareGame(room: Room): void {
 
 // vip:start_game calls only this.
 function start(room: Room): void {
+  startNumericSegment(room);
+}
+
+// Task 134 - the numeric run as ONE STAGE of a longer show; identical to what
+// `start` does for a standalone game, which is the point.
+export function startNumericSegment(room: Room): void {
   startNumericQuestion(room, requireNumericState(room));
 }
 
@@ -321,6 +338,12 @@ export function endNumericReveal(code: RoomCode): void {
 }
 
 function finishGame(room: Room): void {
+  // Task 134 - the same routing hook as draw's finishGame: in the full show
+  // this is the end of a stage, not of the game. Absent in this mode, so a
+  // standalone numeric game still ends right here.
+  if (modeForRoom(room).advanceAfterSegment?.(room)) {
+    return;
+  }
   room.phase = 'GAME_OVER';
   clearActiveTimer(room);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -329,7 +352,8 @@ function finishGame(room: Room): void {
   console.log(`room ${room.code} numeric game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
 }
 
-const NUMERIC_CONTINUATIONS: Record<NumericTimerKind, (room: Room) => void> = {
+// Exported since Task 134 - see QUIZ_CONTINUATIONS' note in quiz.ts.
+export const NUMERIC_CONTINUATIONS: Record<NumericTimerKind, (room: Room) => void> = {
   NUMERIC_QUESTION: (room) => endNumericQuestion(room.code),
   NUMERIC_REVEAL: (room) => endNumericReveal(room.code),
 };

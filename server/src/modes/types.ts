@@ -33,6 +33,28 @@ export interface GameMode {
   // as their last argument) instead of them reaching for a global.
   stages: readonly StageDefinition[];
 
+  // Task 134 - the table a PARTICULAR room is actually running, which for
+  // both stage-having modes depends on room.settings: the quiz slices its
+  // table by gameLength, the full show substitutes its quiz stages' question
+  // counts. Read everywhere through stagesForRoom() (registry.ts), which
+  // falls back to `stages` for a mode whose shape doesn't depend on settings.
+  stagesFor?(room: Room): readonly StageDefinition[];
+
+  // Task 134 - the two hooks the full mode needs to sequence one show out of
+  // three modes' mechanics. Both are OPTIONAL and both are absent on the
+  // three standalone modes, so their behaviour is bit-for-bit what it was.
+  //
+  // Called by endStageAnnounce once a stage's card has had its beat: the mode
+  // may start that stage itself (the drawing round, the numeric segment) and
+  // return true, or return false for the ordinary quiz path.
+  beginStage?(room: Room): boolean;
+
+  // Called wherever a SUB-GAME would otherwise end - draw/numeric's own
+  // finishGame, and the last question of a quiz stage. Returns true if the
+  // mode routed the show onward (to the next stage's STAGE_ANNOUNCE) instead,
+  // in which case the caller must not end the game.
+  advanceAfterSegment?(room: Room): boolean;
+
   // Draws/builds whatever content one game needs, against room.settings.
   // Called for a fresh room and again on play-again, from state.ts - which
   // is why the question draw is HERE and not there: a mode that isn't about

@@ -24,7 +24,7 @@ import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../tim
 import { calculatePoints } from '../scoring.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
 import { io } from '../realtime.js';
-import { registerGameMode } from './registry.js';
+import { modeForRoom, registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
 
 // The drawing mode (Task 56a, client views in 56b). A room needs its own
@@ -218,18 +218,25 @@ function roundsFromSettings(room: Room): number {
 // anyone in below DRAW_MIN_PLAYERS connected players - `start` below checks
 // for that same shortfall and stays in LOBBY, which is what "refuse to
 // start" actually looks like from a mode whose prepareGame returns void.
-//
-// Task 56b fix: the delete is now UNCONDITIONAL and happens FIRST, before
-// anything else runs - a second game (via "play again", which reuses this
-// same Room object) must never be able to observe the first game's
-// drawings or word assignments, even for the instant between this call
-// starting and the fresh `.set()` below landing.
+// The deal itself (and the Task 56b fix that opens it) is in dealFreshState.
 function prepareGame(room: Room): void {
+  dealFreshState(room, roundsFromSettings(room));
+}
+
+// Task 134 - the deal, split out of prepareGame unchanged so the full mode can
+// deal at the moment ITS drawing stage begins rather than at the start of the
+// game: it runs mid-show, after a quiz stage, and the players it deals to are
+// whoever is connected THEN. Returns whether a cycle could be dealt at all.
+function dealFreshState(room: Room, totalCycles: number): boolean {
+  // Unconditional and FIRST, before anything else runs - a second game (via
+  // "play again", which reuses this same Room object) must never be able to
+  // observe the first game's drawings or word assignments, even for the
+  // instant between this call starting and the fresh `.set()` below landing.
   drawStateByRoom.delete(room);
 
   const assignment = dealAssignment(room);
   if (!assignment) {
-    return;
+    return false;
   }
 
   drawStateByRoom.set(room, {
@@ -243,9 +250,28 @@ function prepareGame(room: Room): void {
     roundStartedAt: 0,
     lastGuessReveal: null,
     cycleIndex: 0,
-    totalCycles: roundsFromSettings(room),
+    totalCycles,
   });
-  console.log(`room ${room.code} draw mode: dealt ${assignment.size} distinct word sets (${roundsFromSettings(room)} round(s))`);
+  console.log(`room ${room.code} draw mode: dealt ${assignment.size} distinct word sets (${totalCycles} round(s))`);
+  return true;
+}
+
+// Task 134 - what a composing mode's prepareGame calls so no trace of the
+// previous game's drawings survives into a second one played by the SAME Room
+// object. The drawing stage deals its own state when it starts.
+export function clearDrawState(room: Room): void {
+  drawStateByRoom.delete(room);
+}
+
+// Task 134 - the drawing round as ONE STAGE of a longer show. Deals against
+// whoever is connected right now and opens the DRAW phase; returns false (the
+// caller then skips the stage) when there are too few players left to deal.
+export function startDrawSegment(room: Room, totalCycles: number): boolean {
+  if (!dealFreshState(room, totalCycles)) {
+    return false;
+  }
+  startDrawPhase(room, requireDrawState(room));
+  return true;
 }
 
 // vip:start_game calls only this. Stays in LOBBY (a no-op) if prepareGame
@@ -749,6 +775,13 @@ export function endGuessReveal(code: RoomCode): void {
 }
 
 function finishGame(room: Room): void {
+  // Task 134 - in the full show this is not the end of the game but the end of
+  // ONE stage, and the mode routes to whatever card follows. The hook is
+  // absent in this mode itself, so a standalone drawing game ends here exactly
+  // as it always has.
+  if (modeForRoom(room).advanceAfterSegment?.(room)) {
+    return;
+  }
   room.phase = 'GAME_OVER';
   clearActiveTimer(room);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -757,7 +790,8 @@ function finishGame(room: Room): void {
   console.log(`room ${room.code} draw game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
 }
 
-const DRAW_CONTINUATIONS: Record<DrawTimerKind, (room: Room) => void> = {
+// Exported since Task 134 - see QUIZ_CONTINUATIONS' note in quiz.ts.
+export const DRAW_CONTINUATIONS: Record<DrawTimerKind, (room: Room) => void> = {
   DRAW: (room) => endDrawPhase(room.code),
   GUESS: (room) => endGuessRound(room.code),
   GUESS_REVEAL: (room) => endGuessReveal(room.code),

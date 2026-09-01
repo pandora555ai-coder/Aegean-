@@ -1,4 +1,12 @@
-import { MIN_PLAYERS, QUIZ_STAGES, totalQuestionsForLength, type GamePhase } from '@game/shared';
+import {
+  MIN_PLAYERS,
+  QUIZ_STAGES,
+  stagesForLength,
+  totalQuestionsForLength,
+  trialStageRow,
+  type GamePhase,
+  type StageDefinition,
+} from '@game/shared';
 import type { Room } from '../state.js';
 import { getQuestionSet } from '../questions.js';
 import {
@@ -43,7 +51,10 @@ const QUIZ_PHASES: readonly GamePhase[] = [
 // phases.ts gave us, kept, but now attached to the mode instead of to the
 // timer module. The GameMode field it satisfies is the looser
 // Record<string, ...>, which is what lets another mode name its own kinds.
-const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
+// Exported since Task 134: the full mode runs the quiz's phases as two of its
+// own stages, so it merges this table into its own rather than restating what
+// follows a QUESTION or a STEAL.
+export const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
   STAGE_ANNOUNCE: (room) => endStageAnnounce(room.code),
   POWER_UP: (room) => endPowerUp(room.code),
   QUESTION: (room) => endQuestion(room.code),
@@ -61,6 +72,16 @@ export const quizMode: GameMode = {
   minPlayers: MIN_PLAYERS,
   phases: QUIZ_PHASES,
   stages: QUIZ_STAGES,
+  // Task 134 - the table a given room actually runs: the stages this game's
+  // length includes, plus Η Δίκη, which has been the last card of the night
+  // since Task 127 but only ever existed as arithmetic ("+1") at the two
+  // places that needed its number. As a ROW it is one fact in one place, and
+  // totalStages becomes simply this table's length. The rows before it are
+  // unchanged, so every question index still maps exactly as it did.
+  stagesFor: (room): readonly StageDefinition[] => {
+    const quizStages = stagesForLength(room.settings.gameLength, QUIZ_STAGES);
+    return [...quizStages, trialStageRow(quizStages.length + 1)];
+  },
   // The question draw that used to sit in state.ts's buildRoomQuestions. It
   // is quiz content, so it belongs to the quiz: a mode that isn't about
   // questions simply does something else here.

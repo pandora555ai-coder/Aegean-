@@ -35,6 +35,39 @@ Everything a new mode has to define, and nothing else:
 3. **`server/src/modes/index.ts`** — one `import './<mode>.js';` line.
 4. **`client/`** — host/controller views for its new phases.
 
+## Composing modes (Task 134, `full.ts`)
+
+`full` is a mode that runs OTHER modes' mechanics as its own stages (quiz →
+drawing → numeric → quiz-with-steal → the trial → GAME_OVER). It copies
+nothing: it calls each mode's own entry points, and the three standalone modes
+stay registered and VIP-selectable as the dev harness for their mechanics.
+
+Three optional `GameMode` fields make that possible. All three are absent on
+`quiz`/`draw`/`numeric`, so those behave exactly as they did:
+
+- **`stagesFor(room)`** — the table THIS room is running, as opposed to the
+  static `stages`. The quiz slices its table by `gameLength` (and appends
+  `trialStageRow`, since Η Δίκη is the last card of the night in every mode);
+  `full` substitutes its two quiz stages' question counts. Read everywhere
+  through `stagesForRoom()` here in the registry.
+- **`beginStage(room)`** — called by `endStageAnnounce` once a stage's card has
+  had its beat. Return true if the mode started that stage itself (the drawing
+  round, the numeric segment); false leaves the quiz's normal path.
+- **`advanceAfterSegment(room)`** — called wherever a sub-game would otherwise
+  END: `draw`/`numeric`'s own `finishGame`, and the last question of a quiz
+  stage. Return true if the mode routed to the next stage's STAGE_ANNOUNCE
+  instead. `full` returns false only when the next card is the trial, which is
+  what leaves the quiz machine's existing trial → WINNER → GAME_OVER tail as
+  the one way the show ends.
+
+A stage row says WHICH mechanic it runs (`segment`, default `'quiz'`). Rows
+that aren't quiz rows have `questionCount: 0`, so `stageForQuestionIndex` maps
+a quiz question index straight past them.
+
+The composed continuations tables are MERGED, and `full.ts` throws at startup
+if two of them claim the same timer kind - a collision would mean a pause in
+one segment resumes into another's phase.
+
 ## What does NOT change
 
 `state.ts`, `timers.ts` and `realtime.ts` are mode-agnostic:

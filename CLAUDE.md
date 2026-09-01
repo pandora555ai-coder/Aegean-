@@ -141,6 +141,13 @@ Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
       everyone left falls in the same reveal) -> [SOCRATES] -> GAME_OVER
 Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
+Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
+      1 Η Αγορά (quiz + POWER_UP) -> 2 Ζωγραφική (one draw round)
+      -> 3 Εκτίμηση (3 numeric) -> 4 Η Συκοφαντία (quiz + STEAL)
+      -> 5 Η Δίκη (the trial, entered with accumulated scores as life).
+      It COMPOSES the other three modes (which stay VIP-selectable as the
+      dev harness) through three optional GameMode hooks — stagesFor,
+      beginStage, advanceAfterSegment. See modes/README.md.
 
 `paused` is a boolean flag, NOT a phase.
 **There is no mid-game SCOREBOARD** — scores live in the TV's right-hand

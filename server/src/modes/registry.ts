@@ -1,4 +1,4 @@
-import { type GameModeId, type GameModeOption } from '@game/shared';
+import { type GameModeId, type GameModeOption, type StageDefinition } from '@game/shared';
 import type { GameMode } from './types.js';
 // Type-only on purpose - see the note in types.ts. state.ts imports THIS
 // module at runtime, so this one must never import it back.
@@ -41,6 +41,16 @@ export function modeForRoom(room: Pick<Room, 'mode'>): GameMode {
     throw new Error(`room is running unregistered game mode '${room.mode}'`);
   }
   return mode;
+}
+
+// Task 134 - THE stage table for a room, as opposed to the mode's static one:
+// the quiz's is sliced by gameLength (plus Η Δίκη, always the last card), the
+// full show's has its quiz counts substituted. Everything that reads a stage -
+// phases.ts's stage machine, the TV's stage card (payloads.ts) - goes through
+// here, so no call site has to know which mode it is looking at.
+export function stagesForRoom(room: Room): readonly StageDefinition[] {
+  const mode = modeForRoom(room);
+  return mode.stagesFor?.(room) ?? mode.stages;
 }
 
 // The continuation a resumed timer should fire once its remaining time

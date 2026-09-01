@@ -4,9 +4,19 @@
 import './quiz.js';
 import './draw.js';
 import './numeric.js';
+// Last, deliberately: 'full' composes the three above, and this is also the
+// order the lobby's mode picker lists them in (registration order).
+import './full.js';
 
 export { quizMode } from './quiz.js';
 export { drawMode } from './draw.js';
 export { numericMode } from './numeric.js';
-export { continuationForActiveTimer, listGameModeOptions, modeForRoom, registerGameMode } from './registry.js';
+export { fullMode } from './full.js';
+export {
+  continuationForActiveTimer,
+  listGameModeOptions,
+  modeForRoom,
+  registerGameMode,
+  stagesForRoom,
+} from './registry.js';
 export type { GameMode } from './types.js';

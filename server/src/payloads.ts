@@ -7,7 +7,6 @@ import {
   WRONG_HIT,
   firstQuestionIndexOfStage,
   stageForQuestionIndex,
-  stagesForLength,
   type GameOverPayload,
   type GameOverStanding,
   type PlayerStanding,
@@ -27,6 +26,9 @@ import {
   type TrialRevealShowPayload,
 } from '@game/shared';
 import { resolveSocratesDurationMs } from './socratesAudio.js';
+// The registry only, a leaf module - nothing imports this file back, so the
+// graph stays acyclic (see the note in modes/types.ts).
+import { stagesForRoom } from './modes/registry.js';
 import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
 
@@ -39,13 +41,16 @@ import { remainingActiveTimerMs } from './timers.js';
 // branch is HERE rather than at the emit site, a TV reattaching mid-card gets
 // the trial card back, not stage 3's.
 export function buildStageAnnounce(room: Room): StageAnnouncePayload {
+  // Task 134 - the ROOM's table (the quiz's stages sliced by gameLength, or
+  // the full show's five), and Η Δίκη is the last ROW of it in either mode
+  // rather than an off-table +1. So totalStages is simply the table's length,
+  // and the "4/4, never 3/4" fix of Task 128 holds for free at "5/5" too.
+  const stages = stagesForRoom(room);
   if (room.trial) {
-    // One past however many quiz stages this game's length included - the
-    // trial is always the last card of the night, whatever the length.
-    const quizStages = stagesForLength(room.settings.gameLength).length;
+    const trialStage = stages[stages.length - 1].stage;
     return {
-      stage: quizStages + 1,
-      totalStages: quizStages + 1,
+      stage: trialStage,
+      totalStages: stages.length,
       title: TRIAL_STAGE_TITLE,
       tagline: TRIAL_STAGE_TAGLINE,
       // Not a fixed run of questions like a quiz stage: the trial lasts until
@@ -55,16 +60,19 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
       totalQuestions: room.questions.length,
     };
   }
-  const definition = stageForQuestionIndex(room.currentQuestionIndex);
+  // Every non-quiz stage of the full show (the drawing round, the numeric
+  // segment) has questionCount 0 and is therefore invisible to this mapping,
+  // which is why the stage the room is actually IN wins over the one its
+  // question index falls in whenever the table holds such a row.
+  const definition = stages.find((stage) => stage.stage === room.stage)
+    ?? stageForQuestionIndex(room.currentQuestionIndex, stages);
   return {
     stage: definition.stage,
-    // +1: Η Δίκη is always the last card of the night too (see the trial
-    // branch above), so the quiz stages alone undercount totalStages by one.
-    totalStages: stagesForLength(room.settings.gameLength).length + 1,
+    totalStages: stages.length,
     title: definition.title,
     tagline: definition.tagline,
     questionCount: definition.questionCount,
-    firstQuestionIndex: firstQuestionIndexOfStage(definition.stage),
+    firstQuestionIndex: firstQuestionIndexOfStage(definition.stage, stages),
     totalQuestions: room.questions.length,
   };
 }
