@@ -19,6 +19,9 @@ import {
   GAME_INTRO_LINES,
   STAGE_INTRO_LINES,
   WINNER_LINES,
+  TRIAL_INTRO_LINES,
+  DRAW_LINES,
+  NUMERIC_LINES,
 } from '../server/src/socrates.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -48,10 +51,25 @@ function collectEntries(): LineEntry[] {
     add(moment, pool);
   }
   add('GAME_INTRO', GAME_INTRO_LINES);
+  // A pool aliased under two stage numbers (Συκοφαντία: quiz 3 / full 4,
+  // Task 139) is one set of lines - list it once, under its first key.
+  const seenStagePools = new Set<readonly string[]>();
   for (const [stage, pool] of Object.entries(STAGE_INTRO_LINES)) {
-    add(`STAGE_INTRO (stage ${stage})`, pool ?? []);
+    if (!pool || seenStagePools.has(pool)) {
+      continue;
+    }
+    seenStagePools.add(pool);
+    add(`STAGE_INTRO (stage ${stage})`, pool);
   }
   add('WINNER', WINNER_LINES);
+  // Task 139 - the trial's own intro pool plus the draw/numeric moments.
+  add('TRIAL_INTRO', TRIAL_INTRO_LINES);
+  for (const [moment, pool] of Object.entries(DRAW_LINES)) {
+    add(moment, pool);
+  }
+  for (const [moment, pool] of Object.entries(NUMERIC_LINES)) {
+    add(moment, pool);
+  }
   return entries;
 }
 

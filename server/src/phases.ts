@@ -34,6 +34,7 @@ import {
   pickGameIntroLine,
   pickQuestionIntro,
   pickStageIntroLine,
+  pickTrialIntroLine,
   pickWinnerLine,
   recordRoundAndPickLine,
   type PickedLine,
@@ -163,9 +164,13 @@ export function endStageAnnounce(code: RoomCode): void {
   }
   // Task 127 - the trial announces itself through this same beat (see
   // startTrial), so what follows the card is the first trial question, not a
-  // quiz round. No STAGE_INTRO line: those are keyed by quiz stage number,
-  // and re-picking stage 3's here would say the wrong thing entirely.
+  // quiz round. Task 139 - it now gets its own intro beat too, from
+  // TRIAL_INTRO_LINES (the Δίκη lines that used to sit under quiz stage 3);
+  // advanceFromSocrates's STAGE_INTRO case routes back to startTrialQuestion.
   if (room.trial) {
+    if (startSocratesBeat(room, 'STAGE_INTRO', pickTrialIntroLine(room.socrates))) {
+      return;
+    }
     startTrialQuestion(room);
     return;
   }
@@ -721,6 +726,12 @@ export function advanceFromSocrates(code: RoomCode): void {
         enterQuestionOrPowerUp(room); // now proceeds to announce stage 1
         return;
       case 'STAGE_INTRO':
+        // Task 139 - the trial's card plays this same beat kind; what it
+        // begins is the first trial question, never a quiz round.
+        if (room.trial) {
+          startTrialQuestion(room);
+          return;
+        }
         beginRound(room); // starts the question (or its power-up) this stage begins with
         return;
       case 'WINNER':

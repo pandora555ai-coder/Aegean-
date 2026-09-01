@@ -17,6 +17,9 @@ import {
   GAME_INTRO_LINES,
   STAGE_INTRO_LINES,
   WINNER_LINES,
+  TRIAL_INTRO_LINES,
+  DRAW_LINES,
+  NUMERIC_LINES,
 } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
@@ -64,6 +67,20 @@ function allLineTemplates(): string[] {
   }
   for (const line of WINNER_LINES) {
     templates.add(line);
+  }
+  // Task 139 - the draw/numeric moment pools and the trial's own intro pool.
+  for (const line of TRIAL_INTRO_LINES) {
+    templates.add(line);
+  }
+  for (const pool of Object.values(DRAW_LINES)) {
+    for (const line of pool) {
+      templates.add(line);
+    }
+  }
+  for (const pool of Object.values(NUMERIC_LINES)) {
+    for (const line of pool) {
+      templates.add(line);
+    }
   }
   return [...templates];
 }
