@@ -435,7 +435,7 @@ export const QUIZ_STAGES: readonly StageDefinition[] = [
     questionCount: 4,
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: true,
-    title: 'Γύρος 3 — Η Δίκη',
+    title: 'Γύρος 3 — Η Συκοφαντία',
     tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον κρίνει ένοχο.',
   },
 ] as const;
