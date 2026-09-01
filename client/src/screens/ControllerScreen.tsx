@@ -2425,7 +2425,7 @@ const styles: Record<string, CSSProperties> = {
   numericSlider: {
     width: '100%',
     accentColor: 'var(--gold)',
-    height: '2.5rem',
+    height: '2.75rem',
   },
   numericRangeLabels: {
     display: 'flex',
