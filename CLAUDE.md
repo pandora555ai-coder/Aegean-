@@ -53,6 +53,8 @@ server/src/modes/        GameMode registry — READ modes/README.md before addin
 server/src/modes/quiz.ts   The quiz mode
 server/src/modes/draw.ts   The drawing mode (state in a WeakMap<Room, DrawState>)
 server/src/modes/numeric.ts  The numeric mode shell
+server/src/modes/full.ts   Full mode (Task 134): COMPOSES quiz/draw/numeric/trial as
+                         one show's five stages. Holds no mechanic of its own.
 server/src/payloads.ts   REVEAL / GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/steal.ts      STEAL thief selection + the clamped point transfer
@@ -148,6 +150,21 @@ Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
       It COMPOSES the other three modes (which stay VIP-selectable as the
       dev harness) through three optional GameMode hooks — stagesFor,
       beginStage, advanceAfterSegment. See modes/README.md.
+      FULL_QUIZ_QUESTION_COUNTS (shared) gives EACH quiz stage's count by
+      gameLength: short 2, medium 3, long 5 (so stages 1+4 total 2+2/3+3/5+5).
+      Draw rounds (1) and numeric count (3) are fixed. Every segment count is
+      a CALL-SITE parameter (startDrawSegment(room, totalCycles, guessScale),
+      prepareNumericGame(room, questionCount)) — standalone modes pass their
+      own constants (standalone numeric still asks NUMERIC_QUESTION_COUNT =
+      5), full.ts passes its own (FULL_NUMERIC_QUESTION_COUNT = 3); neither
+      mode's shell branches on who's calling it.
+      FULL_QUIZ_SCORE_SCALE / FULL_GUESS_SCORE_SCALE (both
+      400/(BASE_POINTS+SPEED_BONUS_MAX)) put a max-speed quiz answer and a
+      max-speed guess at ~400 in FULL ONLY, matching DRAWER_MAX_POINTS —
+      passed as calculatePoints' existing `scale` arg (default 1, standalone
+      quiz/draw unaffected), never a mode check inside the scoring function.
+      STEAL's transfer and the drawer's round(400*correct/eligible)
+      proportion stay INTENTIONALLY unscaled.
 
 `paused` is a boolean flag, NOT a phase.
 **There is no mid-game SCOREBOARD** — scores live in the TV's right-hand
@@ -157,6 +174,16 @@ STAGE_ANNOUNCE is a real held phase: the stage card shows alone and the
 question timer starts only after it.
 continueAfterReveal() is the one function deciding what follows a REVEAL.
 SOCRATES is skipped entirely when no moment fires.
+Draw and numeric got their own SOCRATES moments in Task 138/139
+(recordDrawGuessRoundAndPickLine / recordNumericRoundAndPickLine, socrates.ts)
+— detection logs unconditionally, but the phase only fires if the moment's
+line pool (DRAW_LINES / NUMERIC_LINES) has an unused entry; empty/exhausted
+detects and stays silent (Task 138 shipped with zero lines; 139 wrote them).
+Η Συκοφαντία (quiz stage 3, full stage 4) shares ONE intro pool,
+SYKOPHANTIA_INTRO_LINES, keyed under both numbers (socrates.ts:443-444). The
+trial's own announcement plays TRIAL_INTRO_LINES — the five "Η Δίκη" lines
+moved verbatim off quiz stage 3 in Task 139 to keep their lineHash-keyed
+mp3s valid — via pickTrialIntroLine (phases.ts:171).
 **Η Δίκη is the quiz's FINALE, not a mode** (Task 127): startTrial() is
 entered from advanceToNextQuestionOrGameOver, reuses the STAGE_ANNOUNCE
 phase for its card, draws from the UNUSED question pool, and is the only
@@ -170,6 +197,14 @@ COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
+A trial GAME_OVER shows NO digits — no rank, no score — gated on
+`gameOver.isTrialResult` (GameOverView.tsx:181,184); standings are SURVIVAL
+order (winner, then reverse elimination order), built from
+room.trial.eliminationOrder (payloads.ts:391), never score (life can end
+negative). On the score column, an eliminated row is removed outright
+REORDER_DELAY_MS + GLIDE_MS (2200ms, see TV layout) after its reveal — the
+same tween the reorder plays, so removal lands as the sink+fade finishes
+(PlayerScoresPanel.tsx's useRemovedIds, ~line 80).
 
 "Phase" = the state machine. The progression of the show is a STAGE.
 Never write "phase 1" when you mean a stage.
@@ -178,9 +213,9 @@ Never write "phase 1" when you mean a stage.
 
 QUIZ_STAGES in shared owns the shape: stage 1 = 3 plain questions,
 stage 2 = 5 questions each preceded by POWER_UP, stage 3 = 4 questions
-each FOLLOWED by a STEAL. Stage 3's title is "Η Συκοφαντία" (Η Δίκη is
-reserved for the trial finale — Task 126). Question count is NOT a
-setting — it is the sum of the stages. room.stage is server-side; the TV
+each FOLLOWED by a STEAL. Stage 3's title is "Η Συκοφαντία" (Η Δίκη is the
+trial finale, not this stage — see Phases for its STAGE_INTRO lines).
+Question count is NOT a setting — it is the sum of the stages. room.stage is server-side; the TV
 announces each stage once.
 Landed effects STACK per target: ice in duration (10s cap), ink in
 intensity (cap 3), both via addAppliedSabotage().
@@ -228,12 +263,17 @@ this same value, it is not literal white).
 
 ## Numeric mode
 
-Standalone for now; meant to become a quiz STAGE later. server/src/numeric.ts
-must import nothing from modes/, so that merge is a rewrite of the mode shell
-(modes/numeric.ts) only. `max` is derived from the answer, never authored.
-NUMERIC_QUESTION_COUNT (shared, = 5) is a fresh random draw from the full
-pool every game (shuffle().slice(0, count) in modes/numeric.ts), not a fixed
-set of 5 questions.
+Standalone AND, since Task 134, composed as Stage 3 of `full` — both true at
+once (modes/full.ts calls startNumericSegment, same entry point the
+standalone mode uses). server/src/numeric.ts imports nothing from modes/ —
+MODE-AGNOSTIC, still true — so it needed no change for that composition.
+`max` is derived from the answer, never authored. NUMERIC_QUESTION_COUNT
+(shared, = 5) is a fresh random draw every standalone game (shuffle().slice
+(0, count) in modes/numeric.ts); full uses its own fixed count
+(FULL_NUMERIC_QUESTION_COUNT = 3) instead.
+scoreNumericSubmissions (server-only; the /dev/numeric client tool doesn't
+import it) scores only SUBMITTERS — N is the submitted count, not the room's
+player count. A non-submitter is flat 0, ranked past every real rank.
 
 ## Voice
 
@@ -265,17 +305,31 @@ reports the longest clip; `npm run voice:index` builds the rating page.
   cover that render. Any new phase view must tolerate a first render with
   no payload of its own.
 - **Trial elimination is `trialReveal.results[].eliminated`, NEVER
-  `score <= 0` (or `life <= 0`).** A sudden-death round charges no drain and
-  no hit (trial.ts's `eliminated: !suddenDeath && lifeAfter <= 0`), so its
-  survivors — and even its winner — legitimately sit at or below zero
-  without being out; a naive threshold check flags them wrongly. See
-  HostScreen.trialEliminatedPlayerIds and ControllerScreen's
-  `myTrialResult.eliminated` read for the correct pattern.
-- **Stage 3's title is "Η Συκοφαντία", but its STAGE_INTRO flavor lines
-  (socrates.ts, `STAGE_INTRO_LINES[3]`) still literally say "Η Δίκη", on
-  purpose.** Task 126 changed only the display title; those lines are
-  lineHash-keyed to pre-generated voice mp3s (see ## Voice) and editing the
-  text breaks the audio lookup.
+  `score <= 0` — and that flag alone is still not enough.** A sudden-death
+  ROUND charges no drain/hit (`eliminated: !suddenDeath && lifeAfter <= 0`),
+  so its survivors — even its winner — sit at or below zero without being
+  out. Deeper (Task 137): the NORMAL round that DECLARES sudden death
+  (everyone left crosses zero in the same reveal) flags EVERY one of them
+  `eliminated: true` in that reveal, eventual winner possibly included,
+  because they all go to the decider, not out. `trial.eliminationOrder` is
+  gated on `next.kind !== 'SUDDEN_DEATH'` before recording anyone
+  (phases.ts:1042-1043), and the client's row-removal gates the same way on
+  `trialReveal.nextSuddenDeath` (HostScreen.tsx trialConfirmedOutPlayerIds,
+  ~1123) — reading `eliminated` alone, without checking whether THIS reveal
+  triggers sudden death, over-eliminates. See
+  HostScreen.trialEliminatedPlayerIds/trialConfirmedOutPlayerIds and
+  ControllerScreen's `myTrialResult.eliminated` for the correct pattern.
+- **Phase-scoped CLIENT state must be cleared on every transition that could
+  follow it, not just the phase that "normally" ends it** (Task 140). A
+  stale `numericReveal` in ControllerScreen sat above `question`/
+  `trialQuestion` in the render if-chain (1588 vs. 1851/1969) and, since
+  nothing but a fresh `numeric_question:show` ever cleared it, masked every
+  phone view from the end of `full`'s numeric segment through the whole
+  trial. Fixed by clearing it in `handleQuestionShow` itself (line 519), the
+  first event of ANY quiz question. Corollary: bots answer at the SOCKET
+  level (dev/screenshot-phases.ts:190's `joinBot` returns a raw Socket) and
+  never render a phone — a bug like this one needs a Playwright phone
+  client or a human, never a bot run.
 
 ## Working style
 
