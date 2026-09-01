@@ -148,8 +148,13 @@ export interface TrialState {
 // above, untouched). Set right before the phase begins, read by
 // buildSocratesPayload, and cleared by advanceFromSocrates once it decides
 // what the beat's `kind` means for what comes next.
+// Task 138 - DRAW_INTRO/DRAW_WINNER are the draw mode's own one-shot beats
+// (mirroring STAGE_INTRO/WINNER); DRAW_MOMENT/NUMERIC_MOMENT are the
+// per-round beats (mirroring the quiz's REVEAL-moment line, which instead
+// lives on RevealSnapshot.socratesLine* - draw/numeric have no equivalent
+// snapshot type, so their round moment reuses this same slot instead).
 export interface PendingSocratesBeat {
-  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER';
+  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT';
   line: string;
   lineTemplate: string;
   lineTag: string | null;

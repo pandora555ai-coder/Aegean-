@@ -57,7 +57,6 @@ import {
   endTrialReveal,
   advanceFromReveal,
   advanceFromSteal,
-  advanceFromSocrates,
   recheckTrialPhaseOnDisconnect,
   resolveSteal,
   submitTrialAnswer,
@@ -961,9 +960,13 @@ io.on('connection', (socket) => {
     // Socrates (Task 39) - the phones stay on their reveal view (and so on
     // their "next" button) while he speaks, so this must skip the beat rather
     // than be a dead press. Same one-shot advanceFrom*, same discipline.
+    // Task 138 - dispatched through the room's own MODE (continuationForActiveTimer),
+    // not a hardcoded call to the quiz's advanceFromSocrates: draw and numeric
+    // now enter this same wire-level phase under their own timer kinds
+    // ('DRAW_SOCRATES'/'NUMERIC_SOCRATES'), each with its own advance-from-here.
     if (room.phase === 'SOCRATES') {
       console.log(`room ${room.code} skipped past Socrates (VIP)`);
-      advanceFromSocrates(room.code);
+      continuationForActiveTimer(room)?.();
       return;
     }
 
@@ -1005,7 +1008,8 @@ io.on('connection', (socket) => {
       return;
     }
     console.log(`room ${room.code} Socrates audio ended - advancing`);
-    advanceFromSocrates(room.code);
+    // Task 138 - same mode-generic dispatch as the VIP skip above.
+    continuationForActiveTimer(room)?.();
   });
 
   // Task 53 - dev-only sink for the /dev/draw harness. No room and no

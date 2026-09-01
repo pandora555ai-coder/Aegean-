@@ -47,6 +47,17 @@ export type Moment =
 
 export type IntroMoment = 'FINAL_QUESTION' | 'HALFWAY_POINT' | 'CATEGORY_CALLOUT' | 'GENERIC_INTRO';
 
+// Task 138 - the draw and numeric modes' own moments. Deliberately NOT folded
+// into `Moment` above: that type's whole candidate/priority/per-player-
+// cooldown machinery (recordRoundAndPickLine) is quiz-specific streak/rank
+// tracking that has no equivalent here - a guess round or a numeric question
+// has no "player state" to carry between rounds, just this round's own
+// numbers. These get their own small pools and their own detector functions
+// (below), sharing only the game-wide `usedLines`/`momentFireCounts`
+// bookkeeping and the `pickLine` weighting logic every pool already uses.
+export type DrawMoment = 'DRAW_INTRO' | 'NOBODY_GUESSED' | 'EVERYBODY_GUESSED' | 'SPLIT_GUESS' | 'DRAW_WINNER';
+export type NumericMoment = 'EXACT_HIT' | 'WILDLY_OFF' | 'ALL_CLUSTERED' | 'NOBODY_CLOSE';
+
 // 0 = HIGH (bypasses cooldown), 1 = MEDIUM, 2 = LOW.
 type Priority = 0 | 1 | 2;
 
@@ -104,8 +115,11 @@ export interface SocratesState {
   // below. Task 62: now also load-bearing in all environments - the
   // MOMENT_FIRE_CAP check in recordRoundAndPickLine reads it to skip a
   // candidate once its moment has already fired twice, so a frequent
-  // moment can't crowd out rarer ones for a whole game.
-  momentFireCounts: Map<Moment, number>;
+  // moment can't crowd out rarer ones for a whole game. Task 138: keyed
+  // loosely enough (not just `Moment`) that the draw/numeric detectors below
+  // share the exact same cap and the exact same map - one room, one game,
+  // one set of moment budgets, regardless of which mode is running.
+  momentFireCounts: Map<Moment | DrawMoment | NumericMoment, number>;
 }
 
 export function createSocratesState(): SocratesState {
@@ -429,6 +443,28 @@ export const WINNER_LINES: readonly string[] = [
   'Η διαμάχη έληξε. Πήρα την απόφασή μου.',
   'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.',
 ];
+
+// Task 138 - draw/numeric moment pools. EMPTY ON PURPOSE: this task is
+// detection only, task 139 writes the actual Greek lines. An empty pool
+// makes pickLine return null unconditionally (see pickLine below), which is
+// the mechanism that keeps a detected-but-unwritten moment from ever
+// becoming a real SOCRATES phase - "a moment with zero lines never fires" is
+// not a special case anywhere, it falls out of the same exhaustion check
+// every other pool already has.
+export const DRAW_LINES: Record<DrawMoment, readonly string[]> = {
+  DRAW_INTRO: [],
+  NOBODY_GUESSED: [],
+  EVERYBODY_GUESSED: [],
+  SPLIT_GUESS: [],
+  DRAW_WINNER: [],
+};
+
+export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
+  EXACT_HIT: [],
+  WILDLY_OFF: [],
+  ALL_CLUSTERED: [],
+  NOBODY_CLOSE: [],
+};
 
 // ============================= selection logic =============================
 
@@ -1189,6 +1225,134 @@ export function pickStageIntroLine(state: SocratesState, stage: number): PickedL
 
 export function pickWinnerLine(state: SocratesState): PickedLine | null {
   return pickLine(state, WINNER_LINES, {});
+}
+
+// ============================= draw / numeric (Task 138) =============================
+// Detection only - no lines exist yet (DRAW_LINES/NUMERIC_LINES above are all
+// empty), so every pickLine call here returns null and none of this ever
+// becomes a real phase. What DOES happen unconditionally is the detection
+// log below: phases.ts/modes/draw.ts/modes/numeric.ts skip the SOCRATES beat
+// on a null return exactly the way startSocratesIfLineFired already does for
+// the quiz, so "detected, but skipped" is observable in the logs without
+// waiting on task 139's lines.
+
+function logDrawNumericDetection(kind: string, moment: string, detail: string): void {
+  if (!isProduction) {
+    console.log(`[socrates] ${kind} moment detected=${moment} ${detail}`);
+  }
+}
+
+// One-shot, before the DRAW phase begins (a fresh deal, or the second round
+// of a 2-round game) - same "no cooldown, no cap" treatment as GAME_INTRO/
+// WINNER above, since it can only ever fire once per phase entry.
+export function pickDrawIntroLine(state: SocratesState): PickedLine | null {
+  return pickLine(state, DRAW_LINES.DRAW_INTRO, {});
+}
+
+// One-shot, after the LAST GUESS_REVEAL of a draw stage - the best drawer
+// (by total drawer points awarded across every round of the stage) gets
+// named before the stage actually ends.
+export function pickDrawWinnerLine(state: SocratesState, winnerName: string, points: number): PickedLine | null {
+  return pickLine(state, DRAW_LINES.DRAW_WINNER, { name: safeNameForLine(winnerName), n: String(points) });
+}
+
+export interface DrawGuessRoundContext {
+  correctGuessers: number;
+  eligibleGuessers: number; // connected non-drawer players this round
+  distractorsHit: number; // how many of the 3 WRONG options got at least one guess
+  drawerName: string;
+}
+
+// Called once per GUESS_REVEAL, right when it begins (mirrors
+// recordRoundAndPickLine's placement in endQuestion) - mutually exclusive by
+// construction (each condition below requires the one above to be false), so
+// at most one candidate is ever detected per round.
+export function recordDrawGuessRoundAndPickLine(state: SocratesState, context: DrawGuessRoundContext): PickedLine | null {
+  const { correctGuessers, eligibleGuessers, distractorsHit, drawerName } = context;
+  if (eligibleGuessers === 0) {
+    return null; // nobody was eligible to guess - nothing to say
+  }
+
+  let moment: DrawMoment | null = null;
+  if (correctGuessers === 0) {
+    moment = 'NOBODY_GUESSED';
+  } else if (correctGuessers === eligibleGuessers) {
+    moment = 'EVERYBODY_GUESSED';
+  } else if (correctGuessers <= eligibleGuessers / 2 && distractorsHit >= 2) {
+    moment = 'SPLIT_GUESS';
+  }
+  if (!moment) {
+    return null;
+  }
+
+  logDrawNumericDetection('draw', moment, `correct=${correctGuessers}/${eligibleGuessers} distractorsHit=${distractorsHit}`);
+  if ((state.momentFireCounts.get(moment) ?? 0) >= MOMENT_FIRE_CAP) {
+    return null;
+  }
+  const line = pickLine(state, DRAW_LINES[moment], { name: safeNameForLine(drawerName) });
+  if (!line) {
+    return null; // pool empty (no lines written yet) - detection was still logged above
+  }
+  state.momentFireCounts.set(moment, (state.momentFireCounts.get(moment) ?? 0) + 1);
+  if (!isProduction) {
+    console.log(`[socrates] fired moment=${moment} lineHash=${lineHash(line.template, line.tag)}`);
+  }
+  return line;
+}
+
+export interface NumericRoundContext {
+  answer: number;
+  values: number[]; // every CONNECTED player's submitted (clamped) value, non-submitters excluded
+}
+
+// Called once per NUMERIC_REVEAL, right when it begins. Candidates are NOT
+// mutually exclusive (a room could be simultaneously exact-hit-having and
+// wildly-off, e.g. one player nails it while another guesses 3x over) - the
+// priority order below picks the single most interesting one to report,
+// same "sorted candidates, first qualifying one wins" shape as the quiz's
+// recordRoundAndPickLine, just without a per-player cooldown to check.
+export function recordNumericRoundAndPickLine(state: SocratesState, context: NumericRoundContext): PickedLine | null {
+  const { answer, values } = context;
+  if (values.length === 0) {
+    return null; // nobody submitted anything this question
+  }
+
+  const candidates: NumericMoment[] = [];
+  if (values.some((value) => value === answer)) {
+    candidates.push('EXACT_HIT');
+  }
+  if (answer > 0 && values.some((value) => value >= answer * 3 || value <= answer / 3)) {
+    candidates.push('WILDLY_OFF');
+  }
+  if (values.length >= 2) {
+    const spread = Math.max(...values) - Math.min(...values);
+    if (spread <= Math.max(answer * 0.1, 1)) {
+      candidates.push('ALL_CLUSTERED');
+    }
+  }
+  if (answer > 0) {
+    const bestDistance = Math.min(...values.map((value) => Math.abs(value - answer)));
+    if (bestDistance / answer >= 0.5) {
+      candidates.push('NOBODY_CLOSE');
+    }
+  }
+
+  for (const moment of candidates) {
+    logDrawNumericDetection('numeric', moment, `answer=${answer} values=${JSON.stringify(values)}`);
+    if ((state.momentFireCounts.get(moment) ?? 0) >= MOMENT_FIRE_CAP) {
+      continue;
+    }
+    const line = pickLine(state, NUMERIC_LINES[moment], {});
+    if (!line) {
+      continue; // pool empty (no lines written yet) - detection was still logged above
+    }
+    state.momentFireCounts.set(moment, (state.momentFireCounts.get(moment) ?? 0) + 1);
+    if (!isProduction) {
+      console.log(`[socrates] fired moment=${moment} lineHash=${lineHash(line.template, line.tag)}`);
+    }
+    return line;
+  }
+  return null;
 }
 
 // Task 61, dev-only: called once at GAME_OVER. Prints every Moment from

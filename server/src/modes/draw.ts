@@ -23,6 +23,8 @@ import { getConnectedPlayers, getRoom, type Room } from '../state.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { calculatePoints } from '../scoring.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
+import { enterSocratesBeat } from '../phases.js';
+import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { io } from '../realtime.js';
 import { modeForRoom, registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
@@ -92,6 +94,16 @@ interface DrawState {
   // awarded. Frozen at deal time, same as totalCycles; defaults to 1 for the
   // standalone mode's own prepareGame, which passes none.
   guessScale: number;
+  // Task 138 - the round-moment line (NOBODY_GUESSED/EVERYBODY_GUESSED/
+  // SPLIT_GUESS) detected for the GUESS_REVEAL that just resolved, if any.
+  // Set in endGuessRound (mirrors quiz's RevealSnapshot.socratesLine, which
+  // has no equivalent field here), consumed and cleared the instant
+  // GUESS_REVEAL's own timer ends.
+  pendingSocratesLine: PickedLine | null;
+  // Task 138 - cumulative drawerPointsAwarded per drawer, across every
+  // round of THIS draw segment (every cycle) - what DRAW_WINNER rewards at
+  // the very end. Reset with the rest of the state on every fresh deal.
+  drawerPointsByPlayer: Map<string, number>;
 }
 
 const drawStateByRoom = new WeakMap<Room, DrawState>();
@@ -104,13 +116,17 @@ function requireDrawState(room: Room): DrawState {
   return state;
 }
 
-const DRAW_PHASES: readonly GamePhase[] = ['LOBBY', 'DRAW', 'GUESS', 'GUESS_REVEAL', 'GAME_OVER'];
+const DRAW_PHASES: readonly GamePhase[] = ['LOBBY', 'DRAW', 'GUESS', 'GUESS_REVEAL', 'SOCRATES', 'GAME_OVER'];
 
 // The drawing mode's own phase-advance timer kinds, exhaustively covered by
 // DRAW_CONTINUATIONS below - see modes/README's acceptance criteria: a phase
 // that arms a timer must appear in this table, or pause/resume freezes the
-// game forever.
-export type DrawTimerKind = 'DRAW' | 'GUESS' | 'GUESS_REVEAL';
+// game forever. 'DRAW_SOCRATES' (Task 138) is this mode's OWN name for its
+// SOCRATES beat's timer - not the literal 'SOCRATES' the quiz uses, so the
+// full mode's merged continuations table (modes/full.ts) never sees two
+// modes claim the same key even though both modes' beats enter the same
+// wire-level 'SOCRATES' phase.
+export type DrawTimerKind = 'DRAW' | 'GUESS' | 'GUESS_REVEAL' | 'DRAW_SOCRATES';
 
 function armDrawTimer(room: Room, kind: DrawTimerKind, durationMs: number, onFire: () => void): void {
   armActiveTimer(room, kind, durationMs, onFire);
@@ -256,6 +272,8 @@ function dealFreshState(room: Room, totalCycles: number, guessScale = 1): boolea
     cycleIndex: 0,
     totalCycles,
     guessScale,
+    pendingSocratesLine: null,
+    drawerPointsByPlayer: new Map(),
   });
   console.log(`room ${room.code} draw mode: dealt ${assignment.size} distinct word sets (${totalCycles} round(s))`);
   return true;
@@ -275,7 +293,7 @@ export function startDrawSegment(room: Room, totalCycles: number, guessScale = 1
   if (!dealFreshState(room, totalCycles, guessScale)) {
     return false;
   }
-  startDrawPhase(room, requireDrawState(room));
+  maybeStartDrawIntroThenPhase(room, requireDrawState(room));
   return true;
 }
 
@@ -288,10 +306,29 @@ function start(room: Room): void {
     console.log(`room ${room.code} draw mode: refusing to start - fewer than ${DRAW_MIN_PLAYERS} players were dealt in`);
     return;
   }
-  startDrawPhase(room, state);
+  maybeStartDrawIntroThenPhase(room, state);
 }
 
-function startDrawPhase(room: Room, state: DrawState): void {
+// Task 138 - DRAW_INTRO, the one-shot beat before every entry into DRAW
+// (a fresh deal, or the second round of a 2-round game). Falls straight
+// through to the phase itself when the pool has nothing to say (always,
+// until task 139 writes lines) - same "no line, no phase" discipline as
+// every other Socrates beat in this codebase.
+function maybeStartDrawIntroThenPhase(room: Room, state: DrawState): void {
+  const picked = pickDrawIntroLine(room.socrates);
+  if (picked) {
+    enterSocratesBeat(
+      room,
+      'DRAW_SOCRATES',
+      { kind: 'DRAW_INTRO', line: picked.text, lineTemplate: picked.template, lineTag: picked.tag },
+      () => advanceFromDrawSocrates(room.code),
+    );
+    return;
+  }
+  enterDrawPhase(room, state);
+}
+
+function enterDrawPhase(room: Room, state: DrawState): void {
   room.phase = 'DRAW';
   state.drawings.clear();
   armDrawTimer(room, 'DRAW', DRAW_DURATION_MS, () => endDrawPhase(room.code));
@@ -450,14 +487,14 @@ function advanceToNextGuessRoundOrGameOver(room: Room, state: DrawState): void {
 // whatever was already scored rather than getting the room stuck.
 function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
   if (state.cycleIndex + 1 >= state.totalCycles) {
-    finishGame(room);
+    finishDrawSegment(room, state);
     return;
   }
 
   const assignment = dealAssignment(room);
   if (!assignment) {
     console.log(`room ${room.code} draw mode: ending early - can't deal round ${state.cycleIndex + 2}`);
-    finishGame(room);
+    finishDrawSegment(room, state);
     return;
   }
 
@@ -470,7 +507,41 @@ function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
   state.guesses.clear();
   state.lastGuessReveal = null;
   console.log(`room ${room.code} draw mode: starting round ${state.cycleIndex + 1}/${state.totalCycles}`);
-  startDrawPhase(room, state);
+  maybeStartDrawIntroThenPhase(room, state);
+}
+
+// Task 138 - DRAW_WINNER, the one-shot beat after the LAST GUESS_REVEAL of
+// this whole draw segment (every cycle done): whoever earned the most total
+// drawer points across the segment gets named before it ends. Falls
+// straight through to finishGame when there's no line (always, until task
+// 139) or nobody to reward (every drawer disconnected before scoring
+// anything).
+function finishDrawSegment(room: Room, state: DrawState): void {
+  const winner = bestDrawer(room, state);
+  const picked = winner ? pickDrawWinnerLine(room.socrates, winner.name, winner.points) : null;
+  if (picked) {
+    enterSocratesBeat(
+      room,
+      'DRAW_SOCRATES',
+      { kind: 'DRAW_WINNER', line: picked.text, lineTemplate: picked.template, lineTag: picked.tag },
+      () => advanceFromDrawSocrates(room.code),
+    );
+    return;
+  }
+  finishGame(room);
+}
+
+function bestDrawer(room: Room, state: DrawState): { name: string; points: number } | null {
+  let bestId: string | null = null;
+  let bestPoints = -Infinity;
+  for (const [playerId, points] of state.drawerPointsByPlayer) {
+    if (points > bestPoints) {
+      bestId = playerId;
+      bestPoints = points;
+    }
+  }
+  const player = bestId ? room.players.get(bestId) : undefined;
+  return player ? { name: player.name, points: bestPoints } : null;
 }
 
 function startGuessRound(room: Room, state: DrawState): void {
@@ -700,6 +771,10 @@ export function endGuessRound(code: RoomCode): void {
 
   const results: GuessRevealResult[] = [];
   let correctGuessers = 0;
+  // Task 138 - per WRONG option, how many guesses landed there. Feeds
+  // SPLIT_GUESS's "spread across 2+ distractors" detection below; indices
+  // outside `options` (including correctIndex) simply stay 0 and never count.
+  const wrongChoiceCounts = [0, 0, 0, 0];
   for (const player of getConnectedPlayers(room)) {
     if (player.playerId === drawerId) {
       continue;
@@ -715,6 +790,8 @@ export function endGuessRound(code: RoomCode): void {
     );
     if (correct) {
       correctGuessers += 1;
+    } else if (choice !== null) {
+      wrongChoiceCounts[choice] += 1;
     }
     player.score += pointsAwarded;
     results.push({
@@ -739,6 +816,18 @@ export function endGuessRound(code: RoomCode): void {
   if (drawer) {
     drawer.score += drawerPointsAwarded;
   }
+  state.drawerPointsByPlayer.set(drawerId, (state.drawerPointsByPlayer.get(drawerId) ?? 0) + drawerPointsAwarded);
+
+  // Task 138 - detected (and logged) here, at the moment the round resolves,
+  // exactly like the quiz's recordRoundAndPickLine in endQuestion. Consumed
+  // by continueAfterGuessReveal once GUESS_REVEAL's own timer ends.
+  const distractorsHit = wrongChoiceCounts.filter((count) => count > 0).length;
+  state.pendingSocratesLine = recordDrawGuessRoundAndPickLine(room.socrates, {
+    correctGuessers,
+    eligibleGuessers,
+    distractorsHit,
+    drawerName: drawer?.name ?? '',
+  });
 
   // Snapshotted BEFORE the phase/timer changes below - the round is fully
   // scored and frozen the instant it resolves, exactly like Room.lastReveal.
@@ -781,6 +870,52 @@ export function endGuessReveal(code: RoomCode): void {
   }
   const state = requireDrawState(room);
   clearActiveTimer(room);
+  continueAfterGuessReveal(room, state);
+}
+
+// Task 138 - mirrors the quiz's continueAfterReveal: plays the round's
+// SOCRATES beat (if endGuessRound detected one AND it had a line - see
+// state.pendingSocratesLine) before moving on, and is what
+// advanceFromDrawSocrates re-enters once that beat ends.
+function continueAfterGuessReveal(room: Room, state: DrawState): void {
+  const pending = state.pendingSocratesLine;
+  state.pendingSocratesLine = null;
+  if (pending) {
+    enterSocratesBeat(
+      room,
+      'DRAW_SOCRATES',
+      { kind: 'DRAW_MOMENT', line: pending.text, lineTemplate: pending.template, lineTag: pending.tag },
+      () => advanceFromDrawSocrates(room.code),
+    );
+    return;
+  }
+  advanceToNextGuessRoundOrGameOver(room, state);
+}
+
+// Ends this mode's SOCRATES beat exactly once - guarded by the phase check,
+// same one-shot discipline as every other advanceFrom*. DRAW_INTRO resumes
+// into the phase it preceded; DRAW_WINNER (the segment's very last beat)
+// goes straight to finishGame, never back through finishDrawSegment (which
+// would just try to play the same beat again); everything else (DRAW_MOMENT,
+// or no pending beat at all - a VIP skip racing a beat this function itself
+// is mid-way through) falls back to the normal post-reveal tail.
+export function advanceFromDrawSocrates(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'SOCRATES') {
+    return;
+  }
+  const state = requireDrawState(room);
+  const pending = room.pendingSocratesBeat;
+  room.pendingSocratesBeat = null;
+
+  if (pending?.kind === 'DRAW_INTRO') {
+    enterDrawPhase(room, state);
+    return;
+  }
+  if (pending?.kind === 'DRAW_WINNER') {
+    finishGame(room);
+    return;
+  }
   advanceToNextGuessRoundOrGameOver(room, state);
 }
 
@@ -805,6 +940,7 @@ export const DRAW_CONTINUATIONS: Record<DrawTimerKind, (room: Room) => void> = {
   DRAW: (room) => endDrawPhase(room.code),
   GUESS: (room) => endGuessRound(room.code),
   GUESS_REVEAL: (room) => endGuessReveal(room.code),
+  DRAW_SOCRATES: (room) => advanceFromDrawSocrates(room.code),
 };
 
 export const drawMode: GameMode = {

@@ -15,7 +15,7 @@ import {
   type StageDefinition,
   type TrialRevealResult,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type Room, type TrialState } from './state.js';
+import { getConnectedPlayers, getRoom, type PendingSocratesBeat, type Room, type TrialState } from './state.js';
 // The registry only - a leaf module (see modes/registry.ts), so this keeps the
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
@@ -210,7 +210,38 @@ function startGameIntro(room: Room): boolean {
   return startSocratesBeat(room, 'GAME_INTRO', pickGameIntroLine(room.socrates));
 }
 
-// Task 48 - the shared entry for the three one-shot beats (GAME_INTRO/
+// Task 138 - the generic phase-entry mechanics for ANY held SOCRATES beat,
+// factored out of what used to be this quiz-only function so draw.ts and
+// numeric.ts can enter the exact same phase for their own one-shot and
+// round-moment beats. `timerKind` is deliberately NOT always the literal
+// 'SOCRATES': each mode arms its own mode-local kind (the quiz keeps
+// 'SOCRATES', draw uses 'DRAW_SOCRATES', numeric uses 'NUMERIC_SOCRATES') so
+// that when the full mode merges all three modes' continuations tables
+// (modes/full.ts's mergeContinuations), no two of them claim the same key -
+// `room.phase` is 'SOCRATES' in every case regardless, since that's the one
+// wire-level phase name, but the TIMER kind is mode-local plumbing.
+export function enterSocratesBeat(
+  room: Room,
+  timerKind: string,
+  beat: { kind: PendingSocratesBeat['kind']; line: string; lineTemplate: string; lineTag: string | null },
+  onFire: () => void,
+): void {
+  room.pendingSocratesBeat = beat;
+  room.phase = 'SOCRATES';
+  // Same backstop-at-the-ceiling arming as every other Socrates beat (see
+  // startSocratesIfLineFired) - the normal path out is still the client's
+  // SOCRATES_AUDIO_ENDED ack.
+  armActiveTimer(room, timerKind, SOCRATES_MAX_DURATION_MS, onFire);
+
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  const payload = buildSocratesPayload(room);
+  if (payload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
+  }
+  console.log(`room ${room.code} Socrates (${beat.kind}) — "${beat.line}"`);
+}
+
+// Task 48 - the shared entry for the quiz's three one-shot beats (GAME_INTRO/
 // STAGE_INTRO/WINNER), parallel to startSocratesIfLineFired below but for a
 // line that ISN'T tied to room.lastReveal. `picked` is null exactly when
 // that beat's pool has nothing left to say (see PickedLine callers) - in
@@ -221,20 +252,12 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
   if (!picked) {
     return false;
   }
-  room.pendingSocratesBeat = { kind, line: picked.text, lineTemplate: picked.template, lineTag: picked.tag };
-
-  room.phase = 'SOCRATES';
-  // Same backstop-at-the-ceiling arming as every other Socrates beat (see
-  // startSocratesIfLineFired) - the normal path out is still the client's
-  // SOCRATES_AUDIO_ENDED ack.
-  armQuizTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
-
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  const payload = buildSocratesPayload(room);
-  if (payload && room.hostSocketId) {
-    io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
-  }
-  console.log(`room ${room.code} Socrates (${kind}) — "${picked.text}"`);
+  enterSocratesBeat(
+    room,
+    'SOCRATES',
+    { kind, line: picked.text, lineTemplate: picked.template, lineTag: picked.tag },
+    () => advanceFromSocrates(room.code),
+  );
   return true;
 }
 

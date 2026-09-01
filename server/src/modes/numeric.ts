@@ -24,6 +24,8 @@ import {
   type NumericQuestion,
   type NumericSubmission,
 } from '../numeric.js';
+import { enterSocratesBeat } from '../phases.js';
+import { recordNumericRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { io } from '../realtime.js';
 import { modeForRoom, registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
@@ -47,6 +49,11 @@ interface NumericState {
   // live (see buildNumericRevealShow) since those can change under a
   // reconnect.
   lastReveal: Omit<NumericRevealShowPayload, 'autoAdvanceMs' | 'paused' | 'pausedByName' | 'standings'> | null;
+  // Task 138 - the round-moment line (EXACT_HIT/WILDLY_OFF/ALL_CLUSTERED/
+  // NOBODY_CLOSE) detected for the NUMERIC_REVEAL that just resolved, if
+  // any. Set in endNumericQuestion, consumed and cleared the instant
+  // NUMERIC_REVEAL's own timer ends.
+  pendingSocratesLine: PickedLine | null;
 }
 
 const numericStateByRoom = new WeakMap<Room, NumericState>();
@@ -59,9 +66,13 @@ function requireNumericState(room: Room): NumericState {
   return state;
 }
 
-const NUMERIC_PHASES: readonly GamePhase[] = ['LOBBY', 'NUMERIC_QUESTION', 'NUMERIC_REVEAL', 'GAME_OVER'];
+const NUMERIC_PHASES: readonly GamePhase[] = ['LOBBY', 'NUMERIC_QUESTION', 'NUMERIC_REVEAL', 'SOCRATES', 'GAME_OVER'];
 
-export type NumericTimerKind = 'NUMERIC_QUESTION' | 'NUMERIC_REVEAL';
+// 'NUMERIC_SOCRATES' (Task 138), not the literal 'SOCRATES' - same reasoning
+// as DrawTimerKind's own 'DRAW_SOCRATES': a mode-local name keeps the full
+// mode's merged continuations table (modes/full.ts) collision-free even
+// though every mode's SOCRATES beat enters the same wire-level phase.
+export type NumericTimerKind = 'NUMERIC_QUESTION' | 'NUMERIC_REVEAL' | 'NUMERIC_SOCRATES';
 
 function armNumericTimer(room: Room, kind: NumericTimerKind, durationMs: number, onFire: () => void): void {
   armActiveTimer(room, kind, durationMs, onFire);
@@ -100,6 +111,7 @@ export function prepareNumericGame(room: Room, questionCount: number): void {
     questionIndex: -1,
     submissions: new Map(),
     lastReveal: null,
+    pendingSocratesLine: null,
   });
 }
 
@@ -290,6 +302,17 @@ export function endNumericQuestion(code: RoomCode): void {
     results,
   };
 
+  // Task 138 - detected (and logged) here, at the moment the round
+  // resolves, exactly like the quiz's recordRoundAndPickLine and draw's
+  // recordDrawGuessRoundAndPickLine. Consumed by continueAfterNumericReveal
+  // once NUMERIC_REVEAL's own timer ends. Non-submitters are excluded (Task
+  // 133 already scores them at 0 and out of ranking) - only genuine
+  // submitted values are what a moment like WILDLY_OFF is about.
+  state.pendingSocratesLine = recordNumericRoundAndPickLine(room.socrates, {
+    answer: question.answer,
+    values: Array.from(state.submissions.values()),
+  });
+
   room.phase = 'NUMERIC_REVEAL';
   armNumericTimer(room, 'NUMERIC_REVEAL', NUMERIC_REVEAL_DURATION_MS, () => endNumericReveal(room.code));
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -334,6 +357,41 @@ export function endNumericReveal(code: RoomCode): void {
   }
   const state = requireNumericState(room);
   clearActiveTimer(room);
+  continueAfterNumericReveal(room, state);
+}
+
+// Task 138 - mirrors the quiz's continueAfterReveal / draw's
+// continueAfterGuessReveal: plays the round's SOCRATES beat (if
+// endNumericQuestion detected one AND it had a line - see
+// state.pendingSocratesLine) before moving on, and is what
+// advanceFromNumericSocrates re-enters once that beat ends.
+function continueAfterNumericReveal(room: Room, state: NumericState): void {
+  const pending = state.pendingSocratesLine;
+  state.pendingSocratesLine = null;
+  if (pending) {
+    enterSocratesBeat(
+      room,
+      'NUMERIC_SOCRATES',
+      { kind: 'NUMERIC_MOMENT', line: pending.text, lineTemplate: pending.template, lineTag: pending.tag },
+      () => advanceFromNumericSocrates(room.code),
+    );
+    return;
+  }
+  startNumericQuestion(room, state);
+}
+
+// Ends this mode's SOCRATES beat exactly once - guarded by the phase check,
+// same one-shot discipline as every other advanceFrom*. Numeric has only the
+// one kind of beat (NUMERIC_MOMENT), so there's no pending.kind to switch on
+// - unlike draw's advanceFromDrawSocrates, this always falls back to the
+// next question.
+export function advanceFromNumericSocrates(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'SOCRATES') {
+    return;
+  }
+  const state = requireNumericState(room);
+  room.pendingSocratesBeat = null;
   startNumericQuestion(room, state);
 }
 
@@ -356,6 +414,7 @@ function finishGame(room: Room): void {
 export const NUMERIC_CONTINUATIONS: Record<NumericTimerKind, (room: Room) => void> = {
   NUMERIC_QUESTION: (room) => endNumericQuestion(room.code),
   NUMERIC_REVEAL: (room) => endNumericReveal(room.code),
+  NUMERIC_SOCRATES: (room) => advanceFromNumericSocrates(room.code),
 };
 
 export const numericMode: GameMode = {
