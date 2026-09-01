@@ -260,6 +260,7 @@ const gameOver: GameOverPayload = {
   ],
   winnerName: 'Γιώργος',
   isTie: false,
+  isTrialResult: false,
   totalQuestions: 12,
 };
 

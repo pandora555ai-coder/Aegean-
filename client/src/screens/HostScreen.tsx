@@ -1106,6 +1106,26 @@ export default function HostScreen() {
     return [];
   }
 
+  // Task 137 - who the score column should REMOVE outright, distinct from
+  // trialEliminatedPlayerIds above (which only sinks+fades and can be
+  // provisional). A reveal whose OWN round declared sudden death
+  // (`nextSuddenDeath`) is exactly the case that flag is provisional for:
+  // everyone in it - the eventual winner very possibly included, since
+  // landing on exactly zero life off your own correct instant answer is
+  // normal - crossed zero together and goes to the decider, not out. Server
+  // mirrors this same gate for trial.eliminationOrder (server/src/phases.ts)
+  // so GAME_OVER's survival order agrees with what actually left the column.
+  // A sudden-death round's OWN reveal never marks anyone eliminated either
+  // (scoreTrialRound forces it false for all its results), so this is
+  // naturally empty there too - nothing further to remove once the trial's
+  // last reveal has run.
+  function trialConfirmedOutPlayerIds(): string[] {
+    if (phase !== 'TRIAL_REVEAL' || !trialReveal || trialReveal.nextSuddenDeath) {
+      return [];
+    }
+    return trialReveal.results.filter((result) => result.eliminated).map((result) => result.playerId);
+  }
+
   // Standings for the persistent score column, read from whichever payload
   // the CURRENT phase carries - never "first non-null", since a previous
   // phase's payload lingers in state and would show stale scores. null means
@@ -1380,6 +1400,7 @@ export default function HostScreen() {
 
   const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
+  const confirmedOutPlayerIds = phase === 'TRIAL_REVEAL' ? trialConfirmedOutPlayerIds() : null;
   const lockedInPlayerIds = phase === 'TRIAL_QUESTION' ? (trialQuestion?.lockedInPlayerIds ?? null) : null;
   const scoreColumnTitle = isTrialPhase ? 'Ζωές' : 'Βαθμολογία';
 
@@ -1411,6 +1432,7 @@ export default function HostScreen() {
               timer={timerForPhase()}
               title={scoreColumnTitle}
               eliminatedPlayerIds={eliminatedPlayerIds}
+              confirmedOutPlayerIds={confirmedOutPlayerIds}
               lockedInPlayerIds={lockedInPlayerIds}
             />
           )}

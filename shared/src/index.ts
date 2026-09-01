@@ -1306,6 +1306,12 @@ export interface GameOverPayload {
   standings: GameOverStanding[];
   winnerName: string; // if tied, joined names: "Άννα & Μπάμπης"
   isTie: boolean;
+  // Task 137 - true whenever the trial decided this game (buildGameOver's
+  // declaredWinner branch): the TV shows no numbers at all in that case
+  // (score is life there and can finish negative, so there is nothing worth
+  // printing), and `standings` is already in SURVIVAL order (winner, then
+  // reverse elimination order) rather than sorted by score.
+  isTrialResult: boolean;
   totalQuestions: number;
 }
 

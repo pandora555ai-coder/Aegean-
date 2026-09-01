@@ -174,10 +174,14 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
                 : ({ ...styles.standingRow, ...rowSize, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
             }
           >
-            <span style={styles.standingRank}>#{standing.rank}</span>
+            {/* Task 137 - a trial's GAME_OVER shows no numbers at all: score
+                is life there and can end negative, and the row ORDER is
+                already the survival ranking, so a "#N" badge would be the
+                only digit left on the whole screen for no reason. */}
+            {!gameOver.isTrialResult && <span style={styles.standingRank}>#{standing.rank}</span>}
             <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={standing.rank === 1 ? 'var(--gold)' : undefined} />
             <span style={styles.standingName}>{standing.name}</span>
-            <span style={styles.standingScore}>{standing.score}</span>
+            {!gameOver.isTrialResult && <span style={styles.standingScore}>{standing.score}</span>}
           </div>
         ))}
       </div>

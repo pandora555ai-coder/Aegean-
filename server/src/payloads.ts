@@ -384,16 +384,25 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
   const declaredWinner = winnerPlayerId !== null ? room.players.get(winnerPlayerId) : undefined;
 
   if (declaredWinner) {
-    const others = [...players]
-      .filter((player) => player.playerId !== declaredWinner.playerId)
-      .sort((a, b) => b.score - a.score);
-    // Ranked among THEMSELVES, then shifted down one - so a tie for second
-    // still reads as a tie (2,2,4) below the declared winner's 1.
-    const otherRanks = computeCompetitionRanks(
-      others,
-      (player) => player.score,
-      (player) => player.playerId,
-    );
+    // Task 137 - SURVIVAL order, not score order: the winner, then everyone
+    // else in REVERSE elimination order (most recently eliminated finishes
+    // furthest up the table). Score is life during the trial and can end
+    // negative, so GAME_OVER never ranks these by it.
+    const survivalOrder = [...(room.trial?.eliminationOrder ?? [])].reverse();
+    const rankedIds = new Set([declaredWinner.playerId, ...survivalOrder]);
+    // A player who was never eliminated and isn't the winner shouldn't
+    // happen (the trial only ends with exactly one survivor), but a
+    // disconnect before the trial began would leave them out of
+    // eliminationOrder too - fall back to score order at the bottom exactly
+    // as the pre-137 logic did for everyone.
+    const others = [
+      ...survivalOrder.flatMap((id) => {
+        const player = room.players.get(id);
+        return player ? [player] : [];
+      }),
+      ...players.filter((player) => !rankedIds.has(player.playerId)).sort((a, b) => b.score - a.score),
+    ];
+
     const standings: GameOverStanding[] = [
       {
         playerId: declaredWinner.playerId,
@@ -402,18 +411,19 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
         score: declaredWinner.score,
         rank: 1,
       },
-      ...others.map((player) => ({
+      ...others.map((player, index) => ({
         playerId: player.playerId,
         name: player.name,
         avatarId: player.avatarId,
         score: player.score,
-        rank: (otherRanks.get(player.playerId) ?? others.length) + 1,
+        rank: index + 2,
       })),
     ];
     return {
       standings,
       winnerName: declaredWinner.name,
       isTie: false, // the trial decides between them - that is what it is for
+      isTrialResult: true,
       totalQuestions: room.questions.length,
     };
   }
@@ -440,6 +450,7 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
     standings,
     winnerName: winners.map((winner) => winner.name).join(' & '),
     isTie: winners.length > 1,
+    isTrialResult: false,
     totalQuestions: room.questions.length,
   };
 }

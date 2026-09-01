@@ -26,8 +26,19 @@ interface PlayerScoresPanelProps {
   title?: string;
   // Sinks to the bottom (via the SAME byScoreDesc sort every phase already
   // uses - an eliminated life is never positive, so it sorts last on its
-  // own) and fades - never passed outside TRIAL_QUESTION/TRIAL_REVEAL.
+  // own) and fades - never passed outside TRIAL_QUESTION/TRIAL_REVEAL. Can be
+  // PROVISIONAL (a round that ties everyone at zero together flags the
+  // eventual winner too, until the decider round settles it) - see
+  // confirmedOutPlayerIds below for the one this component trusts to REMOVE
+  // a row.
   eliminatedPlayerIds?: string[] | null;
+  // Task 137 - who is REALLY, permanently out as of THIS render: a strict
+  // subset of eliminatedPlayerIds that excludes a reveal whose own round
+  // declared sudden death (HostScreen.trialConfirmedOutPlayerIds). Row
+  // removal is scheduled off this, never off eliminatedPlayerIds, so a
+  // sudden-death winner's row is never yanked out from under the decider
+  // that's about to declare them the winner.
+  confirmedOutPlayerIds?: string[] | null;
   // TRIAL_QUESTION only - whoever this payload already knows has locked in.
   lockedInPlayerIds?: string[] | null;
 }
@@ -43,6 +54,41 @@ const GLIDE_MS = 400;
 // players keep a fixed relative order render to render - no flicker.
 function byScoreDesc(standings: PlayerStanding[]): PlayerStanding[] {
   return [...standings].sort((a, b) => b.score - a.score);
+}
+
+// Task 137 - eliminated rows don't sink+fade forever: once that reorder
+// tween (REORDER_DELAY_MS then GLIDE_MS - the SAME machinery below, so the
+// removal lands exactly when the sink+fade finishes rather than cutting it
+// off) has fully played, the row leaves the column outright and the column
+// itself gets shorter. `scheduledRef` remembers every id already given a
+// timer so a re-render with the same confirmedOutPlayerIds (a fresh array
+// instance every time - the caller rebuilds it each render) never restarts
+// the clock, and nothing is ever un-scheduled: once removed, gone for the
+// rest of the game. Keyed on a joined string, not the array itself, so the
+// effect only re-runs when membership actually changes.
+function useRemovedIds(confirmedOutPlayerIds: string[] | null): Set<string> {
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const scheduledRef = useRef<Set<string>>(new Set());
+  const key = (confirmedOutPlayerIds ?? []).join('|');
+
+  useEffect(() => {
+    const pending = (confirmedOutPlayerIds ?? []).filter((id) => !scheduledRef.current.has(id));
+    if (pending.length === 0) {
+      return;
+    }
+    pending.forEach((id) => scheduledRef.current.add(id));
+    const timer = window.setTimeout(() => {
+      setRemovedIds((prev) => {
+        const next = new Set(prev);
+        pending.forEach((id) => next.add(id));
+        return next;
+      });
+    }, REORDER_DELAY_MS + GLIDE_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return removedIds;
 }
 
 // Holds the visual row order back from the just-arrived sort order until
@@ -199,14 +245,28 @@ export function PlayerScoresPanel({
   timer = null,
   title = 'Βαθμολογία',
   eliminatedPlayerIds = null,
+  confirmedOutPlayerIds = null,
   lockedInPlayerIds = null,
 }: PlayerScoresPanelProps) {
-  const count = standings.length;
+  // `standings` still carries every player - see useDisplayOrder above,
+  // which needs the full set to sort correctly - so removal is a final
+  // filter applied AFTER ordering, not baked into the order/delay pipeline.
+  // That keeps the two timings independent: the sink+fade reorders on its
+  // own schedule (score-driven, as it always has), and once removedIds
+  // flips for a row this render simply stops including it - the row's
+  // sudden absence is exactly what useFlip below needs to glide the rest of
+  // the column up, with no SECOND REORDER_DELAY_MS wait bolted on.
+  const orderedStandings = useDisplayOrder(standings);
+  const removedIds = useRemovedIds(confirmedOutPlayerIds);
+  const visibleStandings = useMemo(
+    () => orderedStandings.filter((standing) => !removedIds.has(standing.playerId)),
+    [orderedStandings, removedIds],
+  );
+  const count = visibleStandings.length;
   const rowSize = sidebarRowSizeStyle(count);
   const avatarSize = sidebarAvatarSize(count);
-  const orderedStandings = useDisplayOrder(standings);
   const containerRef = useRef<HTMLDivElement>(null);
-  useFlip(containerRef, orderedStandings.map((s) => s.playerId).join('|'));
+  useFlip(containerRef, visibleStandings.map((s) => s.playerId).join('|'));
 
   const panelStyle = { ...styles.gameLayoutRight, background: 'var(--panel)', borderRadius: '1rem', padding: '1rem' };
 
@@ -221,7 +281,7 @@ export function PlayerScoresPanel({
         style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }}
         data-testid="score-panel"
       >
-        {orderedStandings.map((standing) => (
+        {visibleStandings.map((standing) => (
           <ScorePanelRow
             key={standing.playerId}
             standing={standing}

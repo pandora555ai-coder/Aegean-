@@ -133,6 +133,10 @@ export interface TrialState {
   // GAME_OVER standings name the player the TRIAL decided on, which after a
   // sudden death is not simply "the highest score".
   winnerPlayerId: string | null;
+  // Chronological order players fell, oldest first - appended to at each
+  // reveal (Task 137). GAME_OVER's survival ranking is the winner, then this
+  // REVERSED: the most recently eliminated finished furthest up the table.
+  eliminationOrder: string[];
   // Same reconnect discipline as Room.lastReveal: frozen the instant the
   // round resolves, so a state:sync mid-reveal replays exactly what happened.
   // autoAdvanceMs/paused/pausedByName/standings are always read live.

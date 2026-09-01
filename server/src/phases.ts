@@ -801,6 +801,7 @@ function startTrial(room: Room): boolean {
     lockIns: new Map(),
     roundsPlayed: 0,
     winnerPlayerId: null,
+    eliminationOrder: [],
     lastReveal: null,
   };
   room.trial = trial;
@@ -995,6 +996,17 @@ export function endTrialQuestion(code: RoomCode): void {
   const winnerPlayerId = next.kind === 'WINNER' ? next.winnerPlayerId : null;
   if (winnerPlayerId) {
     trial.winnerPlayerId = winnerPlayerId;
+  }
+  // Recorded in results order (best-performing-of-the-doomed first when
+  // several fall in the same reveal) - Task 137's GAME_OVER reverses this
+  // whole list for survival-order ranking below the winner. Skipped
+  // entirely when THIS round is what declares sudden death: everyone who
+  // crossed zero together (the eventual winner very possibly included -
+  // hitting zero on your own correct, instant answer is normal when you
+  // walked in at exactly zero life) goes on to the decider, not out, so
+  // `results[].eliminated` here is provisional, not the real verdict.
+  if (next.kind !== 'SUDDEN_DEATH') {
+    trial.eliminationOrder.push(...results.filter((result) => result.eliminated).map((result) => result.playerId));
   }
   // Kept in join order (filtered, never rebuilt from the reveal's order) so
   // the lives table reads the same way from round to round.
