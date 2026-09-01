@@ -1,5 +1,6 @@
 import {
   FULL_DRAW_ROUNDS,
+  FULL_GUESS_SCORE_SCALE,
   FULL_NUMERIC_QUESTION_COUNT,
   MIN_PLAYERS,
   firstQuestionIndexOfStage,
@@ -154,7 +155,7 @@ function beginStage(room: Room): boolean {
   }
   switch (stageSegment(definition)) {
     case 'draw':
-      if (startDrawSegment(room, FULL_DRAW_ROUNDS)) {
+      if (startDrawSegment(room, FULL_DRAW_ROUNDS, FULL_GUESS_SCORE_SCALE)) {
         return true;
       }
       // Too few connected players to deal a drawing round (the mode's own

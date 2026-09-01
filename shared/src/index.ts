@@ -592,6 +592,13 @@ export const FULL_NUMERIC_QUESTION_COUNT = 3;
 // raw total, so this is exactly the factor that lands that total at 400.
 export const FULL_QUIZ_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 
+// Task 136 - the draw stage's GUESS scoring reuses calculatePoints too (same
+// BASE_POINTS/SPEED_BONUS_MAX formula, see server/src/modes/draw.ts's
+// endGuessRound), so a fast correct guess was landing at up to 1500 while the
+// drawer's own reward is capped at DRAWER_MAX_POINTS (400). Same derivation,
+// same target, kept as its own constant since it scales a different call site.
+export const FULL_GUESS_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
+
 // The show, in order. questionCount on the two quiz rows is the MEDIUM figure;
 // fullStagesForLength substitutes the real one, which is why every consumer
 // must go through that function rather than reading this table directly.

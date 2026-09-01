@@ -88,6 +88,10 @@ interface DrawState {
   // settings change is impossible anyway - VIP_UPDATE_SETTINGS is LOBBY-only).
   cycleIndex: number;
   totalCycles: number;
+  // Task 136 - multiplies a guesser's calculatePoints result before it's
+  // awarded. Frozen at deal time, same as totalCycles; defaults to 1 for the
+  // standalone mode's own prepareGame, which passes none.
+  guessScale: number;
 }
 
 const drawStateByRoom = new WeakMap<Room, DrawState>();
@@ -227,7 +231,7 @@ function prepareGame(room: Room): void {
 // deal at the moment ITS drawing stage begins rather than at the start of the
 // game: it runs mid-show, after a quiz stage, and the players it deals to are
 // whoever is connected THEN. Returns whether a cycle could be dealt at all.
-function dealFreshState(room: Room, totalCycles: number): boolean {
+function dealFreshState(room: Room, totalCycles: number, guessScale = 1): boolean {
   // Unconditional and FIRST, before anything else runs - a second game (via
   // "play again", which reuses this same Room object) must never be able to
   // observe the first game's drawings or word assignments, even for the
@@ -251,6 +255,7 @@ function dealFreshState(room: Room, totalCycles: number): boolean {
     lastGuessReveal: null,
     cycleIndex: 0,
     totalCycles,
+    guessScale,
   });
   console.log(`room ${room.code} draw mode: dealt ${assignment.size} distinct word sets (${totalCycles} round(s))`);
   return true;
@@ -266,8 +271,8 @@ export function clearDrawState(room: Room): void {
 // Task 134 - the drawing round as ONE STAGE of a longer show. Deals against
 // whoever is connected right now and opens the DRAW phase; returns false (the
 // caller then skips the stage) when there are too few players left to deal.
-export function startDrawSegment(room: Room, totalCycles: number): boolean {
-  if (!dealFreshState(room, totalCycles)) {
+export function startDrawSegment(room: Room, totalCycles: number, guessScale = 1): boolean {
+  if (!dealFreshState(room, totalCycles, guessScale)) {
     return false;
   }
   startDrawPhase(room, requireDrawState(room));
@@ -702,7 +707,12 @@ export function endGuessRound(code: RoomCode): void {
     const recorded = state.guesses.get(player.playerId);
     const choice = recorded ? recorded.choice : null;
     const correct = choice === correctIndex;
-    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? GUESS_DURATION_MS, GUESS_DURATION_MS);
+    const pointsAwarded = calculatePoints(
+      correct,
+      recorded?.timeMs ?? GUESS_DURATION_MS,
+      GUESS_DURATION_MS,
+      state.guessScale,
+    );
     if (correct) {
       correctGuessers += 1;
     }
