@@ -137,8 +137,8 @@ phase list, its continuations table and its STAGES table.
 
 Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
       -> [STEAL] -> [SOCRATES] -> (after the LAST question: STAGE_ANNOUNCE
-      'Η Δίκη' -> (TRIAL_QUESTION -> TRIAL_REVEAL) x N) -> [SOCRATES]
-      -> GAME_OVER
+      'Η Δίκη' -> (TRIAL_QUESTION -> TRIAL_REVEAL) x N, sudden death if
+      everyone left falls in the same reveal) -> [SOCRATES] -> GAME_OVER
 Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
 
@@ -155,7 +155,14 @@ entered from advanceToNextQuestionOrGameOver, reuses the STAGE_ANNOUNCE
 phase for its card, draws from the UNUSED question pool, and is the only
 thing between the last quiz question and GAME_OVER. Score IS life there;
 elimination is checked at TRIAL_REVEAL and nowhere else, and elapsed comes
-from remainingActiveTimerMs() so a pause freezes the drain.
+from remainingActiveTimerMs() so a pause freezes the drain. Drain itself is
+computed ONCE, server-side, at lock-in (trialElapsedMs + trialDrain in
+phases.ts/trial.ts) — there is no per-second server tick. The TV's
+per-second countdown-driven drain (HostScreen.trialDisplayStandings) is a
+COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
+always shows the server's real standings, no local math. buildStageAnnounce
+(payloads.ts) always counts the trial in totalStages (quizStages + 1), so
+its card reads e.g. "4/4", never "3/4".
 
 "Phase" = the state machine. The progression of the show is a STAGE.
 Never write "phase 1" when you mean a stage.
@@ -164,8 +171,10 @@ Never write "phase 1" when you mean a stage.
 
 QUIZ_STAGES in shared owns the shape: stage 1 = 3 plain questions,
 stage 2 = 5 questions each preceded by POWER_UP, stage 3 = 4 questions
-each FOLLOWED by a STEAL. Question count is NOT a setting — it is the sum
-of the stages. room.stage is server-side; the TV announces each stage once.
+each FOLLOWED by a STEAL. Stage 3's title is "Η Συκοφαντία" (Η Δίκη is
+reserved for the trial finale — Task 126). Question count is NOT a
+setting — it is the sum of the stages. room.stage is server-side; the TV
+announces each stage once.
 Landed effects STACK per target: ice in duration (10s cap), ink in
 intensity (cap 3), both via addAppliedSabotage().
 
@@ -215,6 +224,9 @@ this same value, it is not literal white).
 Standalone for now; meant to become a quiz STAGE later. server/src/numeric.ts
 must import nothing from modes/, so that merge is a rewrite of the mode shell
 (modes/numeric.ts) only. `max` is derived from the answer, never authored.
+NUMERIC_QUESTION_COUNT (shared, = 5) is a fresh random draw from the full
+pool every game (shuffle().slice(0, count) in modes/numeric.ts), not a fixed
+set of 5 questions.
 
 ## Voice
 
@@ -245,6 +257,18 @@ reports the longest clip; `npm run voice:index` builds the rating page.
   with no payload for the new phase; HostScreen holds the last standings to
   cover that render. Any new phase view must tolerate a first render with
   no payload of its own.
+- **Trial elimination is `trialReveal.results[].eliminated`, NEVER
+  `score <= 0` (or `life <= 0`).** A sudden-death round charges no drain and
+  no hit (trial.ts's `eliminated: !suddenDeath && lifeAfter <= 0`), so its
+  survivors — and even its winner — legitimately sit at or below zero
+  without being out; a naive threshold check flags them wrongly. See
+  HostScreen.trialEliminatedPlayerIds and ControllerScreen's
+  `myTrialResult.eliminated` read for the correct pattern.
+- **Stage 3's title is "Η Συκοφαντία", but its STAGE_INTRO flavor lines
+  (socrates.ts, `STAGE_INTRO_LINES[3]`) still literally say "Η Δίκη", on
+  purpose.** Task 126 changed only the display title; those lines are
+  lineHash-keyed to pre-generated voice mp3s (see ## Voice) and editing the
+  text breaks the audio lookup.
 
 ## Working style
 
