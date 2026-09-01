@@ -225,7 +225,8 @@ export function recheckNumericPhaseOnDisconnect(room: Room): void {
 // whichever of (the timer firing) / (every connected player submitting)
 // happens first wins. Scores EVERY connected player, submitted or not - a
 // player who never submits is scored as `value: null` by scoreNumericSubmissions
-// (see numeric.ts), which ranks them last without any special-casing here.
+// (see numeric.ts), which gives them a flat 0 and excludes them from the
+// ranking entirely (Task 133), without any special-casing here.
 export function endNumericQuestion(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'NUMERIC_QUESTION') {

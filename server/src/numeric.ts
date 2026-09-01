@@ -62,21 +62,26 @@ export interface NumericScoreResult extends NumericSubmission {
   pointsAwarded: number;
 }
 
-// Everyone scores. Ranked by absolute distance from the answer (closest
-// first) via computeCompetitionRanks - the SAME ranking function every other
-// mode uses, just fed a negated distance so "smaller is better" sorts like
-// "bigger score is better" does everywhere else. A non-submitter is scored
-// as distance = max + 1, strictly worse than any in-range (post-clamp)
-// submission, so they rank last without any special-casing or crash.
+// Ranked by absolute distance from the answer (closest first) via
+// computeCompetitionRanks - the SAME ranking function every other mode uses,
+// just fed a negated distance so "smaller is better" sorts like "bigger
+// score is better" does everywhere else. A non-submitter scores a flat 0 and
+// is EXCLUDED from the ranking entirely (Task 133) - N is the count of
+// SUBMITTERS, not of players, so one silent bot no longer drags a genuine
+// last place up to the 25% floor, and doesn't inflate N==1 into a "you beat
+// someone" situation for a lone submitter either.
 export function scoreNumericSubmissions(
   submissions: readonly NumericSubmission[],
   answer: number,
   max: number,
 ): NumericScoreResult[] {
-  const n = submissions.length;
-  const withDistance = submissions.map((submission) => ({
+  const submitted = submissions.filter(
+    (submission): submission is NumericSubmission & { value: number } => submission.value !== null,
+  );
+  const n = submitted.length;
+  const withDistance = submitted.map((submission) => ({
     ...submission,
-    distance: submission.value === null ? max + 1 : Math.abs(submission.value - answer),
+    distance: Math.abs(submission.value - answer),
   }));
   const ranks = computeCompetitionRanks(
     withDistance,
@@ -84,13 +89,13 @@ export function scoreNumericSubmissions(
     (item) => item.playerId,
   );
 
-  return withDistance.map((item) => {
+  const scored = withDistance.map((item) => {
     const rank = ranks.get(item.playerId) ?? n;
     // base = round(400 * (0.25 + 0.75 * (N - rank) / (N - 1))) - last place
     // always gets a flat 25% of max, at any N. N<=1 is the edge case: N-1
     // would divide by zero, and the spec calls it out explicitly as 400.
     const base = n <= 1 ? 400 : Math.round(400 * (0.25 + (0.75 * (n - rank)) / (n - 1)));
-    const exact = item.value !== null && item.value === answer;
+    const exact = item.value === answer;
     // Task 68 - the +100 exact bonus is withheld at max<=50 (agree with the
     // brief, not just deferring to it): at 21-51 whole-number positions,
     // landing exactly stops measuring estimation and starts measuring
@@ -101,6 +106,21 @@ export function scoreNumericSubmissions(
     const exactBonus = exact && max > 50 ? 100 : 0;
     return { ...item, rank, exact, pointsAwarded: base + exactBonus };
   });
+
+  // Non-submitters: flat 0, rank placed just past the last real rank (never
+  // competes for it), distance kept at max+1 for any display code still
+  // treating a large distance as "didn't get close".
+  const nonSubmitted = submissions
+    .filter((submission) => submission.value === null)
+    .map((submission) => ({
+      ...submission,
+      distance: max + 1,
+      rank: n + 1,
+      exact: false,
+      pointsAwarded: 0,
+    }));
+
+  return [...scored, ...nonSubmitted];
 }
 
 // ---------------------------------------------------------------------------
