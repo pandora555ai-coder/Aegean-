@@ -54,10 +54,13 @@ import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
   endPowerUp,
+  endTrialReveal,
   advanceFromReveal,
   advanceFromSteal,
   advanceFromSocrates,
+  recheckTrialPhaseOnDisconnect,
   resolveSteal,
+  submitTrialAnswer,
 } from './phases.js';
 // Task 52 - importing the barrel is what REGISTERS every game mode, so it
 // must stay even if only these two names are used.
@@ -95,6 +98,9 @@ import {
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
+  buildTrialQuestionHostPayload,
+  buildTrialQuestionPlayerPayload,
+  buildTrialRevealPayload,
   buildGameOver,
   computeStandings,
 } from './payloads.js';
@@ -265,6 +271,19 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildNumericRevealShow(room);
       return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
     }
+    // Task 127 - Η Δίκη. Same reasoning as every phase above: the phone gets
+    // back exactly what a fresh trial_question:show would have sent it - its
+    // OWN life, whether it is on trial and whether it already locked in, all
+    // read live from room state so a reconnect can neither lose a lock-in nor
+    // be tricked into a second one.
+    case 'TRIAL_QUESTION': {
+      const payload = buildTrialQuestionPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'TRIAL_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'TRIAL_REVEAL': {
+      const payload = buildTrialRevealPayload(room);
+      return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
+    }
     default:
       return null; // LOBBY - callers never ask for this
   }
@@ -351,6 +370,17 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'NUMERIC_REVEAL': {
       const payload = buildNumericRevealShow(room);
       return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
+    }
+    // Task 127 - Η Δίκη, same builder-plus-remainingMs shape as every phase
+    // above, so a TV reattaching mid-trial restores the exact current screen
+    // (lives, who has locked in, what is left of the drain).
+    case 'TRIAL_QUESTION': {
+      const payload = buildTrialQuestionHostPayload(room);
+      return payload ? { ...payload, phase: 'TRIAL_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'TRIAL_REVEAL': {
+      const payload = buildTrialRevealPayload(room);
+      return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
     }
   }
 }
@@ -937,8 +967,18 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 127 - the trial's own reveal, same manual skip as REVEAL's above.
+    // TRIAL_QUESTION is deliberately NOT skippable: the drain is measured
+    // against that timer, so cutting it short would charge everyone who
+    // hadn't answered yet for time they were never given.
+    if (room.phase === 'TRIAL_REVEAL') {
+      console.log(`room ${room.code} skipped past trial reveal (VIP)`);
+      endTrialReveal(room.code);
+      return;
+    }
+
     console.log(
-      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL or SOCRATES`,
+      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES or TRIAL_REVEAL`,
     );
   });
 
@@ -1043,6 +1083,26 @@ io.on('connection', (socket) => {
     if (!submitNumericAnswer(room, playerId, payload?.value)) {
       console.log(`rejected ${ClientEvents.NUMERIC_SUBMIT} from player ${playerId} in room ${room.code}`);
     }
+  });
+
+  // Task 127 - Η Δίκη. Its own event rather than a second meaning for
+  // SUBMIT_ANSWER (no sabotage, no shuffled order, and what is recorded is a
+  // pause-aware elapsed figure). Every rule - phase, pause, valid choice,
+  // being ON trial, one lock-in per question - lives in submitTrialAnswer,
+  // which also ends the question early once everyone has locked in.
+  socket.on(ClientEvents.TRIAL_SUBMIT, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.TRIAL_SUBMIT);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitTrialAnswer(room, playerId, payload?.choice)) {
+      console.log(`rejected ${ClientEvents.TRIAL_SUBMIT} from player ${playerId} in room ${room.code}`);
+      return;
+    }
+    // Same ack the quiz question sends - the phone marks the button it
+    // pressed, and learns nothing else until TRIAL_REVEAL.
+    socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
   });
 
   socket.on(ClientEvents.VIP_PLAY_AGAIN, () => {
@@ -1268,6 +1328,15 @@ io.on('connection', (socket) => {
       // the only one still deciding. A no-op outside NUMERIC_QUESTION.
       if (room) {
         recheckNumericPhaseOnDisconnect(room);
+      }
+
+      // Task 127 - same reasoning again, for the trial. A no-op outside
+      // TRIAL_QUESTION. The player stays ON trial while disconnected (they
+      // simply never lock in, and pay the full timer's drain at the reveal
+      // like anyone who didn't answer) - dropping them from the trial would
+      // hand a win to whoever had the better connection.
+      if (room) {
+        recheckTrialPhaseOnDisconnect(room);
       }
     }
   });

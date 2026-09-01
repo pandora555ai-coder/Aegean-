@@ -56,13 +56,17 @@ server/src/modes/numeric.ts  The numeric mode shell
 server/src/payloads.ts   REVEAL / GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/steal.ts      STEAL thief selection + the clamped point transfer
+server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
+                         what the next round must be. No Room, no io, no timers; the phase
+                         shell around it is in phases.ts.
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering. Also holds
                          FORCE_QUESTION_ID — dev hook pinning the served question, NODE_ENV-guarded. Keep it.
 server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS
-server/src/scoring.ts    Pure scoring function
+server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal's
+                         correct-by-speed order and answerRank; quiz AND trial)
 server/src/numeric.ts    maxForAnswer, clamping, scoring, pure payload builders. MODE-AGNOSTIC — keep it that way.
 server/src/data/questions.json  899 questions, 49 categories
 client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the score column
@@ -132,7 +136,9 @@ Phases belong to a MODE (room.mode), not to the room. The mode owns its
 phase list, its continuations table and its STAGES table.
 
 Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
-      -> [STEAL] -> [SOCRATES] -> GAME_OVER
+      -> [STEAL] -> [SOCRATES] -> (after the LAST question: STAGE_ANNOUNCE
+      'Η Δίκη' -> (TRIAL_QUESTION -> TRIAL_REVEAL) x N) -> [SOCRATES]
+      -> GAME_OVER
 Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
 
@@ -144,6 +150,12 @@ STAGE_ANNOUNCE is a real held phase: the stage card shows alone and the
 question timer starts only after it.
 continueAfterReveal() is the one function deciding what follows a REVEAL.
 SOCRATES is skipped entirely when no moment fires.
+**Η Δίκη is the quiz's FINALE, not a mode** (Task 127): startTrial() is
+entered from advanceToNextQuestionOrGameOver, reuses the STAGE_ANNOUNCE
+phase for its card, draws from the UNUSED question pool, and is the only
+thing between the last quiz question and GAME_OVER. Score IS life there;
+elimination is checked at TRIAL_REVEAL and nowhere else, and elapsed comes
+from remainingActiveTimerMs() so a pause freezes the drain.
 
 "Phase" = the state machine. The progression of the show is a STAGE.
 Never write "phase 1" when you mean a stage.

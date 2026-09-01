@@ -154,6 +154,21 @@ export function getQuestionSet(mix: DifficultyMix, count: number): Question[] {
   return shuffled.slice(0, count);
 }
 
+// Η Δίκη (Task 127) - the trial's own draw, out of what this game has NOT
+// already asked. Same difficulty mix as the quiz it follows (the trial is the
+// finale of that game, not a different one), same shuffle, and `count` is a
+// BOUND: fewer come back when the filtered pool is genuinely smaller, and the
+// trial's "question pool exhausted -> highest score wins" ending is what
+// covers running off the end of it.
+export function getUnusedQuestionSet(mix: DifficultyMix, usedIds: readonly string[], count: number): Question[] {
+  const allowedDifficulties = DIFFICULTY_MIX_TO_ALLOWED[mix];
+  const used = new Set(usedIds);
+  const pool = QUESTIONS.filter(
+    (question) => allowedDifficulties.includes(question.difficulty) && !used.has(question.id),
+  );
+  return shuffle(pool).slice(0, count);
+}
+
 export interface QuestionStats {
   total: number;
   byDifficulty: Record<string, number>;

@@ -10,6 +10,7 @@ import {
   type RoomSettings,
   type SabotageEffect,
   type StealResolvedPayload,
+  type TrialRevealShowPayload,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
@@ -101,6 +102,41 @@ export interface RevealSnapshot {
   // The template's optional eleven_v3 voice tag (Task 43), carried the same
   // way - folded into the client-side hash, never shown or spoken as text.
   socratesLineTag: string | null;
+}
+
+// Η Δίκη (Task 127) - one player's lock-in on the trial question currently
+// open. `elapsedMs` is measured from the pause-aware shared timer clock
+// (questionTimeMs - remainingActiveTimerMs) at the moment the lock-in
+// arrives, so a pause freezes the drain instead of charging for it.
+export interface TrialLockIn {
+  choice: number;
+  elapsedMs: number;
+}
+
+// The trial in flight - null until the last quiz question is done with, and
+// from then to GAME_OVER. Its own question list (drawn from the UNUSED quiz
+// pool) rather than more entries in room.questions: room.questions is what
+// "question 7 of 12" and every existing payload counts, and the trial is not
+// part of that count.
+export interface TrialState {
+  questions: Question[];
+  questionIndex: number; // -1 until the first trial question starts
+  // Everyone still above zero, in join order. Shrinks only at a reveal.
+  livingPlayerIds: string[];
+  // Whether the question currently open is a sudden-death decider, and
+  // between whom. `suddenDeathPlayerIds` is empty outside one.
+  suddenDeath: boolean;
+  suddenDeathPlayerIds: string[];
+  lockIns: Map<string, TrialLockIn>; // THIS question only, cleared each round
+  roundsPlayed: number;
+  // Set once, by the reveal that ends the trial - read by finishGame so the
+  // GAME_OVER standings name the player the TRIAL decided on, which after a
+  // sudden death is not simply "the highest score".
+  winnerPlayerId: string | null;
+  // Same reconnect discipline as Room.lastReveal: frozen the instant the
+  // round resolves, so a state:sync mid-reveal replays exactly what happened.
+  // autoAdvanceMs/paused/pausedByName/standings are always read live.
+  lastReveal: Omit<TrialRevealShowPayload, 'autoAdvanceMs' | 'paused' | 'pausedByName' | 'standings'> | null;
 }
 
 // Task 48 - the line currently held by a SOCRATES beat that ISN'T a
@@ -209,6 +245,10 @@ export interface Room {
   // Set by startSteal, read by every steal payload builder, cleared the
   // moment the phase is left.
   steal: StealState | null;
+  // Η Δίκη (Task 127) - the trial, null until the quiz proper is over. Unlike
+  // `steal` this is NOT cleared when its phase ends: it stays set through
+  // GAME_OVER, since it holds who the trial declared the winner.
+  trial: TrialState | null;
   // Crowd mood (Task 35) - server-derived, HOST ONLY. See server/src/crowd.ts.
   crowdMood: CrowdMood;
   // The mid-QUESTION timer that switches crowdMood to 'tension' for the last
@@ -270,6 +310,7 @@ export function createRoom(hostSocketId: string): Room {
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
     steal: null,
+    trial: null,
     crowdMood: 'calm',
     crowdTensionTimer: null,
   };
@@ -550,6 +591,9 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingPowerUpByTarget.clear();
   // No half-finished theft survives into the next game.
   room.steal = null;
+  // Nor last game's trial - including whoever it crowned, which finishGame
+  // would otherwise still be reading at the NEXT game's GAME_OVER.
+  room.trial = null;
   // Fresh game, fresh crowd - back to calm, and no leftover tension timer
   // from whatever question was in flight when this reset was triggered.
   room.crowdMood = 'calm';

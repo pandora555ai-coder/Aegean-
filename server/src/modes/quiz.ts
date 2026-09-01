@@ -8,6 +8,8 @@ import {
   endPowerUp,
   endQuestion,
   endStageAnnounce,
+  endTrialQuestion,
+  endTrialReveal,
   enterQuestionOrPowerUp,
   resolveSteal,
   type QuizTimerKind,
@@ -28,6 +30,11 @@ const QUIZ_PHASES: readonly GamePhase[] = [
   'REVEAL',
   'STEAL',
   'SOCRATES',
+  // Task 127 - Η Δίκη, the quiz's finale. Two more phases of THIS mode, not a
+  // mode of their own: they are reached from the end of the quiz's own
+  // question run (advanceToNextQuestionOrGameOver) and lead to GAME_OVER.
+  'TRIAL_QUESTION',
+  'TRIAL_REVEAL',
   'GAME_OVER',
 ];
 
@@ -44,6 +51,8 @@ const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
   STEAL: (room) => resolveSteal(room.code, null),
   STEAL_ANNOUNCE: (room) => advanceFromSteal(room.code),
   SOCRATES: (room) => advanceFromSocrates(room.code),
+  TRIAL_QUESTION: (room) => endTrialQuestion(room.code),
+  TRIAL_REVEAL: (room) => endTrialReveal(room.code),
 };
 
 export const quizMode: GameMode = {

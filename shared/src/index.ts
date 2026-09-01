@@ -40,6 +40,11 @@ export const ClientEvents = {
   // Task 65 - the numeric-estimate mode. One event: the player's guess,
   // clamped server-side to 0..max - never rejected for being out of range.
   NUMERIC_SUBMIT: 'player:numeric_submit',
+  // Task 127 - Η Δίκη, the quiz finale. Its own event rather than a second
+  // meaning for SUBMIT_ANSWER: the trial has no sabotage, no shuffled option
+  // order and no per-question `answers` map, and what the server records is
+  // an elapsed-at-lock-in figure the quiz's own handler has no use for.
+  TRIAL_SUBMIT: 'player:trial_submit',
 } as const;
 
 export const ServerEvents = {
@@ -82,6 +87,13 @@ export const ServerEvents = {
   // NUMERIC_REVEAL is the one place it becomes safe to send.
   NUMERIC_QUESTION_SHOW: 'numeric_question:show',
   NUMERIC_REVEAL_SHOW: 'numeric_reveal:show',
+  // Task 127 - Η Δίκη. TRIAL_QUESTION is asymmetric like question:show (the
+  // host gets the question text and WHO has locked in; a phone gets its own
+  // life and nothing about anyone else's); TRIAL_REVEAL is symmetric like
+  // reveal:show - that is the first moment the correct answer, every
+  // lock-in and every drain are safe to send.
+  TRIAL_QUESTION_SHOW: 'trial_question:show',
+  TRIAL_REVEAL_SHOW: 'trial_reveal:show',
   // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
   // has locked in, never what they guessed.
 } as const;
@@ -362,6 +374,12 @@ export type GamePhase =
   // into the quiz as a stage).
   | 'NUMERIC_QUESTION'
   | 'NUMERIC_REVEAL'
+  // Task 127 - Η Δίκη, the quiz mode's FINALE (not a mode of its own): the
+  // same four-option questions, but a score is now LIFE and it drains while
+  // the question is open. Reached after the last question of the last quiz
+  // stage, and left only for GAME_OVER.
+  | 'TRIAL_QUESTION'
+  | 'TRIAL_REVEAL'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
@@ -1254,6 +1272,19 @@ export type StateSyncNumericQuestionPlayerPayload = NumericQuestionShowPlayerPay
 };
 export type StateSyncNumericRevealPayload = NumericRevealShowPayload & { phase: 'NUMERIC_REVEAL' };
 
+// Task 127 - the trial's own state:sync shapes, same conventions as every
+// held phase above: remainingMs alongside the question's live durationMs, and
+// none on the reveal (TrialRevealShowPayload carries its own autoAdvanceMs).
+export type StateSyncTrialQuestionHostPayload = TrialQuestionShowHostPayload & {
+  phase: 'TRIAL_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncTrialQuestionPlayerPayload = TrialQuestionShowPlayerPayload & {
+  phase: 'TRIAL_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncTrialRevealPayload = TrialRevealShowPayload & { phase: 'TRIAL_REVEAL' };
+
 export type StateSyncPayload =
   | StateSyncLobbyPayload
   | StateSyncStageAnnouncePayload
@@ -1276,6 +1307,9 @@ export type StateSyncPayload =
   | StateSyncNumericQuestionHostPayload
   | StateSyncNumericQuestionPlayerPayload
   | StateSyncNumericRevealPayload
+  | StateSyncTrialQuestionHostPayload
+  | StateSyncTrialQuestionPlayerPayload
+  | StateSyncTrialRevealPayload
   | StateSyncGameOverPayload;
 
 // Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
@@ -1638,6 +1672,146 @@ export interface NumericRevealShowPayload {
   answer: number;
   max: number;
   results: NumericRevealResult[];
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+// ----------------------- Η Δίκη, the trial (Task 127) ---------------------
+// The quiz's FINALE, not a mode: after the last question of the last quiz
+// stage every player carries their accumulated score in as LIFE, and life
+// drains for as long as a trial question sits unanswered. Eliminations are
+// checked at TRIAL_REVEAL and nowhere else.
+
+// How much life a living player loses per SECOND that a trial question
+// stays open against them - stopped the instant they lock an answer in.
+// Placeholder for the deferred balance pass (Task 127), like WRONG_HIT.
+export const DRAIN_PER_SEC = 10;
+// The extra bite taken at TRIAL_REVEAL from anyone whose lock-in was wrong,
+// and from anyone who never locked in at all (who also pays the FULL
+// timer's drain). Placeholder, same pass.
+export const WRONG_HIT = 150;
+
+// How many questions the trial draws out of the UNUSED quiz pool when it
+// begins. A bound, not an expectation: the trial normally ends when one
+// player is left standing, and running this many rounds without that
+// happening is what "question pool exhausted -> highest score wins" is for.
+export const TRIAL_MAX_QUESTIONS = 16;
+
+// The stage card the TV shows as the trial begins - announced through the
+// EXISTING STAGE_ANNOUNCE phase (see buildStageAnnounce, server/src/
+// payloads.ts), so the trial gets the held beat, the pause-aware timer and
+// the state:sync catch-up every other stage already has. The stage NUMBER
+// is computed at announce time (one past however many quiz stages this
+// game's length includes), which is why only the text lives here.
+export const TRIAL_STAGE_TITLE = 'Η Δίκη';
+export const TRIAL_STAGE_TAGLINE =
+  'Η βαθμολογία σας είναι πλέον ζωή, και κυλάει όσο σωπαίνετε. Ένας θα μείνει όρθιος.';
+
+export interface TrialSubmitPayload {
+  choice: number; // 0-3, validated server-side
+}
+
+// One player's standing in the trial. `alive` goes false at the REVEAL that
+// takes them to zero or below and never comes back.
+export interface TrialLife {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  life: number;
+  alive: boolean;
+  // Whether this player is in the question currently on screen. Always
+  // `alive` outside sudden death; during sudden death only the players the
+  // tie is between.
+  onTrial: boolean;
+}
+
+// The TV's view of a trial question. Carries WHO has locked in, never what
+// they picked and never the correct index - exactly the answer:progress
+// contract, and for the same reason: the host is a display.
+export interface TrialQuestionShowHostPayload {
+  roundIndex: number; // 0-based, within the trial
+  question: string;
+  options: string[];
+  category: string;
+  questionTimeMs: number;
+  durationMs: number; // time STILL LEFT, frozen while paused
+  // Both echoed so the TV can animate the drain locally against the same
+  // figures the server will use at reveal, rather than a second copy.
+  drainPerSec: number;
+  wrongHit: number;
+  suddenDeath: boolean;
+  lives: TrialLife[];
+  lockedInPlayerIds: string[];
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+// One phone's view. No question text (it reads it off the TV), no correct
+// index, and nothing at all about anyone else's lock-in.
+export interface TrialQuestionShowPlayerPayload {
+  roundIndex: number;
+  options: string[];
+  category: string;
+  questionTimeMs: number;
+  durationMs: number;
+  drainPerSec: number;
+  wrongHit: number;
+  suddenDeath: boolean;
+  // False for an eliminated player, and for anyone sitting a sudden-death
+  // round out - their phone shows a spectator view, and the server rejects
+  // a submit from them regardless.
+  onTrial: boolean;
+  yourLife: number;
+  lockedIn: boolean; // true on a state:sync catch-up after already locking in
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type TrialQuestionShowPayload = TrialQuestionShowHostPayload | TrialQuestionShowPlayerPayload;
+
+export function isTrialQuestionHostPayload(
+  payload: TrialQuestionShowPayload,
+): payload is TrialQuestionShowHostPayload {
+  return 'question' in payload;
+}
+
+// One player's round, as the reveal reports it. The three figures are kept
+// separate rather than pre-summed so the TV can show the arithmetic:
+// lifeAfter === lifeBefore - drain - hit, always.
+export interface TrialRevealResult {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  choice: number | null; // null = never locked in
+  correct: boolean;
+  timeMs: number | null; // elapsed at lock-in, from the pause-aware clock
+  answerRank: number | null; // 1-based among CORRECT lock-ins, by speed
+  lifeBefore: number;
+  drain: number; // round(elapsed_s * DRAIN_PER_SEC), full timer if no answer
+  hit: number; // WRONG_HIT or 0
+  lifeAfter: number; // NOT clamped at 0 - the arithmetic is what it is
+  eliminated: boolean; // crossed to <= 0 in THIS reveal
+}
+
+// Public and symmetric, like reveal:show - the round is over, so the correct
+// answer and every player's lock-in and drain are finally safe to send to
+// everyone.
+export interface TrialRevealShowPayload {
+  roundIndex: number;
+  correctIndex: number;
+  correctOption: string;
+  suddenDeath: boolean; // whether the round being revealed WAS a decider
+  results: TrialRevealResult[];
+  survivorCount: number; // still above 0 after this reveal
+  // Set only on the reveal that ends the trial.
+  winnerPlayerId: string | null;
+  winnerName: string | null;
+  // True when this reveal sent everyone left to zero at once and the next
+  // question is the sudden-death decider between them.
+  nextSuddenDeath: boolean;
   autoAdvanceMs: number;
   paused: boolean;
   pausedByName: string | null;
@@ -2017,6 +2191,7 @@ export type ClientToServerEvents = {
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
+  [ClientEvents.TRIAL_SUBMIT]: (payload: TrialSubmitPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -2052,4 +2227,6 @@ export type ServerToClientEvents = {
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
   [ServerEvents.NUMERIC_QUESTION_SHOW]: (payload: NumericQuestionShowPayload) => void;
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
+  [ServerEvents.TRIAL_QUESTION_SHOW]: (payload: TrialQuestionShowPayload) => void;
+  [ServerEvents.TRIAL_REVEAL_SHOW]: (payload: TrialRevealShowPayload) => void;
 };
