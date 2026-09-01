@@ -12,6 +12,7 @@ import {
   isRevealHostPayload,
   isSocratesHostPayload,
   isStealHostPayload,
+  isTrialQuestionHostPayload,
   type AnswerProgressPayload,
   type DrawShowHostPayload,
   type DrawShowPayload,
@@ -45,6 +46,9 @@ import {
   type StealResolvedPayload,
   type StealShowHostPayload,
   type StealShowPayload,
+  type TrialQuestionShowHostPayload,
+  type TrialQuestionShowPayload,
+  type TrialRevealShowPayload,
 } from '@game/shared';
 import QRCode from 'qrcode';
 import { socket } from '../socket';
@@ -67,6 +71,8 @@ import { GuessView } from './host/GuessView';
 import { GuessRevealView } from './host/GuessRevealView';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
+import { TrialQuestionView } from './host/TrialQuestionView';
+import { TrialRevealView } from './host/TrialRevealView';
 import { SceneLayer } from './host/SceneLayer';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 import type { TimerState } from './host/TimerRing';
@@ -124,6 +130,14 @@ export default function HostScreen() {
   const [numericQuestionSecondsLeft, setNumericQuestionSecondsLeft] = useState(0);
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
   const [numericRevealSecondsLeft, setNumericRevealSecondsLeft] = useState(0);
+  // Η Δίκη (Task 128) - same pattern as QUESTION/REVEAL: the payload is set
+  // once per beat/reconnect, and durationMs/autoAdvanceMs is always the
+  // server's live remaining time. trialQuestionSecondsLeft doubles as the
+  // clock the cosmetic drain animates against (see trialDisplayStandings).
+  const [trialQuestion, setTrialQuestion] = useState<TrialQuestionShowHostPayload | null>(null);
+  const [trialQuestionSecondsLeft, setTrialQuestionSecondsLeft] = useState(0);
+  const [trialReveal, setTrialReveal] = useState<TrialRevealShowPayload | null>(null);
+  const [trialRevealSecondsLeft, setTrialRevealSecondsLeft] = useState(0);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -226,6 +240,8 @@ export default function HostScreen() {
         setGuessReveal(null);
         setNumericQuestion(null);
         setNumericReveal(null);
+        setTrialQuestion(null);
+        setTrialReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -368,6 +384,31 @@ export default function HostScreen() {
       }
     }
 
+    // Η Δίκη (Task 128). The host branch of an asymmetric event, same
+    // pattern as question:show - the phone's own life/onTrial/lockedIn is
+    // never sent here (see isTrialQuestionHostPayload).
+    function handleTrialQuestionShow(payload: TrialQuestionShowPayload) {
+      if (isTrialQuestionHostPayload(payload)) {
+        setTrialReveal(null);
+        setTrialQuestion(payload);
+        setTrialQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like reveal:show - the round is over, so the
+    // correct answer and every player's life are both safe to show now.
+    function handleTrialRevealShow(payload: TrialRevealShowPayload) {
+      setTrialQuestion(null);
+      setTrialReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+      if (!pausedRef.current) {
+        playRevealCue();
+      }
+    }
+
     // Drawing mode (Task 56b). The host branch of an asymmetric event -
     // players get their own assigned word, never sent here (see
     // isDrawHostPayload).
@@ -474,6 +515,10 @@ export default function HostScreen() {
         setNumericQuestionSecondsLeft(seconds);
       } else if (phaseRef.current === 'NUMERIC_REVEAL') {
         setNumericRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'TRIAL_QUESTION') {
+        setTrialQuestionSecondsLeft(seconds);
+      } else if (phaseRef.current === 'TRIAL_REVEAL') {
+        setTrialRevealSecondsLeft(seconds);
       }
     }
 
@@ -506,6 +551,8 @@ export default function HostScreen() {
       setGuessReveal(null);
       setNumericQuestion(null);
       setNumericReveal(null);
+      setTrialQuestion(null);
+      setTrialReveal(null);
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -614,6 +661,24 @@ export default function HostScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Η Δίκη (Task 128) - same live-broadcast builders as the fresh
+        // phase entry (see buildTrialQuestionHostPayload/
+        // buildTrialRevealPayload, both durationMs/autoAdvanceMs "time
+        // STILL LEFT"), so a reconnect mid-beat restores exactly the same
+        // screen (criterion 1).
+        case 'TRIAL_QUESTION':
+          if (isTrialQuestionHostPayload(payload)) {
+            setTrialQuestion(payload);
+            setTrialQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'TRIAL_REVEAL':
+          setTrialReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -634,6 +699,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+    socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
+    socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -658,6 +725,8 @@ export default function HostScreen() {
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+      socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
+      socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -878,6 +947,38 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [numericReveal, paused]);
 
+  // Η Δίκη (Task 128) - TRIAL_QUESTION's own countdown, same pattern as
+  // QUESTION's above. Its tick is also what the cosmetic drain (see
+  // trialDisplayStandings) animates against - a stopped interval while
+  // paused is exactly "a pause freezes the drain" on the display side too.
+  useEffect(() => {
+    if (!trialQuestion || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setTrialQuestionSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [trialQuestion, paused]);
+
+  // TRIAL_REVEAL's progress bar - same pattern as REVEAL's above.
+  useEffect(() => {
+    if (!trialReveal) {
+      return;
+    }
+    setTrialRevealSecondsLeft(Math.ceil(trialReveal.autoAdvanceMs / 1000));
+  }, [trialReveal]);
+
+  useEffect(() => {
+    if (!trialReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setTrialRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [trialReveal, paused]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -939,6 +1040,72 @@ export default function HostScreen() {
   // that carries that phase's standings - see its use below.
   const lastStandingsRef = useRef<PlayerStanding[] | null>(null);
 
+  // Η Δίκη (Task 128) - score IS life during the trial (see trialLives,
+  // server/src/payloads.ts: `life: player.score`), so trialQuestion.standings
+  // already carries it; this only makes the drain since question-start
+  // COSMETIC (per-second, against trialQuestionSecondsLeft, exactly like the
+  // QUESTION countdown above) rather than server-ticked. `lives[].alive`
+  // (not "score <= 0") gates who's already out BEFORE this round: a player
+  // can legitimately enter the trial already sitting at exactly 0 life (a
+  // quiz stretch with no points at all) and is still ON TRIAL, per
+  // trial.livingPlayerIds - "eliminated" isn't decided until THIS round's
+  // reveal computes lifeAfter for them, so treating their pre-round 0 as
+  // already-out here would fade/freeze their row a full round early. A
+  // player this payload already knows locked in is left alone too - their
+  // drain stopped for real, server-side, the instant they did. TRIAL_REVEAL
+  // always shows the server's own corrected standings directly, no local
+  // math.
+  function trialDisplayStandings(): PlayerStanding[] {
+    if (!trialQuestion) {
+      return [];
+    }
+    const deadBeforeThisRound = new Set(
+      trialQuestion.lives.filter((life) => !life.alive).map((life) => life.playerId),
+    );
+    const elapsedMs = Math.max(0, trialQuestion.questionTimeMs - trialQuestionSecondsLeft * 1000);
+    const drain = Math.round((elapsedMs / 1000) * trialQuestion.drainPerSec);
+    return trialQuestion.standings.map((standing) => {
+      const lockedIn = trialQuestion.lockedInPlayerIds.includes(standing.playerId);
+      if (deadBeforeThisRound.has(standing.playerId) || lockedIn || drain === 0) {
+        return standing;
+      }
+      return { ...standing, score: standing.score - drain };
+    });
+  }
+
+  // Who the score column should show as eliminated (sunk + faded). During
+  // TRIAL_QUESTION this is `lives[].alive` for the SAME "before this round"
+  // reason as above; TrialRevealShowPayload carries no `lives`, but by
+  // TRIAL_REVEAL time the round IS decided and standings.score already IS
+  // each player's corrected post-round life, so "life <= 0" there is exactly
+  // eliminated - the one place that check is actually authoritative.
+  function trialEliminatedPlayerIds(): string[] {
+    if (phase === 'TRIAL_QUESTION' && trialQuestion) {
+      return trialQuestion.lives.filter((life) => !life.alive).map((life) => life.playerId);
+    }
+    if (phase === 'TRIAL_REVEAL' && trialReveal) {
+      // NOT "score <= 0": a sudden-death round charges no drain and no hit
+      // (trial.ts's scoreTrialRound sets `eliminated: !suddenDeath &&
+      // lifeAfter <= 0`, unconditionally false for every duelist there), so
+      // the winner of a sudden death can win at a negative life - -9 in
+      // task 127's own run-B - and "score <= 0" would wrongly fade THEIR
+      // row too. `results[].eliminated` is the actual authoritative call for
+      // whoever this round just judged; anyone else in standings wasn't
+      // even a participant THIS round, which only happens because they were
+      // already eliminated in an earlier one (trial.livingPlayerIds only
+      // ever shrinks), so they stay eliminated too.
+      const judgedThisRound = new Set(trialReveal.results.map((result) => result.playerId));
+      const eliminatedThisRound = trialReveal.results
+        .filter((result) => result.eliminated)
+        .map((result) => result.playerId);
+      const eliminatedEarlier = trialReveal.standings
+        .filter((standing) => !judgedThisRound.has(standing.playerId))
+        .map((standing) => standing.playerId);
+      return [...eliminatedThisRound, ...eliminatedEarlier];
+    }
+    return [];
+  }
+
   // Standings for the persistent score column, read from whichever payload
   // the CURRENT phase carries - never "first non-null", since a previous
   // phase's payload lingers in state and would show stale scores. null means
@@ -966,6 +1133,10 @@ export default function HostScreen() {
         return numericQuestion?.standings ?? null;
       case 'NUMERIC_REVEAL':
         return numericReveal?.standings ?? null;
+      case 'TRIAL_QUESTION':
+        return trialQuestion ? trialDisplayStandings() : null;
+      case 'TRIAL_REVEAL':
+        return trialReveal?.standings ?? null;
       default:
         return null;
     }
@@ -1092,6 +1263,31 @@ export default function HostScreen() {
       );
     }
 
+    // Η Δίκη (Task 128) - the quiz's finale, reusing the QUESTION/REVEAL
+    // pattern (papyrus reads, column carries players).
+    if (phase === 'TRIAL_QUESTION' && trialQuestion) {
+      return (
+        <TrialQuestionView
+          trialQuestion={trialQuestion}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+        />
+      );
+    }
+
+    if (phase === 'TRIAL_REVEAL' && trialReveal) {
+      return (
+        <TrialRevealView
+          trialReveal={trialReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          revealSecondsLeft={trialRevealSecondsLeft}
+        />
+      );
+    }
+
     return (
       <LobbyView
         connected={connected}
@@ -1154,9 +1350,12 @@ export default function HostScreen() {
         return ring(guessSecondsLeft, 5);
       case 'NUMERIC_QUESTION':
         return ring(numericQuestionSecondsLeft, 5);
+      case 'TRIAL_QUESTION':
+        return ring(trialQuestionSecondsLeft, 5);
       default:
-        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL show their remaining time as
-        // the progress bar at the foot of their own panel, not as a ring.
+        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL show their
+        // remaining time as the progress bar at the foot of their own
+        // panel, not as a ring.
         return null;
     }
   }
@@ -1178,6 +1377,11 @@ export default function HostScreen() {
   const scorePanelStandings = phaseStandings ?? (inGamePhase ? lastStandingsRef.current : null);
   const showShell = scorePanelStandings !== null;
   const hideScorePanel = phase === 'SOCRATES';
+
+  const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
+  const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
+  const lockedInPlayerIds = phase === 'TRIAL_QUESTION' ? (trialQuestion?.lockedInPlayerIds ?? null) : null;
+  const scoreColumnTitle = isTrialPhase ? 'Ζωές' : 'Βαθμολογία';
 
   const phaseView = renderPhaseView();
 
@@ -1205,6 +1409,9 @@ export default function HostScreen() {
               victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
               pointsThisRound={pointsThisRound()}
               timer={timerForPhase()}
+              title={scoreColumnTitle}
+              eliminatedPlayerIds={eliminatedPlayerIds}
+              lockedInPlayerIds={lockedInPlayerIds}
             />
           )}
         </div>

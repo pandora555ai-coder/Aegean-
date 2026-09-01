@@ -21,6 +21,15 @@ interface PlayerScoresPanelProps {
   // null for a phase that has no timer of its own, so the rows simply sit
   // where they always did.
   timer?: TimerState | null;
+  // Η Δίκη (Task 128) - "Βαθμολογία" outside the trial, "Ζωές" during it:
+  // score IS life there, so the column's own label says so.
+  title?: string;
+  // Sinks to the bottom (via the SAME byScoreDesc sort every phase already
+  // uses - an eliminated life is never positive, so it sorts last on its
+  // own) and fades - never passed outside TRIAL_QUESTION/TRIAL_REVEAL.
+  eliminatedPlayerIds?: string[] | null;
+  // TRIAL_QUESTION only - whoever this payload already knows has locked in.
+  lockedInPlayerIds?: string[] | null;
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -119,6 +128,8 @@ function ScorePanelRow({
   rowSize,
   isThief,
   isVictim,
+  isEliminated,
+  isLockedIn,
   delta,
 }: {
   standing: PlayerStanding;
@@ -126,6 +137,8 @@ function ScorePanelRow({
   rowSize: ReturnType<typeof sidebarRowSizeStyle>;
   isThief: boolean;
   isVictim: boolean;
+  isEliminated: boolean;
+  isLockedIn: boolean;
   delta?: number;
 }) {
   const displayScore = useAnimatedNumber(standing.score);
@@ -144,7 +157,8 @@ function ScorePanelRow({
       data-row-id={standing.playerId}
       data-thief={isThief}
       data-victim={isVictim}
-      style={{ ...rowStyle, ...rowSize }}
+      data-eliminated={isEliminated}
+      style={{ ...rowStyle, ...rowSize, ...(isEliminated ? styles.scorePanelRowEliminated : null) }}
     >
       <span style={styles.scorePanelRank}>
         #{standing.rank}
@@ -156,6 +170,11 @@ function ScorePanelRow({
       <span style={{ ...styles.scorePanelScore, fontWeight: involved ? 800 : styles.scorePanelScore.fontWeight }}>
         {displayScore}
       </span>
+      {isLockedIn && (
+        <span style={styles.scorePanelLockIcon} data-testid="score-panel-locked">
+          🔒
+        </span>
+      )}
       {Boolean(delta) && (
         <span style={styles.scorePanelDelta} data-testid="score-panel-delta">
           +{delta}
@@ -178,6 +197,9 @@ export function PlayerScoresPanel({
   victimPlayerId = null,
   pointsThisRound = null,
   timer = null,
+  title = 'Βαθμολογία',
+  eliminatedPlayerIds = null,
+  lockedInPlayerIds = null,
 }: PlayerScoresPanelProps) {
   const count = standings.length;
   const rowSize = sidebarRowSizeStyle(count);
@@ -191,7 +213,9 @@ export function PlayerScoresPanel({
   return (
     <div style={panelStyle}>
       {timer && <TimerRing timer={timer} playerCount={count} />}
-      <div style={styles.scorePanelTitle}>Βαθμολογία</div>
+      <div style={styles.scorePanelTitle} data-testid="score-panel-title">
+        {title}
+      </div>
       <div
         ref={containerRef}
         style={{ ...styles.scorePanelList, gap: sidebarListGap(count) }}
@@ -205,6 +229,8 @@ export function PlayerScoresPanel({
             rowSize={rowSize as CSSVars}
             isThief={standing.playerId === thiefPlayerId}
             isVictim={standing.playerId === victimPlayerId}
+            isEliminated={eliminatedPlayerIds?.includes(standing.playerId) ?? false}
+            isLockedIn={lockedInPlayerIds?.includes(standing.playerId) ?? false}
             delta={pointsThisRound?.[standing.playerId]}
           />
         ))}

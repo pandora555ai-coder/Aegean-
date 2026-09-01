@@ -237,6 +237,18 @@ export const styles: Record<string, CSSProperties> = {
     color: 'var(--gold)',
     marginLeft: '0.35rem',
   },
+  // Η Δίκη (Task 128) - an eliminated player's row, TRIAL_QUESTION/
+  // TRIAL_REVEAL only. Reuses WRONG_OPACITY's 0.42 (RevealView) rather than
+  // scorePanelRowDisconnected's 0.5: elimination is a distinct state from a
+  // dropped connection and reads with the same weight as a wrong answer.
+  scorePanelRowEliminated: {
+    opacity: 0.42,
+  },
+  scorePanelLockIcon: {
+    flexShrink: 0,
+    fontSize: '0.85em',
+    marginLeft: '0.35rem',
+  },
   container: {
     display: 'flex',
     flexDirection: 'column',
@@ -592,6 +604,23 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     maxWidth: '700px',
+  },
+  // Η Δίκη (Task 128) - TRIAL_REVEAL's papyrus. No options grid: unlike
+  // RevealHostPayload, TrialRevealShowPayload carries only the one correct
+  // answer's text, not a per-option tally (Task 127 never built one), so the
+  // reveal reads as a single answer rather than a 2x2 aggregate.
+  trialCorrectAnswer: {
+    fontSize: '3rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: 'var(--ink)',
+    padding: '1rem',
+  },
+  trialOutcomeLine: {
+    fontSize: '1.5rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: 'var(--gold)',
   },
   // GAME_OVER's whole celebration stack, as ONE block so useFitScale has a
   // single thing to measure and scale (the container itself also holds the

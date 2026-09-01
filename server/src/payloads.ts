@@ -58,7 +58,9 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
   const definition = stageForQuestionIndex(room.currentQuestionIndex);
   return {
     stage: definition.stage,
-    totalStages: stagesForLength(room.settings.gameLength).length,
+    // +1: Η Δίκη is always the last card of the night too (see the trial
+    // branch above), so the quiz stages alone undercount totalStages by one.
+    totalStages: stagesForLength(room.settings.gameLength).length + 1,
     title: definition.title,
     tagline: definition.tagline,
     questionCount: definition.questionCount,
