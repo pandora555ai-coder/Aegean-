@@ -394,6 +394,7 @@ export function endQuestion(code: RoomCode): void {
   const question = room.questions[room.currentQuestionIndex];
   const connectedPlayers = getConnectedPlayers(room);
   const questionTimeMs = room.settings.questionTimeMs;
+  const scoreScale = stageOfQuestion(room, room.currentQuestionIndex).scoreScale;
 
   // Socrates (Task 24, renamed Task 37a) needs scoreBefore/scoreAfter and
   // whether they answered at all - built alongside `results` (same loop,
@@ -404,7 +405,7 @@ export function endQuestion(code: RoomCode): void {
     const recorded = room.answers.get(player.playerId);
     const choice = recorded ? recorded.choice : null;
     const correct = choice === question.correctIndex;
-    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs);
+    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs, scoreScale);
     const scoreBefore = player.score;
     player.score += pointsAwarded;
 

@@ -1,12 +1,17 @@
 import { BASE_POINTS, SPEED_BONUS_MAX, STEAL_MAX_AMOUNT, STEAL_MIN_AMOUNT } from '@game/shared';
 
-export function calculatePoints(correct: boolean, timeMs: number, questionTimeMs: number): number {
+// `scale` (Task 135) multiplies the raw total before it's rounded - the full
+// show's two quiz stages pass FULL_QUIZ_SCORE_SCALE here (via the stage
+// table's scoreScale, see phases.ts's endQuestion) so a quiz answer pays on
+// the same ~400 scale as draw and numeric. Undefined/1 (every other caller)
+// is exactly the pre-135 formula, unrounded twice over: Math.round(x * 1) === x.
+export function calculatePoints(correct: boolean, timeMs: number, questionTimeMs: number, scale = 1): number {
   if (!correct) {
     return 0;
   }
 
   const speedBonus = Math.max(0, Math.round(SPEED_BONUS_MAX * (1 - timeMs / questionTimeMs)));
-  return BASE_POINTS + speedBonus;
+  return Math.round((BASE_POINTS + speedBonus) * scale);
 }
 
 // The shape every "one player's round" result shares, whether it came from a

@@ -431,6 +431,9 @@ export interface StageDefinition {
   // answerer takes points off one other player. Skipped entirely on a
   // question nobody got right - see startStealIfEligible in phases.ts.
   stealAfterEveryQuestion: boolean;
+  // Multiplies this stage's per-question points before rounding (Task 135).
+  // Undefined means 1 - every quiz-mode row, unchanged.
+  scoreScale?: number;
   title: string; // Greek, announced on the TV as the stage begins
   tagline: string; // Greek, one line under the title
 }
@@ -583,6 +586,12 @@ export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
 export const FULL_DRAW_ROUNDS = 1;
 export const FULL_NUMERIC_QUESTION_COUNT = 3;
 
+// Task 135 - the full show's quiz stages pay on the same ~400-point scale the
+// draw and numeric stages already do, instead of the standalone quiz's
+// up-to-1500. BASE_POINTS + SPEED_BONUS_MAX is a max-speed correct answer's
+// raw total, so this is exactly the factor that lands that total at 400.
+export const FULL_QUIZ_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
+
 // The show, in order. questionCount on the two quiz rows is the MEDIUM figure;
 // fullStagesForLength substitutes the real one, which is why every consumer
 // must go through that function rather than reading this table directly.
@@ -593,6 +602,7 @@ export const FULL_STAGES: readonly StageDefinition[] = [
     segment: 'quiz',
     powerUpBeforeEveryQuestion: true,
     stealAfterEveryQuestion: false,
+    scoreScale: FULL_QUIZ_SCORE_SCALE,
     title: 'Γύρος 1 — Η Αγορά',
     tagline: 'Ανοιχτή αντιπαράθεση. Πριν από κάθε ερώτηση διαλέγετε σοφιστικό τέχνασμα.',
   },
@@ -620,6 +630,7 @@ export const FULL_STAGES: readonly StageDefinition[] = [
     segment: 'quiz',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: true,
+    scoreScale: FULL_QUIZ_SCORE_SCALE,
     title: 'Γύρος 4 — Η Συκοφαντία',
     tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον κρίνει ένοχο.',
   },
