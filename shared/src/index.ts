@@ -1546,6 +1546,7 @@ export interface GuessRevealShowPayload {
 // server/src/numeric.ts) are kept mode-agnostic on purpose, so that later
 // merge only ever has to rewrite server/src/modes/numeric.ts, the shell.
 export const NUMERIC_MIN_PLAYERS = 2;
+export const NUMERIC_QUESTION_COUNT = 5;
 export const NUMERIC_QUESTION_DURATION_MS = 20_000;
 // The round-value table maxForAnswer (server/src/numeric.ts) climbs to find
 // the smallest value at least 2.5x the answer - kept HERE, not there, so the

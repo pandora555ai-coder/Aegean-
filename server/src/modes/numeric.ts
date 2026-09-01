@@ -1,5 +1,6 @@
 import {
   NUMERIC_MIN_PLAYERS,
+  NUMERIC_QUESTION_COUNT,
   NUMERIC_QUESTION_DURATION_MS,
   NUMERIC_REVEAL_DURATION_MS,
   ServerEvents,
@@ -66,13 +67,25 @@ function armNumericTimer(room: Room, kind: NumericTimerKind, durationMs: number,
   armActiveTimer(room, kind, durationMs, onFire);
 }
 
+// Fisher-Yates, same shape as questions.ts's shuffle for the quiz mode - a
+// fresh random draw of NUMERIC_QUESTION_COUNT questions out of the full pool
+// every game, rather than always the same first five.
+function shuffle<T>(items: readonly T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // Task 52's prepareGame contract. The delete is unconditional and first, same
 // as draw's - a second game (via "play again", the same Room object) must
 // never see a trace of the first game's submissions.
 function prepareGame(room: Room): void {
   numericStateByRoom.delete(room);
   numericStateByRoom.set(room, {
-    questions: [...NUMERIC_QUESTIONS],
+    questions: shuffle(NUMERIC_QUESTIONS).slice(0, NUMERIC_QUESTION_COUNT),
     questionIndex: -1,
     submissions: new Map(),
     lastReveal: null,
