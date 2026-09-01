@@ -20,6 +20,7 @@ import {
   isRevealHostPayload,
   isSocratesHostPayload,
   isStealHostPayload,
+  isTrialQuestionHostPayload,
   sanitizeCustomName,
   stagesForLength,
   totalQuestionsForLength,
@@ -62,6 +63,9 @@ import {
   type StealResolvedPayload,
   type StealShowPayload,
   type StealShowPlayerPayload,
+  type TrialQuestionShowPayload,
+  type TrialQuestionShowPlayerPayload,
+  type TrialRevealShowPayload,
   type VipChangedPayload,
 } from '@game/shared';
 import { socket } from '../socket';
@@ -339,6 +343,22 @@ export default function ControllerScreen() {
   // NUMERIC_REVEAL - public and symmetric, so every phone gets the same
   // payload the TV does; this phone's own row is found by playerId.
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
+  // Η Δίκη (Task 129). `trialQuestion.onTrial` decides picker vs spectator -
+  // there is no per-choice ack event (see TRIAL_SUBMIT's doc comment in
+  // shared), so `trialPendingChoice` is this phone's OWN optimistic tap and
+  // nothing more; a state:sync catching a phone up after it already locked
+  // in only carries the boolean `lockedIn`, never which button it was, so a
+  // reconnect mid-question shows every option dimmed with none highlighted -
+  // a real limit of the payload, not a shortcut taken here. The send guard
+  // is a ref for the same one-send reasoning as drawSentRef/guessSentRef.
+  const [trialQuestion, setTrialQuestion] = useState<TrialQuestionShowPlayerPayload | null>(null);
+  const [trialPendingChoice, setTrialPendingChoice] = useState<number | null>(null);
+  const trialSentRef = useRef(false);
+  // TRIAL_REVEAL - public and symmetric, like reveal:show. Deliberately does
+  // NOT clear `trialQuestion` when it arrives (mirrors handleRevealShow not
+  // clearing `question`) so this view can still look up the text of this
+  // phone's own choice out of `trialQuestion.options`.
+  const [trialReveal, setTrialReveal] = useState<TrialRevealShowPayload | null>(null);
 
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
@@ -397,6 +417,16 @@ export default function ControllerScreen() {
       }
     }
 
+    // Η Δίκη (Task 129) - set together for the same reason applyPowerUp/
+    // applyDraw are: the answer grid and the send guard can never disagree
+    // about whether this phone already locked in. `lockedIn` is only ever
+    // true on a state:sync catching a phone up after it already answered.
+    function applyTrialQuestion(payload: TrialQuestionShowPlayerPayload | null) {
+      setTrialQuestion(payload);
+      setTrialPendingChoice(null);
+      trialSentRef.current = payload?.lockedIn ?? false;
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -414,6 +444,8 @@ export default function ControllerScreen() {
         setGuessReveal(null);
         applyNumericQuestion(null);
         setNumericReveal(null);
+        applyTrialQuestion(null);
+        setTrialReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -601,6 +633,33 @@ export default function ControllerScreen() {
       setPausedByName(payload.pausedByName);
     }
 
+    // Η Δίκη (Task 129) - the player branch of an asymmetric event. The host
+    // variant (everyone's life and lock-in state, in aggregate) is not this
+    // screen's business.
+    function handleTrialQuestionShow(payload: TrialQuestionShowPayload) {
+      if (!isTrialQuestionHostPayload(payload)) {
+        setQuestion(null);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
+        setReveal(null);
+        applyPowerUp(null);
+        applySteal(null);
+        setTrialReveal(null);
+        applyTrialQuestion(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like reveal:show - the round is over, so every
+    // phone (eliminated or not) gets the same payload the TV does. Does NOT
+    // clear `trialQuestion` - see its own declaration for why.
+    function handleTrialRevealShow(payload: TrialRevealShowPayload) {
+      setTrialReveal(payload);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
@@ -620,6 +679,8 @@ export default function ControllerScreen() {
       setGuessReveal(null);
       applyNumericQuestion(null);
       setNumericReveal(null);
+      applyTrialQuestion(null);
+      setTrialReveal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -650,6 +711,8 @@ export default function ControllerScreen() {
       setGuessReveal(null);
       applyNumericQuestion(null);
       setNumericReveal(null);
+      applyTrialQuestion(null);
+      setTrialReveal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -761,6 +824,24 @@ export default function ControllerScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Η Δίκη (Task 129) - same reconnect reasoning as QUESTION above:
+        // applyTrialQuestion reads whatever this phone already did (locked
+        // in) straight from the server's own state. TRIAL_REVEAL, like
+        // REVEAL, cannot restore `trialQuestion` (already cleared above), so
+        // this phone's own choice text is simply not shown after a reconnect
+        // mid-reveal - the same limit REVEAL's own case has.
+        case 'TRIAL_QUESTION':
+          if (!isTrialQuestionHostPayload(payload)) {
+            applyTrialQuestion(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'TRIAL_REVEAL':
+          setTrialReveal(payload);
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
       }
     }
 
@@ -780,6 +861,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+    socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
+    socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -805,6 +888,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+      socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
+      socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -1018,6 +1103,18 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.DRAW_GUESS, { choice: index });
   }
 
+  // Η Δίκη (Task 129). One tap, one send - there is no reconciling ack (see
+  // TRIAL_SUBMIT's doc comment in shared), so a ref guards the double-tap
+  // race the same way handleDrawSubmit/handleGuessTap's do.
+  function handleTrialAnswerTap(index: number) {
+    if (trialSentRef.current || paused) {
+      return;
+    }
+    trialSentRef.current = true;
+    setTrialPendingChoice(index);
+    socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: index });
+  }
+
   // Numeric mode (Task 66). Dragging the slider sets numericValue directly -
   // a range input's own min/max already keep it in bounds. Typing goes
   // through a clamp: an out-of-range value is accepted and snapped into
@@ -1086,6 +1183,28 @@ export default function ControllerScreen() {
 
   function handleResetToLobby() {
     socket.emit(ClientEvents.VIP_RESET_TO_LOBBY, {});
+  }
+
+  // Η Δίκη (Task 129) - the spectator view, shared by TRIAL_QUESTION
+  // (`onTrial: false`) and TRIAL_REVEAL (no entry in `results`, or an entry
+  // with `eliminated: true`). A static "you are out" statement and nothing
+  // else - no standings, no other player's data (payload rule) - that stays
+  // on screen through every remaining trial round until GAME_OVER.
+  function renderTrialSpectator(testId: string) {
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        <div style={styles.title} data-testid={testId}>
+          Αποκλείστηκες
+        </div>
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+      </div>
+    );
   }
 
   // Question count is the stage table's, not a setting of its own (Task
@@ -1271,6 +1390,53 @@ export default function ControllerScreen() {
             Παράλειψη
           </button>
         )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Η Δίκη (Task 129) - TRIAL_REVEAL. Public and symmetric like the quiz's
+  // own reveal above: this branches on OUR OWN entry within `results`
+  // rather than a role the server assigned this phone. No entry at all
+  // (already eliminated in an earlier round, or sat this sudden-death round
+  // out) or an entry with `eliminated: true` (crossed to zero THIS reveal)
+  // both read as the spectator view - elimination flips the phone straight
+  // to it, never showing a detailed "you lost" breakdown first.
+  if (trialReveal) {
+    const myTrialResult = trialReveal.results.find((result) => result.playerId === playerId) ?? null;
+    if (!myTrialResult || myTrialResult.eliminated) {
+      return renderTrialSpectator('trial-eliminated-title');
+    }
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.revealVerdictRow}>
+          <div
+            style={myTrialResult.correct ? styles.revealCorrect : styles.revealWrong}
+            data-testid="trial-reveal-verdict"
+          >
+            {myTrialResult.correct ? 'Σωστά!' : 'Λάθος'}
+          </div>
+        </div>
+        <div style={styles.revealCorrectOption}>Σωστή απάντηση: {trialReveal.correctOption}</div>
+        {!myTrialResult.correct && myTrialResult.choice !== null && trialQuestion && (
+          <div style={styles.revealYourChoice} data-testid="trial-reveal-your-choice">
+            Η επιλογή σου: {trialQuestion.options[myTrialResult.choice]}
+          </div>
+        )}
+        <div style={styles.trialLife} data-testid="trial-reveal-life">
+          Ζωή: {Math.max(0, myTrialResult.lifeAfter)}
+        </div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1771,6 +1937,83 @@ export default function ControllerScreen() {
                 disabled={disabled}
               >
                 <span style={{ ...(dimmed ? styles.answerTextDim : styles.answerText), ...inkStyle }}>{option}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={styles.questionFooter}>
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+        </div>
+      </div>
+    );
+  }
+
+  // Η Δίκη (Task 129) - TRIAL_QUESTION. Reuses the quiz QUESTION view's
+  // category + 2x2 grid + lock-in pattern exactly (no question text, no
+  // timer - the TV carries both). Adds ONE static life line, read straight
+  // off `yourLife` at question-show time - it never updates again until the
+  // next question:show, so there is no drain animation on the phone; that
+  // drama lives entirely on the TV. `onTrial: false` (eliminated, or
+  // sitting a sudden-death round out as a non-duelist) is the spectator
+  // branch - answered normally otherwise.
+  if (trialQuestion) {
+    if (!trialQuestion.onTrial) {
+      return renderTrialSpectator('trial-spectator-title');
+    }
+    const myChoice = trialPendingChoice;
+    const answered = myChoice !== null || trialQuestion.lockedIn;
+    return (
+      <div style={styles.questionContainer}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.questionHeader}>
+          <div style={styles.category}>{trialQuestion.category}</div>
+          <div style={styles.trialLife} data-testid="trial-your-life">
+            Ζωή: {trialQuestion.yourLife}
+          </div>
+          {answered ? (
+            <div style={styles.lookAtTv} data-testid="waiting-message">
+              Περίμενε τους υπόλοιπους...
+            </div>
+          ) : (
+            <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+          )}
+        </div>
+        <div style={styles.answerGrid}>
+          {trialQuestion.options.map((option, index) => {
+            const isMine = index === myChoice;
+            const dimmed = answered && !isMine;
+            const disabled = answered || paused;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-testid="trial-answer-button"
+                data-selected={isMine}
+                className={isMine ? 'glow' : undefined}
+                style={
+                  dimmed
+                    ? styles.answerButtonDim
+                    : ({
+                        ...styles.answerButton,
+                        ...(isMine ? styles.answerButtonSelected : undefined),
+                        boxShadow: isMine ? undefined : SURFACE_GLOW,
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
+                      } as CSSVars)
+                }
+                onClick={() => handleTrialAnswerTap(index)}
+                disabled={disabled}
+              >
+                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
               </button>
             );
           })}
@@ -2607,6 +2850,15 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--dim)',
   },
   revealSpeedRank: {
+    fontSize: '1.1rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: 'var(--gold)',
+  },
+  // Η Δίκη (Task 129) - the one static life figure QUESTION and REVEAL both
+  // show. Gold like revealSpeedRank: it's the number the whole trial turns
+  // on, not just informational dim text.
+  trialLife: {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
