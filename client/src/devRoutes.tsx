@@ -6,6 +6,7 @@ import DevSceneScreen from './screens/DevSceneScreen';
 import DevVoiceScreen from './screens/DevVoiceScreen';
 import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
 import DevVoiceEqScreen from './screens/DevVoiceEqScreen';
+import DevVoiceAbScreen from './screens/DevVoiceAbScreen';
 
 export interface DevRoute {
   path: string;
@@ -60,5 +61,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Σωκράτης EQ',
     description: 'A/B listening for the EQ/dynamics-only (no pitch shift) Socrates experiment (Task 145).',
     element: <DevVoiceEqScreen />,
+  },
+  {
+    path: '/dev/voice-ab',
+    title: 'Νέα φωνή',
+    description: 'A/B listening for the new ElevenLabs voice ID against the 43 GENIUS-rated lines (Task 147).',
+    element: <DevVoiceAbScreen />,
   },
 ];

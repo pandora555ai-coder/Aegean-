@@ -7,6 +7,17 @@
 //
 // ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID come from the environment (or a
 // gitignored repo-root .env) - never committed.
+//
+// Task 147 - three env-only overrides for an A/B voice comparison, none of
+// them touching the default (no env vars set) path above:
+//   ALT_VOICE_ID     speak with this ElevenLabs voice instead of
+//                    ELEVENLABS_VOICE_ID, for this run only.
+//   ALT_OUTPUT_DIR   write mp3s here instead of client/public/voice (which
+//                    stays agent/CI read-only - never targeted by this).
+//   ONLY_HASHES      comma-separated lineHash values; restrict generation to
+//                    exactly these lines regardless of what already exists
+//                    in the output dir (needed because ALT_OUTPUT_DIR starts
+//                    empty, so without this every line would look "missing").
 import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
@@ -26,9 +37,28 @@ import { createElevenLabsProvider } from './voice/provider.ts';
 import { lineHash, stripPlaceholders } from './voice/text.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const OUT_DIR = path.join(ROOT, 'client', 'public', 'voice');
 
 loadDotEnvIfPresent(path.join(ROOT, '.env'));
+
+// Read after loadDotEnvIfPresent so a repo-root .env can set these too.
+const OUT_DIR = process.env.ALT_OUTPUT_DIR
+  ? path.resolve(ROOT, process.env.ALT_OUTPUT_DIR)
+  : path.join(ROOT, 'client', 'public', 'voice');
+
+const ONLY_HASHES = process.env.ONLY_HASHES
+  ? new Set(
+      process.env.ONLY_HASHES.split(',')
+        .map((h) => h.trim())
+        .filter(Boolean),
+    )
+  : null;
+
+if (process.env.ALT_VOICE_ID) {
+  // createElevenLabsProvider() itself takes no args and always reads
+  // ELEVENLABS_VOICE_ID - overriding that var here (this run only, in this
+  // process) is simpler than threading an override parameter through it.
+  process.env.ELEVENLABS_VOICE_ID = process.env.ALT_VOICE_ID;
+}
 
 function parseLimit(argv: string[]): number | null {
   const flag = argv.find((a) => a === '--limit' || a.startsWith('--limit='));
@@ -99,7 +129,11 @@ async function main() {
   const toGenerate: Array<{ template: string; tag: string | null; filename: string }> = [];
   for (const template of templates) {
     const tag = LINE_TAGS[template] ?? null;
-    const filename = `${lineHash(template, tag)}.mp3`;
+    const hash = lineHash(template, tag);
+    if (ONLY_HASHES && !ONLY_HASHES.has(hash)) {
+      continue;
+    }
+    const filename = `${hash}.mp3`;
     if (!existing.has(filename)) {
       toGenerate.push({ template, tag, filename });
     }
@@ -140,7 +174,7 @@ async function main() {
     }
   }
   const capWarning = longestMs > SOCRATES_MAX_DURATION_MS ? '  ⚠ exceeds SOCRATES_MAX_DURATION_MS - raise the cap' : '';
-  console.log(`\n${files.length} file(s) in client/public/voice, ${(totalBytes / 1024).toFixed(1)} KB total.`);
+  console.log(`\n${files.length} file(s) in ${path.relative(ROOT, OUT_DIR)}, ${(totalBytes / 1024).toFixed(1)} KB total.`);
   console.log(`Longest clip: ~${Math.round(longestMs)}ms (${longestFile})${capWarning}`);
 }
 

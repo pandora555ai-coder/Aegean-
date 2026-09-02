@@ -6,5 +6,6 @@ client/public/voice
 client/public/voice-test/
 client/public/voice-matrix/
 client/public/voice-matrix-eq/
+client/public/voice-ab/
 *.tar.gz
 .mcp.json
