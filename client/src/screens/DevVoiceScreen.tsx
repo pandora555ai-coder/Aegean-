@@ -18,6 +18,33 @@ const RATINGS: Rating[] = ['bad', 'okish', 'good', 'genius'];
 const RATING_LABELS: Record<Rating, string> = { bad: 'Bad', okish: 'Okish', good: 'Good', genius: 'Genius' };
 const STORAGE_KEY = 'voiceIndexRatings';
 
+// Task 143 - localStorage ratings don't carry over from wherever the first
+// 186 lines were rated (a different origin - localhost/file://). A moment
+// filter lets Argyrios jump straight to just the lines that are actually
+// new, by MOMENT rather than by rating, so the "unrated" filter above isn't
+// load-bearing for that anymore.
+const ALL_MOMENTS = 'ALL';
+const PRESET_DRAW_NUMERIC = '__preset_draw_numeric__';
+// The 9 draw/numeric moments (Task 138/139) plus Η Συκοφαντία's STAGE_INTRO
+// pool. That pool's moment key is generated at runtime by
+// collectVoiceLineEntries (server/src/socrates.ts) from whichever stage
+// number it meets FIRST while iterating STAGE_INTRO_LINES - it's keyed
+// under both stage 3 (quiz) and stage 4 (full show) with the SAME array,
+// and object key iteration order for integer-like keys is ascending, so
+// stage 3 always wins and "stage 4" never appears as its own moment.
+const PRESET_DRAW_NUMERIC_MOMENTS = [
+  'DRAW_INTRO',
+  'NOBODY_GUESSED',
+  'EVERYBODY_GUESSED',
+  'SPLIT_GUESS',
+  'DRAW_WINNER',
+  'EXACT_HIT',
+  'WILDLY_OFF',
+  'ALL_CLUSTERED',
+  'NOBODY_CLOSE',
+  'STAGE_INTRO (stage 3)',
+];
+
 function loadRatings(): Record<string, Rating> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -40,6 +67,7 @@ export default function DevVoiceScreen() {
   const [lines, setLines] = useState<DevVoiceLinesPayload['lines'] | null>(null);
   const [ratings, setRatings] = useState<Record<string, Rating>>(() => loadRatings());
   const [filter, setFilter] = useState<Filter>('unrated');
+  const [momentSelection, setMomentSelection] = useState<string>(ALL_MOMENTS);
   const [copyStatus, setCopyStatus] = useState('');
 
   useEffect(() => {
@@ -79,12 +107,37 @@ export default function DevVoiceScreen() {
     return { total: list.length, rated, unrated: list.length - rated };
   }, [lines, ratings]);
 
+  // Every distinct moment key actually present in the data, alphabetized -
+  // NOT hardcoded, so this can never drift from what the server sends.
+  const moments = useMemo(() => {
+    const set = new Set((lines ?? []).map((l) => l.moment));
+    return Array.from(set).sort();
+  }, [lines]);
+
+  // null = no moment restriction ("all"); otherwise the exact set of moment
+  // keys currently allowed through (one, for a single selection, or the
+  // draw/numeric + Συκοφαντία preset's ten).
+  const activeMoments = useMemo(() => {
+    if (momentSelection === ALL_MOMENTS) return null;
+    if (momentSelection === PRESET_DRAW_NUMERIC) return new Set(PRESET_DRAW_NUMERIC_MOMENTS);
+    return new Set([momentSelection]);
+  }, [momentSelection]);
+
   const visible = useMemo(() => {
-    const list = lines ?? [];
-    if (filter === 'all') return list;
-    if (filter === 'unrated') return list.filter((l) => !ratings[l.hash]);
-    return list.filter((l) => ratings[l.hash] === filter);
-  }, [lines, ratings, filter]);
+    let list = lines ?? [];
+    if (activeMoments) {
+      list = list.filter((l) => activeMoments.has(l.moment));
+    }
+    // The rating filter stays independent of the moment filter - both apply
+    // together (intersection), same as any two filters that don't target
+    // the same field.
+    if (filter === 'unrated') {
+      list = list.filter((l) => !ratings[l.hash]);
+    } else if (filter !== 'all') {
+      list = list.filter((l) => ratings[l.hash] === filter);
+    }
+    return list;
+  }, [lines, ratings, filter, activeMoments]);
 
   function handleExport() {
     const groups = RATINGS.map((r) => ({ rating: r, lines: [] as string[] }));
@@ -117,10 +170,27 @@ export default function DevVoiceScreen() {
         <span>Σύνολο: {counts.total}</span>
         <span>Rated: {counts.rated}</span>
         <span>Unrated: {counts.unrated}</span>
+        <span>Showing: {visible.length}</span>
       </div>
 
       <div style={styles.toolbar}>
         <div style={styles.filterGroup}>
+          <label style={styles.momentLabel}>
+            Moment:{' '}
+            <select
+              value={momentSelection}
+              onChange={(e) => setMomentSelection(e.target.value)}
+              style={styles.momentSelect}
+            >
+              <option value={ALL_MOMENTS}>All ({counts.total})</option>
+              <option value={PRESET_DRAW_NUMERIC}>Draw/numeric + Συκοφαντία preset</option>
+              {moments.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
           {(['all', 'unrated', ...RATINGS] as const).map((f) => (
             <button
               key={f}
@@ -209,7 +279,17 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     gap: '0.75rem',
   },
-  filterGroup: { display: 'flex', gap: '0.4rem', flexWrap: 'wrap' },
+  filterGroup: { display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' },
+  momentLabel: { fontSize: '0.85rem', fontWeight: 600, color: 'var(--dim)', marginRight: '0.4rem' },
+  momentSelect: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    padding: '0.35rem 0.5rem',
+    borderRadius: '0.5rem',
+    border: '2px solid var(--wood)',
+    background: 'var(--panel)',
+    color: 'var(--cream)',
+  },
   filterActive: {
     fontSize: '0.85rem',
     fontWeight: 700,
