@@ -32,6 +32,10 @@ export const ClientEvents = {
   // DEV_SUBMIT_DRAWING above: no room, no phase, just a request for the raw
   // question pool so it can be judged before it ships.
   DEV_GET_NUMERIC_QUESTIONS: 'dev:get_numeric_questions',
+  // Task 142 - dev-only voice-line review harness (/dev/voice). Same spirit
+  // as DEV_GET_NUMERIC_QUESTIONS above: no room, no phase, just a request
+  // for every Socrates line so it can be rated before an ElevenLabs batch.
+  DEV_GET_VOICE_LINES: 'dev:get_voice_lines',
   // Task 56a - the real drawing mode. DRAW_SUBMIT carries the finished
   // picture, DRAW_GUESS carries one guesser's pick among that round's 4
   // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
@@ -76,6 +80,8 @@ export const ServerEvents = {
   DEV_DRAWING_RECEIVED: 'dev:drawing_received',
   // Task 67 - the response half of DEV_GET_NUMERIC_QUESTIONS above.
   DEV_NUMERIC_QUESTIONS: 'dev:numeric_questions',
+  // Task 142 - the response half of DEV_GET_VOICE_LINES above.
+  DEV_VOICE_LINES: 'dev:voice_lines',
   // Task 56a - the drawing mode's own phases. DRAW/GUESS are asymmetric like
   // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
   // is finally safe to send), like reveal:show.
@@ -1492,6 +1498,14 @@ export interface DevNumericQuestionsPayload {
   questions: { text: string; category: string; answer: number }[];
 }
 
+// Task 142 - the /dev/voice review tool's own request/response pair. One
+// entry per line across every Socrates pool (server/src/socrates.ts's
+// collectVoiceLineEntries) - moment, raw template, optional voice tag, and
+// the hash its mp3 is named after (client/public/voice/<hash>.mp3).
+export interface DevVoiceLinesPayload {
+  lines: { moment: string; line: string; tag: string | null; hash: string }[];
+}
+
 // ----------------------- Drawing mode (Task 56a) --------------------------
 // A room needs at least this many CONNECTED players before the mode will
 // prepare/start a game - below it there's no meaningful "guess someone
@@ -2327,6 +2341,7 @@ export type ClientToServerEvents = {
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
   [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
+  [ClientEvents.DEV_GET_VOICE_LINES]: () => void;
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
@@ -2361,6 +2376,7 @@ export type ServerToClientEvents = {
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
+  [ServerEvents.DEV_VOICE_LINES]: (payload: DevVoiceLinesPayload) => void;
   [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;

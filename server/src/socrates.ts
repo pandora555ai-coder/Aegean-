@@ -1514,3 +1514,59 @@ export function logMomentFireSummary(state: SocratesState, roomCode: string): vo
     `[socrates] room ${roomCode} never fired (${neverFired.length}/${allMoments.length}): ${neverFired.length > 0 ? neverFired.join(', ') : 'none'}`,
   );
 }
+
+// Task 142: one line entry across EVERY pool - moment, raw template, its
+// optional voice tag, and the hash its mp3 is named after. Used by both
+// dev/generate-voice-index.ts (the static voice-index.html) and the
+// DEV_GET_VOICE_LINES socket handler (/dev/voice) so the two listings can
+// never drift from each other or from the actual pools.
+export interface VoiceLineEntry {
+  moment: string;
+  line: string;
+  tag: string | null;
+  hash: string;
+}
+
+export function collectVoiceLineEntries(): VoiceLineEntry[] {
+  const entries: VoiceLineEntry[] = [];
+  // One line (the GENERIC_INTRO/GAME_INTRO overlap) is reused verbatim
+  // across two pools - list it once, under whichever moment adds it first,
+  // so this stays one row per LINE_TAGS key (235), not per pool occurrence.
+  const seenLines = new Set<string>();
+  const add = (moment: string, pool: readonly string[]) => {
+    for (const line of pool) {
+      if (seenLines.has(line)) {
+        continue;
+      }
+      seenLines.add(line);
+      const tag = LINE_TAGS[line] ?? null;
+      entries.push({ moment, line, tag, hash: lineHash(line, tag) });
+    }
+  };
+  for (const [moment, pool] of Object.entries(LINES)) {
+    add(moment, pool);
+  }
+  for (const [moment, pool] of Object.entries(INTRO_LINES)) {
+    add(moment, pool);
+  }
+  add('GAME_INTRO', GAME_INTRO_LINES);
+  // A pool aliased under two stage numbers (Συκοφαντία: quiz 3 / full 4,
+  // Task 139) is one set of lines - list it once, under its first key.
+  const seenStagePools = new Set<readonly string[]>();
+  for (const [stage, pool] of Object.entries(STAGE_INTRO_LINES)) {
+    if (!pool || seenStagePools.has(pool)) {
+      continue;
+    }
+    seenStagePools.add(pool);
+    add(`STAGE_INTRO (stage ${stage})`, pool);
+  }
+  add('WINNER', WINNER_LINES);
+  add('TRIAL_INTRO', TRIAL_INTRO_LINES);
+  for (const [moment, pool] of Object.entries(DRAW_LINES)) {
+    add(moment, pool);
+  }
+  for (const [moment, pool] of Object.entries(NUMERIC_LINES)) {
+    add(moment, pool);
+  }
+  return entries;
+}

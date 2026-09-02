@@ -11,66 +11,21 @@
 // hand-maintained, so it can never drift from the actual line pools.
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { lineHash } from '@game/shared';
-import {
-  LINES,
-  INTRO_LINES,
-  LINE_TAGS,
-  GAME_INTRO_LINES,
-  STAGE_INTRO_LINES,
-  WINNER_LINES,
-  TRIAL_INTRO_LINES,
-  DRAW_LINES,
-  NUMERIC_LINES,
-} from '../server/src/socrates.ts';
+import { collectVoiceLineEntries, type VoiceLineEntry } from '../server/src/socrates.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'client', 'public', 'voice-index.html');
 
-interface LineEntry {
-  moment: string;
-  line: string;
-  tag: string | null;
+// Task 142: collectVoiceLineEntries (server/src/socrates.ts) is the single
+// source for "every line across every pool" - the DEV_GET_VOICE_LINES socket
+// handler (/dev/voice) uses the exact same function, so this static page and
+// that live route can never list a different set of lines.
+interface LineEntry extends VoiceLineEntry {
   file: string;
-  hash: string;
 }
 
 function collectEntries(): LineEntry[] {
-  const entries: LineEntry[] = [];
-  const add = (moment: string, pool: readonly string[]) => {
-    for (const line of pool) {
-      const tag = LINE_TAGS[line] ?? null;
-      const hash = lineHash(line, tag);
-      entries.push({ moment, line, tag, file: `voice/${hash}.mp3`, hash });
-    }
-  };
-  for (const [moment, pool] of Object.entries(LINES)) {
-    add(moment, pool);
-  }
-  for (const [moment, pool] of Object.entries(INTRO_LINES)) {
-    add(moment, pool);
-  }
-  add('GAME_INTRO', GAME_INTRO_LINES);
-  // A pool aliased under two stage numbers (Συκοφαντία: quiz 3 / full 4,
-  // Task 139) is one set of lines - list it once, under its first key.
-  const seenStagePools = new Set<readonly string[]>();
-  for (const [stage, pool] of Object.entries(STAGE_INTRO_LINES)) {
-    if (!pool || seenStagePools.has(pool)) {
-      continue;
-    }
-    seenStagePools.add(pool);
-    add(`STAGE_INTRO (stage ${stage})`, pool);
-  }
-  add('WINNER', WINNER_LINES);
-  // Task 139 - the trial's own intro pool plus the draw/numeric moments.
-  add('TRIAL_INTRO', TRIAL_INTRO_LINES);
-  for (const [moment, pool] of Object.entries(DRAW_LINES)) {
-    add(moment, pool);
-  }
-  for (const [moment, pool] of Object.entries(NUMERIC_LINES)) {
-    add(moment, pool);
-  }
-  return entries;
+  return collectVoiceLineEntries().map((entry) => ({ ...entry, file: `voice/${entry.hash}.mp3` }));
 }
 
 function esc(s: string): string {

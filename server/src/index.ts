@@ -88,6 +88,7 @@ import {
   submitNumericAnswer,
 } from './modes/numeric.js';
 import { NUMERIC_QUESTIONS } from './numeric.js';
+import { collectVoiceLineEntries } from './socrates.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -1045,6 +1046,13 @@ io.on('connection', (socket) => {
         answer: question.answer,
       })),
     });
+  });
+
+  // Task 142 - dev-only sink for the /dev/voice review tool. No room and no
+  // player, same as DEV_GET_NUMERIC_QUESTIONS above: it hands back every
+  // Socrates line so it can be rated before an ElevenLabs batch.
+  socket.on(ClientEvents.DEV_GET_VOICE_LINES, () => {
+    socket.emit(ServerEvents.DEV_VOICE_LINES, { lines: collectVoiceLineEntries() });
   });
 
   // Task 56a - the real DRAW phase. All validation (phase, pause, size cap,

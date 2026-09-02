@@ -3,6 +3,7 @@ import DevDrawScreen from './screens/DevDrawScreen';
 import DevNumericScreen from './screens/DevNumericScreen';
 import DevBlitzScreen from './screens/DevBlitzScreen';
 import DevSceneScreen from './screens/DevSceneScreen';
+import DevVoiceScreen from './screens/DevVoiceScreen';
 
 export interface DevRoute {
   path: string;
@@ -39,5 +40,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Σκηνή',
     description: 'Step through every /host phase with fake data — real views, real SceneLayer, no server (Task 106).',
     element: <DevSceneScreen />,
+  },
+  {
+    path: '/dev/voice',
+    title: 'Φωνή Σωκράτη',
+    description: 'Rate every Socrates voice line before an ElevenLabs batch (Task 142).',
+    element: <DevVoiceScreen />,
   },
 ];
