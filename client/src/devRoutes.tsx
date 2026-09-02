@@ -4,6 +4,7 @@ import DevNumericScreen from './screens/DevNumericScreen';
 import DevBlitzScreen from './screens/DevBlitzScreen';
 import DevSceneScreen from './screens/DevSceneScreen';
 import DevVoiceScreen from './screens/DevVoiceScreen';
+import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
 
 export interface DevRoute {
   path: string;
@@ -46,5 +47,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Φωνή Σωκράτη',
     description: 'Rate every Socrates voice line before an ElevenLabs batch (Task 142).',
     element: <DevVoiceScreen />,
+  },
+  {
+    path: '/dev/voice-matrix',
+    title: 'Βαθύτερος Σωκράτης',
+    description: 'A/B listening for the older/deeper Socrates DSP experiment (Task 144).',
+    element: <DevVoiceMatrixScreen />,
   },
 ];
