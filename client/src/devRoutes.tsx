@@ -5,6 +5,7 @@ import DevBlitzScreen from './screens/DevBlitzScreen';
 import DevSceneScreen from './screens/DevSceneScreen';
 import DevVoiceScreen from './screens/DevVoiceScreen';
 import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
+import DevVoiceEqScreen from './screens/DevVoiceEqScreen';
 
 export interface DevRoute {
   path: string;
@@ -53,5 +54,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Βαθύτερος Σωκράτης',
     description: 'A/B listening for the older/deeper Socrates DSP experiment (Task 144).',
     element: <DevVoiceMatrixScreen />,
+  },
+  {
+    path: '/dev/voice-eq',
+    title: 'Σωκράτης EQ',
+    description: 'A/B listening for the EQ/dynamics-only (no pitch shift) Socrates experiment (Task 145).',
+    element: <DevVoiceEqScreen />,
   },
 ];
