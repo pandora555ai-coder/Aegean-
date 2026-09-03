@@ -23,6 +23,7 @@ import { getConnectedPlayers, getRoom, type Room } from '../state.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { calculatePoints } from '../scoring.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
+import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from '../crowd.js';
 import { enterSocratesBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { io } from '../realtime.js';
@@ -332,8 +333,13 @@ function enterDrawPhase(room: Room, state: DrawState): void {
   room.phase = 'DRAW';
   state.drawings.clear();
   armDrawTimer(room, 'DRAW', DRAW_DURATION_MS, () => endDrawPhase(room.code));
-
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd mood (Task 151) - calm to start, tension for the last third, same
+  // treatment as the quiz's QUESTION timer: this is this mode's own timed
+  // round. AFTER phase:changed, mirroring the quiz's startQuestion ordering.
+  setCrowdMood(room, 'calm');
+  armCrowdTensionTimer(room, DRAW_DURATION_MS);
+
   broadcastDrawShow(room);
   console.log(`room ${room.code} draw phase started - ${state.assignment.size} players drawing`);
 }
@@ -459,6 +465,10 @@ export function endDrawPhase(code: RoomCode): void {
   }
   const state = requireDrawState(room);
   clearActiveTimer(room);
+  // Crowd mood (Task 151) - must be cleared here regardless of whether it
+  // already fired: a DRAW that ends early (everyone submitted before the
+  // last third) would otherwise leave it armed to fire LATE, into GUESS.
+  clearCrowdTensionTimer(room);
 
   // The guess queue is a SNAPSHOT, fixed the instant DRAW ends - a Map's
   // keys iterate in insertion (submission) order, so this is already "in a
@@ -567,6 +577,10 @@ function startGuessRound(room: Room, state: DrawState): void {
   room.phase = 'GUESS';
   armDrawTimer(room, 'GUESS', GUESS_DURATION_MS, () => endGuessRound(room.code));
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd mood (Task 151) - the whole guess phase is tension, same treatment
+  // as POWER_UP/STEAL: everyone is waiting on a choice. AFTER phase:changed,
+  // mirroring the quiz's startPowerUp/startStealIfEligible ordering.
+  setCrowdMood(room, 'tension');
   broadcastGuessShow(room);
 
   console.log(
@@ -849,6 +863,13 @@ export function endGuessRound(code: RoomCode): void {
   room.phase = 'GUESS_REVEAL';
   armDrawTimer(room, 'GUESS_REVEAL', GUESS_REVEAL_DURATION_MS, () => endGuessReveal(room.code));
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd mood (Task 151) - same majority-correct formula as the quiz's
+  // REVEAL, and same ordering: AFTER phase:changed, mirroring endQuestion.
+  // Guarded like the quiz's `results.length > 0` check: nothing to react to
+  // if every eligible guesser disconnected before this resolved.
+  if (eligibleGuessers > 0) {
+    setCrowdMood(room, correctGuessers * 2 > eligibleGuessers ? 'cheer' : 'boo');
+  }
 
   const payload = buildGuessRevealPayload(room);
   if (payload) {
@@ -930,6 +951,11 @@ function finishGame(room: Room): void {
   room.phase = 'GAME_OVER';
   clearActiveTimer(room);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd mood (Task 151) - only reached by a standalone draw game (the full
+  // show's GAME_OVER always fires through phases.ts's own finishGame instead,
+  // via the advanceAfterSegment hook above). AFTER phase:changed, mirroring
+  // the quiz's finishGame ordering.
+  setCrowdMood(room, 'calm');
   const gameOverPayload = buildGameOver(room);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} draw game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);

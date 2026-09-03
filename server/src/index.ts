@@ -1230,7 +1230,7 @@ io.on('connection', (socket) => {
     if (onFire) {
       resumeActiveTimer(room, onFire);
     }
-    resumeCrowdTensionTimer(room); // no-op outside QUESTION
+    resumeCrowdTensionTimer(room); // no-op if nothing armed it (outside a timed round)
 
     const remainingMs = remainingActiveTimerMs(room);
     const payload: ResumedPayload = { remainingMs };

@@ -392,12 +392,16 @@ export type GamePhase =
   | 'TRIAL_REVEAL'
   | 'GAME_OVER';
 
-// Crowd mood (Task 35) - server-derived, HOST ONLY (audio, once it lands, is
-// host-only too). Never computed by any client. 'calm' is the default -
-// LOBBY, STAGE_ANNOUNCE, and the early part of QUESTION; 'tension' covers the
-// last third of the QUESTION timer plus the whole POWER_UP and STEAL phases;
-// 'cheer'/'boo' fire at REVEAL depending on whether most connected players
-// answered correctly, and 'boo' fires again whenever a STEAL resolves.
+// Crowd mood (Task 35, extended to draw/numeric in Task 151) - server-derived,
+// HOST ONLY (audio, once it lands, is host-only too). Never computed by any
+// client. 'calm' is the default - LOBBY, STAGE_ANNOUNCE, and the early part
+// of every mode's own timed round (quiz QUESTION, draw DRAW, numeric
+// NUMERIC_QUESTION); 'tension' covers the last third of that same timer plus
+// the whole POWER_UP/STEAL/GUESS phases; 'cheer'/'boo' fire at every mode's
+// reveal (REVEAL, GUESS_REVEAL, NUMERIC_REVEAL, TRIAL_REVEAL) depending on
+// whether most players/guessers answered correctly (or, for numeric, whether
+// anyone landed within half the answer), and 'boo' fires again whenever a
+// STEAL resolves.
 export type CrowdMood = 'calm' | 'tension' | 'cheer' | 'boo';
 
 export interface CrowdMoodPayload {
