@@ -5,7 +5,7 @@ import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
-// still carry pre-Ελαιογραφία tokens there - this phase's content is ported
+// still carry pre-Θέατρο tokens there - this phase's content is ported
 // on its own, so the papyrus text gets local ink overrides instead of
 // touching those shared entries.
 const papyrusTextBlockStyle: CSSProperties = {
@@ -41,10 +41,10 @@ export function PowerUpView({ powerUp, roomCode, paused, pausedByName }: PowerUp
       </div>
       <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle}>
-          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="power-up-title">
+          <div style={{ ...styles.questionTextTv, color: 'var(--carve)' }} data-testid="power-up-title">
             Διάλεξε το όπλο σου!
           </div>
-          <div style={{ ...styles.progress, color: 'var(--ink)' }} data-testid="power-up-subtitle">
+          <div style={{ ...styles.progress, color: 'var(--carve)' }} data-testid="power-up-subtitle">
             Στα κινητά σας
           </div>
         </div>

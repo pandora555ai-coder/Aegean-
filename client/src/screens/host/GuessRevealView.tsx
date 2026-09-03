@@ -5,7 +5,7 @@ import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
 import { guessRevealImageWrapStyle, styles } from './hostStyles';
 
-// Ελαιογραφία palette pass - GUESS_REVEAL's own content, mirroring
+// Θέατρο palette pass - GUESS_REVEAL's own content, mirroring
 // RevealView's redesign exactly: correctness reads as opacity/weight only
 // (no hue), and the picture/word/options all sit on papyrus. optionCard*
 // (hostStyles.ts) is now unused by any other phase after this - kept local
@@ -34,13 +34,13 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   lineHeight: 1.15,
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
-  color: 'var(--ink)',
+  color: 'var(--carve)',
   // Tighter vertical padding than RevealView's box - this panel already
   // stacks a heading word and the drawer's bonus line above the results
   // list, with no vertical room to spare (Task 103's flex-shrink:0 rule
   // means this panel never gives it back either).
   padding: '0.25rem 1.25rem',
-  border: '1px solid var(--wood)',
+  border: '1px solid var(--marble-3)',
   borderRadius: '0.5rem',
   minWidth: 0,
 });
@@ -65,7 +65,7 @@ const correctWordStyle: CSSProperties = {
   fontSize: '1.75rem',
   lineHeight: 1.15,
   fontWeight: 800,
-  color: 'var(--ink)',
+  color: 'var(--carve)',
   textAlign: 'center',
 };
 
@@ -74,7 +74,7 @@ const progressBarTrackStyle: CSSProperties = {
   maxWidth: '500px',
   height: '0.5rem',
   borderRadius: '999px',
-  background: 'var(--panel)',
+  background: 'var(--marble)',
   overflow: 'hidden',
 };
 

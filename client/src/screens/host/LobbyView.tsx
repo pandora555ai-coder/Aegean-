@@ -88,7 +88,7 @@ export function LobbyView({
           style={styles.muteToggle}
           aria-label={muted ? 'Ενεργοποίηση ήχου' : 'Σίγαση ήχου'}
         >
-          {/* Ελαιογραφία palette (Task 96) - no colour emoji: the same
+          {/* Θέατρο palette (Task 96) - no colour emoji: the same
               monochrome note glyph both ways, muted state read via opacity
               only (styles.muteToggle), same rule as everywhere else. */}
           <span style={{ opacity: muted ? 0.45 : 1 }}>♪</span>

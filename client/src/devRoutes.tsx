@@ -41,7 +41,7 @@ export const DEV_ROUTES: DevRoute[] = [
   {
     path: '/dev/scene',
     title: 'Σκηνή',
-    description: 'Step through every /host phase with fake data — real views, real SceneLayer, no server (Task 106).',
+    description: 'Step through every /host phase with fake data — real views, real TheatreScene, no server (Task 106).',
     element: <DevSceneScreen />,
   },
   {

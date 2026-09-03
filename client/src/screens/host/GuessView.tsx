@@ -22,9 +22,9 @@ const optionBoxStyle: CSSProperties = {
   gap: '1rem',
   fontSize: '1.85rem',
   fontWeight: 600,
-  color: 'var(--ink)',
+  color: 'var(--carve)',
   padding: '0.75rem 1.25rem',
-  border: '1px solid var(--wood)',
+  border: '1px solid var(--marble-3)',
   borderRadius: '0.5rem',
 };
 

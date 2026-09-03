@@ -1,14 +1,14 @@
 :root {
-  --ground: #1B1710;
-  --deep: #0E0B07;
-  --panel: #241B12;
-  --pap-1: #E9D3A0;
-  --pap-2: #C9AC70;
-  --ink: #2A1D0E;
-  --wood: #8A6234;
-  --gold: #D8A75A;
-  --cream: #F2E3C4;
-  --dim: #9A8259;
+  --night-0: #070C18;
+  --night-1: #13213D;
+  --marble: #EDE6D6;
+  --marble-2: #CFC5B0;
+  --marble-3: #8F8672;
+  --carve: #2B2418;
+  --wine: #5B1424;
+  --wine-2: #8E2440;
+  --ember: #E8A14A;
+  --olive: #9AA860;
 
   /* TV overscan safe area. Real sets crop roughly 2-3% of the panel on
      EVERY edge, so anything drawn in the first or last few percent of a
@@ -49,8 +49,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--deep);
-  color: var(--cream);
+  background: var(--night-0);
+  color: var(--marble);
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -93,13 +93,13 @@ input {
 }
 
 .text-glow {
-  text-shadow: 0 0 18px rgba(242, 227, 196, 0.4);
+  text-shadow: 0 0 18px rgba(237, 230, 214, 0.4);
 }
 
 .text-glow-gold {
   text-shadow:
-    0 0 22px rgba(216, 167, 90, 0.6),
-    0 0 44px rgba(216, 167, 90, 0.3);
+    0 0 22px rgba(142, 36, 64, 0.6),
+    0 0 44px rgba(142, 36, 64, 0.3);
 }
 
 /* ============================= timer ============================= */
@@ -127,8 +127,8 @@ input {
 .timer-ring {
   border-radius: 50%;
   box-shadow:
-    0 0 0 3px var(--gold),
-    0 0 20px 4px rgba(216, 167, 90, 0.45);
+    0 0 0 3px var(--ember),
+    0 0 20px 4px rgba(232, 161, 74, 0.45);
   animation: pulse-scale 2.2s ease-in-out infinite;
 }
 

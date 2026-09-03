@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 
-// Ελαιογραφία palette (Task 87) - the papyrus scroll treatment shared by
-// every /host phase that puts Greek-facing text on parchment: a --pap-1 to
-// --pap-2 gradient panel flanked by two marble columns (see MarbleColumn
+// Θέατρο palette (Task 87) - the papyrus scroll treatment shared by
+// every /host phase that puts Greek-facing text on parchment: a --marble to
+// --marble-2 gradient panel flanked by two marble columns (see MarbleColumn
 // below). First used by QuestionView's question text; extracted here so
 // REVEAL's correct-answer panel (and any future phase) reuses the exact
 // same styles instead of copying them.
@@ -33,11 +33,11 @@ const panelStyle: CSSProperties = {
   width: '100%',
   padding: '1.5rem',
   borderRadius: '1rem',
-  background: 'linear-gradient(160deg, var(--pap-1), var(--pap-2))',
+  background: 'linear-gradient(160deg, var(--marble), var(--marble-2))',
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
 };
 
-// Marble column, not a wood roller: a fluted shaft (repeating --cream/--dim
+// Marble column, not a wood roller: a fluted shaft (repeating --marble/--marble-3
 // stripes, vertical grooves) between a capital and a base block. Left and
 // right sides only - never rendered top or bottom, so the column carries no
 // border of its own, just the three stacked pieces below.
@@ -52,14 +52,14 @@ const columnCapitalStyle: CSSProperties = {
   flexShrink: 0,
   height: '0.6rem',
   borderRadius: '0.2rem 0.2rem 0 0',
-  background: 'var(--cream)',
+  background: 'var(--marble)',
 };
 
 const columnBaseStyle: CSSProperties = {
   flexShrink: 0,
   height: '0.6rem',
   borderRadius: '0 0 0.2rem 0.2rem',
-  background: 'var(--cream)',
+  background: 'var(--marble)',
 };
 
 // minWidth, not just the column's own fixed width above - a hard floor so
@@ -68,7 +68,7 @@ const columnBaseStyle: CSSProperties = {
 const columnShaftStyle: CSSProperties = {
   flex: '1 1 auto',
   minWidth: '1.25rem',
-  backgroundImage: 'repeating-linear-gradient(90deg, var(--cream) 0, var(--cream) 2px, var(--dim) 2px, var(--dim) 4px)',
+  backgroundImage: 'repeating-linear-gradient(90deg, var(--marble) 0, var(--marble) 2px, var(--marble-3) 2px, var(--marble-3) 4px)',
 };
 
 function MarbleColumn() {

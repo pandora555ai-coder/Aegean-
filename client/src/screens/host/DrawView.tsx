@@ -6,7 +6,7 @@ import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
-// still carry pre-Ελαιογραφία tokens there - this phase's content is ported
+// still carry pre-Θέατρο tokens there - this phase's content is ported
 // on its own, so the papyrus text gets local ink overrides instead of
 // touching those shared entries. Same layout as PowerUpView's identical
 // "instruction card" pattern.
@@ -47,10 +47,10 @@ export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps
       </div>
       <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle} ref={titleBlockRef}>
-          <div style={{ ...styles.questionTextTv, color: 'var(--ink)' }} data-testid="draw-title" ref={titleTextRef}>
+          <div style={{ ...styles.questionTextTv, color: 'var(--carve)' }} data-testid="draw-title" ref={titleTextRef}>
             Ζωγραφίστε!
           </div>
-          <div style={{ ...styles.progress, color: 'var(--ink)' }} data-testid="draw-subtitle">
+          <div style={{ ...styles.progress, color: 'var(--carve)' }} data-testid="draw-subtitle">
             Στα κινητά σας
           </div>
         </div>

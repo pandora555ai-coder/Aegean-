@@ -1,10 +1,26 @@
 import type { CSSProperties } from 'react';
-import type { CrowdMood } from '@game/shared';
+import type { CrowdMood, GamePhase } from '@game/shared';
 
 // Task 158 - the theatre backdrop every /host phase sits in front of. Built
 // from design/theatre-reference.html (the SVG/CSS there is the spec). Scene
 // ART only: raw hex is allowed inside this SVG, same exception as drawing
 // ink - nowhere else in the app.
+
+// The one place that decides whether the scene is lit (Socrates centre
+// stage) or dimmed (papyrus speaking) - keyed off phase so no view has to
+// repeat this rhythm as a flag of its own. Moved here from the deleted
+// SceneLayer (Task 159) since TheatreScene is now the only scene layer.
+const LIT_PHASES: ReadonlySet<GamePhase> = new Set([
+  'LOBBY',
+  'STAGE_ANNOUNCE',
+  'SOCRATES',
+  'STEAL',
+  'GAME_OVER',
+]);
+
+export function isSceneLit(phase: GamePhase): boolean {
+  return LIT_PHASES.has(phase);
+}
 
 interface TheatreSceneProps {
   mood: CrowdMood;
@@ -179,24 +195,26 @@ const SCENE_STYLE_TAG = `
 .theatre-arm--up{transform:rotate(-40deg) translateY(-4px)}
 .theatre-tier{transition:transform 400ms ease}
 .theatre-tier--boo{transform:translateY(5px) skewX(-3deg)}
-.theatre-crowd{transition:filter 500ms ease}
 @media (prefers-reduced-motion:reduce){
   .theatre-scene-root,.theatre-flame,.theatre-glow,.theatre-star,.theatre-mote,.theatre-leaves{animation:none!important}
 }
 `;
 
-// The one crowd-mood filter (cheer brightens, boo darkens) - kept scoped to
-// the crowd group itself; `dimmed` is a separate, independent filter on the
-// scene root for phase lighting (never both stacking into one property).
-function crowdFilterFor(mood: CrowdMood): string {
-  if (mood === 'cheer') return 'brightness(1.18) saturate(1.1)';
-  if (mood === 'boo') return 'brightness(0.6) saturate(0.6)';
-  return 'none';
+// Task 159 - dimmed (phase lighting) and mood (cheer/boo) used to be two
+// separate filters on two different elements (root, crowd group). Combined
+// here into ONE filter on the scene root so they compose as a single CSS
+// property instead of two elements each owning their own.
+function sceneFilterFor(mood: CrowdMood, dimmed: boolean): string {
+  const parts: string[] = [];
+  if (dimmed) parts.push('brightness(0.5) saturate(0.8)');
+  if (mood === 'cheer') parts.push('brightness(1.18) saturate(1.1)');
+  else if (mood === 'boo') parts.push('brightness(0.6) saturate(0.6)');
+  return parts.length > 0 ? parts.join(' ') : 'none';
 }
 
-const rootStyle = (dimmed: boolean): CSSProperties => ({
+const rootStyle = (mood: CrowdMood, dimmed: boolean): CSSProperties => ({
   zIndex: 0,
-  filter: dimmed ? 'brightness(0.5) saturate(0.8)' : 'none',
+  filter: sceneFilterFor(mood, dimmed),
 });
 
 export function TheatreScene({ mood, dimmed }: TheatreSceneProps) {
@@ -204,7 +222,7 @@ export function TheatreScene({ mood, dimmed }: TheatreSceneProps) {
   const tierOrder = [...tiers.keys()].reverse();
 
   return (
-    <div className="theatre-scene-root" style={rootStyle(dimmed)} aria-hidden="true" data-theatre-scene="" data-mood={mood} data-dimmed={dimmed}>
+    <div className="theatre-scene-root" style={rootStyle(mood, dimmed)} aria-hidden="true" data-theatre-scene="" data-mood={mood} data-dimmed={dimmed}>
       <style>{SCENE_STYLE_TAG}</style>
       <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -323,7 +341,7 @@ export function TheatreScene({ mood, dimmed }: TheatreSceneProps) {
           })}
         </g>
 
-        <g className="theatre-crowd" style={{ filter: crowdFilterFor(mood) }}>
+        <g className="theatre-crowd">
           {crowd.map((figures, tierIndex) => (
             <g key={tierIndex}>
               {figures.map((f, figIndex) => (

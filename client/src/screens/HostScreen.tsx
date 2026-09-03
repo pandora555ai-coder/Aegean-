@@ -76,8 +76,7 @@ import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
-import { isSceneLit } from './host/SceneLayer';
-import { TheatreScene } from '../components/TheatreScene';
+import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 import type { TimerState } from './host/TimerRing';
 

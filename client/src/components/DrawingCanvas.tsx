@@ -67,7 +67,7 @@ function strokeLineWidth(tool: Tool, size: SizeKey, canvasSize: number): number 
 }
 
 const INK = '#12102a';
-// Ελαιογραφία palette (Task 93) - was pure white; now matches the papyrus
+// Θέατρο palette (Task 93) - was pure white; now matches the papyrus
 // paper the TV renders drawings against, so a white stroke and an erased
 // (transparent, then flattened) hole bake to the exact same pixel value.
 const PAPER = '#F6EEDC';
@@ -716,7 +716,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
                     ...styles.sizeDot,
                     width: SIZE_DOT_PX[key],
                     height: SIZE_DOT_PX[key],
-                    background: brushSize === key ? 'var(--ink)' : 'var(--dim)',
+                    background: brushSize === key ? 'var(--carve)' : 'var(--marble-3)',
                   }}
                 />
               </button>
@@ -752,7 +752,7 @@ const styles: Record<string, CSSProperties> = {
     aspectRatio: '1 / 1',
     display: 'block',
     borderRadius: '0.75rem',
-    border: '2px solid var(--wood)',
+    border: '2px solid var(--marble-3)',
     background: PAPER,
   },
   // Task 122 - the two rows (colour, action) stacked with a small gap.
@@ -814,7 +814,7 @@ const styles: Record<string, CSSProperties> = {
     width: 'calc(100% - 14px)',
     height: 'calc(100% - 14px)',
     borderRadius: '50%',
-    border: '2px solid var(--cream)',
+    border: '2px solid var(--marble)',
     transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
   },
@@ -823,8 +823,8 @@ const styles: Record<string, CSSProperties> = {
     width: 9,
     height: 9,
     borderRadius: '50%',
-    background: 'var(--cream)',
-    border: '2px solid var(--ink)',
+    background: 'var(--marble)',
+    border: '2px solid var(--carve)',
     transform: 'translate(-50%, -50%)',
     pointerEvents: 'none',
   },
@@ -848,20 +848,20 @@ const styles: Record<string, CSSProperties> = {
     width: 'clamp(28px, 8.5vw, 34px)',
     height: 'clamp(28px, 8.5vw, 34px)',
     borderRadius: '50%',
-    border: '2px solid color-mix(in srgb, var(--cream) 50%, transparent)',
+    border: '2px solid color-mix(in srgb, var(--marble) 50%, transparent)',
     padding: 0,
     flexShrink: 0,
     display: 'block',
   },
   swatchActive: {
-    border: '2px solid var(--cream)',
-    boxShadow: '0 0 0 2px color-mix(in srgb, var(--cream) 80%, transparent)',
+    border: '2px solid var(--marble)',
+    boxShadow: '0 0 0 2px color-mix(in srgb, var(--marble) 80%, transparent)',
   },
   separator: {
     width: '1px',
     height: '22px',
     flexShrink: 0,
-    background: 'var(--wood)',
+    background: 'var(--marble-3)',
   },
   iconButton: {
     width: 'clamp(44px, 12vw, 48px)',
@@ -870,9 +870,9 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'var(--dim)',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    color: 'var(--marble-3)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     borderRadius: '0.6rem',
     touchAction: 'manipulation',
   },
@@ -886,21 +886,21 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'var(--dim)',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    color: 'var(--marble-3)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     borderRadius: '0.6rem',
     touchAction: 'manipulation',
   },
   iconButtonActive: {
-    color: 'var(--ink)',
-    background: 'var(--gold)',
-    borderColor: 'var(--gold)',
+    color: 'var(--carve)',
+    background: 'var(--wine-2)',
+    borderColor: 'var(--wine-2)',
   },
   sizeDot: {
     display: 'block',
     borderRadius: '50%',
-    background: 'var(--dim)',
+    background: 'var(--marble-3)',
   },
   buttonRow: { display: 'flex', gap: '0.75rem' },
   button: {
@@ -908,9 +908,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.85rem',
     fontSize: '1rem',
     fontWeight: 700,
-    color: 'var(--cream)',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    color: 'var(--carve)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     borderRadius: '0.75rem',
     touchAction: 'manipulation',
   },

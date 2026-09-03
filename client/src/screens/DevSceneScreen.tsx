@@ -32,7 +32,7 @@ import { NumericRevealView } from './host/NumericRevealView';
 import { PowerUpView } from './host/PowerUpView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
-import { SceneLayer } from './host/SceneLayer';
+import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { SocratesView } from './host/SocratesView';
 import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
 import { StealView } from './host/StealView';
@@ -410,7 +410,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
 ];
 
 // Task 106 - dev-only phase stepper: the REAL host views and the REAL
-// SceneLayer, fed fixed fake data, no server/room involved. Arrow
+// TheatreScene, fed fixed fake data, no server/room involved. Arrow
 // Left/Right and the on-screen buttons step through PHASES.
 export default function DevSceneScreen() {
   const [index, setIndex] = useState(0);
@@ -430,7 +430,7 @@ export default function DevSceneScreen() {
 
   return (
     <>
-      <SceneLayer phase={current.phase} />
+      <TheatreScene mood="calm" dimmed={!isSceneLit(current.phase)} />
       {current.render()}
       <div style={styles.bar} data-testid="dev-scene-bar">
         <button type="button" style={styles.navButton} onClick={() => setIndex((i) => Math.max(i - 1, 0))} data-testid="dev-scene-prev">

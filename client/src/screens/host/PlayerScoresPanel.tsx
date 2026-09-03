@@ -209,7 +209,7 @@ function ScorePanelRow({
       <span style={styles.scorePanelRank}>
         #{standing.rank}
       </span>
-      <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={involved ? 'var(--gold)' : undefined} />
+      <Avatar avatarId={standing.avatarId} sizeRem={avatarSize} ringColor={involved ? 'var(--wine-2)' : undefined} />
       <span style={{ ...styles.scorePanelName, fontWeight: involved ? 800 : styles.scorePanelName.fontWeight }}>
         {standing.name}
       </span>
@@ -268,7 +268,7 @@ export function PlayerScoresPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   useFlip(containerRef, visibleStandings.map((s) => s.playerId).join('|'));
 
-  const panelStyle = { ...styles.gameLayoutRight, background: 'var(--panel)', borderRadius: '1rem', padding: '1rem' };
+  const panelStyle = { ...styles.gameLayoutRight, background: 'var(--marble)', borderRadius: '1rem', padding: '1rem' };
 
   return (
     <div style={panelStyle}>

@@ -9,7 +9,7 @@ const progressBarTrackStyle: CSSProperties = {
   maxWidth: '500px',
   height: '0.5rem',
   borderRadius: '999px',
-  background: 'var(--panel)',
+  background: 'var(--marble)',
   overflow: 'hidden',
 };
 

@@ -36,8 +36,8 @@ const styles: Record<string, CSSProperties> = {
     minHeight: '100vh',
     padding: '1.5rem 1rem',
     boxSizing: 'border-box',
-    background: 'var(--deep)',
-    color: 'var(--cream)',
+    background: 'var(--night-0)',
+    color: 'var(--marble)',
   },
   title: {
     fontSize: '1.75rem',
@@ -58,9 +58,9 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '0.7rem 0.9rem',
     borderRadius: '0.7rem',
-    border: '2px solid var(--gold)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '2px solid var(--wine-2)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     textDecoration: 'none',
   },
   rowHead: {
@@ -71,7 +71,7 @@ const styles: Record<string, CSSProperties> = {
   rowTitle: {
     fontSize: '1.15rem',
     fontWeight: 700,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   rowPath: {
     fontSize: '0.85rem',
@@ -88,6 +88,6 @@ const styles: Record<string, CSSProperties> = {
   back: {
     marginTop: '0.5rem',
     fontSize: '1rem',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
 };

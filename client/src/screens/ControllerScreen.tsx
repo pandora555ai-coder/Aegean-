@@ -80,7 +80,7 @@ import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
 // `--glow-color` variable the .glow-pulse class reads (in
-// palette-elaiografia.css) be set inline per-element, since each glow needs
+// palette-theatro.css) be set inline per-element, since each glow needs
 // a different colour.
 type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
@@ -90,7 +90,7 @@ type CSSVars = CSSProperties & Record<`--${string}`, string>;
 // CSS class's boxShadow and would silently clobber the glow ring.
 const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(122,92,210,0.12)';
 
-// Ελαιογραφία palette pass - matches RevealView.tsx's own WRONG_OPACITY on
+// Θέατρο palette pass - matches RevealView.tsx's own WRONG_OPACITY on
 // the TV: correctness reads as full-opacity/bold vs 42%-opacity/regular,
 // never as a colour swap.
 const WRONG_OPACITY = 0.42;
@@ -1741,7 +1741,7 @@ export default function ControllerScreen() {
                         ...styles.answerButton,
                         ...(isMine ? styles.answerButtonSelected : undefined),
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
-                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--wine-2) 50%, transparent)' } : {}),
                       } as CSSVars)
                 }
                 onClick={() => handleGuessTap(index)}
@@ -1939,7 +1939,7 @@ export default function ControllerScreen() {
                         ...styles.answerButton,
                         ...(isMine ? styles.answerButtonSelected : undefined),
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
-                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--wine-2) 50%, transparent)' } : {}),
                       } as CSSVars)
                 }
                 onClick={() => handleAnswerTap(index)}
@@ -2016,7 +2016,7 @@ export default function ControllerScreen() {
                         ...styles.answerButton,
                         ...(isMine ? styles.answerButtonSelected : undefined),
                         boxShadow: isMine ? undefined : SURFACE_GLOW,
-                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--gold) 50%, transparent)' } : {}),
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--wine-2) 50%, transparent)' } : {}),
                       } as CSSVars)
                 }
                 onClick={() => handleTrialAnswerTap(index)}
@@ -2270,7 +2270,7 @@ export default function ControllerScreen() {
         <>
           <div style={styles.previewRow} data-testid="join-preview">
             {selectedAvatarId ? (
-              <Avatar avatarId={selectedAvatarId} sizeRem={4.5} ringColor="var(--gold)" />
+              <Avatar avatarId={selectedAvatarId} sizeRem={4.5} ringColor="var(--wine-2)" />
             ) : (
               <div style={styles.avatarPlaceholder}>?</div>
             )}
@@ -2334,23 +2334,23 @@ const styles: Record<string, CSSProperties> = {
     padding: '2rem 1.25rem',
     maxWidth: '480px',
     margin: '0 auto',
-    background: 'var(--deep)',
-    color: 'var(--cream)',
+    background: 'var(--night-0)',
+    color: 'var(--marble)',
     minHeight: '100dvh',
     boxSizing: 'border-box',
   },
-  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--cream)' },
-  status: { textAlign: 'center', color: 'var(--dim)' },
-  subtitle: { fontSize: '1.1rem', color: 'var(--dim)', textAlign: 'center' },
-  lobbyCount: { fontSize: '1rem', color: 'var(--dim)', textAlign: 'center' },
+  title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--marble)' },
+  status: { textAlign: 'center', color: 'var(--marble-3)' },
+  subtitle: { fontSize: '1.1rem', color: 'var(--marble-3)', textAlign: 'center' },
+  lobbyCount: { fontSize: '1rem', color: 'var(--marble-3)', textAlign: 'center' },
   settingsPanel: {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.6rem',
     padding: '0.9rem',
     borderRadius: '0.75rem',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     boxShadow: SURFACE_GLOW,
   },
   settingsRow: {
@@ -2363,12 +2363,12 @@ const styles: Record<string, CSSProperties> = {
   settingsRowLabel: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   settingsRowValue: {
     fontSize: '0.9rem',
     fontWeight: 700,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   segmentedGroup: {
     display: 'flex',
@@ -2385,9 +2385,9 @@ const styles: Record<string, CSSProperties> = {
     minHeight: '44px',
     padding: '0.4rem 0.7rem',
     borderRadius: '0.5rem',
-    border: '2px solid var(--gold)',
-    background: 'var(--gold)',
-    color: 'var(--ink)',
+    border: '2px solid var(--wine-2)',
+    background: 'var(--wine-2)',
+    color: 'var(--carve)',
     boxSizing: 'border-box',
   },
   segmentInactive: {
@@ -2399,15 +2399,15 @@ const styles: Record<string, CSSProperties> = {
     minHeight: '44px',
     padding: '0.4rem 0.7rem',
     borderRadius: '0.5rem',
-    border: '2px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    border: '2px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     boxSizing: 'border-box',
   },
   estimatedLength: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
   },
   input: {
@@ -2416,9 +2416,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.9rem 1rem',
     boxSizing: 'border-box',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '1px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
   },
   // Numeric mode (Task 66) - the value renders LARGE and ABOVE the slider/
   // input on purpose: once the number input is focused, the on-screen
@@ -2429,11 +2429,11 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     fontFamily: 'monospace',
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   numericSlider: {
     width: '100%',
-    accentColor: 'var(--gold)',
+    accentColor: 'var(--wine-2)',
     height: '2.75rem',
   },
   numericRangeLabels: {
@@ -2443,7 +2443,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: '-0.5rem',
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontFamily: 'monospace',
   },
   numericNumberInput: {
@@ -2453,9 +2453,9 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.9rem 1rem',
     boxSizing: 'border-box',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '1px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   button: {
@@ -2464,8 +2464,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: 'var(--gold)',
-    color: 'var(--ink)',
+    background: 'var(--wine-2)',
+    color: 'var(--carve)',
     fontWeight: 600,
   },
   buttonDisabled: {
@@ -2474,8 +2474,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '1rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: 'var(--wood)',
-    color: 'var(--dim)',
+    background: 'var(--marble-3)',
+    color: 'var(--carve)',
     fontWeight: 600,
     cursor: 'not-allowed',
   },
@@ -2483,8 +2483,8 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: 'center',
     fontSize: '1rem',
     fontWeight: 700,
-    color: 'var(--ink)',
-    background: 'var(--gold)',
+    color: 'var(--carve)',
+    background: 'var(--wine-2)',
     borderRadius: '999px',
     padding: '0.25rem 0.9rem',
   },
@@ -2502,23 +2502,23 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto',
     padding: '0.4rem',
     borderRadius: '0.5rem',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
   },
   nameOption: {
     fontSize: '1.1rem',
     fontWeight: 600,
     padding: '0.65rem 0.9rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '1px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'left',
   },
   nameListEmpty: {
     padding: '0.75rem',
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   customNameButton: {
@@ -2526,9 +2526,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.7rem',
     borderRadius: '0.5rem',
-    border: '1px dashed var(--wood)',
+    border: '1px dashed var(--marble-3)',
     background: 'transparent',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   previewRow: {
@@ -2537,15 +2537,15 @@ const styles: Record<string, CSSProperties> = {
     gap: '1rem',
     padding: '0.75rem',
     borderRadius: '0.75rem',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
   },
   previewName: {
     flex: 1,
     minWidth: 0,
     fontSize: '1.4rem',
     fontWeight: 700,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -2558,8 +2558,8 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     fontSize: '1.75rem',
     fontWeight: 700,
   },
@@ -2575,9 +2575,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.3rem',
     padding: '0.5rem',
     borderRadius: '0.75rem',
-    border: '2px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    border: '2px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
   },
   avatarOptionSelected: {
     display: 'flex',
@@ -2586,9 +2586,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.3rem',
     padding: '0.5rem',
     borderRadius: '0.75rem',
-    border: '2px solid var(--gold)',
-    background: 'rgba(212, 175, 55, 0.12)',
-    color: 'var(--cream)',
+    border: '2px solid var(--wine-2)',
+    background: 'rgba(142, 36, 64, 0.12)',
+    color: 'var(--marble)',
   },
   avatarOptionTaken: {
     display: 'flex',
@@ -2597,9 +2597,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.3rem',
     padding: '0.5rem',
     borderRadius: '0.75rem',
-    border: '2px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    border: '2px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
   },
@@ -2617,9 +2617,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
+    border: '1px solid var(--marble-3)',
     background: 'transparent',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   pauseButton: {
@@ -2631,23 +2631,23 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     padding: '0.6rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
+    border: '1px solid var(--marble-3)',
     background: 'transparent',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   pausedNotice: {
     fontSize: '1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--gold)',
-    background: 'rgba(212, 175, 55, 0.12)',
-    border: '1px solid var(--gold)',
+    color: 'var(--wine-2)',
+    background: 'rgba(142, 36, 64, 0.12)',
+    border: '1px solid var(--wine-2)',
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
   },
-  // Ελαιογραφία pass - the palette has no red. A destructive action reads
-  // as heavier, not hued: --wood (a solid fill, not the thin outline every
+  // Θέατρο pass - the palette has no red. A destructive action reads
+  // as heavier, not hued: --marble-3 (a solid fill, not the thin outline every
   // other button on this screen uses) is the one border/background this
   // screen reserves for "this commits something irreversible".
   resetToLobbyButton: {
@@ -2655,9 +2655,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.85rem',
     padding: '0.5rem 1rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
+    border: '1px solid var(--marble-3)',
     background: 'transparent',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   resetConfirmBox: {
@@ -2666,13 +2666,13 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.5rem',
     padding: '0.75rem',
     borderRadius: '0.5rem',
-    border: '2px solid var(--wood)',
-    background: 'var(--panel)',
+    border: '2px solid var(--marble-3)',
+    background: 'var(--marble)',
   },
   resetConfirmText: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     textAlign: 'center',
   },
   resetConfirmButtons: {
@@ -2685,8 +2685,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.5rem',
     borderRadius: '0.5rem',
     border: 'none',
-    background: 'var(--wood)',
-    color: 'var(--cream)',
+    background: 'var(--marble-3)',
+    color: 'var(--marble)',
     fontWeight: 700,
   },
   resetCancelButton: {
@@ -2694,16 +2694,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.85rem',
     padding: '0.5rem',
     borderRadius: '0.5rem',
-    border: '1px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    border: '1px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     fontWeight: 600,
   },
-  error: { color: 'var(--cream)', fontWeight: 700, textAlign: 'center' },
+  error: { color: 'var(--marble)', fontWeight: 700, textAlign: 'center' },
   category: {
     fontSize: '1rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -2712,7 +2712,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   questionContainer: {
     display: 'flex',
@@ -2723,8 +2723,8 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 auto',
     height: '100dvh',
     boxSizing: 'border-box',
-    background: 'var(--deep)',
-    color: 'var(--cream)',
+    background: 'var(--night-0)',
+    color: 'var(--marble)',
   },
   questionHeader: {
     display: 'flex',
@@ -2739,9 +2739,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--cream)',
-    background: 'var(--panel)',
-    border: '2px solid var(--wood)',
+    color: 'var(--carve)',
+    background: 'var(--marble)',
+    border: '2px solid var(--marble-3)',
     borderRadius: '0.6rem',
     padding: '0.3rem 0.7rem',
   },
@@ -2771,14 +2771,14 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
-    borderColor: 'var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    borderColor: 'var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   answerButtonSelected: {
-    borderColor: 'var(--gold)',
-    background: 'color-mix(in srgb, var(--gold) 12%, var(--panel))',
+    borderColor: 'var(--wine-2)',
+    background: 'color-mix(in srgb, var(--wine-2) 12%, var(--marble))',
   },
   answerButtonDim: {
     display: 'flex',
@@ -2792,18 +2792,18 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     borderRadius: '1rem',
     border: '3px solid',
-    borderColor: 'var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    borderColor: 'var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
   },
   answerText: {
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   answerTextDim: {
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   revealVerdictRow: {
     display: 'flex',
@@ -2811,28 +2811,28 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     gap: '0.75rem',
   },
-  // Ελαιογραφία pass - correctness is never colour-coded, matching the TV
-  // (see RevealView.tsx's WRONG_OPACITY): both read as the same --cream,
+  // Θέατρο pass - correctness is never colour-coded, matching the TV
+  // (see RevealView.tsx's WRONG_OPACITY): both read as the same --marble,
   // and only opacity/weight tell correct from wrong.
   revealCorrect: {
     fontSize: '2.5rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     opacity: 1,
   },
   revealWrong: {
     fontSize: '2.5rem',
     fontWeight: 500,
     textAlign: 'center',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     opacity: WRONG_OPACITY,
   },
   revealCorrectOption: {
     fontSize: '1.1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   revealYourChoice: {
     display: 'flex',
@@ -2842,31 +2842,31 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   revealPoints: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   revealTotal: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   revealRank: {
     fontSize: '1.25rem',
     fontWeight: 600,
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   revealSpeedRank: {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   // Η Δίκη (Task 129) - the one static life figure QUESTION and REVEAL both
   // show. Gold like revealSpeedRank: it's the number the whole trial turns
@@ -2875,19 +2875,19 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   scoreboardRank: {
     fontSize: '3rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   scoreboardScore: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   // Power-up (Task 30b) - big tap targets, since both steps are decided
   // under a 10 second clock the phone doesn't even display.
@@ -2903,9 +2903,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.35rem',
     padding: '1.25rem 1rem',
     borderRadius: '1rem',
-    border: '3px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '3px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     boxShadow: SURFACE_GLOW,
   },
   powerUpEffectIcon: {
@@ -2919,7 +2919,7 @@ const styles: Record<string, CSSProperties> = {
   powerUpEffectBlurb: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
   },
   powerUpTargetList: {
@@ -2935,9 +2935,9 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.9rem',
     padding: '0.7rem 1rem',
     borderRadius: '0.9rem',
-    border: '2px solid var(--wood)',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    border: '2px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'left',
   },
   powerUpTargetName: {
@@ -2956,8 +2956,8 @@ const styles: Record<string, CSSProperties> = {
     gap: '0.4rem',
     padding: '1.5rem 1rem',
     borderRadius: '1rem',
-    border: '3px solid var(--wood)',
-    background: 'var(--panel)',
+    border: '3px solid var(--marble-3)',
+    background: 'var(--marble)',
     boxShadow: SURFACE_GLOW,
   },
   powerUpLockedIcon: {
@@ -2967,18 +2967,18 @@ const styles: Record<string, CSSProperties> = {
   powerUpLockedTitle: {
     fontSize: '1.75rem',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   powerUpLockedDetail: {
     fontSize: '1.2rem',
     fontWeight: 700,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     textAlign: 'center',
   },
   powerUpLockedHint: {
     fontSize: '0.95rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
   },
   // Steal (Task 32) - what this target actually stands to lose, already
@@ -2986,18 +2986,18 @@ const styles: Record<string, CSSProperties> = {
   stealTargetScore: {
     fontSize: '1.2rem',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   gameOverWon: {
     fontSize: '2rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   gameOverLost: {
     fontSize: '1.75rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
 };

@@ -6,7 +6,7 @@ import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
 
 // progressBarTrack is shared with GuessRevealView (hostStyles.ts) and still
-// carries an old pre-Ελαιογραφία token there - this phase's content is
+// carries an old pre-Θέατρο token there - this phase's content is
 // ported on its own, so it gets a local override instead of touching that
 // shared entry.
 const progressBarTrackStyle: CSSProperties = {
@@ -14,7 +14,7 @@ const progressBarTrackStyle: CSSProperties = {
   maxWidth: '500px',
   height: '0.5rem',
   borderRadius: '999px',
-  background: 'var(--panel)',
+  background: 'var(--marble)',
   overflow: 'hidden',
 };
 
@@ -56,7 +56,7 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
-            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
             data-testid="numeric-reveal-text"
             ref={questionTextRef}
           >

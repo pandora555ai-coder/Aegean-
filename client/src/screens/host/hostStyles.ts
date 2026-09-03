@@ -4,7 +4,7 @@ export const QR_SIZE_PX = 240; // comfortably above the "at least 200px" floor
 
 // React's CSSProperties doesn't model CSS custom properties - this lets the
 // `--glow-color` variable the .glow/.glow-pulse classes read (in
-// palette-elaiografia.css) be set inline per-element, since each glow needs
+// palette-theatro.css) be set inline per-element, since each glow needs
 // a different colour.
 export type CSSVars = CSSProperties & Record<`--${string}`, string>;
 
@@ -93,7 +93,7 @@ export function guessRevealImageWrapStyle(count: number): CSSProperties {
     aspectRatio: '1 / 1',
     borderRadius: '1rem',
     overflow: 'hidden',
-    border: '3px solid var(--wood)',
+    border: '3px solid var(--marble-3)',
     flexShrink: 0,
   };
 }
@@ -140,8 +140,8 @@ export const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '3vh 3vw',
     overflow: 'hidden',
-    background: 'var(--ground)',
-    color: 'var(--cream)',
+    background: 'var(--night-1)',
+    color: 'var(--marble)',
     position: 'relative',
     zIndex: 1,
   },
@@ -169,7 +169,7 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     letterSpacing: '0.08em',
     textTransform: 'uppercase',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
     marginBottom: '0.75rem',
   },
@@ -183,8 +183,8 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     width: '100%',
     borderRadius: '0.75rem',
-    background: 'var(--ground)',
-    color: 'var(--cream)',
+    background: 'var(--night-1)',
+    color: 'var(--marble)',
     boxSizing: 'border-box',
   },
   scorePanelRowLeader: {
@@ -192,9 +192,9 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     width: '100%',
     borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.1)',
-    border: '2px solid var(--gold)',
-    color: 'var(--cream)',
+    background: 'rgba(142, 36, 64, 0.1)',
+    border: '2px solid var(--wine-2)',
+    color: 'var(--marble)',
     boxSizing: 'border-box',
   },
   scorePanelRowDisconnected: {
@@ -202,13 +202,13 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     width: '100%',
     borderRadius: '0.75rem',
-    background: 'var(--ground)',
-    color: 'var(--dim)',
+    background: 'var(--night-1)',
+    color: 'var(--marble-3)',
     opacity: 0.5,
     boxSizing: 'border-box',
   },
   scorePanelRank: {
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     minWidth: '1.6rem',
     flexShrink: 0,
     fontWeight: 700,
@@ -234,7 +234,7 @@ export const styles: Record<string, CSSProperties> = {
     fontFamily: 'monospace',
     fontWeight: 700,
     fontSize: '0.8em',
-    color: 'var(--gold)',
+    color: 'var(--ember)',
     marginLeft: '0.35rem',
   },
   // Η Δίκη (Task 128) - an eliminated player's row, TRIAL_QUESTION/
@@ -263,8 +263,8 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 'var(--tv-safe-top)',
     overflow: 'hidden',
     width: '100%',
-    background: 'var(--ground)',
-    color: 'var(--cream)',
+    background: 'var(--night-1)',
+    color: 'var(--marble)',
     // Stacks above the fixed .confetti-piece / .firework-particle layers
     // (both z-index: 0) regardless of DOM order. The background light
     // sweep this originally also stacked above (Task 21) was removed in
@@ -272,14 +272,14 @@ export const styles: Record<string, CSSProperties> = {
     position: 'relative',
     zIndex: 1,
   },
-  status: { fontSize: '1.25rem', color: 'var(--dim)' },
+  status: { fontSize: '1.25rem', color: 'var(--marble-3)' },
   createButton: {
     fontSize: '2rem',
     padding: '1.5rem 3rem',
     borderRadius: '0.75rem',
     border: 'none',
-    background: 'var(--gold)',
-    color: 'var(--ink)',
+    background: 'var(--wine-2)',
+    color: 'var(--carve)',
     fontWeight: 700,
   },
   createButtonDisabled: {
@@ -287,8 +287,8 @@ export const styles: Record<string, CSSProperties> = {
     padding: '1.5rem 3rem',
     borderRadius: '0.75rem',
     border: 'none',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     fontWeight: 700,
   },
   code: {
@@ -296,14 +296,14 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.5em',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   qrWrapper: {
     // A light, near-white ground regardless of theme - QR scanning fails on
     // dark/inverted codes on many phone cameras, so this can't just inherit
     // whatever the page background happens to be. The canvas paints its own
-    // white quiet zone (margin: 2), so --cream here only frames it.
-    background: 'var(--cream)',
+    // white quiet zone (margin: 2), so --marble here only frames it.
+    background: 'var(--marble)',
     padding: '1rem',
     borderRadius: '1rem',
     lineHeight: 0,
@@ -316,8 +316,8 @@ export const styles: Record<string, CSSProperties> = {
     left: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     borderRadius: '999px',
     padding: '0.5rem 0.7rem',
     cursor: 'pointer',
@@ -331,8 +331,8 @@ export const styles: Record<string, CSSProperties> = {
     right: '1rem',
     fontSize: '1.5rem',
     lineHeight: 1,
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     borderRadius: '999px',
     padding: '0.5rem 0.7rem',
     cursor: 'pointer',
@@ -350,9 +350,9 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     fontFamily: 'monospace',
     letterSpacing: '0.15em',
-    color: 'var(--cream)',
-    background: 'var(--panel)',
-    border: '1px solid var(--wood)',
+    color: 'var(--carve)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
     padding: '0.35rem 0.75rem',
     borderRadius: '0.5rem',
     boxShadow: SURFACE_GLOW,
@@ -365,7 +365,7 @@ export const styles: Record<string, CSSProperties> = {
     position: 'fixed',
     // Top and bottom edges inset by the TV overscan safe area (palette).
     inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
-    background: 'var(--ground)',
+    background: 'var(--night-1)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -380,8 +380,8 @@ export const styles: Record<string, CSSProperties> = {
     position: 'fixed',
     // Top and bottom edges inset by the TV overscan safe area (palette).
     inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
-    background: 'var(--ground)',
-    color: 'var(--cream)',
+    background: 'var(--night-1)',
+    color: 'var(--marble)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -400,39 +400,39 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '2rem',
     fontWeight: 700,
     letterSpacing: '0.3em',
-    color: 'var(--gold)',
+    color: 'var(--ember)',
   },
   stageTitle: {
     fontSize: 'clamp(3.5rem, 6vw, 6rem)',
     fontWeight: 900,
     lineHeight: 1.15,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   stageTagline: {
     fontSize: '2rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   stageRange: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   pauseTitle: {
     fontSize: '5rem',
     fontWeight: 900,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     letterSpacing: '0.15em',
   },
   pauseSubtitle: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   counter: {
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   playerList: {
     display: 'flex',
@@ -452,7 +452,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   playerName: {
     fontWeight: 600,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -460,7 +460,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   playerNameDisconnected: {
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -470,27 +470,27 @@ export const styles: Record<string, CSSProperties> = {
   waitingMessage: {
     fontSize: '2.5rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   settingsSummary: {
     fontSize: '1.25rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   category: {
     fontSize: '1.75rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
   progress: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    // --dim, not --text-faint (a token that only ever lived in the retired
-    // theme stylesheet). Papyrus call sites override this with --ink; --dim
+    // --marble-3, not --text-faint (a token that only ever lived in the retired
+    // theme stylesheet). Papyrus call sites override this with --carve; --marble-3
     // is the muted reading on the dark ground.
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   questionText: {
     fontSize: '4rem',
@@ -498,7 +498,7 @@ export const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     lineHeight: 1.3,
     maxWidth: '90%',
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   // QUESTION only. With the options gone (Task 29) the question is the
   // one thing to read on the TV, so it takes the space they used to.
@@ -516,7 +516,7 @@ export const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     lineHeight: 1.25,
     maxWidth: '85%',
-    color: 'var(--ink)',
+    color: 'var(--carve)',
   },
   // Wraps questionTextTv so it has a determinate, flexed height to fit
   // against - a shrink-wrapped container just measures itself, which is
@@ -546,7 +546,7 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     padding: '0.75rem 1.5rem',
     borderRadius: '1rem',
-    color: 'var(--ink)',
+    color: 'var(--carve)',
   },
   optionLabel: {
     fontWeight: 800,
@@ -559,13 +559,13 @@ export const styles: Record<string, CSSProperties> = {
     width: '7rem',
     height: '7rem',
     borderRadius: '50%',
-    background: 'var(--panel)',
+    background: 'var(--marble)',
   },
   timer: {
     fontSize: '3rem',
     fontWeight: 800,
     fontFamily: 'monospace',
-    color: 'var(--gold)',
+    color: 'var(--carve)',
   },
   // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
   // above other content: the card fills the left column on its own, and the
@@ -585,21 +585,21 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '1.75rem',
     fontWeight: 700,
     letterSpacing: '0.3em',
-    color: 'var(--gold)',
+    color: 'var(--ember)',
   },
   socratesStageQuote: {
     fontSize: 'clamp(2.5rem, 4vw, 4rem)',
     fontWeight: 800,
     lineHeight: 1.25,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
     fontStyle: 'italic',
   },
   socratesIntroBanner: {
     padding: '0.5rem 1.25rem',
     borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.12)',
-    border: '2px solid var(--gold)',
-    color: 'var(--gold)',
+    background: 'rgba(142, 36, 64, 0.12)',
+    border: '2px solid var(--wine-2)',
+    color: 'var(--wine-2)',
     fontSize: '1.15rem',
     fontWeight: 700,
     textAlign: 'center',
@@ -613,14 +613,14 @@ export const styles: Record<string, CSSProperties> = {
     fontSize: '3rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--ink)',
+    color: 'var(--carve)',
     padding: '1rem',
   },
   trialOutcomeLine: {
     fontSize: '1.5rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   // GAME_OVER's whole celebration stack, as ONE block so useFitScale has a
   // single thing to measure and scale (the container itself also holds the
@@ -648,8 +648,8 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'var(--panel)',
-    color: 'var(--cream)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
   },
   standingRowDisconnected: {
     display: 'flex',
@@ -659,8 +659,8 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'var(--panel)',
-    color: 'var(--dim)',
+    background: 'var(--marble)',
+    color: 'var(--marble-3)',
     opacity: 0.5,
   },
   standingRowLeader: {
@@ -671,12 +671,12 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.1)',
-    border: '2px solid var(--gold)',
-    color: 'var(--cream)',
+    background: 'rgba(142, 36, 64, 0.1)',
+    border: '2px solid var(--wine-2)',
+    color: 'var(--marble)',
   },
   standingRank: {
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     minWidth: '3rem',
   },
   standingName: {
@@ -712,14 +712,14 @@ export const styles: Record<string, CSSProperties> = {
     zIndex: 1,
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   winnerBanner: {
     position: 'relative',
     zIndex: 1,
     fontSize: '3.5rem',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--olive)',
     textAlign: 'center',
   },
   standingRowWinner: {
@@ -730,17 +730,17 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     padding: '1rem 1.5rem',
     borderRadius: '0.75rem',
-    background: 'rgba(212, 175, 55, 0.14)',
-    border: '3px solid var(--gold)',
-    color: 'var(--cream)',
+    background: 'rgba(154, 168, 96, 0.14)',
+    border: '3px solid var(--olive)',
+    color: 'var(--marble)',
   },
   wakeLockHint: {
     fontSize: '0.9rem',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   powerHint: {
     fontSize: '0.85rem',
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     textAlign: 'center',
     cursor: 'pointer',
     maxWidth: '32rem',
@@ -750,7 +750,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   progressBarFill: {
     height: '100%',
-    background: 'var(--gold)',
+    background: 'var(--wine-2)',
     borderRadius: '999px',
     transition: 'width 1s linear',
   },
@@ -759,7 +759,7 @@ export const styles: Record<string, CSSProperties> = {
   // viewport's smaller dimension so it never pushes the options grid or
   // timer off a 100vh screen at any player count (criterion 4).
   drawingImageWrap: {
-    // Ελαιογραφία palette (Task 94) - shrunk from 52vh/46vw: the picture now
+    // Θέατρο palette (Task 94) - shrunk from 52vh/46vw: the picture now
     // sits on its OWN papyrus panel, stacked above a second papyrus for the
     // options, so the old size (tuned for a single flat options grid) left
     // the options panel too little room to fit within 100vh.
@@ -767,7 +767,7 @@ export const styles: Record<string, CSSProperties> = {
     aspectRatio: '1 / 1',
     borderRadius: '1rem',
     overflow: 'hidden',
-    border: '3px solid var(--wood)',
+    border: '3px solid var(--marble-3)',
     flexShrink: 0,
   },
   drawingImage: {
@@ -777,7 +777,7 @@ export const styles: Record<string, CSSProperties> = {
     objectFit: 'contain',
     // Matches the paper the drawing is baked onto (PAPER in DrawingCanvas),
     // so objectFit:contain's letterbox bars are invisible against it.
-    background: 'var(--cream)',
+    background: 'var(--marble)',
   },
   // Steal (Task 32) - the TV during and after a theft.
   stealThiefRow: {
@@ -786,12 +786,12 @@ export const styles: Record<string, CSSProperties> = {
     gap: '1.25rem',
     fontSize: '3rem',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   stealAmount: {
     fontSize: '2.25rem',
     fontWeight: 700,
-    color: 'var(--cream)',
+    color: 'var(--marble)',
   },
   stealVictimRow: {
     display: 'flex',
@@ -799,22 +799,22 @@ export const styles: Record<string, CSSProperties> = {
     gap: '1.25rem',
     fontSize: '2.5rem',
     fontWeight: 700,
-    color: 'var(--ink)',
+    color: 'var(--carve)',
   },
   stealMovedAmount: {
     fontSize: 'clamp(4rem, 7vw, 7rem)',
     fontWeight: 800,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
   stealNothing: {
     fontSize: '3rem',
     fontWeight: 700,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   stealClampNote: {
     fontSize: '1.5rem',
     fontWeight: 600,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
   },
   // Numeric mode (Task 66) - NUMERIC_QUESTION's range readout and
   // NUMERIC_REVEAL's answer banner. Task 114 deleted the number line and
@@ -822,12 +822,12 @@ export const styles: Record<string, CSSProperties> = {
   numericRange: {
     fontSize: '2rem',
     fontWeight: 700,
-    color: 'var(--dim)',
+    color: 'var(--marble-3)',
     fontFamily: 'monospace',
   },
   numericAnswerBanner: {
     fontSize: '1.75rem',
     fontWeight: 700,
-    color: 'var(--gold)',
+    color: 'var(--wine-2)',
   },
 };

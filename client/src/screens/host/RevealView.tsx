@@ -9,14 +9,14 @@ import { GameLayout } from './GameLayout';
 import { PapyrusPanel } from './PapyrusPanel';
 import { styles } from './hostStyles';
 
-// Ελαιογραφία palette pass - REVEAL's own content (the shared chrome
+// Θέατρο palette pass - REVEAL's own content (the shared chrome
 // - score panel, timer, category - is ported in hostStyles.ts already).
 // Correctness is never colour-coded here: it reads purely as
 // full-opacity/bold (correct) vs 42%-opacity/regular (wrong) -
 // see WRONG_OPACITY below - so nothing here needs a correctness hue.
 const WRONG_OPACITY = 0.42;
 
-// Task: each option gets its own bordered box (--wood, on papyrus) instead
+// Task: each option gets its own bordered box (--marble-3, on papyrus) instead
 // of a bare row - the border colour never changes with correctness, only
 // this row's opacity/weight does (see WRONG_OPACITY).
 const optionsGridStyle: CSSProperties = {
@@ -34,16 +34,16 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   fontSize: '2.25rem',
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
-  color: 'var(--ink)',
+  color: 'var(--carve)',
   padding: '0.75rem 1.25rem',
-  border: '1px solid var(--wood)',
+  border: '1px solid var(--marble-3)',
   borderRadius: '0.5rem',
 });
 
 const answerCountStyle: CSSProperties = {
   marginLeft: 'auto',
   fontWeight: 800,
-  color: 'var(--ink)',
+  color: 'var(--carve)',
 };
 
 const progressBarTrackStyle: CSSProperties = {
@@ -51,7 +51,7 @@ const progressBarTrackStyle: CSSProperties = {
   maxWidth: '500px',
   height: '0.5rem',
   borderRadius: '999px',
-  background: 'var(--panel)',
+  background: 'var(--marble)',
   overflow: 'hidden',
 };
 

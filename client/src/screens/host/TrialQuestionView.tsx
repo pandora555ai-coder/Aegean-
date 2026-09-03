@@ -48,7 +48,7 @@ export function TrialQuestionView({ trialQuestion, roomCode, paused, pausedByNam
       <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
-            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
             data-testid="question-text"
             ref={questionTextRef}
           >

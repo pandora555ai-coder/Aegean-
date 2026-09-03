@@ -30,7 +30,7 @@ import {
 // Gold plus the 4 answer identities' own colours (shared/src/index.ts) -
 // referenced, not copied, so this can never drift from the identity
 // mapping the TV and phones already share.
-const CONFETTI_COLORS = ['var(--gold)', ...ANSWER_IDENTITIES.map((identity) => identity.color)];
+const CONFETTI_COLORS = ['var(--olive)', ...ANSWER_IDENTITIES.map((identity) => identity.color)];
 const CONFETTI_COUNT = 72;
 const CONFETTI_PIECES = Array.from({ length: CONFETTI_COUNT }, (_, i) => {
   const left = (i * 13.7) % 100;
@@ -142,14 +142,14 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
         </div>
         <div style={styles.winnerAvatarRow} data-testid="winner-avatars">
           {winners.map((winner) => (
-            <div key={winner.playerId} className="glow-pulse gold-pulse" style={{ '--glow-color': 'rgba(212, 175, 55, 0.6)' } as CSSVars}>
-              <Avatar avatarId={winner.avatarId} sizeRem={winnerAvatarSize} ringColor="var(--gold)" />
+            <div key={winner.playerId} className="glow-pulse gold-pulse" style={{ '--glow-color': 'rgba(154, 168, 96, 0.6)' } as CSSVars}>
+              <Avatar avatarId={winner.avatarId} sizeRem={winnerAvatarSize} ringColor="var(--olive)" />
             </div>
           ))}
         </div>
         <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
           <div
-            style={{ ...styles.winnerBanner, color: 'var(--ink)', fontSize: `${(3.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
+            style={{ ...styles.winnerBanner, color: 'var(--carve)', fontSize: `${(3.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
             data-testid="winner-banner"
           >
             {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
@@ -168,7 +168,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
                 ? ({
                     ...styles.standingRowWinner,
                     ...rowSize,
-                    '--glow-color': 'rgba(212, 175, 55, 0.5)',
+                    '--glow-color': 'rgba(154, 168, 96, 0.5)',
                     '--i': String(index),
                   } as CSSVars)
                 : ({ ...styles.standingRow, ...rowSize, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
@@ -179,7 +179,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
                 already the survival ranking, so a "#N" badge would be the
                 only digit left on the whole screen for no reason. */}
             {!gameOver.isTrialResult && <span style={styles.standingRank}>#{standing.rank}</span>}
-            <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={standing.rank === 1 ? 'var(--gold)' : undefined} />
+            <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={standing.rank === 1 ? 'var(--olive)' : undefined} />
             <span style={styles.standingName}>{standing.name}</span>
             {!gameOver.isTrialResult && <span style={styles.standingScore}>{standing.score}</span>}
           </div>

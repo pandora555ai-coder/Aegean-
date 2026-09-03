@@ -46,7 +46,7 @@ export function NumericQuestionView({ question, roomCode, paused, pausedByName }
       <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
-            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
             data-testid="numeric-question-text"
             ref={questionTextRef}
           >

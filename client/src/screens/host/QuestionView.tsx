@@ -39,7 +39,7 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
     >
       {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY, briefly shown
           then fades on its own via CSS (socrates-intro-fade, in
-          palette-elaiografia.css) - no JS timer, so it can never delay
+          palette-theatro.css) - no JS timer, so it can never delay
           anything else on this screen. The player side's answer buttons are unaffected
           regardless, since socratesIntro is never even sent in the player
           payload. Conditionally rendered, same reasoning as socratesLine
@@ -65,7 +65,7 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
       <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
-            style={{ ...styles.questionTextTv, color: 'var(--ink)' }}
+            style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
             data-testid="question-text"
             ref={questionTextRef}
           >
