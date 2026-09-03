@@ -263,12 +263,13 @@ Guess-from-options, not free text. Everyone draws at once, then each drawing
 goes up in turn and everyone else picks from four words.
 WORD_SETS rows are { words: [4], rotatable }; the target is chosen at deal
 time, and two players must never get the same target word — but only
-WITHIN one cycle's deal. dealAssignment (modes/draw.ts) reshuffles the
-FULL WORD_SETS pool fresh on every cycle with no memory of prior cycles,
-so across a multi-round game (standalone 2-round, or full's own 3 rounds on
-gameLength 'long' — Task 150) the same word CAN repeat for a player, or
-across rounds, purely by chance. Known, unfixed; the fix is a usedWords
-Set carried in DrawState across cycles, threaded into dealAssignment.
+WITHIN one cycle's deal — and, since Task 153, across cycles too:
+DrawState.usedWords (modes/draw.ts:112) carries every dealt target for the
+whole game and dealAssignment(room, usedWords) drops any WORD_SETS row
+holding one before it shuffles. Pool-short fallback (draw.ts:221): if the
+filtered pool has fewer rows than connected players it warns and deals
+from the FULL pool, allowing repeats for that cycle only. Verified 12/12
+distinct words in a long full bot game.
 The drawer scores round(400 * correct / eligible) — a proportion, so it
 measures clarity, not player count. Export bakes the canvas background
 (flattenToPaper) so an erased area and a paper-colour stroke render
@@ -289,11 +290,29 @@ scoreNumericSubmissions (server-only; the /dev/numeric client tool doesn't
 import it) scores only SUBMITTERS — N is the submitted count, not the room's
 player count. A non-submitter is flat 0, ranked past every real rank.
 
+## Blitz — dev-only prototype, NOT a mode
+
+/dev/blitz (DevBlitzScreen.tsx, Task 69) is a solo phone swipe minigame —
+one true/false statement at a time, swipe right for ΣΩΣΤΟ, left for ΛΑΘΟΣ,
+time-bound round (BLITZ_DURATIONS_SEC 30/45/60/90) — with ALL state local
+(React + localStorage), no socket, no room. There is NO blitz phase machine
+server-side, NO TV view, NO ControllerScreen view, and it is NOT in the
+mode registry (GameModeId is quiz|draw|numeric|full; nothing calls
+registerGameMode for it). The only server piece is blitzLog.ts (Task 70):
+one POST route at BLITZ_LOG_PATH appending finished rounds to
+/var/lib/aegean-blitz/rounds.jsonl, read over ssh, never served. 218
+authored statements (109 Σ / 109 Λ) live in blitz-statements.md at the repo
+root and are GENERATED into shared's BLITZ_STATEMENTS block by `npm run
+blitz:generate` — edit the .md, never the block. Live but unwired: it is a
+standalone prototype whose pool the real mode was meant to reuse, not dead
+code and not a game the room can play.
+
 ## Voice
 
 254 pre-generated ElevenLabs mp3s (LINE_TAGS' count) in client/public/voice,
-named by lineHash(text, tag). Six more orphaned mp3s (from replaced line
-text) also sit in that dir — nothing prunes them.
+named by lineHash(text, tag). Seven more orphaned mp3s (from replaced line
+text; the seventh is Task 149's shortened SPLIT_GUESS) also sit in that
+dir — nothing prunes them.
 **lineHash does NOT include the voice ID** — switching voices overwrites
 the SAME filenames rather than producing new ones. This is the central
 trap of the whole voice system: a filename alone never tells you which
@@ -319,6 +338,16 @@ phase length, so an over-long clip really does hold the phase that long.
 Measured ~100ms of audio per character: keep a line under ~95 characters to
 land under the cap. Never raise the cap to make a clip fit — shorten the
 line instead (Task 149).
+Since Task 154 the host PREFETCHES every active clip on LOBBY entry: it
+emits dev:get_voice_lines, the server answers with collectVoiceLineEntries'
+hash list, and prefetchSocratesLines (useGameAudio.ts:290) fetches each
+mp3 at low priority, four in flight, and DROPS the bytes — HTTP cache only,
+never decoded (254 decoded buffers is too much for a TV browser), once per
+hook instance. Failure path, same task: a 404, a decodeAudioData throw or a
+source.start throw inside playSocratesLine now calls onEnded() at once
+(useGameAudio.ts:273), so a dead clip emits socrates:audio_ended
+immediately instead of holding the phase for the 11000ms backstop
+(measured 11010ms before).
 `npm run voice:generate` regenerates only changed lines and reports the
 longest clip — that scan reads the mp3 DIRECTORY, not the active LINE_TAGS
 hashes, so an orphaned line's mp3 keeps getting reported as "longest"
