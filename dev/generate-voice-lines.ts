@@ -40,6 +40,12 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 
 loadDotEnvIfPresent(path.join(ROOT, '.env'));
 
+// Task 148 - the voice accepted from the 147 A/B test is now the default.
+// Only fills in when nothing (shell env or .env) already set it, so it's
+// still fully overridable. Restore the old voice with
+// ELEVENLABS_VOICE_ID=gFpOFEriJA3T1VbGi2Be in the environment or .env.
+process.env.ELEVENLABS_VOICE_ID ??= 'NOpBlnGInO9m6vDvFkFC';
+
 // Read after loadDotEnvIfPresent so a repo-root .env can set these too.
 const OUT_DIR = process.env.ALT_OUTPUT_DIR
   ? path.resolve(ROOT, process.env.ALT_OUTPUT_DIR)
