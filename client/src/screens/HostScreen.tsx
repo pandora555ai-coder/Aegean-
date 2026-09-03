@@ -14,6 +14,8 @@ import {
   isStealHostPayload,
   isTrialQuestionHostPayload,
   type AnswerProgressPayload,
+  type CrowdMood,
+  type CrowdMoodPayload,
   type DrawShowHostPayload,
   type DrawShowPayload,
   type GameOverPayload,
@@ -74,7 +76,8 @@ import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
-import { SceneLayer } from './host/SceneLayer';
+import { isSceneLit } from './host/SceneLayer';
+import { TheatreScene } from '../components/TheatreScene';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 import type { TimerState } from './host/TimerRing';
 
@@ -83,6 +86,10 @@ export default function HostScreen() {
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
+  // The theatre scene's crowd reaction (Task 158) - server-derived, HOST
+  // ONLY (crowd:mood), consumed as-is. 'calm' is just the pre-first-event
+  // rest state, not a value the server ever has to send before it's ready.
+  const [crowdMood, setCrowdMood] = useState<CrowdMood>('calm');
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
@@ -221,6 +228,10 @@ export default function HostScreen() {
 
     function handleSettingsUpdated(payload: SettingsUpdatedPayload) {
       setRoomSettings(payload);
+    }
+
+    function handleCrowdMood(payload: CrowdMoodPayload) {
+      setCrowdMood(payload.mood);
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -714,6 +725,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+    socket.on(ServerEvents.CROWD_MOOD, handleCrowdMood);
     socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
     socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
 
@@ -741,6 +753,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
+      socket.off(ServerEvents.CROWD_MOOD, handleCrowdMood);
       socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
       socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
     };
@@ -1429,7 +1442,7 @@ export default function HostScreen() {
 
   return (
     <>
-      <SceneLayer phase={phase} />
+      <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       {showFullscreenToggle && (
         <button
           type="button"
