@@ -105,6 +105,11 @@ interface DrawState {
   // round of THIS draw segment (every cycle) - what DRAW_WINNER rewards at
   // the very end. Reset with the rest of the state on every fresh deal.
   drawerPointsByPlayer: Map<string, number>;
+  // Task 153 - every target word dealt so far THIS segment, across cycles.
+  // dealAssignment drops any WORD_SETS row containing one of these before
+  // slicing, so a word can't be a target twice (nor come back as a
+  // distractor) in a multi-round game. Fresh on every dealFreshState.
+  usedWords: Set<string>;
 }
 
 const drawStateByRoom = new WeakMap<Room, DrawState>();
@@ -187,7 +192,7 @@ function assignTargets(rows: readonly WordSet[]): number[] | null {
 // anyone in below DRAW_MIN_PLAYERS connected players, if the word bank
 // somehow ran short, or if no duplicate-free target assignment could be
 // found - all callers treat null as "can't proceed".
-function dealAssignment(room: Room): Map<string, DealtWord> | null {
+function dealAssignment(room: Room, usedWords: Set<string>): Map<string, DealtWord> | null {
   const connected = getConnectedPlayers(room);
   if (connected.length < DRAW_MIN_PLAYERS) {
     console.log(
@@ -208,9 +213,21 @@ function dealAssignment(room: Room): Map<string, DealtWord> | null {
   // target search (assignTargets already exhausts every target combination
   // for the rows it's given) - a different draw of rows is the only thing
   // that can rescue a subset whose overlaps make it truly unsolvable.
+  // Task 153 - rows holding a word already dealt this segment are out of the
+  // pool for this cycle. If that ever leaves fewer rows than players (only
+  // conceivable with a tiny WORD_SETS), fall back to the full pool and log
+  // it - a repeat is far better than a stuck or truncated stage.
+  let pool: readonly WordSet[] = WORD_SETS.filter((row) => !row.words.some((word) => usedWords.has(word)));
+  if (pool.length < connected.length) {
+    console.log(
+      `room ${room.code} draw mode: only ${pool.length} unused word set(s) left for ${connected.length} players - allowing repeats this cycle`,
+    );
+    pool = WORD_SETS;
+  }
+
   const MAX_ATTEMPTS = 25;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const dealtRows = shuffled(WORD_SETS).slice(0, connected.length);
+    const dealtRows = shuffled(pool).slice(0, connected.length);
     const targetIndex = assignTargets(dealtRows);
     if (!targetIndex) {
       continue;
@@ -218,6 +235,7 @@ function dealAssignment(room: Room): Map<string, DealtWord> | null {
     const assignment = new Map<string, DealtWord>();
     connected.forEach((player, index) => {
       assignment.set(player.playerId, { words: dealtRows[index].words, targetIndex: targetIndex[index] });
+      usedWords.add(dealtRows[index].words[targetIndex[index]]);
     });
     return assignment;
   }
@@ -255,7 +273,8 @@ function dealFreshState(room: Room, totalCycles: number, guessScale = 1): boolea
   // instant between this call starting and the fresh `.set()` below landing.
   drawStateByRoom.delete(room);
 
-  const assignment = dealAssignment(room);
+  const usedWords = new Set<string>();
+  const assignment = dealAssignment(room, usedWords);
   if (!assignment) {
     return false;
   }
@@ -275,6 +294,7 @@ function dealFreshState(room: Room, totalCycles: number, guessScale = 1): boolea
     guessScale,
     pendingSocratesLine: null,
     drawerPointsByPlayer: new Map(),
+    usedWords,
   });
   console.log(`room ${room.code} draw mode: dealt ${assignment.size} distinct word sets (${totalCycles} round(s))`);
   return true;
@@ -501,7 +521,7 @@ function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
     return;
   }
 
-  const assignment = dealAssignment(room);
+  const assignment = dealAssignment(room, state.usedWords);
   if (!assignment) {
     console.log(`room ${room.code} draw mode: ending early - can't deal round ${state.cycleIndex + 2}`);
     finishDrawSegment(room, state);
