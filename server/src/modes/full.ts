@@ -1,5 +1,5 @@
 import {
-  FULL_DRAW_ROUNDS,
+  FULL_DRAW_ROUNDS_BY_LENGTH,
   FULL_GUESS_SCORE_SCALE,
   FULL_NUMERIC_QUESTION_COUNT,
   MIN_PLAYERS,
@@ -22,8 +22,9 @@ import type { GameMode } from './types.js';
 // back to back -
 //
 //   1  Η Αγορά       quiz questions (a POWER_UP before each, per the table)
-//   2  Ζωγραφική     one drawing round: everyone draws, then every drawing
-//                    is guessed in turn
+//   2  Ζωγραφική     drawing round(s) (1, or 3 on gameLength 'long' - see
+//                    FULL_DRAW_ROUNDS_BY_LENGTH): everyone draws, then every
+//                    drawing is guessed in turn
 //   3  Εκτίμηση      three numeric questions
 //   4  Η Συκοφαντία  quiz questions, each followed by a STEAL
 //   5  Η Δίκη        the trial finale (Task 127), entered with the scores
@@ -106,6 +107,10 @@ function quizQuestionCount(room: Room): number {
   return stagesFor(room).reduce((total, definition) => total + definition.questionCount, 0);
 }
 
+function drawRoundCount(room: Room): number {
+  return FULL_DRAW_ROUNDS_BY_LENGTH[room.settings.gameLength];
+}
+
 // Everything one game needs, drawn up front. The two sub-mode states are
 // CLEARED here as well as dealt later: "play again" reuses the same Room
 // object, so a second show must never be able to see the first one's drawings
@@ -116,7 +121,7 @@ function prepareGame(room: Room): void {
   prepareNumericGame(room, FULL_NUMERIC_QUESTION_COUNT);
   console.log(
     `room ${room.code} full show: ${quizQuestionCount(room)} quiz question(s) over 2 stages, ` +
-      `${FULL_DRAW_ROUNDS} drawing round, ${FULL_NUMERIC_QUESTION_COUNT} numeric question(s)`,
+      `${drawRoundCount(room)} drawing round(s), ${FULL_NUMERIC_QUESTION_COUNT} numeric question(s)`,
   );
 }
 
@@ -155,7 +160,7 @@ function beginStage(room: Room): boolean {
   }
   switch (stageSegment(definition)) {
     case 'draw':
-      if (startDrawSegment(room, FULL_DRAW_ROUNDS, FULL_GUESS_SCORE_SCALE)) {
+      if (startDrawSegment(room, drawRoundCount(room), FULL_GUESS_SCORE_SCALE)) {
         return true;
       }
       // Too few connected players to deal a drawing round (the mode's own

@@ -587,9 +587,18 @@ export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
   long: 5,
 };
 
-// Fixed, not a setting and not gameLength-dependent - the show's shape is the
-// show's shape.
-export const FULL_DRAW_ROUNDS = 1;
+// Task 150 - how many draw-then-guess-everything cycles the full show's
+// drawing stage runs, by the VIP's gameLength. Same shape as
+// FULL_QUIZ_QUESTION_COUNTS: short/medium keep the original single round,
+// long gets three. Not a setting - the VIP never picks this directly, only
+// gameLength.
+export const FULL_DRAW_ROUNDS_BY_LENGTH: Record<GameLength, number> = {
+  short: 1,
+  medium: 1,
+  long: 3,
+};
+
+// Fixed, not gameLength-dependent - the show's shape is the show's shape.
 export const FULL_NUMERIC_QUESTION_COUNT = 3;
 
 // Task 135 - the full show's quiz stages pay on the same ~400-point scale the
