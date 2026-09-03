@@ -253,6 +253,7 @@ export function useGameAudio() {
       if (!buffer) {
         const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);
         if (!res.ok) {
+          onEnded(); // Task 154 - a missing clip ends the beat now, not at the backstop
           return;
         }
         const arrayBuffer = await res.arrayBuffer();
@@ -270,9 +271,41 @@ export function useGameAudio() {
       source.connect(ctx.destination);
       source.start();
     } catch {
-      // Best effort - the game continues silently either way (server-side
-      // fallback timer ends the phase; onEnded is never called).
+      // Task 154 - a fetch/decode/start failure used to leave the phase
+      // sitting silent until the server's SOCRATES_MAX_DURATION_MS backstop
+      // (observed: 11010ms on a 404). A room reads 11 silent seconds as
+      // "broken", so a dead clip now ends the beat immediately instead.
+      onEnded();
     }
+  }
+
+  // Task 154 - warms the browser's HTTP cache with every active Socrates
+  // clip (the host asks the server for the hash list on entering LOBBY) so
+  // the first play of any line is a cache hit instead of a network fetch
+  // racing that same backstop - the longest clip is 10919ms, 81ms under it.
+  // Bytes are read and DROPPED, never decoded: 254 decoded AudioBuffers is
+  // too much memory for a TV browser, so playSocratesLine still decodes on
+  // demand. Low priority, four in flight, once per hook instance.
+  const prefetchStartedRef = useRef(false);
+  function prefetchSocratesLines(hashes: readonly string[]): void {
+    if (prefetchStartedRef.current) {
+      return;
+    }
+    prefetchStartedRef.current = true;
+    const queue = [...hashes];
+    async function worker() {
+      for (let hash = queue.shift(); hash !== undefined; hash = queue.shift()) {
+        try {
+          const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`, { priority: 'low' });
+          if (res.ok) {
+            await res.arrayBuffer();
+          }
+        } catch {
+          // Best effort - playSocratesLine fetches on demand regardless.
+        }
+      }
+    }
+    void Promise.all(Array.from({ length: 4 }, worker));
   }
 
   // CUE 1 - QUESTION START, the most important cue: a rising 3-note motif
@@ -328,5 +361,6 @@ export function useGameAudio() {
     playRevealCue,
     playGameOverFanfare,
     playSocratesLine,
+    prefetchSocratesLines,
   };
 }

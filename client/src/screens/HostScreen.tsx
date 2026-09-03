@@ -42,6 +42,7 @@ import {
   type SettingsUpdatedPayload,
   type SocratesShowPayload,
   type StageAnnouncePayload,
+  type DevVoiceLinesPayload,
   type StateSyncPayload,
   type StealResolvedPayload,
   type StealShowHostPayload,
@@ -153,6 +154,7 @@ export default function HostScreen() {
     playRevealCue,
     playGameOverFanfare,
     playSocratesLine,
+    prefetchSocratesLines,
   } = useGameAudio();
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
@@ -682,7 +684,15 @@ export default function HostScreen() {
       }
     }
 
+    // Task 154 - the active clip list (LINE_TAGS hashed by lineHash, from
+    // the server's collectVoiceLineEntries), answered on every LOBBY entry -
+    // see the DEV_GET_VOICE_LINES effect below. Prefetch itself runs once.
+    function handleVoiceLines(payload: DevVoiceLinesPayload) {
+      prefetchSocratesLines(payload.lines.map((line) => line.hash));
+    }
+
     socket.on(ServerEvents.ROOM_CREATED, handleRoomCreated);
+    socket.on(ServerEvents.DEV_VOICE_LINES, handleVoiceLines);
     socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -709,6 +719,7 @@ export default function HostScreen() {
 
     return () => {
       socket.off(ServerEvents.ROOM_CREATED, handleRoomCreated);
+      socket.off(ServerEvents.DEV_VOICE_LINES, handleVoiceLines);
       socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -1026,6 +1037,16 @@ export default function HostScreen() {
     }).catch((err: unknown) => {
       console.warn('failed to render QR code', err);
     });
+  }, [roomCode, phase]);
+
+  // Task 154 - warm the HTTP cache with every Socrates clip while the room
+  // is still filling, so no first play races the server's backstop. Fire-
+  // and-forget: nothing here waits on it, LOBBY renders regardless.
+  useEffect(() => {
+    if (!roomCode || phase !== 'LOBBY') {
+      return;
+    }
+    socket.emit(ClientEvents.DEV_GET_VOICE_LINES);
   }, [roomCode, phase]);
 
   function handleCreateRoom() {
