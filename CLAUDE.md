@@ -8,7 +8,8 @@ in Ancient Athens. All player-facing text is Greek.
 TypeScript monorepo, npm workspaces: /shared /server /client
 Server: Node + Express + Socket.IO (tsx, no build step, systemd)
 Client: Vite + React. Routes: / (landing), /host (TV), /play (phone),
-plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz (devRoutes.tsx)
+plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
+/dev/voice-ab /dev/voice-matrix /dev/voice-eq (devRoutes.tsx)
 
 ## WHERE YOU WORK — read this before running anything
 
@@ -61,6 +62,10 @@ server/src/steal.ts      STEAL thief selection + the clamped point transfer
 server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
                          what the next round must be. No Room, no io, no timers; the phase
                          shell around it is in phases.ts.
+server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY,
+                         no playback yet (Task 36 not built). Wired into all four modes:
+                         quiz via phases.ts since Task 35, draw/numeric got their own
+                         wiring in Task 151.
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
@@ -152,7 +157,10 @@ Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
       beginStage, advanceAfterSegment. See modes/README.md.
       FULL_QUIZ_QUESTION_COUNTS (shared) gives EACH quiz stage's count by
       gameLength: short 2, medium 3, long 5 (so stages 1+4 total 2+2/3+3/5+5).
-      Draw rounds (1) and numeric count (3) are fixed. Every segment count is
+      Draw round count is gameLength-dependent since Task 150
+      (FULL_DRAW_ROUNDS_BY_LENGTH: short 1, medium 1, long 3 — standalone
+      draw's own room.settings.drawRounds setting is untouched); numeric
+      count (3) stays fixed regardless of length. Every segment count is
       a CALL-SITE parameter (startDrawSegment(room, totalCycles, guessScale),
       prepareNumericGame(room, questionCount)) — standalone modes pass their
       own constants (standalone numeric still asks NUMERIC_QUESTION_COUNT =
@@ -254,7 +262,13 @@ intensity (cap 3), both via addAppliedSabotage().
 Guess-from-options, not free text. Everyone draws at once, then each drawing
 goes up in turn and everyone else picks from four words.
 WORD_SETS rows are { words: [4], rotatable }; the target is chosen at deal
-time, and two players must never get the same target word.
+time, and two players must never get the same target word — but only
+WITHIN one cycle's deal. dealAssignment (modes/draw.ts) reshuffles the
+FULL WORD_SETS pool fresh on every cycle with no memory of prior cycles,
+so across a multi-round game (standalone 2-round, or full's own 3 rounds on
+gameLength 'long' — Task 150) the same word CAN repeat for a player, or
+across rounds, purely by chance. Known, unfixed; the fix is a usedWords
+Set carried in DrawState across cycles, threaded into dealAssignment.
 The drawer scores round(400 * correct / eligible) — a proportion, so it
 measures clarity, not player count. Export bakes the canvas background
 (flattenToPaper) so an erased area and a paper-colour stroke render
@@ -277,13 +291,56 @@ player count. A non-submitter is flat 0, ranked past every real rank.
 
 ## Voice
 
-~186 pre-generated ElevenLabs mp3s in client/public/voice, named by
-lineHash(text, tag). **They are gitignored and cost credits to rebuild.**
-In the dev copy that path is a SYMLINK — the .gitignore entry is `voice`
-with NO trailing slash, because a trailing slash does not match a symlink.
-SOCRATES ends on socrates:audio_ended from the host; the timer is only a
-backstop. `npm run voice:generate` regenerates only changed lines and
-reports the longest clip; `npm run voice:index` builds the rating page.
+254 pre-generated ElevenLabs mp3s (LINE_TAGS' count) in client/public/voice,
+named by lineHash(text, tag). Six more orphaned mp3s (from replaced line
+text) also sit in that dir — nothing prunes them.
+**lineHash does NOT include the voice ID** — switching voices overwrites
+the SAME filenames rather than producing new ones. This is the central
+trap of the whole voice system: a filename alone never tells you which
+voice actually generated it. Current default NOpBlnGInO9m6vDvFkFC
+(ELEVENLABS_VOICE_ID env var), switched in Task 147/148 from the original
+gFpOFEriJA3T1VbGi2Be — restore the original by setting ELEVENLABS_VOICE_ID
+back to it, or override for one run only with ALT_VOICE_ID.
+dev/generate-voice-lines.ts's other overrides: ALT_OUTPUT_DIR (write
+elsewhere instead of client/public/voice) and ONLY_HASHES (comma-separated
+lineHash values, restrict generation to those). None change default
+behavior when unset. **They are gitignored and cost credits to rebuild.**
+In the dev copy that path is a SYMLINK straight into /opt/party-game's own
+voice dir — the rsync target — so a normal incremental `npm run
+voice:generate` writes directly into PRODUCTION. The .gitignore entry is
+`voice` with NO trailing slash, because a trailing slash does not match a
+symlink. A FULL regeneration (all 254 lines) instead writes to a staging
+dir via ALT_OUTPUT_DIR and is swapped in only by running
+`dev/voice/swap-staging.sh`, which refuses to swap unless the staged file
+count matches what's expected.
+SOCRATES ends on socrates:audio_ended from the host; SOCRATES_MAX_DURATION_MS
+(11000ms) is a BACKSTOP, never a limit — source.onended actually drives
+phase length, so an over-long clip really does hold the phase that long.
+Measured ~100ms of audio per character: keep a line under ~95 characters to
+land under the cap. Never raise the cap to make a clip fit — shorten the
+line instead (Task 149).
+`npm run voice:generate` regenerates only changed lines and reports the
+longest clip — that scan reads the mp3 DIRECTORY, not the active LINE_TAGS
+hashes, so an orphaned line's mp3 keeps getting reported as "longest"
+forever; that warning alone is not evidence of a real problem. `npm run
+voice:index` builds the rating page.
+Pitch shift (Task 144) and EQ-only processing (Task 145) were both tried on
+this voice and REJECTED. Do not propose either again.
+
+## Crowd mood
+
+Server-derived mood (calm/tension/cheer/boo) via server/src/crowd.ts,
+HOST ONLY (`crowd:mood` event) — a decision layer only, no audio plays yet.
+Crowd playback (Task 36) is not built; the existing cue set in
+client/src/hooks/useGameAudio.ts is STILL LIVE and untouched by this.
+Since Task 151 it's wired into all four modes (quiz already had it via
+phases.ts; draw.ts and numeric.ts had ZERO wiring before, so a `full`
+game's draw/numeric stages were silent). A short full game emits 48
+crowd:mood events. LOBBY and TRIAL_QUESTION never get one attributed to
+them — LOBBY because nothing ever calls setCrowdMood there, TRIAL_QUESTION
+because its own setCrowdMood fires BEFORE that phase's `phase:changed`,
+the same signal-ordering trap already documented below for PHASE_CHANGED
+vs. a phase's own payload. Known, not fixed.
 
 ## Traps that have bitten before
 
