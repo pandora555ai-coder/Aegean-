@@ -830,4 +830,39 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     color: 'var(--gold)',
   },
+  // Blitz mode (Task 156) - BLITZ's papyrus (title + one instruction line),
+  // BLITZ_REVEAL's verdict under the most-missed statement, and the n/K
+  // progress cell in each score-column row.
+  blitzTitle: {
+    fontSize: '5rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    lineHeight: 1.1,
+    color: 'var(--ink)',
+  },
+  blitzInstruction: {
+    fontSize: '1.9rem',
+    fontWeight: 600,
+    textAlign: 'center',
+    lineHeight: 1.3,
+    maxWidth: '85%',
+    marginTop: '1.5rem',
+    color: 'var(--ink)',
+    opacity: 0.8,
+  },
+  blitzVerdict: {
+    fontSize: '2rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    marginTop: '1.25rem',
+    color: 'var(--ink)',
+  },
+  scorePanelProgress: {
+    flexShrink: 0,
+    fontFamily: 'monospace',
+    fontWeight: 600,
+    fontSize: '0.8em',
+    color: 'var(--dim)',
+    marginLeft: '0.35rem',
+  },
 };

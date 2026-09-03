@@ -49,6 +49,11 @@ export const ClientEvents = {
   // order and no per-question `answers` map, and what the server records is
   // an elapsed-at-lock-in figure the quiz's own handler has no use for.
   TRIAL_SUBMIT: 'player:trial_submit',
+  // Task 156 - the blitz mode. One swipe per statement, in order: the phone
+  // sends the statement's index and which way it went; the server stamps
+  // it, checks it is the NEXT expected index (no going back, no skipping)
+  // and never acks - the phone advances on its own, the truth stays here.
+  BLITZ_SWIPE: 'player:blitz_swipe',
 } as const;
 
 export const ServerEvents = {
@@ -102,6 +107,14 @@ export const ServerEvents = {
   TRIAL_REVEAL_SHOW: 'trial_reveal:show',
   // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
   // has locked in, never what they guessed.
+  // Task 156 - the blitz mode. BLITZ_SHOW is asymmetric like question:show
+  // (phones get the K statement TEXTS, never their truth; the host gets
+  // per-player progress and no texts at all); BLITZ_PROGRESS is host-only
+  // (how far each player is, never what they swiped); BLITZ_REVEAL_SHOW is
+  // asymmetric too - a phone gets ITS OWN counts, the host every player's.
+  BLITZ_SHOW: 'blitz:show',
+  BLITZ_PROGRESS: 'blitz:progress',
+  BLITZ_REVEAL_SHOW: 'blitz_reveal:show',
 } as const;
 
 export type RoomCode = string;
@@ -335,8 +348,11 @@ export interface LobbyUpdatePayload {
 // round, a numeric segment, a stealing quiz stage and the trial back to back.
 // The other three stay registered and VIP-selectable as the dev harness for
 // their own mechanics; 'full' composes them rather than copying any of it.
-export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full'];
+// Task 156 - 'blitz' is a standalone true/false swipe mode (BLITZ ->
+// BLITZ_REVEAL), registry-selectable like the other three; not yet composed
+// into 'full'.
+export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full', 'blitz'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
 
 // Task 57 - one mode as the LOBBY needs to know it: its own display label
@@ -390,6 +406,10 @@ export type GamePhase =
   // stage, and left only for GAME_OVER.
   | 'TRIAL_QUESTION'
   | 'TRIAL_REVEAL'
+  // Task 156 - the 'blitz' mode's own phases: everyone swipes through the
+  // same K true/false statements at their own pace, then one reveal.
+  | 'BLITZ'
+  | 'BLITZ_REVEAL'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35, extended to draw/numeric in Task 151) - server-derived,
@@ -1442,6 +1462,12 @@ export type StateSyncTrialQuestionPlayerPayload = TrialQuestionShowPlayerPayload
   remainingMs: number;
 };
 export type StateSyncTrialRevealPayload = TrialRevealShowPayload & { phase: 'TRIAL_REVEAL' };
+// Task 156 - the blitz mode, same builder-plus-remainingMs shape. durationMs
+// in both BLITZ payloads is already "time STILL LEFT" (see BlitzShowHostPayload).
+export type StateSyncBlitzHostPayload = BlitzShowHostPayload & { phase: 'BLITZ'; remainingMs: number };
+export type StateSyncBlitzPlayerPayload = BlitzShowPlayerPayload & { phase: 'BLITZ'; remainingMs: number };
+export type StateSyncBlitzRevealHostPayload = BlitzRevealHostPayload & { phase: 'BLITZ_REVEAL' };
+export type StateSyncBlitzRevealPlayerPayload = BlitzRevealPlayerPayload & { phase: 'BLITZ_REVEAL' };
 
 export type StateSyncPayload =
   | StateSyncLobbyPayload
@@ -1468,6 +1494,10 @@ export type StateSyncPayload =
   | StateSyncTrialQuestionHostPayload
   | StateSyncTrialQuestionPlayerPayload
   | StateSyncTrialRevealPayload
+  | StateSyncBlitzHostPayload
+  | StateSyncBlitzPlayerPayload
+  | StateSyncBlitzRevealHostPayload
+  | StateSyncBlitzRevealPlayerPayload
   | StateSyncGameOverPayload;
 
 // Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
@@ -2008,6 +2038,111 @@ export const BLITZ_DURATIONS_SEC = [30, 45, 60, 90] as const;
 // past 50MB (507).
 export const BLITZ_LOG_PATH = '/api/blitz-log/378857bcc8436b3a395a8033062b12cb';
 
+// ----------------------- Blitz as a room mode (Task 156) -------------------
+// The real mode the prototype above was waiting for: every player gets the
+// SAME K statements in the SAME order (drawn server-side per game, balanced
+// true/false, shuffled), swipes through at their own pace - right = ΣΩΣΤΟ,
+// left = ΛΑΘΟΣ, no going back - inside one BLITZ_DURATION_MS window that
+// ends early once everyone has swiped all K. Correct +BLITZ_CORRECT_POINTS,
+// wrong -BLITZ_WRONG_POINTS, unanswered 0: the penalty is what makes
+// spam-swiping score about zero. Every one of these is a call-site
+// parameter of the pure mechanic (server/src/blitz.ts), never read inside it.
+export const BLITZ_MIN_PLAYERS = 2;
+export const BLITZ_STATEMENT_COUNT = 10; // K
+export const BLITZ_DURATION_MS = 30_000;
+export const BLITZ_REVEAL_DURATION_MS = 8_000;
+export const BLITZ_CORRECT_POINTS = 50;
+export const BLITZ_WRONG_POINTS = 25;
+
+export interface BlitzSwipePayload {
+  index: number; // which statement (0-based, in the dealt order) - must be the next one
+  answeredTrue: boolean; // right swipe = true
+}
+
+// 'blitz:show' is asymmetric like question:show. Phones get the statement
+// TEXTS (all K up front, so a swipe never waits on the network) and never a
+// truth value; the host gets per-player progress and no texts at all - the TV
+// only carries the title and the instruction (players read on their phones).
+// durationMs is the time STILL LEFT, so a state:sync catch-up and a fresh
+// phase entry share one shape.
+export interface BlitzShowHostPayload {
+  total: number; // K
+  durationMs: number;
+  progressByPlayerId: Record<string, number>; // playerId -> statements swiped so far
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface BlitzShowPlayerPayload {
+  statements: string[]; // texts only - truth never leaves the server before BLITZ_REVEAL
+  total: number; // K (= statements.length)
+  durationMs: number;
+  answeredCount: number; // how many THIS phone already swiped - non-zero only on a state:sync catch-up
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type BlitzShowPayload = BlitzShowHostPayload | BlitzShowPlayerPayload;
+
+export function isBlitzShowHostPayload(payload: BlitzShowPayload): payload is BlitzShowHostPayload {
+  return 'progressByPlayerId' in payload;
+}
+
+// Host-only, after every accepted swipe: the whole progress map again (K is
+// small and so is the room), never which way anyone swiped.
+export interface BlitzProgressPayload {
+  progressByPlayerId: Record<string, number>;
+}
+
+export interface BlitzRevealResult {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  correct: number;
+  wrong: number;
+  unanswered: number;
+  pointsAwarded: number; // can be negative
+  totalScore: number;
+}
+
+// The one statement the room got wrong most, with its truth - the first time
+// a truth value is sent anywhere. null when nobody got anything wrong.
+export interface BlitzMostMissed {
+  text: string;
+  isTrue: boolean;
+  missedCount: number;
+}
+
+// 'blitz_reveal:show' is asymmetric, unlike numeric_reveal:show: a phone gets
+// only ITS OWN counts (never another player's swipes or breakdown), the host
+// gets everyone's for the score column plus the most-missed statement.
+export interface BlitzRevealHostPayload {
+  total: number;
+  results: BlitzRevealResult[];
+  mostMissed: BlitzMostMissed | null;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface BlitzRevealPlayerPayload {
+  total: number;
+  correct: number;
+  wrong: number;
+  unanswered: number;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type BlitzRevealPayload = BlitzRevealHostPayload | BlitzRevealPlayerPayload;
+
+export function isBlitzRevealHostPayload(payload: BlitzRevealPayload): payload is BlitzRevealHostPayload {
+  return 'results' in payload;
+}
+
 // BLITZ_STATEMENTS is GENERATED from blitz-statements.md at the repo root by
 // `npm run blitz:generate` (dev/generate-blitz-statements.ts), which parses
 // it line-by-line with /^([ΣΛ])\s\s(\S.+)$/ - Σ => isTrue:true, Λ =>
@@ -2359,6 +2494,7 @@ export type ClientToServerEvents = {
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
   [ClientEvents.TRIAL_SUBMIT]: (payload: TrialSubmitPayload) => void;
+  [ClientEvents.BLITZ_SWIPE]: (payload: BlitzSwipePayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -2397,4 +2533,7 @@ export type ServerToClientEvents = {
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
   [ServerEvents.TRIAL_QUESTION_SHOW]: (payload: TrialQuestionShowPayload) => void;
   [ServerEvents.TRIAL_REVEAL_SHOW]: (payload: TrialRevealShowPayload) => void;
+  [ServerEvents.BLITZ_SHOW]: (payload: BlitzShowPayload) => void;
+  [ServerEvents.BLITZ_PROGRESS]: (payload: BlitzProgressPayload) => void;
+  [ServerEvents.BLITZ_REVEAL_SHOW]: (payload: BlitzRevealPayload) => void;
 };

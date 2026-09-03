@@ -41,6 +41,10 @@ interface PlayerScoresPanelProps {
   confirmedOutPlayerIds?: string[] | null;
   // TRIAL_QUESTION only - whoever this payload already knows has locked in.
   lockedInPlayerIds?: string[] | null;
+  // Blitz (Task 156) - BLITZ only: each player's n/K, shown after the score.
+  // null everywhere else, so the cell just isn't there.
+  progressByPlayerId?: Record<string, number> | null;
+  progressTotal?: number;
 }
 
 // Rows re-sort only after the score counters have finished tweening (Task
@@ -177,6 +181,7 @@ function ScorePanelRow({
   isEliminated,
   isLockedIn,
   delta,
+  progress,
 }: {
   standing: PlayerStanding;
   avatarSize: number;
@@ -186,6 +191,7 @@ function ScorePanelRow({
   isEliminated: boolean;
   isLockedIn: boolean;
   delta?: number;
+  progress?: string;
 }) {
   const displayScore = useAnimatedNumber(standing.score);
   // STEAL (Task 91) - thief and victim get the SAME spotlight, weight only:
@@ -221,9 +227,17 @@ function ScorePanelRow({
           🔒
         </span>
       )}
+      {progress !== undefined && (
+        <span style={styles.scorePanelProgress} data-testid="score-panel-progress">
+          {progress}
+        </span>
+      )}
       {Boolean(delta) && (
         <span style={styles.scorePanelDelta} data-testid="score-panel-delta">
-          +{delta}
+          {/* Task 156 - a blitz round can take points away, so the sign is
+              the value's own; every earlier caller only ever passes >0. */}
+          {delta !== undefined && delta > 0 ? '+' : ''}
+          {delta}
         </span>
       )}
     </div>
@@ -247,6 +261,8 @@ export function PlayerScoresPanel({
   eliminatedPlayerIds = null,
   confirmedOutPlayerIds = null,
   lockedInPlayerIds = null,
+  progressByPlayerId = null,
+  progressTotal,
 }: PlayerScoresPanelProps) {
   // `standings` still carries every player - see useDisplayOrder above,
   // which needs the full set to sort correctly - so removal is a final
@@ -292,6 +308,9 @@ export function PlayerScoresPanel({
             isEliminated={eliminatedPlayerIds?.includes(standing.playerId) ?? false}
             isLockedIn={lockedInPlayerIds?.includes(standing.playerId) ?? false}
             delta={pointsThisRound?.[standing.playerId]}
+            progress={
+              progressByPlayerId ? `${progressByPlayerId[standing.playerId] ?? 0}/${progressTotal ?? 0}` : undefined
+            }
           />
         ))}
       </div>

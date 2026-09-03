@@ -87,6 +87,15 @@ import {
   recheckNumericPhaseOnDisconnect,
   submitNumericAnswer,
 } from './modes/numeric.js';
+// Task 156 - the blitz mode's own socket-facing functions, same shape.
+import {
+  buildBlitzHostShow,
+  buildBlitzPlayerShow,
+  buildBlitzRevealHostShow,
+  buildBlitzRevealPlayerShow,
+  recheckBlitzPhaseOnDisconnect,
+  submitBlitzSwipe,
+} from './modes/blitz.js';
 import { NUMERIC_QUESTIONS } from './numeric.js';
 import { collectVoiceLineEntries } from './socrates.js';
 import {
@@ -284,6 +293,16 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildTrialRevealPayload(room);
       return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
     }
+    // Task 156 - the blitz mode, same reasoning as every phase above: the
+    // phone gets its texts back plus how far IT already got, read live.
+    case 'BLITZ': {
+      const payload = buildBlitzPlayerShow(room, playerId);
+      return payload ? { ...payload, phase: 'BLITZ', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'BLITZ_REVEAL': {
+      const payload = buildBlitzRevealPlayerShow(room, playerId);
+      return payload ? { ...payload, phase: 'BLITZ_REVEAL' } : null;
+    }
     default:
       return null; // LOBBY - callers never ask for this
   }
@@ -381,6 +400,15 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'TRIAL_REVEAL': {
       const payload = buildTrialRevealPayload(room);
       return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
+    }
+    // Task 156 - the blitz mode, same builder-plus-remainingMs shape.
+    case 'BLITZ': {
+      const payload = buildBlitzHostShow(room);
+      return payload ? { ...payload, phase: 'BLITZ', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'BLITZ_REVEAL': {
+      const payload = buildBlitzRevealHostShow(room);
+      return payload ? { ...payload, phase: 'BLITZ_REVEAL' } : null;
     }
   }
 }
@@ -1097,6 +1125,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Task 156 - the blitz mode. All validation (phase, pause, next-index
+  // only, one swipe per statement) lives in submitBlitzSwipe itself, which
+  // also ends the phase early once every connected player has swiped all K.
+  socket.on(ClientEvents.BLITZ_SWIPE, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.BLITZ_SWIPE);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitBlitzSwipe(room, playerId, payload?.index, payload?.answeredTrue)) {
+      console.log(`rejected ${ClientEvents.BLITZ_SWIPE} from player ${playerId} in room ${room.code}`);
+      // The phone advances optimistically (there is no per-swipe ack), so a
+      // rejected swipe - typically one that raced a pause - would leave it
+      // one statement ahead of what the server will accept for the rest of
+      // the round. Re-send it its own blitz:show, whose answeredCount is the
+      // same catch-up a state:sync uses, so it snaps back to the statement
+      // the server is actually on. Null outside BLITZ, in which case there
+      // is nothing to snap back to.
+      const resync = buildBlitzPlayerShow(room, playerId);
+      if (resync) {
+        socket.emit(ServerEvents.BLITZ_SHOW, resync);
+      }
+    }
+  });
+
   // Task 127 - Η Δίκη. Its own event rather than a second meaning for
   // SUBMIT_ANSWER (no sabotage, no shuffled order, and what is recorded is a
   // pause-aware elapsed figure). Every rule - phase, pause, valid choice,
@@ -1340,6 +1393,11 @@ io.on('connection', (socket) => {
       // the only one still deciding. A no-op outside NUMERIC_QUESTION.
       if (room) {
         recheckNumericPhaseOnDisconnect(room);
+      }
+
+      // Task 156 - same reasoning, for the blitz. A no-op outside BLITZ.
+      if (room) {
+        recheckBlitzPhaseOnDisconnect(room);
       }
 
       // Task 127 - same reasoning again, for the trial. A no-op outside

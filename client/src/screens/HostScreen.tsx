@@ -4,6 +4,8 @@ import {
   DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   ServerEvents,
+  isBlitzRevealHostPayload,
+  isBlitzShowHostPayload,
   isDrawHostPayload,
   isGuessHostPayload,
   isNumericQuestionHostPayload,
@@ -19,6 +21,11 @@ import {
   type GameOverPayload,
   type GamePhase,
   type GuessRevealShowPayload,
+  type BlitzProgressPayload,
+  type BlitzRevealHostPayload,
+  type BlitzRevealPayload,
+  type BlitzShowHostPayload,
+  type BlitzShowPayload,
   type GuessShowHostPayload,
   type GuessShowPayload,
   type LobbyUpdatePayload,
@@ -72,6 +79,8 @@ import { GuessView } from './host/GuessView';
 import { GuessRevealView } from './host/GuessRevealView';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
+import { BlitzView } from './host/BlitzView';
+import { BlitzRevealView } from './host/BlitzRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { SceneLayer } from './host/SceneLayer';
@@ -131,6 +140,13 @@ export default function HostScreen() {
   const [numericQuestionSecondsLeft, setNumericQuestionSecondsLeft] = useState(0);
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
   const [numericRevealSecondsLeft, setNumericRevealSecondsLeft] = useState(0);
+  // Blitz mode (Task 156) - same pattern. blitz:progress (host-only) only
+  // ever patches progressByPlayerId, so the countdown effect below keys off
+  // durationMs alone and a swipe never resets the clock.
+  const [blitz, setBlitz] = useState<BlitzShowHostPayload | null>(null);
+  const [blitzSecondsLeft, setBlitzSecondsLeft] = useState(0);
+  const [blitzReveal, setBlitzReveal] = useState<BlitzRevealHostPayload | null>(null);
+  const [blitzRevealSecondsLeft, setBlitzRevealSecondsLeft] = useState(0);
   // Η Δίκη (Task 128) - same pattern as QUESTION/REVEAL: the payload is set
   // once per beat/reconnect, and durationMs/autoAdvanceMs is always the
   // server's live remaining time. trialQuestionSecondsLeft doubles as the
@@ -242,6 +258,8 @@ export default function HostScreen() {
         setGuessReveal(null);
         setNumericQuestion(null);
         setNumericReveal(null);
+        setBlitz(null);
+        setBlitzReveal(null);
         setTrialQuestion(null);
         setTrialReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
@@ -474,6 +492,35 @@ export default function HostScreen() {
       }
     }
 
+    // Blitz mode (Task 156). The host branch of an asymmetric event - phones
+    // get the statement texts, never sent here (see isBlitzShowHostPayload).
+    function handleBlitzShow(payload: BlitzShowPayload) {
+      if (isBlitzShowHostPayload(payload)) {
+        setBlitzReveal(null);
+        setBlitz(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Host-only, after every accepted swipe. Patches the progress map only -
+    // never a new object for durationMs to key a countdown reset off.
+    function handleBlitzProgress(payload: BlitzProgressPayload) {
+      setBlitz((current) => (current ? { ...current, progressByPlayerId: payload.progressByPlayerId } : current));
+    }
+
+    function handleBlitzRevealShow(payload: BlitzRevealPayload) {
+      if (isBlitzRevealHostPayload(payload)) {
+        setBlitz(null);
+        setBlitzReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+        if (!pausedRef.current) {
+          playRevealCue();
+        }
+      }
+    }
+
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -517,6 +564,10 @@ export default function HostScreen() {
         setNumericQuestionSecondsLeft(seconds);
       } else if (phaseRef.current === 'NUMERIC_REVEAL') {
         setNumericRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'BLITZ') {
+        setBlitzSecondsLeft(seconds);
+      } else if (phaseRef.current === 'BLITZ_REVEAL') {
+        setBlitzRevealSecondsLeft(seconds);
       } else if (phaseRef.current === 'TRIAL_QUESTION') {
         setTrialQuestionSecondsLeft(seconds);
       } else if (phaseRef.current === 'TRIAL_REVEAL') {
@@ -553,6 +604,8 @@ export default function HostScreen() {
       setGuessReveal(null);
       setNumericQuestion(null);
       setNumericReveal(null);
+      setBlitz(null);
+      setBlitzReveal(null);
       setTrialQuestion(null);
       setTrialReveal(null);
 
@@ -663,6 +716,22 @@ export default function HostScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Blitz mode (Task 156) - same live-broadcast builders as the fresh
+        // phase entry, so a reconnect restores exactly the same screen.
+        case 'BLITZ':
+          if (isBlitzShowHostPayload(payload)) {
+            setBlitz(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'BLITZ_REVEAL':
+          if (isBlitzRevealHostPayload(payload)) {
+            setBlitzReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
         // Η Δίκη (Task 128) - same live-broadcast builders as the fresh
         // phase entry (see buildTrialQuestionHostPayload/
         // buildTrialRevealPayload, both durationMs/autoAdvanceMs "time
@@ -709,6 +778,9 @@ export default function HostScreen() {
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+    socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+    socket.on(ServerEvents.BLITZ_PROGRESS, handleBlitzProgress);
+    socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
     socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -736,6 +808,9 @@ export default function HostScreen() {
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+      socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+      socket.off(ServerEvents.BLITZ_PROGRESS, handleBlitzProgress);
+      socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
       socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -958,6 +1033,45 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [numericReveal, paused]);
 
+  // Blitz mode (Task 156) - same pattern as NUMERIC_QUESTION's above, keyed
+  // off durationMs rather than the object: blitz:progress replaces the
+  // object on every swipe and must not restart the clock.
+  const blitzDurationMs = blitz?.durationMs ?? null;
+  useEffect(() => {
+    if (blitzDurationMs === null) {
+      return;
+    }
+    setBlitzSecondsLeft(Math.ceil(blitzDurationMs / 1000));
+  }, [blitzDurationMs]);
+
+  useEffect(() => {
+    if (blitzDurationMs === null || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setBlitzSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [blitzDurationMs, paused]);
+
+  // BLITZ_REVEAL's progress bar - same pattern as REVEAL's above.
+  useEffect(() => {
+    if (!blitzReveal) {
+      return;
+    }
+    setBlitzRevealSecondsLeft(Math.ceil(blitzReveal.autoAdvanceMs / 1000));
+  }, [blitzReveal]);
+
+  useEffect(() => {
+    if (!blitzReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setBlitzRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [blitzReveal, paused]);
+
   // Η Δίκη (Task 128) - TRIAL_QUESTION's own countdown, same pattern as
   // QUESTION's above. Its tick is also what the cosmetic drain (see
   // trialDisplayStandings) animates against - a stopped interval while
@@ -1174,6 +1288,10 @@ export default function HostScreen() {
         return numericQuestion?.standings ?? null;
       case 'NUMERIC_REVEAL':
         return numericReveal?.standings ?? null;
+      case 'BLITZ':
+        return blitz?.standings ?? null;
+      case 'BLITZ_REVEAL':
+        return blitzReveal?.standings ?? null;
       case 'TRIAL_QUESTION':
         return trialQuestion ? trialDisplayStandings() : null;
       case 'TRIAL_REVEAL':
@@ -1195,6 +1313,10 @@ export default function HostScreen() {
         ...Object.fromEntries(guessReveal.results.map((result) => [result.playerId, result.pointsAwarded])),
         [guessReveal.drawerPlayerId]: guessReveal.drawerPointsAwarded,
       };
+    }
+    // Blitz (Task 156) - can be NEGATIVE; the panel prints the sign.
+    if (phase === 'BLITZ_REVEAL' && blitzReveal) {
+      return Object.fromEntries(blitzReveal.results.map((result) => [result.playerId, result.pointsAwarded]));
     }
     return null;
   }
@@ -1304,6 +1426,23 @@ export default function HostScreen() {
       );
     }
 
+    // Blitz mode (Task 156).
+    if (phase === 'BLITZ' && blitz) {
+      return <BlitzView blitz={blitz} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+    }
+
+    if (phase === 'BLITZ_REVEAL' && blitzReveal) {
+      return (
+        <BlitzRevealView
+          reveal={blitzReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={blitzRevealSecondsLeft}
+        />
+      );
+    }
+
     // Η Δίκη (Task 128) - the quiz's finale, reusing the QUESTION/REVEAL
     // pattern (papyrus reads, column carries players).
     if (phase === 'TRIAL_QUESTION' && trialQuestion) {
@@ -1391,6 +1530,8 @@ export default function HostScreen() {
         return ring(guessSecondsLeft, 5);
       case 'NUMERIC_QUESTION':
         return ring(numericQuestionSecondsLeft, 5);
+      case 'BLITZ':
+        return ring(blitzSecondsLeft, 5);
       case 'TRIAL_QUESTION':
         return ring(trialQuestionSecondsLeft, 5);
       default:
@@ -1455,6 +1596,8 @@ export default function HostScreen() {
               eliminatedPlayerIds={eliminatedPlayerIds}
               confirmedOutPlayerIds={confirmedOutPlayerIds}
               lockedInPlayerIds={lockedInPlayerIds}
+              progressByPlayerId={phase === 'BLITZ' ? (blitz?.progressByPlayerId ?? null) : null}
+              progressTotal={blitz?.total}
             />
           )}
         </div>
