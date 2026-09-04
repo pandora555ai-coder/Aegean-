@@ -7,6 +7,7 @@ import DevVoiceScreen from './screens/DevVoiceScreen';
 import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
 import DevVoiceEqScreen from './screens/DevVoiceEqScreen';
 import DevVoiceAbScreen from './screens/DevVoiceAbScreen';
+import DevCrowdScreen from './screens/DevCrowdScreen';
 
 export interface DevRoute {
   path: string;
@@ -67,5 +68,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Νέα φωνή',
     description: 'A/B listening for the new ElevenLabs voice ID against the 43 GENIUS-rated lines (Task 147).',
     element: <DevVoiceAbScreen />,
+  },
+  {
+    path: '/dev/crowd',
+    title: 'Πλήθος',
+    description: 'Listening page for the crowd sound set — three loops crossfaded by intensity, four one-shots (Task 36a).',
+    element: <DevCrowdScreen />,
   },
 ];
