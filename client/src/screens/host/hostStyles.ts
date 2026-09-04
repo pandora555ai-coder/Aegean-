@@ -140,7 +140,12 @@ export const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '3vh 3vw',
     overflow: 'hidden',
-    background: 'var(--night-1)',
+    // Task 159c - transparent, not var(--night-1): TheatreScene (158) sits
+    // behind every /host phase, and this grid was an opaque 90%-of-viewport
+    // surface directly above it, so the scene was never visible. Only the
+    // reading panel and score column get their own surface now; this is the
+    // ground between them.
+    background: 'transparent',
     color: 'var(--marble)',
     position: 'relative',
     zIndex: 1,
@@ -263,7 +268,10 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 'var(--tv-safe-top)',
     overflow: 'hidden',
     width: '100%',
-    background: 'var(--night-1)',
+    // Task 159c - transparent, not var(--night-1): see gameLayout's comment
+    // above. LOBBY and GAME_OVER (the two host views using this) are ground
+    // too - the scene shows through.
+    background: 'transparent',
     color: 'var(--marble)',
     // Stacks above the fixed .confetti-piece / .firework-particle layers
     // (both z-index: 0) regardless of DOM order. The background light
@@ -380,7 +388,10 @@ export const styles: Record<string, CSSProperties> = {
     position: 'fixed',
     // Top and bottom edges inset by the TV overscan safe area (palette).
     inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
-    background: 'var(--night-1)',
+    // Task 159c - transparent, not var(--night-1): see gameLayout's comment
+    // above. The stage card has no surface of its own; it reads directly
+    // against the scene.
+    background: 'transparent',
     color: 'var(--marble)',
     display: 'flex',
     alignItems: 'center',
