@@ -2363,7 +2363,7 @@ const styles: Record<string, CSSProperties> = {
   settingsRowLabel: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
   },
   settingsRowValue: {
     fontSize: '0.9rem',
@@ -2387,7 +2387,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: '2px solid var(--wine-2)',
     background: 'var(--wine-2)',
-    color: 'var(--carve)',
+    color: 'var(--marble)',
     boxSizing: 'border-box',
   },
   segmentInactive: {
@@ -2401,13 +2401,13 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: '2px solid var(--marble-3)',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     boxSizing: 'border-box',
   },
   estimatedLength: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   input: {
@@ -2429,7 +2429,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     fontFamily: 'monospace',
     textAlign: 'center',
-    color: 'var(--wine-2)',
+    color: 'var(--ember)',
   },
   numericSlider: {
     width: '100%',
@@ -2465,7 +2465,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: 'none',
     background: 'var(--wine-2)',
-    color: 'var(--carve)',
+    color: 'var(--marble)',
     fontWeight: 600,
   },
   buttonDisabled: {
@@ -2475,7 +2475,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: 'none',
     background: 'var(--marble-3)',
-    color: 'var(--carve)',
+    color: 'var(--night-0)',
     fontWeight: 600,
     cursor: 'not-allowed',
   },
@@ -2483,7 +2483,7 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: 'center',
     fontSize: '1rem',
     fontWeight: 700,
-    color: 'var(--carve)',
+    color: 'var(--marble)',
     background: 'var(--wine-2)',
     borderRadius: '999px',
     padding: '0.25rem 0.9rem',
@@ -2518,7 +2518,7 @@ const styles: Record<string, CSSProperties> = {
   nameListEmpty: {
     padding: '0.75rem',
     textAlign: 'center',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     fontWeight: 600,
   },
   customNameButton: {
@@ -2545,7 +2545,7 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     fontSize: '1.4rem',
     fontWeight: 700,
-    color: 'var(--marble)',
+    color: 'var(--carve)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -2559,7 +2559,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     fontSize: '1.75rem',
     fontWeight: 700,
   },
@@ -2577,7 +2577,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     border: '2px solid var(--marble-3)',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
   },
   avatarOptionSelected: {
     display: 'flex',
@@ -2587,8 +2587,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.5rem',
     borderRadius: '0.75rem',
     border: '2px solid var(--wine-2)',
-    background: 'rgba(142, 36, 64, 0.12)',
-    color: 'var(--marble)',
+    background: 'color-mix(in srgb, var(--wine-2) 12%, var(--marble))',
+    color: 'var(--carve)',
   },
   avatarOptionTaken: {
     display: 'flex',
@@ -2599,7 +2599,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.75rem',
     border: '2px solid var(--marble-3)',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
   },
@@ -2640,8 +2640,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--wine-2)',
-    background: 'rgba(142, 36, 64, 0.12)',
+    color: 'var(--marble)',
+    background: 'color-mix(in srgb, var(--wine-2) 12%, var(--night-0))',
     border: '1px solid var(--wine-2)',
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
@@ -2672,7 +2672,7 @@ const styles: Record<string, CSSProperties> = {
   resetConfirmText: {
     fontSize: '0.85rem',
     fontWeight: 600,
-    color: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   resetConfirmButtons: {
@@ -2686,7 +2686,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: 'none',
     background: 'var(--marble-3)',
-    color: 'var(--marble)',
+    color: 'var(--night-0)',
     fontWeight: 700,
   },
   resetCancelButton: {
@@ -2696,7 +2696,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: '0.5rem',
     border: '1px solid var(--marble-3)',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     fontWeight: 600,
   },
   error: { color: 'var(--marble)', fontWeight: 700, textAlign: 'center' },
@@ -2794,16 +2794,16 @@ const styles: Record<string, CSSProperties> = {
     border: '3px solid',
     borderColor: 'var(--marble-3)',
     background: 'var(--marble)',
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     textAlign: 'center',
     opacity: 0.35,
     filter: 'grayscale(0.7)',
   },
   answerText: {
-    color: 'var(--marble)',
+    color: 'var(--carve)',
   },
   answerTextDim: {
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
   },
   revealVerdictRow: {
     display: 'flex',
@@ -2866,7 +2866,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--wine-2)',
+    color: 'var(--ember)',
   },
   // Η Δίκη (Task 129) - the one static life figure QUESTION and REVEAL both
   // show. Gold like revealSpeedRank: it's the number the whole trial turns
@@ -2875,13 +2875,13 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.1rem',
     fontWeight: 700,
     textAlign: 'center',
-    color: 'var(--wine-2)',
+    color: 'var(--ember)',
   },
   scoreboardRank: {
     fontSize: '3rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--wine-2)',
+    color: 'var(--ember)',
   },
   scoreboardScore: {
     fontSize: '1.75rem',
@@ -2919,7 +2919,7 @@ const styles: Record<string, CSSProperties> = {
   powerUpEffectBlurb: {
     fontSize: '0.9rem',
     fontWeight: 600,
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   powerUpTargetList: {
@@ -2972,13 +2972,13 @@ const styles: Record<string, CSSProperties> = {
   powerUpLockedDetail: {
     fontSize: '1.2rem',
     fontWeight: 700,
-    color: 'var(--marble)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   powerUpLockedHint: {
     fontSize: '0.95rem',
     fontWeight: 600,
-    color: 'var(--marble-3)',
+    color: 'var(--carve)',
     textAlign: 'center',
   },
   // Steal (Task 32) - what this target actually stands to lose, already
@@ -2992,7 +2992,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '2rem',
     fontWeight: 800,
     textAlign: 'center',
-    color: 'var(--wine-2)',
+    color: 'var(--ember)',
   },
   gameOverLost: {
     fontSize: '1.75rem',
