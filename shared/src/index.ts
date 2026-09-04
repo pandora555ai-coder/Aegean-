@@ -77,6 +77,11 @@ export const ServerEvents = {
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
+  // Task 36b - the ramp that drives the host's crowd-loop crossfade. A
+  // SECOND event alongside crowd:mood (which stays untouched): mood picks
+  // which one-shots/loops are in play, this is the single 0..1 number that
+  // crossfades between them. Host-only, exactly like crowd:mood.
+  CROWD_INTENSITY: 'crowd:intensity',
   DEV_DRAWING_RECEIVED: 'dev:drawing_received',
   // Task 67 - the response half of DEV_GET_NUMERIC_QUESTIONS above.
   DEV_NUMERIC_QUESTIONS: 'dev:numeric_questions',
@@ -406,6 +411,102 @@ export type CrowdMood = 'calm' | 'tension' | 'cheer' | 'boo';
 
 export interface CrowdMoodPayload {
   mood: CrowdMood;
+}
+
+// Crowd INTENSITY (Task 36b) - a second, independent signal from crowd:mood.
+// Mood picks WHICH one-shots/loops are in play; intensity is the single
+// 0..1 number that crossfades the host's three ambient crowd loops. Always a
+// RAMP, never a snap: `from` (or, if omitted, whatever the host is currently
+// at) moves to `value` over `rampMs`. HOST ONLY, exactly like crowd:mood.
+export interface CrowdIntensityPayload {
+  value: number;
+  from?: number;
+  rampMs: number;
+}
+
+// What a phase needs from its caller to compute its own intensity -
+// deliberately NOT the whole Room (this stays a pure function, callable from
+// a dev tool with no room at all). `timerDurationMs` is the phase's own
+// timed-round length, for the phases that ramp across it (QUESTION/GUESS/
+// NUMERIC_QUESTION); `round` is the 1-based trial round number, for
+// TRIAL_QUESTION/TRIAL_REVEAL's escalating formula. The two booleans are
+// modifiers applied on top of whichever phase reads them.
+export interface CrowdIntensityContext {
+  timerDurationMs?: number;
+  round?: number;
+  isLastQuestionOfStage?: boolean;
+  closeScoresPending?: boolean;
+}
+
+// Caps a modifier stack at .95 - GAME_OVER's own .8 base is deliberately
+// left room to still read as a step down from a maxed-out trial round.
+const CROWD_INTENSITY_MODIFIER_CAP = 0.95;
+
+// Pure - the ONE place the ramp table lives, so a dev tool (or a future
+// intensity-rating harness, same spirit as socrates.ts's rating page) can
+// import this without a Room. Every GamePhase is an explicit case: a new
+// phase that forgets to extend this switch is a compile error via the
+// `never` check below, never a silent fallback value.
+export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext = {}): CrowdIntensityPayload {
+  let result: CrowdIntensityPayload;
+  switch (phase) {
+    case 'LOBBY':
+      result = { value: 0.1, rampMs: 800 };
+      break;
+    case 'STAGE_ANNOUNCE':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    case 'POWER_UP':
+      result = { value: 0.35, rampMs: 800 };
+      break;
+    case 'QUESTION':
+      result = { value: 0.7, from: 0.25, rampMs: ctx.timerDurationMs ?? DEFAULT_ROOM_SETTINGS.questionTimeMs };
+      break;
+    case 'REVEAL':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    case 'STEAL':
+      result = { value: 0.12, rampMs: 300 };
+      break;
+    case 'SOCRATES':
+      result = { value: 0.12, rampMs: 300 };
+      break;
+    case 'DRAW':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    case 'GUESS':
+      result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? GUESS_DURATION_MS };
+      break;
+    case 'GUESS_REVEAL':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    case 'NUMERIC_QUESTION':
+      result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? NUMERIC_QUESTION_DURATION_MS };
+      break;
+    case 'NUMERIC_REVEAL':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    case 'TRIAL_QUESTION':
+    case 'TRIAL_REVEAL':
+      result = { value: Math.min(0.9, 0.4 + 0.5 * ((ctx.round ?? 1) / 16)), rampMs: 800 };
+      break;
+    case 'GAME_OVER':
+      result = { value: 0.8, rampMs: 600 };
+      break;
+    default: {
+      const _exhaustive: never = phase;
+      throw new Error(`crowdIntensityFor: unhandled phase ${String(_exhaustive)}`);
+    }
+  }
+
+  let { value } = result;
+  if (ctx.isLastQuestionOfStage) {
+    value = Math.min(CROWD_INTENSITY_MODIFIER_CAP, value + 0.15);
+  }
+  if (ctx.closeScoresPending) {
+    value = Math.min(CROWD_INTENSITY_MODIFIER_CAP, value + 0.15);
+  }
+  return { ...result, value };
 }
 
 // ---------------------------------------------------------------------------
@@ -2387,6 +2488,7 @@ export type ServerToClientEvents = {
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
+  [ServerEvents.CROWD_INTENSITY]: (payload: CrowdIntensityPayload) => void;
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DEV_VOICE_LINES]: (payload: DevVoiceLinesPayload) => void;

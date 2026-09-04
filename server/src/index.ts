@@ -49,7 +49,7 @@ import {
   type Room,
 } from './state.js';
 import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
-import { pauseCrowdTensionTimer, resumeCrowdTensionTimer } from './crowd.js';
+import { emitCrowdIntensity, emitCrowdIntensityResume, pauseCrowdTensionTimer, resumeCrowdTensionTimer } from './crowd.js';
 import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
@@ -1137,6 +1137,7 @@ io.on('connection', (socket) => {
 
     resetRoomForNewGame(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    emitCrowdIntensity(room);
     broadcastLobbyUpdate(room.code);
     console.log(`room ${room.code} reset for a new game`);
   });
@@ -1160,6 +1161,7 @@ io.on('connection', (socket) => {
 
     resetRoomForNewGame(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+    emitCrowdIntensity(room);
     broadcastLobbyUpdate(room.code);
     console.log(`room ${room.code} reset to lobby by VIP`);
   });
@@ -1231,6 +1233,10 @@ io.on('connection', (socket) => {
       resumeActiveTimer(room, onFire);
     }
     resumeCrowdTensionTimer(room); // no-op if nothing armed it (outside a timed round)
+    // Crowd intensity (Task 36b) - re-emit the current phase's own target,
+    // ramping over whatever's actually left rather than the full nominal
+    // rampMs a fresh phase entry would have used.
+    emitCrowdIntensityResume(room);
 
     const remainingMs = remainingActiveTimerMs(room);
     const payload: ResumedPayload = { remainingMs };

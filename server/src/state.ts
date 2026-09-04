@@ -1,4 +1,5 @@
 import {
+  type CrowdIntensityContext,
   type CrowdMood,
   type GameModeId,
   type GamePhase,
@@ -265,6 +266,12 @@ export interface Room {
   // the whole time), so it has its own SimpleTimer rather than sharing the
   // room's single activeTimer slot. null outside QUESTION.
   crowdTensionTimer: SimpleTimer | null;
+  // Task 36b - crowd:intensity. The ctx the CURRENT phase was entered with,
+  // stashed purely so a pause/resume can recompute the exact same target
+  // (see emitCrowdIntensityResume in crowd.ts) without index.ts's
+  // GAME_RESUME handler having to reconstruct mode-specific context
+  // (a trial round number, a stage boundary) it has no business knowing.
+  crowdIntensityCtx: CrowdIntensityContext | null;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -322,6 +329,7 @@ export function createRoom(hostSocketId: string): Room {
     trial: null,
     crowdMood: 'calm',
     crowdTensionTimer: null,
+    crowdIntensityCtx: null,
   };
 
   rooms.set(code, room);
@@ -608,6 +616,7 @@ export function resetRoomForNewGame(room: Room): void {
   room.crowdMood = 'calm';
   clearSimpleTimer(room.crowdTensionTimer);
   room.crowdTensionTimer = null;
+  room.crowdIntensityCtx = null;
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets
   // rebuilt (a fresh shuffle/draw against those same settings).

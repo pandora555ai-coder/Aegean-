@@ -8,6 +8,7 @@ import {
   TRIAL_MAX_QUESTIONS,
   ServerEvents,
   stageForQuestionIndex,
+  type CrowdIntensityContext,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
@@ -20,7 +21,7 @@ import { getConnectedPlayers, getRoom, type PendingSocratesBeat, type Room, type
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from './timers.js';
-import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from './crowd.js';
+import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from './crowd.js';
 import { calculatePoints, sortAndRankResults } from './scoring.js';
 import { getUnusedQuestionSet } from './questions.js';
 import {
@@ -30,6 +31,7 @@ import {
   type TrialRoundEntry,
 } from './trial.js';
 import {
+  LINES,
   logMomentFireSummary,
   pickGameIntroLine,
   pickQuestionIntro,
@@ -103,6 +105,20 @@ function trialStageNumber(room: Room): number {
   return table[table.length - 1].stage;
 }
 
+// Task 36b - crowd:intensity's QUESTION ctx, shared by beginRound and
+// endPowerUp (the only two places a QUESTION phase actually begins).
+// `isLastQuestionOfStage` mirrors the exact boundary check
+// advanceToNextQuestionOrGameOver uses to decide atStageEnd, just read one
+// question earlier - the last question of a stage is the one that most
+// deserves the climb toward the stage's own reveal.
+function questionIntensityCtx(room: Room): CrowdIntensityContext {
+  const nextIndex = room.currentQuestionIndex + 1;
+  const isLastQuestionOfStage =
+    nextIndex >= room.questions.length ||
+    stageOfQuestion(room, nextIndex).stage !== stageOfQuestion(room, room.currentQuestionIndex).stage;
+  return { timerDurationMs: room.settings.questionTimeMs, isLastQuestionOfStage };
+}
+
 // Stages (Task 31a, Task 35). Brings room.stage in line with whatever
 // question is about to be entered, and when it actually changes, HOLDS the
 // game in a STAGE_ANNOUNCE phase for the announcement's own duration before
@@ -148,6 +164,7 @@ export function enterStageAnnounce(room: Room, stage: number): void {
   const card = buildStageAnnounce(room);
   io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, card);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   console.log(`room ${room.code} entering stage ${card.stage}/${card.totalStages} — ${card.title}`);
 }
 
@@ -239,6 +256,7 @@ export function enterSocratesBeat(
   armActiveTimer(room, timerKind, SOCRATES_MAX_DURATION_MS, onFire);
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   const payload = buildSocratesPayload(room);
   if (payload && room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
@@ -275,6 +293,7 @@ function beginRound(room: Room): void {
   }
   room.phase = 'QUESTION';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, questionIntensityCtx(room));
   startQuestion(room); // arms the question timer HERE, as the question appears
 }
 
@@ -291,6 +310,7 @@ export function startPowerUp(room: Room): void {
   room.phase = 'POWER_UP';
   room.powerUpChoices.clear();
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
 
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
@@ -339,6 +359,7 @@ export function endPowerUp(code: RoomCode): void {
 
   room.phase = 'QUESTION';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, questionIntensityCtx(room));
   startQuestion(room); // arms its own QUESTION timer, replacing this phase's
 }
 
@@ -488,6 +509,11 @@ export function endQuestion(code: RoomCode): void {
 
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Crowd intensity (Task 36b) - the modifier fires off the very line just
+  // picked above, before this REVEAL's own SOCRATES beat (if any) actually
+  // starts: it's the beat PENDING, not yet playing, that raises the target.
+  const closeScoresPending = pickedLine !== null && LINES.CLOSE_SCORES.includes(pickedLine.template);
+  emitCrowdIntensity(room, { closeScoresPending });
 
   // Crowd mood (Task 35) - must be cleared here regardless of whether it
   // already fired: a question that ends early (everyone answered before the
@@ -576,6 +602,7 @@ function startStealIfEligible(room: Room): boolean {
   room.steal = steal;
   room.phase = 'STEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
 
   // Armed BEFORE the payloads are built - they report the timer's remaining
   // time, so it has to exist first.
@@ -695,6 +722,7 @@ function startSocratesIfLineFired(room: Room): boolean {
   // stomp the cheer/boo this beat is a reaction to.
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   // Host only - the phones are controllers and never show commentary; they
   // stay on their own reveal result until the next question arrives.
   const payload = buildSocratesPayload(room);
@@ -895,6 +923,7 @@ function startTrialQuestion(room: Room): void {
   setCrowdMood(room, 'tension'); // the whole trial is tension, start to finish
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, { round: trial.questionIndex + 1 });
   broadcastTrialQuestion(room);
 
   console.log(
@@ -1069,6 +1098,7 @@ export function endTrialQuestion(code: RoomCode): void {
 
   room.phase = 'TRIAL_REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, { round: trial.roundsPlayed });
   armQuizTimer(room, 'TRIAL_REVEAL', REVEAL_DURATION_MS, () => endTrialReveal(room.code));
   setCrowdMood(room, results.some((result) => result.eliminated) ? 'boo' : 'cheer');
 
@@ -1123,6 +1153,7 @@ function finishGame(room: Room): void {
   room.phase = 'GAME_OVER';
   clearActiveTimer(room); // no more phase-advance timer needed once the game is over
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   setCrowdMood(room, 'calm');
   // Task 127 - the trial's verdict wins over the score ordering when there is
   // one: a sudden death is settled by the earliest correct lock-in between

@@ -14,7 +14,7 @@ import {
 import { getConnectedPlayers, getRoom, type Room } from '../state.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
-import { armCrowdTensionTimer, clearCrowdTensionTimer, setCrowdMood } from '../crowd.js';
+import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from '../crowd.js';
 import {
   NUMERIC_QUESTIONS,
   buildNumericQuestionHostPayload,
@@ -142,6 +142,7 @@ function startNumericQuestion(room: Room, state: NumericState): void {
   room.phase = 'NUMERIC_QUESTION';
   armNumericTimer(room, 'NUMERIC_QUESTION', NUMERIC_QUESTION_DURATION_MS, () => endNumericQuestion(room.code));
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, { timerDurationMs: NUMERIC_QUESTION_DURATION_MS });
   // Crowd mood (Task 151) - calm to start, tension for the last third, same
   // treatment as the quiz's QUESTION timer: this is this mode's own timed
   // round. AFTER phase:changed, mirroring the quiz's startQuestion ordering.
@@ -326,6 +327,7 @@ export function endNumericQuestion(code: RoomCode): void {
   room.phase = 'NUMERIC_REVEAL';
   armNumericTimer(room, 'NUMERIC_REVEAL', NUMERIC_REVEAL_DURATION_MS, () => endNumericReveal(room.code));
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   // Crowd mood (Task 151) - cheer when someone got reasonably close, boo
   // otherwise. Reuses NUMERIC_LINES' own NOBODY_CLOSE threshold (nobody
   // within half the answer) rather than inventing a second one. Guarded like
@@ -426,6 +428,7 @@ function finishGame(room: Room): void {
   room.phase = 'GAME_OVER';
   clearActiveTimer(room);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
   // Crowd mood (Task 151) - only reached by a standalone numeric game (the
   // full show's GAME_OVER always fires through phases.ts's own finishGame
   // instead, via the advanceAfterSegment hook above). AFTER phase:changed,
