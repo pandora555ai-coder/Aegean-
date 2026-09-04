@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 dev/phase-screenshots
+client/public/dev-shots/
 client/public/voice
 client/public/voice-test/
 client/public/voice-matrix/
