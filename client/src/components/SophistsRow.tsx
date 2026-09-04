@@ -25,6 +25,13 @@ export const GLIDE_MS = 400;
 export const LEFT_TRANSITION_MS = 700;
 const HOLD_BEFORE_MOVE_MS = REORDER_DELAY_MS + GLIDE_MS;
 
+// Task 163b - how long the kylix token takes to fly from the victim's row
+// position to the thief's (design/theatre-reference.html's own .token
+// transition duration). Exported so HostScreen can hold the row at its
+// pre-theft standings for exactly this long, so the delta/counter tween
+// never appears before the token has actually arrived.
+export const STEAL_TOKEN_FLIGHT_MS = 1100;
+
 // The minimum a sophist needs to be placed: GameOverStanding has no
 // `connected`, and LOBBY's roster (LobbyPlayer) has neither score nor rank
 // until HostScreen fills them in - so the row asks for exactly the four
@@ -69,6 +76,12 @@ interface SophistsRowProps {
   // A trial's GAME_OVER shows NO digits (score is life there and can end
   // negative) - the plaques carry the name alone.
   hideScores?: boolean;
+  // Task 163b - present for exactly the ~1.1s the kylix token should be
+  // flying from the victim's row position to the thief's (HostScreen owns
+  // the timing; this only says whether to show it and between whom). Read
+  // against THIS render's own left-position lookup, so the token always
+  // starts/ends exactly where the two figures currently stand.
+  stealFlight?: { thiefPlayerId: string; victimPlayerId: string } | null;
 }
 
 // The five himation colours from the reference's `hues`, by join index
@@ -105,7 +118,9 @@ const ROW_STYLE_TAG = `
 .soph.lead .wreath{display:block}
 .soph.out{opacity:0;transform:translateX(-50%) translateY(8cqh) scale(.9)}
 .soph.out .plaque{background:var(--marble-3)}
-@media (prefers-reduced-motion:reduce){.sophists,.soph,.d{transition:none}}
+.steal-token{position:absolute;bottom:22cqh;width:5cqh;height:6cqh;z-index:4;opacity:0;
+  transition:left ${STEAL_TOKEN_FLIGHT_MS}ms cubic-bezier(.3,0,.2,1),transform ${STEAL_TOKEN_FLIGHT_MS}ms cubic-bezier(.3,-.6,.2,1.3),opacity 300ms}
+@media (prefers-reduced-motion:reduce){.sophists,.soph,.d,.steal-token{transition:none}}
 `;
 
 // Highest rank first. Array.prototype.sort is stable (guaranteed since
@@ -230,6 +245,61 @@ function formatDelta(delta: number): string {
   return `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`;
 }
 
+// The reference's kylix (.token svg), recoloured onto the palette: its wine
+// fill and marble rim are exact matches for --wine-2/--marble, so this
+// needs no new raw hex the way the figure art below legitimately does.
+function Kylix() {
+  return (
+    <svg viewBox="0 0 50 60" aria-hidden="true">
+      <path
+        d="M12 8 H38 L34 22 Q40 40 30 56 H20 Q10 40 16 22 Z"
+        fill="var(--wine-2)"
+        stroke="var(--marble)"
+        strokeWidth={2}
+      />
+      <path d="M8 14 Q2 22 10 28 M42 14 Q48 22 40 28" fill="none" stroke="var(--marble)" strokeWidth={2} />
+    </svg>
+  );
+}
+
+// Task 163b - the steal flight: appears at the victim's row position and
+// flies to the thief's over STEAL_TOKEN_FLIGHT_MS. Mirrors the reference's
+// own trick (steal(): snap to the start position with no transition, force
+// a reflow, then enable the transition and set the target on the next
+// frame) via the same double-rAF pattern Krater uses for its own snap.
+// Vertical movement is a `transform: translateY` (not `bottom`), and
+// horizontal is `left`, per the task's "transform/opacity/left only" rule.
+// Keyed by the caller on the flight's own identity, so a NEW steal always
+// remounts a fresh token rather than re-animating a stale one mid-flight.
+function StealToken({ fromLeft, toLeft }: { fromLeft: string; toLeft: string }) {
+  const elRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.transition = 'none';
+    el.style.left = fromLeft;
+    el.style.transform = 'translateX(-50%) translateY(0)';
+    el.style.opacity = '1';
+    void el.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.style.transition = '';
+        el.style.left = toLeft;
+        el.style.transform = 'translateX(-50%) translateY(-8cqh)';
+      });
+    });
+  }, [fromLeft, toLeft]);
+
+  return (
+    <div ref={elRef} className="steal-token" data-testid="steal-token" aria-hidden="true">
+      <Kylix />
+    </div>
+  );
+}
+
 // One sophist. Its own component (not inlined in the .map below) so
 // useAnimatedNumber's hook state lives per-player, keyed by playerId - a
 // score tweens from its old value to its new one instead of snapping.
@@ -300,6 +370,7 @@ export function SophistsRow({
   thiefPlayerId = null,
   victimPlayerId = null,
   hideScores = false,
+  stealFlight = null,
 }: SophistsRowProps) {
   // `standings` still carries every player - useDisplayOrder needs the full
   // set to sort correctly - so removal is a final filter applied AFTER
@@ -318,6 +389,20 @@ export function SophistsRow({
   const slotById = new Map<string, number>();
   orderedIds.filter((id) => !removedIds.has(id) && byId.has(id)).forEach((id, index) => slotById.set(id, index));
   const n = slotById.size;
+  const leftForSlot = (slot: number): string => `${(((slot + 0.5) / n) * 100).toFixed(3)}%`;
+
+  // Task 163b - the flying kylix, positioned in the EXACT same coordinate
+  // system as the figures (it's rendered as their sibling inside `.sophists`
+  // below, not `.sophists-root`), so `left` always starts/ends precisely at
+  // the victim's/thief's own slot - no separate lookup that could drift out
+  // of sync with a mid-flight reorder.
+  const stealFlightSlots =
+    stealFlight && n > 0 && slotById.has(stealFlight.victimPlayerId) && slotById.has(stealFlight.thiefPlayerId)
+      ? {
+          fromLeft: leftForSlot(slotById.get(stealFlight.victimPlayerId) as number),
+          toLeft: leftForSlot(slotById.get(stealFlight.thiefPlayerId) as number),
+        }
+      : null;
 
   // Task 163a - LOBBY no longer hides the row: it's how joining players
   // show up now that the lobby overlay names no one. STAGE_ANNOUNCE still
@@ -341,7 +426,7 @@ export function SophistsRow({
               key={id}
               standing={standing}
               joinIndex={joinIndex}
-              left={`${(((slot + 0.5) / n) * 100).toFixed(3)}%`}
+              left={leftForSlot(slot)}
               isLeader={leaderIds.has(id)}
               isOut={eliminatedPlayerIds?.includes(id) ?? false}
               isLockedIn={lockedInPlayerIds?.includes(id) ?? false}
@@ -351,6 +436,13 @@ export function SophistsRow({
             />
           );
         })}
+        {stealFlightSlots && (
+          <StealToken
+            key={`${stealFlight?.victimPlayerId}-${stealFlight?.thiefPlayerId}`}
+            fromLeft={stealFlightSlots.fromLeft}
+            toLeft={stealFlightSlots.toLeft}
+          />
+        )}
       </div>
     </div>
   );

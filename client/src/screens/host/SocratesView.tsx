@@ -1,8 +1,6 @@
-import { useRef } from 'react';
 import { type RoomCode, type SocratesShowPayload } from '@game/shared';
-import { useFitFontSize } from '../../hooks/useFitFontSize';
+import { SpeechSlab } from '../../components/SpeechSlab';
 import { GameLayout } from './GameLayout';
-import { styles } from './hostStyles';
 
 interface SocratesViewProps {
   socrates: SocratesShowPayload;
@@ -11,25 +9,21 @@ interface SocratesViewProps {
   pausedByName: string | null;
 }
 
-// Task 39 - the whole view of the SOCRATES phase: the host alone with the
-// line for the round that just ended. HOST ONLY, like every other piece of
-// his commentary. The server HOLDS here on the shared timer, so nothing else
-// is on screen underneath and the next question hasn't started - and it only
-// enters the phase when a line actually fired, so this is never empty.
-// "Scene lit" pass (Task 90) - he speaks alone: the sophists row drops to
-// 60% for this phase (SophistsRow), the way the reference dims it.
-// No progress bar (Task 96) - unlike REVEAL/GUESS_REVEAL/NUMERIC_REVEAL,
-// this phase does NOT actually advance when a timer fills: it ends on
-// socrates:audio_ended from the host, the countdown is only a backstop for
-// when audio fails to fire that event. A filling bar implied a real
-// running timer that isn't what's driving the phase here.
-// Task 161 - the line is fit-sized against the read area (57vh now), the
-// same way a long question is: a 95-character line at the old fixed 4vw
-// wrapped to four lines and ran into the row.
+// Task 39/163b - the whole view of the SOCRATES phase: the host alone with
+// the line for the round that just ended. HOST ONLY, like every other piece
+// of his commentary. The server HOLDS here on the shared timer, so nothing
+// else is on screen underneath and the next question hasn't started - and
+// it only enters the phase when a line actually fired, so this is never
+// empty.
+// Task 163b - the old top-of-screen card (GameLayout's read column) is gone;
+// the line now sits on design/theatre-reference.html's #speech slab,
+// floating lower-left over the lit scene (TheatreScene stays lit here -
+// SOCRATES was already in LIT_PHASES). GameLayout is still the wrapper
+// (corner room code + pause overlay), but its own read column renders
+// nothing - SpeechSlab is position:fixed and paints over the whole frame
+// regardless of where it's mounted in the tree.
+// The sophists row drops to 60% for this phase (SophistsRow), unchanged.
 export function SocratesView({ socrates, roomCode, paused, pausedByName }: SocratesViewProps) {
-  const quoteBlockRef = useRef<HTMLDivElement | null>(null);
-  const quoteTextRef = useRef<HTMLDivElement | null>(null);
-  useFitFontSize(quoteBlockRef, quoteTextRef, [socrates.line, socrates.questionIndex], { maxRem: 4, minRem: 1.5 });
   return (
     <GameLayout
       roomCode={roomCode}
@@ -38,14 +32,7 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName }: Socra
       standings={socrates.standings}
       contentKey={`socrates-${socrates.questionIndex}`}
     >
-      <div className="enter-pop" style={{ ...styles.socratesStageCard, flex: '1 1 0', minHeight: 0 }} data-testid="socrates-stage">
-        <div style={styles.socratesStageKicker}>ΣΩΚΡΑΤΗΣ</div>
-        <div style={styles.questionBlock} ref={quoteBlockRef}>
-          <div style={styles.socratesStageQuote} data-testid="socrates-line" ref={quoteTextRef}>
-            «{socrates.line}»
-          </div>
-        </div>
-      </div>
+      <SpeechSlab data-testid="socrates-stage">«{socrates.line}»</SpeechSlab>
     </GameLayout>
   );
 }

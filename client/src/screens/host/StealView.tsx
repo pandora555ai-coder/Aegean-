@@ -3,6 +3,7 @@ import { type RoomCode, type StealShowHostPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
+import { SpeechSlab } from '../../components/SpeechSlab';
 import { densityScale, styles } from './hostStyles';
 
 // stealThiefRow/stealAmount/stealVictimRow/stealMovedAmount/stealNothing/
@@ -27,11 +28,16 @@ interface StealViewProps {
   pausedByName: string | null;
 }
 
-// Task 32 - the TV during STEAL. Two beats in one view, driven entirely by
-// `steal.resolved`: while it's null the thief is choosing (and the TV shows
-// only WHO is choosing and for how much - never the target list, which lives
-// on their phone alone), and once it's set the theft is announced. The TV is
-// a display: it learns the victim only after the points have already moved.
+// Task 32/163b - the TV during STEAL. Two beats in one view, driven entirely
+// by `steal.resolved`: while it's null the thief is choosing (unchanged -
+// still the top read column, showing only WHO is choosing and for how much,
+// never the target list, which lives on their phone alone) and once it's
+// set the theft is announced on the floating speech slab
+// (design/theatre-reference.html's #speech) instead of a read-column panel -
+// the same relocation SOCRATES got, and for the same reason: this is
+// narration, not a reading panel. The kylix token flight and the deltas'
+// own reveal timing live in SophistsRow/HostScreen (they need the row's own
+// per-player positions); this view only supplies the narration text.
 export function StealView({ steal, roomCode, paused, pausedByName }: StealViewProps) {
   const resolved = steal.resolved;
   const count = steal.standings.length;
@@ -49,10 +55,8 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
       pausedByName={pausedByName}
       standings={steal.standings}
     >
-      <div style={styles.category}>Κλοπή Πόντων</div>
-
       {resolved ? (
-        <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }} data-testid="steal-resolved">
+        <SpeechSlab data-testid="steal-resolved">
           <div style={papyrusTextBlockStyle}>
             {resolved.victimName === null ? (
               <>
@@ -97,9 +101,10 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
               </>
             )}
           </div>
-        </MarbleSlab>
+        </SpeechSlab>
       ) : (
         <>
+          <div style={styles.category}>Κλοπή Πόντων</div>
           <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
             <div style={papyrusTextBlockStyle}>
               <div

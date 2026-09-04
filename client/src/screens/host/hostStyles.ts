@@ -276,33 +276,6 @@ export const styles: Record<string, CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
     color: 'var(--marble)',
   },
-  // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
-  // above other content: the card fills the left column on its own, and the
-  // line is set at question-sized type because it IS the screen.
-  socratesStageCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '2rem',
-    textAlign: 'center',
-    width: '100%',
-    maxWidth: '1000px',
-    padding: '2.5rem',
-  },
-  socratesStageKicker: {
-    fontSize: '1.75rem',
-    fontWeight: 700,
-    letterSpacing: '0.3em',
-    color: 'var(--ember)',
-  },
-  socratesStageQuote: {
-    fontSize: 'clamp(2.5rem, 4vw, 4rem)',
-    fontWeight: 800,
-    lineHeight: 1.25,
-    color: 'var(--marble)',
-    fontStyle: 'italic',
-  },
   socratesIntroBanner: {
     padding: '0.5rem 1.25rem',
     borderRadius: '0.75rem',

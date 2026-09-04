@@ -79,7 +79,7 @@ import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
-import { SophistsRow, type SophistStanding } from '../components/SophistsRow';
+import { SophistsRow, STEAL_TOKEN_FLIGHT_MS, type SophistStanding } from '../components/SophistsRow';
 import { Krater, type TimerState } from '../components/Krater';
 
 export default function HostScreen() {
@@ -1054,6 +1054,36 @@ export default function HostScreen() {
   // that carries that phase's standings - see its use below.
   const lastStandingsRef = useRef<SophistStanding[] | null>(null);
 
+  // Task 163b - the steal flight: the row is held at its PRE-theft standings
+  // for STEAL_FLIGHT_MS after a resolution lands, so the kylix token
+  // (SophistsRow) actually finishes its flight before the ember delta and
+  // the score tween appear - matching the reference's own setTimeout after
+  // its .token transition. `stealSeenChoosingRef` gates this on having
+  // actually witnessed the "choosing" sub-phase client-side THIS visit: a
+  // reconnect that lands already resolved has no pre-theft standings to
+  // hold, and would otherwise replay a fake flight on every late join.
+  // `stealFlightKeyRef` (effect-owned) makes the setState trigger fire
+  // exactly once per resolution. `stealSnapshotKeyRef` is the SEPARATE,
+  // render-body-owned guard for the snapshot capture below: it has to be
+  // set inline (not deferred to an effect) so a StrictMode double-invoke of
+  // this whole render function - which happens BEFORE either invocation's
+  // effects run - can't re-capture from an already-corrupted
+  // lastStandingsRef (the first invocation's own overwrite further down,
+  // still visible to the ref system on a second synchronous invocation).
+  const stealSeenChoosingRef = useRef(false);
+  const stealFlightKeyRef = useRef<string | null>(null);
+  const stealSnapshotKeyRef = useRef<string | null>(null);
+  const stealPreResolveStandingsRef = useRef<SophistStanding[] | null>(null);
+  const [stealFlightActive, setStealFlightActive] = useState(false);
+
+  useEffect(() => {
+    if (!stealFlightActive) {
+      return;
+    }
+    const timer = window.setTimeout(() => setStealFlightActive(false), STEAL_TOKEN_FLIGHT_MS);
+    return () => window.clearTimeout(timer);
+  }, [stealFlightActive]);
+
   // Η Δίκη (Task 128) - score IS life during the trial (see trialLives,
   // server/src/payloads.ts: `life: player.score`), so trialQuestion.standings
   // already carries it; this only makes the drain since question-start
@@ -1194,7 +1224,10 @@ export default function HostScreen() {
         [guessReveal.drawerPlayerId]: guessReveal.drawerPointsAwarded,
       };
     }
-    if (phase === 'STEAL' && steal?.resolved && steal.resolved.victimPlayerId) {
+    // Held back while the kylix token is still in flight (see
+    // stealFlightActive above) - the delta appears the same moment the
+    // token arrives, never before.
+    if (phase === 'STEAL' && steal?.resolved && steal.resolved.victimPlayerId && !stealFlightActive) {
       return {
         [steal.resolved.thiefPlayerId]: steal.resolved.stolenAmount,
         [steal.resolved.victimPlayerId]: -steal.resolved.stolenAmount,
@@ -1428,12 +1461,56 @@ export default function HostScreen() {
   // counter tween (measured: 0ms, one frame) that Task 41 built and Task 112
   // doubled. The row itself is ALWAYS mounted (hidden in LOBBY and
   // STAGE_ANNOUNCE by opacity only), so it never loses its state at all now.
+  // Detect a FRESH steal resolution before overwriting lastStandingsRef
+  // below - it still holds the pre-theft standings at this point, exactly
+  // what the flight needs to hold the row at. Pure ref mutations only here
+  // (matches lastStandingsRef's own established pattern just below) - the
+  // actual setState lives in a useEffect (see stealResolutionKey), NOT
+  // here: calling a state setter directly in the render body raced badly
+  // with StrictMode's dev-only double render-invoke, observed (via
+  // temporary logging) flipping stealFlightActive true then immediately
+  // back to false within the same tick instead of holding for
+  // STEAL_TOKEN_FLIGHT_MS.
+  if (phase === 'STEAL' && steal && !steal.resolved) {
+    stealSeenChoosingRef.current = true;
+  } else if (phase !== 'STEAL') {
+    stealSeenChoosingRef.current = false;
+  }
+  const stealResolutionKey =
+    phase === 'STEAL' && steal?.resolved && steal.resolved.victimPlayerId && stealSeenChoosingRef.current
+      ? `${steal.questionIndex}:${steal.resolved.thiefPlayerId}:${steal.resolved.victimPlayerId}:${steal.resolved.stolenAmount}`
+      : null;
+  if (stealResolutionKey && stealSnapshotKeyRef.current !== stealResolutionKey) {
+    stealSnapshotKeyRef.current = stealResolutionKey;
+    stealPreResolveStandingsRef.current = lastStandingsRef.current;
+  }
+  // The actual trigger - deliberately an effect, not called here in the
+  // render body directly (see the comment above). stealFlightKeyRef is the
+  // idempotency guard: StrictMode's dev-only double-invoke of this effect
+  // only re-triggers the timer if the key genuinely changed since the
+  // guard was last set.
+  useEffect(() => {
+    if (!stealResolutionKey || stealFlightKeyRef.current === stealResolutionKey) {
+      return;
+    }
+    stealFlightKeyRef.current = stealResolutionKey;
+    setStealFlightActive(true);
+  }, [stealResolutionKey]);
+
   const phaseStandings = standingsForPhase();
   const inGamePhase = phase !== 'LOBBY' && phase !== 'STAGE_ANNOUNCE' && phase !== 'GAME_OVER';
   if (phaseStandings) {
     lastStandingsRef.current = phaseStandings;
   }
-  const rowStandings = phaseStandings ?? lastStandingsRef.current ?? [];
+  const stealFlightHolding =
+    phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;
+  const rowStandings = stealFlightHolding
+    ? (stealPreResolveStandingsRef.current as SophistStanding[])
+    : (phaseStandings ?? lastStandingsRef.current ?? []);
+  const stealFlightTargets =
+    phase === 'STEAL' && steal?.resolved && steal.resolved.victimPlayerId && stealFlightActive
+      ? { thiefPlayerId: steal.resolved.thiefPlayerId, victimPlayerId: steal.resolved.victimPlayerId }
+      : null;
   // The read column - every in-game phase renders inside it (SOCRATES too);
   // LOBBY, STAGE_ANNOUNCE and GAME_OVER render their own full-bleed root.
   const showShell = inGamePhase;
@@ -1477,6 +1554,7 @@ export default function HostScreen() {
         thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
         victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
         hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
+        stealFlight={stealFlightTargets}
       />
     </>
   );
