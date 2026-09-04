@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { SOCRATES_VOICE_DIR, lineHash, type CrowdIntensityPayload, type CrowdMood } from '@game/shared';
+import { SOCRATES_VOICE_DIR, lineHash, type CrowdIntensityPayload, type CrowdMood, type GamePhase } from '@game/shared';
 import { getStoredHostMuted, setStoredHostMuted } from '../hostAudioPreference';
 
 // Task 36c - the crowd bed (Task 36a's generated set, client/public/crowd/):
@@ -26,6 +26,16 @@ const MUTE_RAMP_SEC = 0.05;
 // one-shot that could theoretically fire before any ramp lands still picks
 // a sane (small) variant.
 const DEFAULT_CROWD_INTENSITY = 0.1;
+
+// Task 36d - each answer:progress bump during a timed round's own ramp adds
+// this much to the CURRENT position, over this many seconds, before
+// resuming toward the phase target; capped at the target plus a margin,
+// and never above an absolute ceiling either.
+const ANSWER_BUMP_STEP = 0.05;
+const ANSWER_BUMP_RAMP_SEC = 0.2;
+const ANSWER_BUMP_CAP_MARGIN = 0.1;
+const ANSWER_BUMP_MAX = 0.95;
+const ANSWER_BUMP_PHASES: readonly GamePhase[] = ['QUESTION', 'GUESS', 'NUMERIC_QUESTION'];
 
 // Equal-power crossfade across two adjacent zones of a 3-point ramp (murmur
 // -> unrest -> roar) - identical math to the /dev/crowd reference mixer
@@ -68,6 +78,15 @@ export function useGameAudio() {
   // read) - good enough for "is this a small or big one-shot", since mood
   // and intensity land within the same server-side moment (see phases.ts).
   const crowdIntensityRef = useRef(DEFAULT_CROWD_INTENSITY);
+  // Task 36d - the scalar intensity ramp as WE scheduled it (piecewise
+  // linear over time), used only to answer "what position is the ramp at
+  // right now" for a bump's +.05. Rebuilt from scratch on every
+  // applyCrowdIntensity call (a fresh phase entry), so a bump's tail never
+  // outlives its phase - see applyCrowdIntensity's cancelScheduledValues,
+  // which does the same for the audio side.
+  const crowdRampSegmentsRef = useRef<
+    { startTime: number; startValue: number; endTime: number; endValue: number }[]
+  >([]);
   // StrictMode-safe guards, same pattern as prefetchStartedRef below: decode
   // must happen at most once, and the loops must start at most once, however
   // many times the effects that trigger them re-run.
@@ -291,6 +310,31 @@ export function useGameAudio() {
     crowdLoopGainsRef.current = loopGains;
   }
 
+  // Task 36d - reads the scalar intensity our own bookkeeping believes is
+  // current at `now`, by walking crowdRampSegmentsRef. Before the first
+  // segment starts (or with none scheduled) that's the last known target;
+  // past the last segment's end it's that segment's end value; otherwise a
+  // linear interpolation within whichever segment contains `now`.
+  function sampleCrowdIntensity(now: number): number {
+    const segments = crowdRampSegmentsRef.current;
+    if (segments.length === 0) {
+      return crowdIntensityRef.current;
+    }
+    if (now <= segments[0].startTime) {
+      return segments[0].startValue;
+    }
+    for (const segment of segments) {
+      if (now <= segment.endTime) {
+        if (segment.endTime === segment.startTime) {
+          return segment.endValue;
+        }
+        const t = (now - segment.startTime) / (segment.endTime - segment.startTime);
+        return segment.startValue + (segment.endValue - segment.startValue) * t;
+      }
+    }
+    return segments[segments.length - 1].endValue;
+  }
+
   // Task 36c - crowd:intensity's ramp. `from` (if given) SNAPS the loop
   // gains there first (a fresh phase entry's opening value); with no `from`,
   // the ramp continues from wherever each gain node currently sits (a
@@ -298,13 +342,21 @@ export function useGameAudio() {
   // is a scheduled AudioParam ramp over rampMs, never a JS timer stepping
   // the gain by hand.
   function applyCrowdIntensity(payload: CrowdIntensityPayload): void {
-    crowdIntensityRef.current = payload.value;
     const ctx = audioCtxRef.current;
     const loopGains = crowdLoopGainsRef.current;
+    const now = ctx ? ctx.currentTime : 0;
+    // Task 36d - rebuild the scalar bookkeeping for this fresh phase entry
+    // BEFORE overwriting crowdIntensityRef, so a `from`-less call samples
+    // the outgoing phase's own ramp (possibly bumped) rather than its
+    // already-updated target.
+    const fromValue = payload.from !== undefined ? payload.from : sampleCrowdIntensity(now);
+    crowdRampSegmentsRef.current = ctx
+      ? [{ startTime: now, startValue: fromValue, endTime: now + payload.rampMs / 1000, endValue: payload.value }]
+      : [];
+    crowdIntensityRef.current = payload.value;
     if (!ctx || !loopGains) {
       return;
     }
-    const now = ctx.currentTime;
     const targetGains = crowdZoneGains(payload.value);
     const fromGains = payload.from !== undefined ? crowdZoneGains(payload.from) : null;
     for (const name of CROWD_LOOP_NAMES) {
@@ -316,6 +368,50 @@ export function useGameAudio() {
         param.setValueAtTime(param.value, now);
       }
       param.linearRampToValueAtTime(targetGains[name], now + payload.rampMs / 1000);
+    }
+  }
+
+  // Task 36d - answer:progress's bump: each lock-in during QUESTION/GUESS/
+  // NUMERIC_QUESTION pushes the ramp .05 further, over ANSWER_BUMP_RAMP_SEC,
+  // then resumes toward the SAME phase target over whatever time was left
+  // on the original ramp. Two chained linearRampToValueAtTime calls per
+  // loop - still no JS timer driving the sound itself, only the plain
+  // arithmetic below (+.05, the two caps) runs in JS.
+  function bumpCrowdIntensity(phase: GamePhase): void {
+    if (!ANSWER_BUMP_PHASES.includes(phase)) {
+      return;
+    }
+    const ctx = audioCtxRef.current;
+    const loopGains = crowdLoopGainsRef.current;
+    const segments = crowdRampSegmentsRef.current;
+    if (!ctx || !loopGains || segments.length === 0) {
+      return;
+    }
+    const now = ctx.currentTime;
+    const originalEnd = segments[segments.length - 1].endTime;
+    const target = crowdIntensityRef.current;
+    const cap = Math.min(target + ANSWER_BUMP_CAP_MARGIN, ANSWER_BUMP_MAX);
+    const before = sampleCrowdIntensity(now);
+    const after = Math.min(cap, before + ANSWER_BUMP_STEP);
+
+    const bumpEnd = now + ANSWER_BUMP_RAMP_SEC;
+    const remaining = Math.max(0, originalEnd - bumpEnd);
+    const newSegments = [{ startTime: now, startValue: before, endTime: bumpEnd, endValue: after }];
+    if (remaining > 0) {
+      newSegments.push({ startTime: bumpEnd, startValue: after, endTime: bumpEnd + remaining, endValue: target });
+    }
+    crowdRampSegmentsRef.current = newSegments;
+
+    const afterGains = crowdZoneGains(after);
+    const targetGains = crowdZoneGains(target);
+    for (const name of CROWD_LOOP_NAMES) {
+      const param = loopGains[name].gain;
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(param.value, now);
+      param.linearRampToValueAtTime(afterGains[name], bumpEnd);
+      if (remaining > 0) {
+        param.linearRampToValueAtTime(targetGains[name], bumpEnd + remaining);
+      }
     }
   }
 
@@ -451,6 +547,7 @@ export function useGameAudio() {
     resumeAudio,
     loadCrowdSounds,
     applyCrowdIntensity,
+    bumpCrowdIntensity,
     playCrowdOneShot,
     holdCrowdIntensity,
     playSocratesLine,

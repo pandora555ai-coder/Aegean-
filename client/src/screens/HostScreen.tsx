@@ -13,6 +13,7 @@ import {
   isSocratesHostPayload,
   isStealHostPayload,
   isTrialQuestionHostPayload,
+  type AnswerProgressPayload,
   type CrowdIntensityPayload,
   type CrowdMood,
   type CrowdMoodPayload,
@@ -155,6 +156,7 @@ export default function HostScreen() {
     resumeAudio,
     loadCrowdSounds,
     applyCrowdIntensity,
+    bumpCrowdIntensity,
     playCrowdOneShot,
     holdCrowdIntensity,
     playSocratesLine,
@@ -233,6 +235,12 @@ export default function HostScreen() {
     // crowd:mood.
     function handleCrowdIntensity(payload: CrowdIntensityPayload) {
       applyCrowdIntensity(payload);
+    }
+
+    // Task 36d - each landed answer bumps the crowd ramp a step further;
+    // phaseRef (not `phase`) because this handler is registered once.
+    function handleAnswerProgress(_payload: AnswerProgressPayload) {
+      bumpCrowdIntensity(phaseRef.current);
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -681,6 +689,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     socket.on(ServerEvents.CROWD_MOOD, handleCrowdMood);
     socket.on(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
+    socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
     socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
 
@@ -709,6 +718,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
       socket.off(ServerEvents.CROWD_MOOD, handleCrowdMood);
       socket.off(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
+      socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
       socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
     };
