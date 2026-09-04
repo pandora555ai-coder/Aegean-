@@ -26,7 +26,7 @@ import { GuessView } from './host/GuessView';
 import { LobbyView } from './host/LobbyView';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 import { styles as hostStyles } from './host/hostStyles';
-import type { TimerState } from './host/TimerRing';
+import type { TimerState } from '../components/Krater';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { PowerUpView } from './host/PowerUpView';
@@ -313,7 +313,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () => (
       shell(
         powerUp.standings,
-        { secondsLeft: 7, critical: false },
+        { secondsLeft: 7, totalSeconds: 10, critical: false },
         <PowerUpView powerUp={powerUp} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
@@ -323,7 +323,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () => (
       shell(
         question.standings,
-        { secondsLeft: 14, critical: false },
+        { secondsLeft: 14, totalSeconds: 20, critical: false },
         <QuestionView question={question} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
@@ -343,7 +343,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () =>
       shell(
         steal.standings,
-        { secondsLeft: 4, critical: false },
+        { secondsLeft: 4, totalSeconds: 8, critical: false },
         <StealView steal={steal} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       ),
   },
@@ -362,7 +362,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () => (
       shell(
         draw.standings,
-        { secondsLeft: 42, critical: false },
+        { secondsLeft: 42, totalSeconds: 60, critical: false },
         <DrawView draw={draw} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),
@@ -372,7 +372,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () =>
       shell(
         guess.standings,
-        { secondsLeft: 18, critical: false },
+        { secondsLeft: 18, totalSeconds: 25, critical: false },
         <GuessView guess={guess} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       ),
   },
@@ -391,7 +391,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
     render: () => (
       shell(
         numericQuestion.standings,
-        { secondsLeft: 12, critical: false },
+        { secondsLeft: 12, totalSeconds: 15, critical: false },
         <NumericQuestionView question={numericQuestion} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
       )
     ),

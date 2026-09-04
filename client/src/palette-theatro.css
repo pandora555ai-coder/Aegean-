@@ -115,38 +115,13 @@ input {
 }
 
 /* The palette has no red token (TV/phone correctness never uses hue - see
-   CLAUDE.md). This last-5-seconds urgency pulse (TimerRing.tsx, out of this
-   port's scope) is the one place red carries real meaning, so it stays a
-   literal rather than inventing a token nothing else would use. */
+   CLAUDE.md). This last-5-seconds urgency pulse is the one place red
+   carries real meaning, so the colour itself is a literal rather than
+   inventing a token nothing else would use - it lives as an inline style in
+   Krater.tsx (the one place it's used), not here, so this rule is scale
+   only. */
 .timer-critical {
   animation: timer-critical 1s ease-in-out infinite;
-  color: #ef4444 !important;
-  text-shadow: 0 0 18px rgba(239, 68, 68, 0.65);
-}
-
-.timer-ring {
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 3px var(--ember),
-    0 0 20px 4px rgba(232, 161, 74, 0.45);
-  animation: pulse-scale 2.2s ease-in-out infinite;
-}
-
-@keyframes timer-ring-critical-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-.timer-ring-critical {
-  box-shadow:
-    0 0 0 3px #ef4444,
-    0 0 26px 6px rgba(239, 68, 68, 0.6);
-  animation: timer-ring-critical-pulse 0.9s ease-in-out infinite;
 }
 
 /* ============================= entrances ============================= */
@@ -324,9 +299,7 @@ input {
   }
   .glow-pulse,
   .gold-pulse,
-  .timer-ring,
-  .timer-critical,
-  .timer-ring-critical {
+  .timer-critical {
     animation: none;
   }
 }

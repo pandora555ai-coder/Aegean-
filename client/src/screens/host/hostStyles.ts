@@ -563,20 +563,16 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     minWidth: '2rem',
   },
-  timerRingWrap: {
+  kraterWrap: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: '7rem',
-    height: '7rem',
-    borderRadius: '50%',
-    background: 'var(--marble)',
   },
-  timer: {
-    fontSize: '3rem',
+  kraterNumber: {
     fontWeight: 800,
     fontFamily: 'monospace',
-    color: 'var(--carve)',
+    fontVariantNumeric: 'tabular-nums',
+    color: 'var(--marble)',
   },
   // Socrates (Task 39) - his OWN phase, so nothing here is a banner squeezed
   // above other content: the card fills the left column on its own, and the

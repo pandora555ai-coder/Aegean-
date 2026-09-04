@@ -3,7 +3,7 @@ import type { PlayerStanding } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { DEFAULT_DURATION_MS, useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { sidebarAvatarSize, sidebarListGap, sidebarRowSizeStyle, styles, type CSSVars } from './hostStyles';
-import { TimerRing, type TimerState } from './TimerRing';
+import { Krater, type TimerState } from '../../components/Krater';
 
 interface PlayerScoresPanelProps {
   standings: PlayerStanding[];
@@ -272,7 +272,7 @@ export function PlayerScoresPanel({
 
   return (
     <div style={panelStyle}>
-      {timer && <TimerRing timer={timer} playerCount={count} />}
+      {timer && <Krater timer={timer} playerCount={count} />}
       <div style={styles.scorePanelTitle} data-testid="score-panel-title">
         {title}
       </div>

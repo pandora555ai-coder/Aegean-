@@ -80,7 +80,7 @@ import { TrialRevealView } from './host/TrialRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
-import type { TimerState } from './host/TimerRing';
+import type { TimerState } from '../components/Krater';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -93,6 +93,13 @@ export default function HostScreen() {
   const [crowdMood, setCrowdMood] = useState<CrowdMood>('calm');
   const [question, setQuestion] = useState<QuestionShowHostPayload | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
+  // The krater's wine level needs remaining/total, not just remaining - one
+  // shared value is enough since only one phase's timer is ever on screen
+  // at a time (see timerForPhase). Set once at each phase's entry, next to
+  // wherever that phase resets its own secondsLeft to the full duration;
+  // never touched by a pause/resume correction, which only ever corrects
+  // the remaining side.
+  const [timerTotalSeconds, setTimerTotalSeconds] = useState(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
@@ -284,6 +291,7 @@ export default function HostScreen() {
         // A fresh question:show always means "just started" - nothing has
         // elapsed yet, so the full duration IS the correct countdown start.
         applySecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
+        setTimerTotalSeconds(Math.ceil(payload.questionTimeMs / 1000));
         setReveal(null);
         // The question a POWER_UP phase preceded starts the instant that
         // phase ends - drop its view rather than leaving it behind.
@@ -377,6 +385,7 @@ export default function HostScreen() {
         setTrialReveal(null);
         setTrialQuestion(payload);
         setTrialQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
+        setTimerTotalSeconds(Math.ceil(payload.durationMs / 1000));
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -782,6 +791,7 @@ export default function HostScreen() {
       return;
     }
     setPowerUpSecondsLeft(Math.ceil(powerUp.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(powerUp.durationMs / 1000));
   }, [powerUp]);
 
   useEffect(() => {
@@ -802,6 +812,7 @@ export default function HostScreen() {
       return;
     }
     setStealSecondsLeft(Math.ceil(steal.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(steal.durationMs / 1000));
   }, [steal]);
 
   useEffect(() => {
@@ -844,6 +855,7 @@ export default function HostScreen() {
       return;
     }
     setDrawSecondsLeft(Math.ceil(draw.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(draw.durationMs / 1000));
   }, [draw]);
 
   useEffect(() => {
@@ -861,6 +873,7 @@ export default function HostScreen() {
       return;
     }
     setGuessSecondsLeft(Math.ceil(guess.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(guess.durationMs / 1000));
   }, [guess]);
 
   useEffect(() => {
@@ -900,6 +913,7 @@ export default function HostScreen() {
       return;
     }
     setNumericQuestionSecondsLeft(Math.ceil(numericQuestion.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(numericQuestion.durationMs / 1000));
   }, [numericQuestion]);
 
   useEffect(() => {
@@ -1361,6 +1375,7 @@ export default function HostScreen() {
   function timerForPhase(): TimerState | null {
     const ring = (secondsLeftValue: number, criticalAt: number): TimerState => ({
       secondsLeft: secondsLeftValue,
+      totalSeconds: timerTotalSeconds,
       critical: !paused && secondsLeftValue <= criticalAt && secondsLeftValue > 0,
     });
     switch (phase) {
