@@ -60,199 +60,61 @@ export function lobbyAvatarSize(count: number): number {
   return count <= 4 ? 2.75 : count <= 6 ? 2.15 : 1.7;
 }
 
-// GAME_OVER's final standings rows.
-export function standingRowSizeStyle(count: number): CSSProperties {
-  const s = densityScale(count);
-  return {
-    gap: `${(1.5 * s).toFixed(2)}rem`,
-    fontSize: `${(2.25 * s).toFixed(2)}rem`,
-    padding: `${(1 * s).toFixed(2)}rem ${(1.5 * s).toFixed(2)}rem`,
-  };
-}
-
-export function standingAvatarSize(count: number): number {
-  return 2.25 * densityScale(count);
-}
-
-export function standingsListGap(count: number): string {
-  return `${(0.75 * densityScale(count)).toFixed(2)}rem`;
-}
-
-// Drawing mode (Task 56b) - GUESS_REVEAL stacks the picture ABOVE a
-// player-count-sensitive results list (up to 7 guesser rows), unlike plain
-// GUESS which has vertical room to spare for a big square image. Verified
-// against a real 8-player render: without this shrink, the picture alone
-// (drawingImageWrap's fixed min(52vh,46vw)) pushed total column height past
-// 1080px, and centered-flex overflow clips symmetrically top+bottom rather
-// than growing a scrollbar - silent, and NOT caught by a scrollHeight check
-// (browsers don't count a centered overflow's "before" side toward it).
-export function guessRevealImageWrapStyle(count: number): CSSProperties {
-  const vh = 30 * densityScale(count);
-  return {
-    width: `min(${vh}vh, ${(vh * 0.88).toFixed(1)}vw)`,
-    aspectRatio: '1 / 1',
-    borderRadius: '1rem',
-    overflow: 'hidden',
-    border: '3px solid var(--marble-3)',
-    flexShrink: 0,
-  };
-}
-
-// Task 38 - the persistent right-hand score column's rows. A narrower,
-// shorter row than GAME_OVER's standingRow* (that column is only ~30% of
-// the screen), but the same density-step philosophy: a few hand-picked
-// sizes so up to MAX_PLAYERS (8) rows always fit with no scroll.
-export function sidebarRowSizeStyle(count: number): CSSProperties {
-  const s = densityScale(count);
-  return {
-    gap: `${(0.65 * s).toFixed(2)}rem`,
-    fontSize: `${(1.3 * s).toFixed(2)}rem`,
-    padding: `${(0.55 * s).toFixed(2)}rem ${(0.75 * s).toFixed(2)}rem`,
-  };
-}
-
-export function sidebarAvatarSize(count: number): number {
-  return 1.85 * densityScale(count);
-}
-
-export function sidebarListGap(count: number): string {
-  return `${(0.5 * densityScale(count)).toFixed(2)}rem`;
-}
+// Task 161 - the TV's vertical split. TOP: the read column (the marble slab
+// - anything READ); BOTTOM: the orchestra, where the sophists row stands
+// (anything about PLAYERS). The row is a fixed band at the foot of the
+// screen (SophistsRow: bottom 6.5cqh + 30cqh tall, its delta rising 3.6cqh
+// above the tallest figure), so every read-area root stops SOPHISTS_BAND
+// short of the viewport's bottom instead of the old --tv-safe-bottom - the
+// band is well inside the overscan crop already. 38vh = 6.5 + 30 + 1.5
+// breathing room; at 720p that leaves the read column 5vh..62vh (410px).
+export const SOPHISTS_BAND = '38vh';
+export const READ_AREA_HEIGHT = `calc(100vh - var(--tv-safe-top) - ${SOPHISTS_BAND})`;
 
 export const styles: Record<string, CSSProperties> = {
-  // Task 38 - the fixed two-column layout every in-game phase (QUESTION,
-  // POWER_UP, REVEAL, STEAL) renders through: LEFT ~70% for the phase's own
-  // content, RIGHT a FIXED ~30% for the always-visible score column, so it
-  // never shifts or resizes as the phase content around it changes. Grid's
-  // `fr` split (not percentages) means the gap is subtracted from the
-  // tracks automatically, so 7fr/3fr + the gap below never overflows 100%.
-  // The padding IS the ~3% safe-area margin real TVs crop at the edges.
+  // Task 38/161 - the read column every in-game phase renders through. One
+  // column now (the score column it shared the screen with is the sophists
+  // row, at the foot of the screen): design/theatre-reference.html's
+  // #main{left:12%;top:8%;width:60%} is the source, widened a little so a
+  // 2x2 options grid still reads, and kept clear of the krater standing at
+  // the top-right (kraterCorner below). The padding IS the ~3% safe-area
+  // margin real TVs crop at the edges.
   gameLayout: {
-    display: 'grid',
-    gridTemplateColumns: '7fr 3fr',
-    gap: '2.5%',
-    width: '100%',
-    // Short by the TV overscan safe area on BOTH edges (palette, Task 112)
-    // so the top-most and bottom-most row of any phase clears a real set's
-    // cropped edge - the timer used to be the casualty at the top.
-    height: 'calc(100vh - var(--tv-safe-top) - var(--tv-safe-bottom))',
-    marginTop: 'var(--tv-safe-top)',
+    position: 'absolute',
+    left: '7%',
+    width: '72%',
+    top: 'var(--tv-safe-top)',
+    height: READ_AREA_HEIGHT,
     boxSizing: 'border-box',
-    padding: '3vh 3vw',
+    padding: '3vh 0',
     overflow: 'hidden',
     // Task 159c - transparent, not var(--night-1): TheatreScene (158) sits
-    // behind every /host phase, and this grid was an opaque 90%-of-viewport
-    // surface directly above it, so the scene was never visible. Only the
-    // reading panel and score column get their own surface now; this is the
-    // ground between them.
+    // behind every /host phase; only the reading panel gets its own surface.
     background: 'transparent',
     color: 'var(--marble)',
-    position: 'relative',
     zIndex: 1,
   },
   gameLayoutLeft: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
+    // Slabs hang from the top of the read area (the reference's #main sits
+    // at top:8%), they don't float in the middle of it.
+    justifyContent: 'flex-start',
     minWidth: 0,
     minHeight: 0,
     height: '100%',
     overflow: 'hidden',
   },
-  gameLayoutRight: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    minWidth: 0,
-    minHeight: 0,
-    height: '100%',
-    overflow: 'hidden',
-  },
-  scorePanelTitle: {
-    fontSize: '1rem',
-    fontWeight: 700,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: 'var(--marble-3)',
-    textAlign: 'center',
-    marginBottom: '0.75rem',
-  },
-  scorePanelList: {
-    display: 'flex',
-    flexDirection: 'column',
-    width: '100%',
-  },
-  scorePanelRow: {
-    display: 'flex',
-    alignItems: 'center',
-    width: '100%',
-    borderRadius: '0.75rem',
-    background: 'var(--night-1)',
-    color: 'var(--marble)',
-    boxSizing: 'border-box',
-  },
-  scorePanelRowLeader: {
-    display: 'flex',
-    alignItems: 'center',
-    width: '100%',
-    borderRadius: '0.75rem',
-    background: 'rgba(142, 36, 64, 0.1)',
-    border: '2px solid var(--wine-2)',
-    color: 'var(--marble)',
-    boxSizing: 'border-box',
-  },
-  scorePanelRowDisconnected: {
-    display: 'flex',
-    alignItems: 'center',
-    width: '100%',
-    borderRadius: '0.75rem',
-    background: 'var(--night-1)',
-    color: 'var(--marble-3)',
-    opacity: 0.5,
-    boxSizing: 'border-box',
-  },
-  scorePanelRank: {
-    color: 'var(--marble-3)',
-    minWidth: '1.6rem',
-    flexShrink: 0,
-    fontWeight: 700,
-  },
-  scorePanelName: {
-    flex: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontWeight: 600,
-  },
-  scorePanelScore: {
-    flexShrink: 0,
-    fontFamily: 'monospace',
-    fontWeight: 700,
-  },
-  // REVEAL/GUESS_REVEAL only (Task: round points in the score column) -
-  // never passed a value on any other phase, so it just doesn't render
-  // there instead of needing its own clear-on-next-question logic.
-  scorePanelDelta: {
-    flexShrink: 0,
-    fontFamily: 'monospace',
-    fontWeight: 700,
-    fontSize: '0.8em',
-    color: 'var(--ember)',
-    marginLeft: '0.35rem',
-  },
-  // Η Δίκη (Task 128) - an eliminated player's row, TRIAL_QUESTION/
-  // TRIAL_REVEAL only. Reuses WRONG_OPACITY's 0.42 (RevealView) rather than
-  // scorePanelRowDisconnected's 0.5: elimination is a distinct state from a
-  // dropped connection and reads with the same weight as a wrong answer.
-  scorePanelRowEliminated: {
-    opacity: 0.42,
-  },
-  scorePanelLockIcon: {
-    flexShrink: 0,
-    fontSize: '0.85em',
-    marginLeft: '0.35rem',
+  // Task 161 - where the krater stands now that the column is gone: the
+  // reference's .krater{right:6%;top:13%}. Above the read column's z-index
+  // so nothing a phase draws can cover the clock.
+  kraterCorner: {
+    position: 'fixed',
+    right: '6%',
+    top: '13%',
+    zIndex: 3,
+    pointerEvents: 'none',
   },
   container: {
     display: 'flex',
@@ -640,63 +502,6 @@ export const styles: Record<string, CSSProperties> = {
     width: '100%',
     minHeight: 0,
   },
-  standingsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-    width: '100%',
-    maxWidth: '800px',
-  },
-  standingRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.5rem',
-    fontSize: '2.25rem',
-    fontWeight: 700,
-    padding: '1rem 1.5rem',
-    borderRadius: '0.75rem',
-    background: 'var(--marble)',
-    color: 'var(--carve)',
-  },
-  standingRowDisconnected: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.5rem',
-    fontSize: '2.25rem',
-    fontWeight: 700,
-    padding: '1rem 1.5rem',
-    borderRadius: '0.75rem',
-    background: 'var(--marble)',
-    color: 'var(--marble-3)',
-    opacity: 0.5,
-  },
-  standingRowLeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.5rem',
-    fontSize: '2.25rem',
-    fontWeight: 700,
-    padding: '1rem 1.5rem',
-    borderRadius: '0.75rem',
-    background: 'rgba(142, 36, 64, 0.1)',
-    border: '2px solid var(--wine-2)',
-    color: 'var(--marble)',
-  },
-  standingRank: {
-    color: 'var(--marble-3)',
-    minWidth: '3rem',
-  },
-  standingName: {
-    flex: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  standingScore: {
-    flexShrink: 0,
-    fontFamily: 'monospace',
-  },
   gameOverTitleWrap: {
     display: 'flex',
     flexDirection: 'column',
@@ -729,18 +534,6 @@ export const styles: Record<string, CSSProperties> = {
     color: 'var(--olive)',
     textAlign: 'center',
   },
-  standingRowWinner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.5rem',
-    fontSize: '2.25rem',
-    fontWeight: 700,
-    padding: '1rem 1.5rem',
-    borderRadius: '0.75rem',
-    background: 'rgba(154, 168, 96, 0.14)',
-    border: '3px solid var(--olive)',
-    color: 'var(--marble)',
-  },
   wakeLockHint: {
     fontSize: '0.9rem',
     color: 'var(--marble-3)',
@@ -763,14 +556,14 @@ export const styles: Record<string, CSSProperties> = {
   },
   // Drawing mode (Task 56b) - GUESS/GUESS_REVEAL's picture. Fixed square
   // (drawings export at 512x512 - see DRAWING_EXPORT_SIZE), sized off the
-  // viewport's smaller dimension so it never pushes the options grid or
-  // timer off a 100vh screen at any player count (criterion 4).
+  // viewport's smaller dimension so it never pushes the options grid off
+  // the read area at any player count (criterion 4).
   drawingImageWrap: {
-    // Θέατρο palette (Task 94) - shrunk from 52vh/46vw: the picture now
-    // sits on its OWN papyrus panel, stacked above a second papyrus for the
-    // options, so the old size (tuned for a single flat options grid) left
-    // the options panel too little room to fit within 100vh.
-    width: 'min(36vh, 32vw)',
+    // Task 161 - shrunk again from 36vh/32vw: the picture now sits BESIDE
+    // the options on ONE slab (the reference's .drawing grid, canvas 30cqh)
+    // instead of above a second one, because the read area is 57vh tall
+    // now that the sophists row owns the bottom of the screen.
+    width: 'min(26vh, 24vw)',
     aspectRatio: '1 / 1',
     borderRadius: '1rem',
     overflow: 'hidden',

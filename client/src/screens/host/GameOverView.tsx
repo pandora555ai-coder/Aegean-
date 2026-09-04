@@ -3,15 +3,7 @@ import { ANSWER_IDENTITIES, type GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { useFitScale } from '../../hooks/useFitScale';
 import { MarbleSlab } from '../../components/MarbleSlab';
-import {
-  SURFACE_GLOW,
-  densityScale,
-  standingAvatarSize,
-  standingRowSizeStyle,
-  standingsListGap,
-  styles,
-  type CSSVars,
-} from './hostStyles';
+import { READ_AREA_HEIGHT, densityScale, styles, type CSSVars } from './hostStyles';
 
 // Confetti pieces for the GAME_OVER celebration - a fixed module-level list
 // (computed once, not per render) so remounts don't reshuffle it. Colours
@@ -97,18 +89,23 @@ interface GameOverViewProps {
   gameOver: GameOverPayload;
 }
 
+// Task 161 - the final standings list is gone from this view: the sophists
+// row at the foot of the screen IS the standings now (sorted, the winner
+// wreathed, and after a trial only the survivor still on the orchestra), so
+// a second roster on the slab would name and count the same players twice.
+// What is left is the celebration header alone, kept inside the read area
+// above the row.
 export function GameOverView({ gameOver }: GameOverViewProps) {
-  const sortedFinalStandings = [...gameOver.standings].sort((a, b) => a.rank - b.rank);
-  const winners = sortedFinalStandings.filter((standing) => standing.rank === 1);
-  const count = sortedFinalStandings.length;
-  const rowSize = standingRowSizeStyle(count);
-  // Up to MAX_PLAYERS (8) standing rows have to share 100vh with the whole
-  // celebration header (title/avatar/winner papyrus) above them - the same
-  // density-step scaling every other TV view uses at high player counts,
-  // applied here to the header since standingRowSizeStyle already covers
-  // the list itself.
+  const winners = gameOver.standings.filter((standing) => standing.rank === 1);
+  const count = gameOver.standings.length;
+  // The same density-step scaling every other TV view uses at high player
+  // counts, applied to the header.
   const s = densityScale(count);
-  const containerStyle = { ...styles.container, padding: `${(3 * Math.max(s, 0.55)).toFixed(2)}rem 2rem` };
+  const containerStyle = {
+    ...styles.container,
+    height: READ_AREA_HEIGHT,
+    padding: `${(3 * Math.max(s, 0.55)).toFixed(2)}rem 2rem`,
+  };
   const titleWrapStyle = {
     ...styles.gameOverTitleWrap,
     gap: `${(1 * Math.max(s, 0.6)).toFixed(2)}rem`,
@@ -117,12 +114,10 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
   const winnerAvatarSize = 6 * Math.max(s, 0.55);
 
   // The density steps above shrink the parts; this shrinks whatever is
-  // still left over. GAME_OVER is the one host screen whose content is a
-  // celebration header AND a list that grows with the room, and at 720p
-  // (where the TV safe area now costs 10vh, Task 112) the two together ran
-  // past the panel from 5 players up - measured, not assumed. Centred flex
-  // overflow is invisible to scrollHeight, so nothing here would have said
-  // so on its own.
+  // still left over. The header (title, winner avatar, winner slab) is
+  // taller than the 57vh read area at 720p on its own, so it scales down
+  // to fit rather than running into the sophists row. Centred flex overflow
+  // is invisible to scrollHeight, so nothing here would say so on its own.
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<HTMLDivElement | null>(null);
   useFitScale(containerRef, fitRef, [count, gameOver.winnerName, gameOver.isTie]);
@@ -156,34 +151,6 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
             {gameOver.winnerName}
           </div>
         </MarbleSlab>
-      </div>
-      <div style={{ ...styles.standingsList, gap: standingsListGap(count) }}>
-        {sortedFinalStandings.map((standing, index) => (
-          <div
-            key={standing.playerId}
-            data-testid="final-standing-row"
-            className={standing.rank === 1 ? 'glow-pulse enter-rise' : 'enter-rise'}
-            style={
-              standing.rank === 1
-                ? ({
-                    ...styles.standingRowWinner,
-                    ...rowSize,
-                    '--glow-color': 'rgba(154, 168, 96, 0.5)',
-                    '--i': String(index),
-                  } as CSSVars)
-                : ({ ...styles.standingRow, ...rowSize, boxShadow: SURFACE_GLOW, '--i': String(index) } as CSSVars)
-            }
-          >
-            {/* Task 137 - a trial's GAME_OVER shows no numbers at all: score
-                is life there and can end negative, and the row ORDER is
-                already the survival ranking, so a "#N" badge would be the
-                only digit left on the whole screen for no reason. */}
-            {!gameOver.isTrialResult && <span style={styles.standingRank}>#{standing.rank}</span>}
-            <Avatar avatarId={standing.avatarId} sizeRem={standingAvatarSize(count)} ringColor={standing.rank === 1 ? 'var(--olive)' : undefined} />
-            <span style={styles.standingName}>{standing.name}</span>
-            {!gameOver.isTrialResult && <span style={styles.standingScore}>{standing.score}</span>}
-          </div>
-        ))}
       </div>
       </div>
     </div>

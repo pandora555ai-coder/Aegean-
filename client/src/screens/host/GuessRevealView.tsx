@@ -3,26 +3,36 @@ import { GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } 
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
-import { guessRevealImageWrapStyle, styles } from './hostStyles';
+import { styles } from './hostStyles';
 
 // Θέατρο palette pass - GUESS_REVEAL's own content, mirroring
 // RevealView's redesign exactly: correctness reads as opacity/weight only
-// (no hue), and the picture/word/options all sit on papyrus. optionCard*
-// (hostStyles.ts) is now unused by any other phase after this - kept local
-// here instead of edited in place, same reasoning as RevealView's own local
-// overrides.
+// (no hue), and the picture/word/options all sit on marble.
 //
-// The per-player result list was deleted (names/scores already live in the
-// score column - see GameLayout) because at 8 players it pushed this
-// panel's bottom edge to 717px of a 720px TV, and real TVs crop 2-3% at
-// the edges - it was already off-screen there.
+// The per-player result list was deleted (names/scores live in the sophists
+// row - see HostScreen) because at 8 players it pushed this panel's bottom
+// edge to 717px of a 720px TV, and real TVs crop 2-3% at the edges - it was
+// already off-screen there.
 //
 // Task 115 finished that: the drawer's own bonus line and the aggregate
-// "N/M μάντεψαν σωστά" are gone too. Nothing under the papyrus names a
-// player or counts them - the drawer's +N is in the score column like
+// "N/M μάντεψαν σωστά" are gone too. Nothing under the heading names a
+// player or counts them - the drawer's +N is above their figure like
 // everyone else's. The drawer heading ABOVE the drawing stays: it says whose
 // sketch this is, not who scored.
+//
+// Task 161 - one slab, the reference's .drawing grid: picture left, the
+// word and the options beside it. The read area is 57vh tall now that the
+// sophists row owns the foot of the screen, and the old two-slab stack no
+// longer fit in it.
 const WRONG_OPACITY = 0.42;
+
+const drawingGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'auto 1fr',
+  gap: '1.5rem',
+  alignItems: 'center',
+  width: '100%',
+};
 
 // Boxed option, no letter - same treatment as RevealView. Border colour is
 // fixed regardless of correctness; only opacity/weight signal it.
@@ -30,16 +40,12 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
   gap: '1rem',
-  fontSize: '2.25rem',
+  fontSize: '2rem',
   lineHeight: 1.15,
   fontWeight: isCorrect ? 800 : 500,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--carve)',
-  // Tighter vertical padding than RevealView's box - this panel already
-  // stacks a heading word and the drawer's bonus line above the results
-  // list, with no vertical room to spare (Task 103's flex-shrink:0 rule
-  // means this panel never gives it back either).
-  padding: '0.25rem 1.25rem',
+  padding: '0.35rem 1.25rem',
   border: '1px solid var(--marble-3)',
   borderRadius: '0.5rem',
   minWidth: 0,
@@ -86,9 +92,9 @@ interface GuessRevealViewProps {
   secondsLeft: number;
 }
 
-// Task 56b - the TV during GUESS_REVEAL: correct option green, who guessed
-// right, and points - both the guessers' and the drawer's own bonus. The
-// round is over, so the drawing and the correct index are both safe here.
+// Task 56b - the TV during GUESS_REVEAL: the correct option full-weight, the
+// rest faded. The round is over, so the drawing and the correct index are
+// both safe here.
 export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, secondsLeft }: GuessRevealViewProps) {
   return (
     <GameLayout
@@ -104,41 +110,37 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           {guessReveal.drawerName} ζωγράφισε:
         </span>
       </div>
-      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center' }}>
-        <div style={guessRevealImageWrapStyle(guessReveal.standings.length)}>
-          <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
-        </div>
-      </MarbleSlab>
-      <MarbleSlab style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
-        {/* Task 103 - flattened to ONE flex column (word heading + the two
-            option rows as direct siblings), not word-wrapper > rows-wrapper
-            > row - one fewer level of flex-in-flex nesting, kept for its
-            own sake. The actual overflow bug this panel had wasn't nesting
-            depth at all: it was MarbleSlab's flex-shrink (see that
-            file's own comment) - fixed there, not here. */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', width: '100%' }}>
-          <div style={correctWordStyle} data-testid="guess-reveal-word">
-            {guessReveal.correctWord}
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+        <div style={drawingGridStyle}>
+          <div style={styles.drawingImageWrap}>
+            <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
           </div>
-          {[0, 1].map((rowStart) => (
-            <div key={rowStart} style={{ display: 'flex', gap: '1.5rem', width: '100%', maxWidth: '1100px' }}>
-              {guessReveal.options.slice(rowStart * 2, rowStart * 2 + 2).map((option, colIndex) => {
-                const index = rowStart * 2 + colIndex;
-                const isCorrect = index === guessReveal.correctIndex;
-                return (
-                  <div
-                    key={index}
-                    data-testid="guess-reveal-option"
-                    data-correct={isCorrect}
-                    className={isCorrect ? 'correct-pop' : undefined}
-                    style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
-                  >
-                    <span style={optionTextStyle}>{option}</span>
-                  </div>
-                );
-              })}
+          {/* Task 103 - ONE flex column (word heading + the two option rows
+              as direct siblings), one fewer level of flex-in-flex nesting. */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minWidth: 0 }}>
+            <div style={correctWordStyle} data-testid="guess-reveal-word">
+              {guessReveal.correctWord}
             </div>
-          ))}
+            {[0, 1].map((rowStart) => (
+              <div key={rowStart} style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+                {guessReveal.options.slice(rowStart * 2, rowStart * 2 + 2).map((option, colIndex) => {
+                  const index = rowStart * 2 + colIndex;
+                  const isCorrect = index === guessReveal.correctIndex;
+                  return (
+                    <div
+                      key={index}
+                      data-testid="guess-reveal-option"
+                      data-correct={isCorrect}
+                      className={isCorrect ? 'correct-pop' : undefined}
+                      style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
+                    >
+                      <span style={optionTextStyle}>{option}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </MarbleSlab>
       <div style={progressBarTrackStyle} data-testid="guess-reveal-progress">

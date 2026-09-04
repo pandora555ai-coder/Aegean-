@@ -24,9 +24,9 @@ import { GameOverView } from './host/GameOverView';
 import { GuessRevealView } from './host/GuessRevealView';
 import { GuessView } from './host/GuessView';
 import { LobbyView } from './host/LobbyView';
-import { PlayerScoresPanel } from './host/PlayerScoresPanel';
+import { SophistsRow } from '../components/SophistsRow';
 import { styles as hostStyles } from './host/hostStyles';
-import type { TimerState } from '../components/Krater';
+import { Krater, type TimerState } from '../components/Krater';
 import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { PowerUpView } from './host/PowerUpView';
@@ -269,16 +269,22 @@ const gameOver: GameOverPayload = {
 // CLAUDE.md's Phases section has it), then DRAW/GUESS/GUESS_REVEAL,
 // NUMERIC_QUESTION/NUMERIC_REVEAL (both modes skip STAGE_ANNOUNCE - see
 // CLAUDE.md), and GAME_OVER last since every mode ends there.
-// Task 112 - the same two-column shell HostScreen owns, so this stepper
-// shows what a real TV shows: phase content left, score column (with the
-// countdown now at the top of it) right. Without this the views render
-// alone and the timer is simply absent from the preview.
+// Task 112/161 - the same shell HostScreen owns, so this stepper shows what
+// a real TV shows: phase content in the read column at the top, the krater
+// at the top-right, the sophists row on the orchestra below (rendered once
+// by DevSceneScreen itself, like HostScreen, so it survives the phase
+// stepping). Without this the views render alone and the timer is simply
+// absent from the preview.
 function shell(standings: PlayerStanding[], timer: TimerState | null, content: ReactElement): ReactElement {
   return (
-    <div style={hostStyles.gameLayout}>
-      {content}
-      <PlayerScoresPanel standings={standings} timer={timer} />
-    </div>
+    <>
+      <div style={hostStyles.gameLayout}>{content}</div>
+      {timer && (
+        <div style={hostStyles.kraterCorner}>
+          <Krater timer={timer} playerCount={standings.length} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -349,13 +355,12 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
   },
   {
     phase: 'SOCRATES',
-    // SOCRATES keeps the shell but drops the column (he speaks alone) -
-    // same as HostScreen, so the height this previews is the real one.
-    render: () => (
-      <div style={{ ...hostStyles.gameLayout, gridTemplateColumns: '1fr' }}>
-        <SocratesView socrates={socrates} roomCode={ROOM_CODE} paused={false} pausedByName={null} />
-      </div>
-    ),
+    render: () =>
+      shell(
+        socrates.standings,
+        null,
+        <SocratesView socrates={socrates} roomCode={ROOM_CODE} paused={false} pausedByName={null} />,
+      ),
   },
   {
     phase: 'DRAW',
@@ -432,6 +437,15 @@ export default function DevSceneScreen() {
     <>
       <TheatreScene mood="calm" dimmed={!isSceneLit(current.phase)} />
       {current.render()}
+      <SophistsRow
+        standings={current.phase === 'GAME_OVER' ? gameOver.standings : STANDINGS}
+        phase={current.phase}
+        deltas={
+          current.phase === 'REVEAL'
+            ? Object.fromEntries(reveal.results.map((result) => [result.playerId, result.pointsAwarded]))
+            : null
+        }
+      />
       <div style={styles.bar} data-testid="dev-scene-bar">
         <button type="button" style={styles.navButton} onClick={() => setIndex((i) => Math.max(i - 1, 0))} data-testid="dev-scene-prev">
           ← Prev

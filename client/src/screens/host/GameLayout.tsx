@@ -6,35 +6,34 @@ interface GameLayoutProps {
   roomCode: RoomCode | null;
   paused: boolean;
   pausedByName: string | null;
-  // Only for spacing the left column's own children by player count - the
-  // score column itself is no longer rendered here (see below).
+  // Only for spacing the read column's own children by player count - no
+  // player is rendered here (see below).
   standings: PlayerStanding[];
-  // Forces the LEFT column (only) to remount and re-fade, e.g. on every new
-  // question - the score column lives outside this component entirely, so
+  // Forces the read column (only) to remount and re-fade, e.g. on every new
+  // question - the sophists row lives outside this component entirely, so
   // it never flashes just because the phase content changed.
   contentKey?: string | number;
   children: ReactNode;
 }
 
-// Task 38 - the left-hand half of the fixed two-column in-game shell:
-// phase content, plus the viewport-fixed room code and pause overlay, which
-// live here once instead of being duplicated in every phase view.
+// Task 38 - the read column of the in-game shell: phase content, plus the
+// viewport-fixed room code and pause overlay, which live here once instead
+// of being duplicated in every phase view.
 //
-// The score column is NOT rendered here any more. It used to be, but every
-// phase view returns a DIFFERENT component from HostScreen's phase switch,
-// so React saw a new element type at that position on every phase change and
-// unmounted this whole subtree - the panel included. That discarded
-// PlayerScoresPanel's own state (useDisplayOrder's held-back row order,
-// useAnimatedNumber's tween, useFlip's previous rects), so its "counters
-// settle, THEN rows glide for 400ms" sequence could never run across the one
-// transition where scores actually change (QUESTION -> REVEAL): the panel
-// simply remounted already in final order. HostScreen now owns the grid
-// container AND the panel, so the panel keeps its identity while only its
-// data changes - and, since Task 112, also holds the shell mounted through
-// the one render where the new phase's payload hasn't arrived yet, which was
-// still unmounting it on every reveal. Measured after that fix: the reordered
-// row reaches its final position 2177-2200ms after reveal:show (1800ms tween
-// + 400ms glide), against 0ms - no tween at all - before it.
+// The players are NOT rendered here (Task 161: the sophists row, at the
+// foot of the screen, replaces the old right-hand score column). They never
+// can be: every phase view returns a DIFFERENT component from HostScreen's
+// phase switch, so React sees a new element type at that position on every
+// phase change and unmounts this whole subtree. That would discard the
+// row's own state (the held-back order, useAnimatedNumber's tween), so its
+// "counters settle, THEN figures glide" sequence could never run across the
+// one transition where scores actually change (QUESTION -> REVEAL).
+// HostScreen owns the column container AND the row, so the row keeps its
+// identity while only its data changes - and, since Task 112, also holds
+// the last standings through the one render where the new phase's payload
+// hasn't arrived yet. Measured after that fix: the reordered row reached
+// its final position 2177-2200ms after reveal:show (1800ms tween + 400ms
+// glide), against 0ms - no tween at all - before it.
 export function GameLayout({ roomCode, paused, pausedByName, standings, contentKey, children }: GameLayoutProps) {
   return (
     <>

@@ -76,7 +76,9 @@ server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal'
                          correct-by-speed order and answerRank; quiz AND trial)
 server/src/numeric.ts    maxForAnswer, clamping, scoring, pure payload builders. MODE-AGNOSTIC — keep it that way.
 server/src/data/questions.json  899 questions, 49 categories
-client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the score column
+client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the sophists row + krater
+client/src/components/SophistsRow.tsx    The players (Task 161): figure + plaque per player on the
+                         orchestra at the foot of the TV. Replaced the score column.
 client/src/screens/host/                 One file per TV phase, plus GameLayout/PapyrusPanel
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
 client/src/components/DrawingCanvas.tsx  Canvas, tools, colour wheel
@@ -206,13 +208,14 @@ always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
 A trial GAME_OVER shows NO digits — no rank, no score — gated on
-`gameOver.isTrialResult` (GameOverView.tsx:181,184); standings are SURVIVAL
-order (winner, then reverse elimination order), built from
-room.trial.eliminationOrder (payloads.ts:391), never score (life can end
-negative). On the score column, an eliminated row is removed outright
+`gameOver.isTrialResult` (SophistsRow's hideScores; GameOverView has no
+list at all since 161); standings are SURVIVAL order (winner, then reverse
+elimination order), built from room.trial.eliminationOrder
+(payloads.ts:391), never score (life can end negative). On the sophists
+row, an eliminated figure sinks+fades (.out) and is removed outright
 REORDER_DELAY_MS + GLIDE_MS (2200ms, see TV layout) after its reveal — the
 same tween the reorder plays, so removal lands as the sink+fade finishes
-(PlayerScoresPanel.tsx's useRemovedIds, ~line 80).
+(SophistsRow.tsx's useRemovedIds); the survivors re-space via `left`.
 
 "Phase" = the state machine. The progression of the show is a STAGE.
 Never write "phase 1" when you mean a stage.
@@ -238,10 +241,26 @@ intensity (cap 3), both via addAppliedSabotage().
   per-element bounding-box checks against the viewport catch it.
 - **PapyrusPanel must stay `flex: 0 0 auto`.** Its content is text and
   cannot compress; let it shrink and the text bleeds off the parchment.
-- **The score column lives in HostScreen, NOT inside a phase view.** Put it
-  back inside one and it unmounts on every phase change, silently killing
-  the 1800ms-settle-then-400ms-glide row reorder (REORDER_DELAY_MS =
-  useAnimatedNumber's DEFAULT_DURATION_MS = 1800, GLIDE_MS = 400).
+- **TOP is read, BOTTOM is players (Task 161).** The read column
+  (hostStyles.gameLayout: left 7%, width 72%, top --tv-safe-top, height
+  READ_AREA_HEIGHT = 100vh − safe-top − 38vh, i.e. 5vh..62vh) holds the
+  marble slab; the sophists row stands below it (bottom 6.5cqh, 30cqh tall,
+  figures 14cqh wide at `left` = (rank+.5)/n); the krater is at right 6%,
+  top 13%. Nothing on the slab names or counts players — standing
+  exceptions: "X ζωγράφισε αυτό" in GUESS/GUESS_REVEAL, the steal
+  announcement, the trial's winner line and the GAME_OVER winner banner.
+  There is NO standings list on GAME_OVER; the row is the standings.
+- **The sophists row lives in HostScreen, NOT inside a phase view.** Put
+  it back inside one and it unmounts on every phase change, silently
+  killing the 1800ms-settle-then-700ms-`left`-glide reorder
+  (REORDER_DELAY_MS = useAnimatedNumber's DEFAULT_DURATION_MS = 1800,
+  LEFT_TRANSITION_MS = 700; GLIDE_MS = 400 still times the trial removal).
+  It is ALWAYS mounted (opacity 0 in LOBBY/STAGE_ANNOUNCE, 0.6 in
+  SOCRATES/STEAL), so its removedIds reset on LOBBY, not on unmount.
+  Figures sort by the server's `rank` (score order, ties in join order;
+  survival order after a trial), never by raw score, so the cosmetic trial
+  drain never shuffles the row mid-question. Colour never encodes: the
+  leader gets the wreath + wine score, deltas are ember with the sign.
 - **densityScale steps at player-count thresholds (<=3 → 1, <=5 → 0.82,
   <=6 → 0.68, 7-8 → 0.56), so the worst case is the count just BELOW a
   threshold, not MAX_PLAYERS.** GAME_OVER overflowed 720p at 5, not at 8.

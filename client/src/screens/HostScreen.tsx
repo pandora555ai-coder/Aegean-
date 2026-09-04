@@ -79,8 +79,8 @@ import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
-import { PlayerScoresPanel } from './host/PlayerScoresPanel';
-import type { TimerState } from '../components/Krater';
+import { SophistsRow, type SophistStanding } from '../components/SophistsRow';
+import { Krater, type TimerState } from '../components/Krater';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -1058,7 +1058,7 @@ export default function HostScreen() {
 
   // Survives the one-render gap between a phase:changed and the payload
   // that carries that phase's standings - see its use below.
-  const lastStandingsRef = useRef<PlayerStanding[] | null>(null);
+  const lastStandingsRef = useRef<SophistStanding[] | null>(null);
 
   // Η Δίκη (Task 128) - score IS life during the trial (see trialLives,
   // server/src/payloads.ts: `life: player.score`), so trialQuestion.standings
@@ -1093,52 +1093,42 @@ export default function HostScreen() {
     });
   }
 
-  // Who the score column should show as eliminated (sunk + faded). During
-  // TRIAL_QUESTION this is `lives[].alive` for the SAME "before this round"
-  // reason as above; TrialRevealShowPayload carries no `lives`, but by
-  // TRIAL_REVEAL time the round IS decided and standings.score already IS
-  // each player's corrected post-round life, so "life <= 0" there is exactly
-  // eliminated - the one place that check is actually authoritative.
+  // Who the sophists row should show as eliminated (sunk + faded, .out).
+  // During TRIAL_QUESTION this is `lives[].alive` for the SAME "before this
+  // round" reason as above. At TRIAL_REVEAL it is exactly the set
+  // trialConfirmedOutPlayerIds below removes, plus everyone already out from
+  // an earlier round - never `results[].eliminated` read on its own (see
+  // that function for the sudden-death trap), and never "score <= 0".
   function trialEliminatedPlayerIds(): string[] {
     if (phase === 'TRIAL_QUESTION' && trialQuestion) {
       return trialQuestion.lives.filter((life) => !life.alive).map((life) => life.playerId);
     }
     if (phase === 'TRIAL_REVEAL' && trialReveal) {
-      // NOT "score <= 0": a sudden-death round charges no drain and no hit
-      // (trial.ts's scoreTrialRound sets `eliminated: !suddenDeath &&
-      // lifeAfter <= 0`, unconditionally false for every duelist there), so
-      // the winner of a sudden death can win at a negative life - -9 in
-      // task 127's own run-B - and "score <= 0" would wrongly fade THEIR
-      // row too. `results[].eliminated` is the actual authoritative call for
-      // whoever this round just judged; anyone else in standings wasn't
-      // even a participant THIS round, which only happens because they were
-      // already eliminated in an earlier one (trial.livingPlayerIds only
-      // ever shrinks), so they stay eliminated too.
+      // Anyone in standings who wasn't a participant THIS round is there
+      // only because an earlier round already eliminated them
+      // (trial.livingPlayerIds only ever shrinks), so they stay sunk.
       const judgedThisRound = new Set(trialReveal.results.map((result) => result.playerId));
-      const eliminatedThisRound = trialReveal.results
-        .filter((result) => result.eliminated)
-        .map((result) => result.playerId);
       const eliminatedEarlier = trialReveal.standings
         .filter((standing) => !judgedThisRound.has(standing.playerId))
         .map((standing) => standing.playerId);
-      return [...eliminatedThisRound, ...eliminatedEarlier];
+      return [...trialConfirmedOutPlayerIds(), ...eliminatedEarlier];
     }
     return [];
   }
 
-  // Task 137 - who the score column should REMOVE outright, distinct from
-  // trialEliminatedPlayerIds above (which only sinks+fades and can be
-  // provisional). A reveal whose OWN round declared sudden death
-  // (`nextSuddenDeath`) is exactly the case that flag is provisional for:
-  // everyone in it - the eventual winner very possibly included, since
-  // landing on exactly zero life off your own correct instant answer is
-  // normal - crossed zero together and goes to the decider, not out. Server
+  // Task 137 - who the row REMOVES outright (after the sink+fade has played).
+  // NOT `results[].eliminated` alone: a reveal whose OWN round declared
+  // sudden death (`nextSuddenDeath`) flags EVERY duelist in it eliminated:
+  // true - the eventual winner very possibly included, since landing on
+  // exactly zero life off your own correct instant answer is normal - because
+  // they all crossed zero together and go to the decider, not out. Server
   // mirrors this same gate for trial.eliminationOrder (server/src/phases.ts)
-  // so GAME_OVER's survival order agrees with what actually left the column.
+  // so GAME_OVER's survival order agrees with what actually left the row.
   // A sudden-death round's OWN reveal never marks anyone eliminated either
-  // (scoreTrialRound forces it false for all its results), so this is
-  // naturally empty there too - nothing further to remove once the trial's
-  // last reveal has run.
+  // (scoreTrialRound forces it false for all its results - its loser can
+  // sit at a negative life and still not be flagged), so this is naturally
+  // empty there too - nothing further to remove once the trial's last
+  // reveal has run.
   function trialConfirmedOutPlayerIds(): string[] {
     if (phase !== 'TRIAL_REVEAL' || !trialReveal || trialReveal.nextSuddenDeath) {
       return [];
@@ -1146,13 +1136,25 @@ export default function HostScreen() {
     return trialReveal.results.filter((result) => result.eliminated).map((result) => result.playerId);
   }
 
-  // Standings for the persistent score column, read from whichever payload
-  // the CURRENT phase carries - never "first non-null", since a previous
-  // phase's payload lingers in state and would show stale scores. null means
-  // this phase has no two-column shell at all (LOBBY/STAGE_ANNOUNCE/
-  // GAME_OVER render alone).
-  function standingsForPhase(): PlayerStanding[] | null {
+  // Standings for the sophists row, read from whichever payload the CURRENT
+  // phase carries - never "first non-null", since a previous phase's payload
+  // lingers in state and would show stale scores. LOBBY places the roster
+  // at zero (hidden, but already coloured by join index so the figures are
+  // simply there when stage 1 fades them in); GAME_OVER places the final
+  // standings, whose rank is survival order after a trial. null only while
+  // an in-game phase's own payload is still in flight (see below).
+  function standingsForPhase(): SophistStanding[] | null {
     switch (phase) {
+      case 'LOBBY':
+        return players.map((player) => ({
+          playerId: player.playerId,
+          name: player.name,
+          score: 0,
+          rank: 1,
+          connected: player.connected,
+        }));
+      case 'GAME_OVER':
+        return gameOver?.standings ?? null;
       case 'QUESTION':
         return question?.standings ?? null;
       case 'REVEAL':
@@ -1182,10 +1184,13 @@ export default function HostScreen() {
     }
   }
 
-  // This round's points, as a +N badge beside each score. REVEAL and
-  // GUESS_REVEAL only - every other phase passes null, so the badge just
-  // isn't there rather than needing an explicit clear step.
-  function pointsThisRound(): Record<string, number> | null {
+  // This beat's SIGNED points per player, the ember delta above each figure.
+  // REVEAL / GUESS_REVEAL / STEAL (once resolved: the thief up, the victim
+  // down by what actually moved) / NUMERIC_REVEAL / TRIAL_REVEAL (life lost
+  // to drain and a wrong answer, so always <= 0) - every other phase passes
+  // null, so the delta just isn't there rather than needing an explicit
+  // clear step. Zero deltas are dropped by the row itself.
+  function deltasThisRound(): Record<string, number> | null {
     if (phase === 'REVEAL' && reveal) {
       return Object.fromEntries(reveal.results.map((result) => [result.playerId, result.pointsAwarded]));
     }
@@ -1194,6 +1199,20 @@ export default function HostScreen() {
         ...Object.fromEntries(guessReveal.results.map((result) => [result.playerId, result.pointsAwarded])),
         [guessReveal.drawerPlayerId]: guessReveal.drawerPointsAwarded,
       };
+    }
+    if (phase === 'STEAL' && steal?.resolved && steal.resolved.victimPlayerId) {
+      return {
+        [steal.resolved.thiefPlayerId]: steal.resolved.stolenAmount,
+        [steal.resolved.victimPlayerId]: -steal.resolved.stolenAmount,
+      };
+    }
+    if (phase === 'NUMERIC_REVEAL' && numericReveal) {
+      return Object.fromEntries(numericReveal.results.map((result) => [result.playerId, result.pointsAwarded]));
+    }
+    if (phase === 'TRIAL_REVEAL' && trialReveal) {
+      return Object.fromEntries(
+        trialReveal.results.map((result) => [result.playerId, result.lifeAfter - result.lifeBefore]),
+      );
     }
     return null;
   }
@@ -1328,6 +1347,15 @@ export default function HostScreen() {
       );
     }
 
+    // An in-game phase whose own payload is still in flight (phase:changed
+    // always lands before it) renders NOTHING for that one beat - the row
+    // and the scene are still there. Falling through to the lobby here put
+    // a 648px-tall LobbyView inside the read column for 35-145ms on every
+    // transition (measured, Task 161), a visible flash off the bottom.
+    if (phase !== 'LOBBY') {
+      return null;
+    }
+
     return (
       <LobbyView
         connected={connected}
@@ -1358,20 +1386,20 @@ export default function HostScreen() {
   const isPlayPhase = phase !== 'LOBBY' && phase !== 'GAME_OVER';
   const showFullscreenToggle = fullscreenSupported && !(isPlayPhase && isFullscreen);
 
-  // The two-column in-game shell. Owned HERE, not inside GameLayout, so the
-  // score column below keeps its React identity across a phase change -
-  // every phase view is a different component type, so anything rendered
-  // inside one is unmounted when the phase advances. See GameLayout's own
-  // comment: that unmount was silently defeating the panel's settle-then-
-  // glide reorder (now 1800ms + 400ms, Task 112) on the one transition that
-  // changes scores.
-  // SOCRATES uses the shell but drops the column (he speaks alone).
-  // Task 112 - the phase countdown, hoisted out of the phase views and into
-  // the score column. Each phase keeps its OWN "nearly out" threshold (the
-  // one thing that differed between the six rings this replaced), and a
-  // phase with no clock of its own returns null so the column just shows
-  // rows. STEAL's clock stops existing the moment the theft resolves, which
-  // is exactly when its view swaps to the announcement.
+  // The read column (the marble slab, top of the screen) and the sophists
+  // row (the orchestra, bottom) are both owned HERE, not inside GameLayout,
+  // so the row keeps its React identity across a phase change - every phase
+  // view is a different component type, so anything rendered inside one is
+  // unmounted when the phase advances. See GameLayout's own comment: that
+  // unmount was silently defeating the settle-then-glide reorder (1800ms +
+  // 400ms, Task 112) on the one transition that changes scores.
+  // Task 112 - the phase countdown, hoisted out of the phase views (Task 161
+  // stands the krater at the top-right, where the column used to be). Each
+  // phase keeps its OWN "nearly out" threshold (the one thing that differed
+  // between the six rings this replaced), and a phase with no clock of its
+  // own returns null so the krater is simply absent. STEAL's clock stops
+  // existing the moment the theft resolves, which is exactly when its view
+  // swaps to the announcement.
   function timerForPhase(): TimerState | null {
     const ring = (secondsLeftValue: number, criticalAt: number): TimerState => ({
       secondsLeft: secondsLeftValue,
@@ -1401,29 +1429,31 @@ export default function HostScreen() {
     }
   }
 
-  // The phase's own standings, with the LAST ones as a fallback while an
-  // in-game phase's payload is still in flight. phase:changed always lands
-  // before the payload that follows it (endQuestion emits PHASE_CHANGED,
-  // then REVEAL_SHOW), and handleQuestionShow has already cleared the
-  // previous reveal - so without this fallback the shell had null standings
-  // for exactly one render on EVERY question->reveal, unmounting the score
-  // column and remounting it with the new scores already in place. That is
-  // what silently killed the counter tween (measured: 0ms, one frame) that
-  // Task 41 built and this task doubles.
+  // The phase's own standings, with the LAST ones as a fallback while a
+  // phase's payload is still in flight. phase:changed always lands before
+  // the payload that follows it (endQuestion emits PHASE_CHANGED, then
+  // REVEAL_SHOW), and handleQuestionShow has already cleared the previous
+  // reveal - so without this fallback the row had null standings for exactly
+  // one render on EVERY question->reveal, emptying the row and refilling it
+  // with the new scores already in place. That is what silently killed the
+  // counter tween (measured: 0ms, one frame) that Task 41 built and Task 112
+  // doubled. The row itself is ALWAYS mounted (hidden in LOBBY and
+  // STAGE_ANNOUNCE by opacity only), so it never loses its state at all now.
   const phaseStandings = standingsForPhase();
   const inGamePhase = phase !== 'LOBBY' && phase !== 'STAGE_ANNOUNCE' && phase !== 'GAME_OVER';
   if (phaseStandings) {
     lastStandingsRef.current = phaseStandings;
   }
-  const scorePanelStandings = phaseStandings ?? (inGamePhase ? lastStandingsRef.current : null);
-  const showShell = scorePanelStandings !== null;
-  const hideScorePanel = phase === 'SOCRATES';
+  const rowStandings = phaseStandings ?? lastStandingsRef.current ?? [];
+  // The read column - every in-game phase renders inside it (SOCRATES too);
+  // LOBBY, STAGE_ANNOUNCE and GAME_OVER render their own full-bleed root.
+  const showShell = inGamePhase;
 
   const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
   const confirmedOutPlayerIds = phase === 'TRIAL_REVEAL' ? trialConfirmedOutPlayerIds() : null;
   const lockedInPlayerIds = phase === 'TRIAL_QUESTION' ? (trialQuestion?.lockedInPlayerIds ?? null) : null;
-  const scoreColumnTitle = isTrialPhase ? 'Ζωές' : 'Βαθμολογία';
+  const timer = showShell ? timerForPhase() : null;
 
   const phaseView = renderPhaseView();
 
@@ -1442,26 +1472,23 @@ export default function HostScreen() {
           {isFullscreen ? '⤡' : '⤢'}
         </button>
       )}
-      {showShell ? (
-        <div style={{ ...hostStyles.gameLayout, ...(hideScorePanel ? { gridTemplateColumns: '1fr' } : {}) }}>
-          {phaseView}
-          {!hideScorePanel && (
-            <PlayerScoresPanel
-              standings={scorePanelStandings}
-              thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
-              victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
-              pointsThisRound={pointsThisRound()}
-              timer={timerForPhase()}
-              title={scoreColumnTitle}
-              eliminatedPlayerIds={eliminatedPlayerIds}
-              confirmedOutPlayerIds={confirmedOutPlayerIds}
-              lockedInPlayerIds={lockedInPlayerIds}
-            />
-          )}
+      {showShell ? <div style={hostStyles.gameLayout}>{phaseView}</div> : phaseView}
+      {timer && (
+        <div style={hostStyles.kraterCorner} data-testid="krater-corner">
+          <Krater timer={timer} playerCount={rowStandings.length} />
         </div>
-      ) : (
-        phaseView
       )}
+      <SophistsRow
+        standings={rowStandings}
+        phase={phase}
+        deltas={deltasThisRound()}
+        eliminatedPlayerIds={eliminatedPlayerIds}
+        confirmedOutPlayerIds={confirmedOutPlayerIds}
+        lockedInPlayerIds={lockedInPlayerIds}
+        thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
+        victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
+        hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
+      />
     </>
   );
 }
