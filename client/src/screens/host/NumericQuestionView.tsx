@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { type NumericQuestionShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 interface NumericQuestionViewProps {
@@ -43,7 +43,7 @@ export function NumericQuestionView({ question, roomCode, paused, pausedByName }
       </div>
       {/* flex:1 1 0 opts back into filling available height - useFitFontSize
           below needs a determinate, flexed container to shrink text against. */}
-      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
@@ -53,7 +53,7 @@ export function NumericQuestionView({ question, roomCode, paused, pausedByName }
             {question.text}
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
       <div style={styles.numericRange} data-testid="numeric-question-range">
         0 — {question.max}
       </div>

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { type RoomCode, type StealShowHostPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { densityScale, styles } from './hostStyles';
 
 // stealThiefRow/stealAmount/stealVictimRow/stealMovedAmount/stealNothing/
@@ -52,7 +52,7 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
       <div style={styles.category}>Κλοπή Πόντων</div>
 
       {resolved ? (
-        <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }} data-testid="steal-resolved">
+        <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }} data-testid="steal-resolved">
           <div style={papyrusTextBlockStyle}>
             {resolved.victimName === null ? (
               <>
@@ -97,10 +97,10 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
               </>
             )}
           </div>
-        </PapyrusPanel>
+        </MarbleSlab>
       ) : (
         <>
-          <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
+          <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
             <div style={papyrusTextBlockStyle}>
               <div
                 style={{ ...styles.stealThiefRow, color: 'var(--carve)', fontSize: `${(3 * s).toFixed(2)}rem` }}
@@ -126,7 +126,7 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
                 Παίζει για {steal.amount} πόντους
               </div>
             </div>
-          </PapyrusPanel>
+          </MarbleSlab>
         </>
       )}
     </GameLayout>

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { type GuessShowHostPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // Boxed options, no letters - same treatment as RevealView (see that file's
@@ -60,12 +60,12 @@ export function GuessView({ guess, roomCode, paused, pausedByName }: GuessViewPr
           {guess.drawerName} ζωγράφισε αυτό
         </span>
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center', padding: '1rem' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center', padding: '1rem' }}>
         <div style={styles.drawingImageWrap}>
           <img src={guess.image} alt="" style={styles.drawingImage} data-testid="guess-drawing" />
         </div>
-      </PapyrusPanel>
-      <PapyrusPanel style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+      </MarbleSlab>
+      <MarbleSlab style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
         <div style={optionsGridStyle}>
           {guess.options.map((option, index) => (
             <div key={index} data-testid="guess-option" style={optionBoxStyle}>
@@ -73,7 +73,7 @@ export function GuessView({ guess, roomCode, paused, pausedByName }: GuessViewPr
             </div>
           ))}
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
     </GameLayout>
   );
 }

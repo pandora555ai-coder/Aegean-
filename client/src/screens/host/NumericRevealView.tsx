@@ -2,7 +2,7 @@ import { useRef, type CSSProperties } from 'react';
 import { NUMERIC_REVEAL_DURATION_MS, type NumericRevealShowPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // progressBarTrack is shared with GuessRevealView (hostStyles.ts) and still
@@ -53,7 +53,7 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       </div>
       {/* flex:1 1 0 opts back into filling available height - useFitFontSize
           below needs a determinate, flexed container to shrink text against. */}
-      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
@@ -63,7 +63,7 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
             {reveal.text}
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
       <div style={styles.numericAnswerBanner} data-testid="numeric-reveal-answer">
         Σωστή απάντηση: {reveal.answer}
       </div>

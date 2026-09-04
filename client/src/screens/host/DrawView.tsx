@@ -2,7 +2,7 @@ import { useRef, type CSSProperties } from 'react';
 import { type DrawShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
@@ -45,7 +45,7 @@ export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps
       <div className="enter-pop" style={styles.category}>
         Ζωγραφική
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle} ref={titleBlockRef}>
           <div style={{ ...styles.questionTextTv, color: 'var(--carve)' }} data-testid="draw-title" ref={titleTextRef}>
             Ζωγραφίστε!
@@ -54,7 +54,7 @@ export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps
             Στα κινητά σας
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
     </GameLayout>
   );
 }

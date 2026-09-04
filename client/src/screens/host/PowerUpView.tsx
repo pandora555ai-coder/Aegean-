@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { type PowerUpShowHostPayload, type RoomCode } from '@game/shared';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
@@ -39,7 +39,7 @@ export function PowerUpView({ powerUp, roomCode, paused, pausedByName }: PowerUp
       <div className="enter-pop" style={styles.category}>
         Σαμποτάζ
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle}>
           <div style={{ ...styles.questionTextTv, color: 'var(--carve)' }} data-testid="power-up-title">
             Διάλεξε το όπλο σου!
@@ -48,7 +48,7 @@ export function PowerUpView({ powerUp, roomCode, paused, pausedByName }: PowerUp
             Στα κινητά σας
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
     </GameLayout>
   );
 }

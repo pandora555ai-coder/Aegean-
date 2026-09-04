@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { ANSWER_IDENTITIES, type GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { useFitScale } from '../../hooks/useFitScale';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import {
   SURFACE_GLOW,
   densityScale,
@@ -147,7 +147,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
             </div>
           ))}
         </div>
-        <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
+        <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', padding: `${(1.5 * Math.max(s, 0.6)).toFixed(2)}rem` }}>
           <div
             style={{ ...styles.winnerBanner, color: 'var(--carve)', fontSize: `${(3.5 * Math.max(s, 0.55)).toFixed(2)}rem` }}
             data-testid="winner-banner"
@@ -155,7 +155,7 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
             {gameOver.isTie ? 'Ισοπαλία: ' : 'Νικητής/τρια: '}
             {gameOver.winnerName}
           </div>
-        </PapyrusPanel>
+        </MarbleSlab>
       </div>
       <div style={{ ...styles.standingsList, gap: standingsListGap(count) }}>
         {sortedFinalStandings.map((standing, index) => (

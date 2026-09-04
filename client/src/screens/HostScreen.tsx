@@ -78,6 +78,7 @@ import { NumericRevealView } from './host/NumericRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
+import { MarbleFilterDefs } from '../components/MarbleSlab';
 import { PlayerScoresPanel } from './host/PlayerScoresPanel';
 import type { TimerState } from './host/TimerRing';
 
@@ -1413,6 +1414,7 @@ export default function HostScreen() {
 
   return (
     <>
+      <MarbleFilterDefs />
       <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       {showFullscreenToggle && (
         <button

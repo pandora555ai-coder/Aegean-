@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { type QuestionShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 interface QuestionViewProps {
@@ -62,7 +62,7 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
           1:1 to the text's available space - see useFitFontSize. */}
       {/* flex:1 1 0 opts back into filling available height - useFitFontSize
           below needs a determinate, flexed container to shrink text against. */}
-      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
@@ -72,7 +72,7 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
             {question.question}
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
     </GameLayout>
   );
 }

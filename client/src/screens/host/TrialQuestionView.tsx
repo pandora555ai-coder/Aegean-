@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { type RoomCode, type TrialQuestionShowHostPayload } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 interface TrialQuestionViewProps {
@@ -45,7 +45,7 @@ export function TrialQuestionView({ trialQuestion, roomCode, paused, pausedByNam
       <div className="enter-pop" style={styles.category}>
         {trialQuestion.category}
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '1 1 0' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>
           <div
             style={{ ...styles.questionTextTv, color: 'var(--carve)' }}
@@ -55,7 +55,7 @@ export function TrialQuestionView({ trialQuestion, roomCode, paused, pausedByNam
             {trialQuestion.question}
           </div>
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
     </GameLayout>
   );
 }

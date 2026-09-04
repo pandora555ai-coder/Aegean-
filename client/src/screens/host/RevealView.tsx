@@ -6,7 +6,7 @@ import {
   type RoomCode,
 } from '@game/shared';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // Θέατρο palette pass - REVEAL's own content (the shared chrome
@@ -82,7 +82,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
       {/* Socrates' commentary is NOT here any more (Task 39): it gets its
           own phase after this one, alone on screen, instead of a banner
           crowding the results. */}
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={optionsGridStyle}>
           {question.options.map((option, index) => {
             const isCorrect = index === reveal.correctIndex;
@@ -102,7 +102,7 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
             );
           })}
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
       <div style={progressBarTrackStyle} data-testid="reveal-progress">
         <div
           style={{

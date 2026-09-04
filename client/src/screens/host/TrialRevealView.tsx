@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { REVEAL_DURATION_MS, type RoomCode, type TrialRevealShowPayload } from '@game/shared';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 const progressBarTrackStyle: CSSProperties = {
@@ -35,11 +35,11 @@ export function TrialRevealView({ trialReveal, roomCode, paused, pausedByName, r
       standings={trialReveal.standings}
       contentKey={trialReveal.roundIndex}
     >
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={styles.trialCorrectAnswer} data-testid="trial-correct-answer">
           {trialReveal.correctOption}
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
       {trialReveal.winnerName && (
         <div className="enter-pop" style={styles.trialOutcomeLine} data-testid="trial-winner">
           Νικητής/Νικήτρια: {trialReveal.winnerName}

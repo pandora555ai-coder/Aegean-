@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
-import { PapyrusPanel } from './PapyrusPanel';
+import { MarbleSlab } from '../../components/MarbleSlab';
 import { guessRevealImageWrapStyle, styles } from './hostStyles';
 
 // Θέατρο palette pass - GUESS_REVEAL's own content, mirroring
@@ -46,7 +46,7 @@ const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
 });
 
 // Task 103 - independent fix, not the overflow bug's cause (see
-// PapyrusPanel.tsx for that): a long option word had nowhere to shrink to,
+// MarbleSlab.tsx for that): a long option word had nowhere to shrink to,
 // so it wrapped to a second line inside its cell instead of eating the
 // panel's spare width. A flex item's `min-width` defaults to `auto` (its
 // own content size), not 0 - nested one level deep (row -> cell -> this
@@ -104,17 +104,17 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           {guessReveal.drawerName} ζωγράφισε:
         </span>
       </div>
-      <PapyrusPanel className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', justifyContent: 'center' }}>
         <div style={guessRevealImageWrapStyle(guessReveal.standings.length)}>
           <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
         </div>
-      </PapyrusPanel>
-      <PapyrusPanel style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+      </MarbleSlab>
+      <MarbleSlab style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
         {/* Task 103 - flattened to ONE flex column (word heading + the two
             option rows as direct siblings), not word-wrapper > rows-wrapper
             > row - one fewer level of flex-in-flex nesting, kept for its
             own sake. The actual overflow bug this panel had wasn't nesting
-            depth at all: it was PapyrusPanel's flex-shrink (see that
+            depth at all: it was MarbleSlab's flex-shrink (see that
             file's own comment) - fixed there, not here. */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', width: '100%' }}>
           <div style={correctWordStyle} data-testid="guess-reveal-word">
@@ -140,7 +140,7 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
             </div>
           ))}
         </div>
-      </PapyrusPanel>
+      </MarbleSlab>
       <div style={progressBarTrackStyle} data-testid="guess-reveal-progress">
         <div
           style={{
