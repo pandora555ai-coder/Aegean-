@@ -8,7 +8,6 @@ import {
   type GamePhase,
   type GuessRevealShowPayload,
   type GuessShowHostPayload,
-  type LobbyPlayer,
   type NumericQuestionShowHostPayload,
   type NumericRevealShowPayload,
   type PlayerStanding,
@@ -42,15 +41,6 @@ import { StealView } from './host/StealView';
 // in; nothing here is meant to be internally consistent across phases (each
 // entry is its own isolated snapshot, not one continuous fake game).
 const ROOM_CODE = '1234';
-
-const PLAYERS: LobbyPlayer[] = [
-  { playerId: 'p1', name: 'Γιώργος', connected: true, isVip: true, avatarId: 'minotaur' },
-  { playerId: 'p2', name: 'Ελένη', connected: true, isVip: false, avatarId: 'medusa' },
-  { playerId: 'p3', name: 'Νίκος', connected: true, isVip: false, avatarId: 'cyclops' },
-  { playerId: 'p4', name: 'Μαρία', connected: false, isVip: false, avatarId: 'centaur' },
-  { playerId: 'p5', name: 'Δημήτρης', connected: true, isVip: false, avatarId: 'cerberus' },
-];
-const CONNECTED_COUNT = PLAYERS.filter((p) => p.connected).length;
 
 const STANDINGS: PlayerStanding[] = [
   { playerId: 'p1', name: 'Γιώργος', avatarId: 'minotaur', score: 1200, rank: 1, connected: true },
@@ -302,14 +292,9 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
         onToggleMuted={() => {}}
         onCreateRoom={() => {}}
         qrCanvasRef={{ current: null }}
-        players={PLAYERS}
-        connectedCount={CONNECTED_COUNT}
         roomSettings={DEFAULT_ROOM_SETTINGS}
         mode="quiz"
         availableModes={AVAILABLE_MODES}
-        vip={PLAYERS[0]}
-        powerHintDismissed={false}
-        onDismissPowerHint={() => {}}
       />
     ),
   },

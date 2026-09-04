@@ -40,26 +40,6 @@ export function containerGap(count: number): string {
   return `${(1.5 * densityScale(count)).toFixed(2)}rem`;
 }
 
-// LOBBY's player list - the one place "columns" (not just size) helps: past
-// 4 players a single column runs too tall, so it switches to two.
-export function lobbyPlayerListStyle(count: number): CSSProperties {
-  const twoColumn = count > 4;
-  const scale = count <= 4 ? 1 : count <= 6 ? 0.78 : 0.62;
-  return {
-    display: 'grid',
-    gridTemplateColumns: twoColumn ? 'repeat(2, minmax(0, 1fr))' : '1fr',
-    columnGap: '2rem',
-    rowGap: `${(0.5 * scale).toFixed(2)}rem`,
-    fontSize: `${(2.5 * scale).toFixed(2)}rem`,
-    width: '100%',
-    maxWidth: twoColumn ? '900px' : '640px',
-  };
-}
-
-export function lobbyAvatarSize(count: number): number {
-  return count <= 4 ? 2.75 : count <= 6 ? 2.15 : 1.7;
-}
-
 // Task 161 - the TV's vertical split. TOP: the read column (the marble slab
 // - anything READ); BOTTOM: the orchestra, where the sophists row stands
 // (anything about PLAYERS). The row is a fixed band at the foot of the
@@ -116,33 +96,6 @@ export const styles: Record<string, CSSProperties> = {
     zIndex: 3,
     pointerEvents: 'none',
   },
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '1.5rem',
-    padding: '3rem 2rem',
-    // Fixed to the viewport, not just a floor - every host view must fit
-    // within 100vh at up to MAX_PLAYERS (8) players with no scrollbar,
-    // since nobody can scroll a TV. The padding keeps content off the side
-    // edges; the crop itself is --tv-safe-top/-bottom (palette).
-    height: 'calc(100vh - var(--tv-safe-top) - var(--tv-safe-bottom))',
-    marginTop: 'var(--tv-safe-top)',
-    overflow: 'hidden',
-    width: '100%',
-    // Task 159c - transparent, not var(--night-1): see gameLayout's comment
-    // above. LOBBY and GAME_OVER (the two host views using this) are ground
-    // too - the scene shows through.
-    background: 'transparent',
-    color: 'var(--marble)',
-    // Stacks above the fixed .confetti-piece / .firework-particle layers
-    // (both z-index: 0) regardless of DOM order. The background light
-    // sweep this originally also stacked above (Task 21) was removed in
-    // Task 22; the GAME_OVER light rays (Task 21) were removed in Task 23.
-    position: 'relative',
-    zIndex: 1,
-  },
-  status: { fontSize: '1.25rem', color: 'var(--marble-3)' },
   createButton: {
     fontSize: '2rem',
     padding: '1.5rem 3rem',
@@ -160,23 +113,6 @@ export const styles: Record<string, CSSProperties> = {
     background: 'var(--marble)',
     color: 'var(--marble-3)',
     fontWeight: 700,
-  },
-  code: {
-    fontSize: '8rem',
-    fontWeight: 700,
-    fontFamily: 'monospace',
-    letterSpacing: '0.5em',
-    color: 'var(--wine-2)',
-  },
-  qrWrapper: {
-    // A light, near-white ground regardless of theme - QR scanning fails on
-    // dark/inverted codes on many phone cameras, so this can't just inherit
-    // whatever the page background happens to be. The canvas paints its own
-    // white quiet zone (margin: 2), so --marble here only frames it.
-    background: 'var(--marble)',
-    padding: '1rem',
-    borderRadius: '1rem',
-    lineHeight: 0,
   },
   muteToggle: {
     position: 'fixed',
@@ -243,54 +179,6 @@ export const styles: Record<string, CSSProperties> = {
     gap: '1rem',
     zIndex: 40,
   },
-  // Stage announcement (Task 31a). Sits ABOVE the pause overlay's z-index so
-  // a stage entered while paused still reads, but below the corner room code
-  // (50), which must never be covered.
-  stageOverlay: {
-    position: 'fixed',
-    // Top and bottom edges inset by the TV overscan safe area (palette).
-    inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
-    // Task 159c - transparent, not var(--night-1): see gameLayout's comment
-    // above. The stage card has no surface of its own; it reads directly
-    // against the scene.
-    background: 'transparent',
-    color: 'var(--marble)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '2rem',
-    zIndex: 45,
-  },
-  stageCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '1rem',
-    textAlign: 'center',
-    maxWidth: '80%',
-  },
-  stageKicker: {
-    fontSize: '2rem',
-    fontWeight: 700,
-    letterSpacing: '0.3em',
-    color: 'var(--ember)',
-  },
-  stageTitle: {
-    fontSize: 'clamp(3.5rem, 6vw, 6rem)',
-    fontWeight: 900,
-    lineHeight: 1.15,
-    color: 'var(--marble)',
-  },
-  stageTagline: {
-    fontSize: '2rem',
-    fontWeight: 600,
-    color: 'var(--marble-3)',
-  },
-  stageRange: {
-    fontSize: '1.5rem',
-    fontWeight: 600,
-    color: 'var(--marble-3)',
-  },
   pauseTitle: {
     fontSize: '5rem',
     fontWeight: 900,
@@ -299,54 +187,6 @@ export const styles: Record<string, CSSProperties> = {
   },
   pauseSubtitle: {
     fontSize: '1.75rem',
-    fontWeight: 600,
-    color: 'var(--marble-3)',
-  },
-  counter: {
-    fontSize: '2.5rem',
-    fontWeight: 700,
-    color: 'var(--marble)',
-  },
-  playerList: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: '0.5rem',
-    fontSize: '2.5rem',
-    minHeight: '3rem',
-    width: '100%',
-    maxWidth: '640px',
-  },
-  playerRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.75rem',
-  },
-  playerName: {
-    fontWeight: 600,
-    color: 'var(--marble)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    minWidth: 0,
-  },
-  playerNameDisconnected: {
-    fontWeight: 600,
-    color: 'var(--marble-3)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    minWidth: 0,
-    opacity: 0.6,
-  },
-  waitingMessage: {
-    fontSize: '2.5rem',
-    fontWeight: 600,
-    color: 'var(--marble-3)',
-  },
-  settingsSummary: {
-    fontSize: '1.25rem',
     fontWeight: 600,
     color: 'var(--marble-3)',
   },
@@ -490,63 +330,6 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textAlign: 'center',
     color: 'var(--wine-2)',
-  },
-  // GAME_OVER's whole celebration stack, as ONE block so useFitScale has a
-  // single thing to measure and scale (the container itself also holds the
-  // absolutely-positioned confetti, which must not be scaled with it).
-  gameOverFitBlock: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '1.5rem',
-    width: '100%',
-    minHeight: 0,
-  },
-  gameOverTitleWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '1rem',
-    padding: '1.5rem 0',
-    // Own stacking context, above the confetti/firework layers (both
-    // z-index: 0) as direct siblings within .container - the winner name
-    // must never be obscured by a piece crossing through the center.
-    position: 'relative',
-    zIndex: 2,
-  },
-  winnerAvatarRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '1.5rem',
-  },
-  gameOverTitle: {
-    position: 'relative',
-    zIndex: 1,
-    fontSize: '2.5rem',
-    fontWeight: 700,
-    color: 'var(--marble-3)',
-  },
-  winnerBanner: {
-    position: 'relative',
-    zIndex: 1,
-    fontSize: '3.5rem',
-    fontWeight: 800,
-    color: 'var(--olive)',
-    textAlign: 'center',
-  },
-  wakeLockHint: {
-    fontSize: '0.9rem',
-    color: 'var(--marble-3)',
-  },
-  powerHint: {
-    fontSize: '0.85rem',
-    color: 'var(--marble-3)',
-    textAlign: 'center',
-    cursor: 'pointer',
-    maxWidth: '32rem',
-  },
-  powerHintDismiss: {
-    fontWeight: 700,
   },
   progressBarFill: {
     height: '100%',

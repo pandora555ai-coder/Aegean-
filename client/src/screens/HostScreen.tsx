@@ -172,10 +172,6 @@ export default function HostScreen() {
   } = useGameAudio();
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
-  // A one-time dismissible hint, not tied to server state - purely local
-  // UI. Both Samsung and LG TVs sleep mid-game regardless of Wake Lock
-  // succeeding; the only real fix is a one-time TV setting.
-  const [powerHintDismissed, setPowerHintDismissed] = useState(false);
   // True from mount only when a stored room code exists - keeps the
   // "Create Room" button from flashing while a host:rejoin is in flight.
   const [isRejoining, setIsRejoining] = useState(() => !!getStoredHostRoomCode());
@@ -1053,8 +1049,6 @@ export default function HostScreen() {
   }
 
   const players = lobby?.players ?? [];
-  const connectedCount = players.filter((player) => player.connected).length;
-  const vip = players.find((player) => player.isVip) ?? null;
 
   // Survives the one-render gap between a phase:changed and the payload
   // that carries that phase's standings - see its use below.
@@ -1367,14 +1361,9 @@ export default function HostScreen() {
         onToggleMuted={toggleMuted}
         onCreateRoom={handleCreateRoom}
         qrCanvasRef={qrCanvasRef}
-        players={players}
-        connectedCount={connectedCount}
         roomSettings={roomSettings}
         mode={lobby?.mode ?? DEFAULT_GAME_MODE}
         availableModes={lobby?.availableModes ?? []}
-        vip={vip}
-        powerHintDismissed={powerHintDismissed}
-        onDismissPowerHint={() => setPowerHintDismissed(true)}
       />
     );
   }

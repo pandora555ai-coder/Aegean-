@@ -221,76 +221,9 @@ input {
   animation: correct-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 
-/* ============================= game over celebration ============================= */
-
-/* Per-piece look (size, drift, spin, delay, duration) comes from inline
-   custom properties set in HostScreen.tsx - local animation vars, not
-   palette tokens (see CLAUDE.md's exempt list). */
-@keyframes confetti-fall {
-  0% {
-    transform: translate3d(0, -10vh, 0) rotate(0deg);
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(var(--drift, 0px), 110vh, 0) rotate(var(--spin, 540deg));
-    opacity: 0;
-  }
-}
-
-.confetti-piece {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: var(--w, 0.6rem);
-  height: var(--h, 1rem);
-  border-radius: 2px;
-  animation-name: confetti-fall;
-  animation-timing-function: linear;
-  animation-duration: var(--duration, 5s);
-  animation-delay: var(--delay, 0s);
-  animation-iteration-count: var(--iterations, 2);
-  animation-fill-mode: both;
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform, opacity;
-}
-
-@keyframes firework-particle {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(var(--fx, 0px), var(--fy, 0px), 0) scale(0.35);
-    opacity: 0;
-  }
-}
-
-.firework-particle {
-  position: fixed;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  animation: firework-particle 900ms ease-out 1 forwards;
-  animation-delay: var(--delay, 0s);
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform, opacity;
-}
-
 /* ============================= reduced motion ============================= */
 
 @media (prefers-reduced-motion: reduce) {
-  .confetti-piece,
-  .firework-particle {
-    display: none;
-  }
   .screen-fade-in,
   .enter-pop,
   .enter-rise,

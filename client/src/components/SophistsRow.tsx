@@ -319,7 +319,10 @@ export function SophistsRow({
   orderedIds.filter((id) => !removedIds.has(id) && byId.has(id)).forEach((id, index) => slotById.set(id, index));
   const n = slotById.size;
 
-  const hidden = phase === 'LOBBY' || phase === 'STAGE_ANNOUNCE';
+  // Task 163a - LOBBY no longer hides the row: it's how joining players
+  // show up now that the lobby overlay names no one. STAGE_ANNOUNCE still
+  // hides it (the stage card takes the whole screen, same as before).
+  const hidden = phase === 'STAGE_ANNOUNCE';
   const dim = phase === 'SOCRATES' || phase === 'STEAL';
   const rowClass = ['sophists', hidden ? 'sophists--hidden' : '', dim ? 'sophists--dim' : ''].filter(Boolean).join(' ');
 
