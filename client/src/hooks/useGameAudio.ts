@@ -1,33 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
-import { SOCRATES_VOICE_DIR, lineHash } from '@game/shared';
+import { SOCRATES_VOICE_DIR, lineHash, type CrowdIntensityPayload, type CrowdMood } from '@game/shared';
 import { getStoredHostMuted, setStoredHostMuted } from '../hostAudioPreference';
 
-// One consistent key across every audio cue (Task 20) - A major pentatonic
-// (A, B, C#, E, F#) - so the whole set reads as one game, not seven
-// unrelated beeps. The Task 18 countdown tick (880Hz) and expiry tone
-// (220Hz) are BOTH already "A" in different octaves (A5, A3) and stay
-// unchanged; every new cue below was picked from the same five-note family.
-const NOTE = {
-  A3: 220.0,
-  A4: 440.0,
-  B4: 493.88,
-  CS5: 554.37,
-  E5: 659.25,
-  FS5: 739.99,
-  A5: 880.0,
-  B5: 987.77,
-  CS6: 1108.73,
-  E6: 1318.51,
-  FS6: 1479.98,
-  A6: 1760.0,
-} as const;
+// Task 36c - the crowd bed (Task 36a's generated set, client/public/crowd/):
+// three loops crossfaded by crowd:intensity, plus four one-shots keyed off
+// crowd:mood. This retires the whole synthesized cue set that used to live
+// here (Task 20's tone motifs, the Task 18 countdown ticks) - see the git
+// history for that set if it's ever needed again.
+const CROWD_LOOP_NAMES = ['murmur', 'unrest', 'roar'] as const;
+type CrowdLoopName = (typeof CROWD_LOOP_NAMES)[number];
+const CROWD_ONE_SHOT_NAMES = ['cheer-small', 'cheer-big', 'boo-small', 'boo-big'] as const;
+type CrowdOneShotName = (typeof CROWD_ONE_SHOT_NAMES)[number];
 
-// Answer-received blips climb this scale with the running answered-count
-// (1st answer = lowest note, 8th = highest) - up to MAX_PLAYERS entries.
-const ANSWER_BLIP_SCALE = [NOTE.E5, NOTE.FS5, NOTE.A5, NOTE.B5, NOTE.CS6, NOTE.E6, NOTE.FS6, NOTE.A6];
+// The bed's own master gain, BEFORE the mute-gated output gain - a fixed mix
+// level for the loops relative to a one-shot or a Socrates line, not a mute.
+const CROWD_BED_GAIN = 0.6;
+// One-shots never go quieter than this even at the calmest intensity - per
+// spec, a cheer/boo should still read as an event, not vanish into the bed.
+const ONE_SHOT_MIN_GAIN = 0.3;
+// How long the mute toggle takes to ramp - short enough to feel immediate,
+// long enough not to click.
+const MUTE_RAMP_SEC = 0.05;
+// The intensity assumed before the first crowd:intensity event of a game -
+// matches the server's own LOBBY value (crowdIntensityFor in shared), so a
+// one-shot that could theoretically fire before any ramp lands still picks
+// a sane (small) variant.
+const DEFAULT_CROWD_INTENSITY = 0.1;
+
+// Equal-power crossfade across two adjacent zones of a 3-point ramp (murmur
+// -> unrest -> roar) - identical math to the /dev/crowd reference mixer
+// (DevCrowdScreen's zoneGains): `t` is the local position within the active
+// zone, 0..1, and cos/sin (not a linear ramp) keeps perceived loudness
+// constant through the crossfade.
+function crowdZoneGains(intensity: number): Record<CrowdLoopName, number> {
+  const clamped = Math.min(1, Math.max(0, intensity));
+  if (clamped <= 0.5) {
+    const t = clamped / 0.5;
+    const angle = t * (Math.PI / 2);
+    return { murmur: Math.cos(angle), unrest: Math.sin(angle), roar: 0 };
+  }
+  const t = (clamped - 0.5) / 0.5;
+  const angle = t * (Math.PI / 2);
+  return { murmur: 0, unrest: Math.cos(angle), roar: Math.sin(angle) };
+}
 
 export function useGameAudio() {
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Task 36c - the ONE mute-gated node every audible thing (crowd AND
+  // Socrates) connects through instead of ctx.destination directly, so the
+  // host mute toggle silences both together with one live gain ramp rather
+  // than two separate ad-hoc checks. Created alongside the AudioContext
+  // itself in getAudioCtx, never elsewhere.
+  const outputGainRef = useRef<GainNode | null>(null);
   // Decoded Socrates line audio (Task 42b), keyed by lineHash - a game only
   // ever plays each pool line at most once (recordRoundAndPickLine never
   // repeats one), so this mostly saves nothing within a single game, but
@@ -35,6 +59,20 @@ export function useGameAudio() {
   // re-fetches. Tied to this hook instance, not module scope: an AudioBuffer
   // is meaningless once its AudioContext is gone.
   const socratesBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  // Task 36c - the crowd bed/one-shot buffers, decoded (not just HTTP-cache
+  // warmed like the 254 Socrates mp3s - there are only 7 of these, and they
+  // loop/replay all game, so decoding once is worth the memory).
+  const crowdBuffersRef = useRef<Partial<Record<CrowdLoopName | CrowdOneShotName, AudioBuffer>>>({});
+  const crowdLoopGainsRef = useRef<Record<CrowdLoopName, GainNode> | null>(null);
+  // The last crowd:intensity TARGET value (not a live-sampled AudioParam
+  // read) - good enough for "is this a small or big one-shot", since mood
+  // and intensity land within the same server-side moment (see phases.ts).
+  const crowdIntensityRef = useRef(DEFAULT_CROWD_INTENSITY);
+  // StrictMode-safe guards, same pattern as prefetchStartedRef below: decode
+  // must happen at most once, and the loops must start at most once, however
+  // many times the effects that trigger them re-run.
+  const crowdLoadStartedRef = useRef(false);
+  const crowdLoopsStartedRef = useRef(false);
   // Host-only mute toggle (Task 20) - LOBBY UI only, but every cue everywhere
   // (including the Task 18 countdown ticks) checks this before playing.
   const [muted, setMuted] = useState(() => getStoredHostMuted());
@@ -92,6 +130,28 @@ export function useGameAudio() {
     audioCtxRef.current?.resume().catch(() => {});
   }
 
+  // Task 36c - the crowd bed keeps humming through a pause in every OTHER
+  // phase (suspendAudio above stays SOCRATES-scoped), so pausing it means
+  // freezing its RAMP, not stopping the audio: cancel whatever's scheduled
+  // and hold each loop's gain at wherever it currently sits. The server
+  // re-emits crowd:intensity on resume (Task 36b's emitCrowdIntensityResume)
+  // with the real remaining rampMs, so nothing here has to remember to
+  // restart anything.
+  function holdCrowdIntensity() {
+    const ctx = audioCtxRef.current;
+    const loopGains = crowdLoopGainsRef.current;
+    if (!ctx || !loopGains) {
+      return;
+    }
+    const now = ctx.currentTime;
+    for (const name of CROWD_LOOP_NAMES) {
+      const param = loopGains[name].gain;
+      const value = param.value;
+      param.cancelScheduledValues(now);
+      param.setValueAtTime(value, now);
+    }
+  }
+
   function toggleMuted() {
     // A plain value read from this render's closure, not a setState
     // functional updater - the same StrictMode double-invoke trap that
@@ -100,12 +160,24 @@ export function useGameAudio() {
     const next = !muted;
     setStoredHostMuted(next);
     setMuted(next);
+    // Task 36c - the single mechanism that mutes crowd AND Socrates
+    // together: a short live ramp on the shared output gain, not a stop/
+    // restart of anything already playing.
+    const ctx = audioCtxRef.current;
+    const output = outputGainRef.current;
+    if (ctx && output) {
+      const now = ctx.currentTime;
+      output.gain.cancelScheduledValues(now);
+      output.gain.setValueAtTime(output.gain.value, now);
+      output.gain.linearRampToValueAtTime(next ? 0 : 1, now + MUTE_RAMP_SEC);
+    }
   }
 
   // The ONE place that constructs an AudioContext - reads/writes
   // audioCtxRef directly so a second call (e.g. a StrictMode double-invoke
   // of whatever triggered it) is a no-op and returns the SAME instance
-  // instead of leaking a second context.
+  // instead of leaking a second context. Also creates the shared output
+  // gain (Task 36c) in lockstep, so the two refs never drift apart.
   function getAudioCtx(): AudioContext | null {
     if (audioCtxRef.current) {
       return audioCtxRef.current;
@@ -117,7 +189,12 @@ export function useGameAudio() {
       return null; // unsupported - fail silently, this is best-effort only
     }
     try {
-      audioCtxRef.current = new AudioContextCtor();
+      const ctx = new AudioContextCtor();
+      const output = ctx.createGain();
+      output.gain.value = mutedRef.current ? 0 : 1;
+      output.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      outputGainRef.current = output;
     } catch {
       return null; // AudioContext unavailable or blocked. Continue without it.
     }
@@ -144,84 +221,140 @@ export function useGameAudio() {
     }
   }
 
-  // Countdown sounds - REUSE the keep-alive AudioContext from above rather
-  // than creating a second one; a brand-new oscillator+gain per beep is
-  // cheap and routine for the Web Audio API, only the AudioContext itself
-  // is the thing worth not duplicating. UNCHANGED since Task 18 (frequency,
-  // duration, envelope) other than the mute gate, which every cue in this
-  // file needs - this is the one function both the old ticks/expire tone
-  // and (indirectly, see playToneAt below) every new Task 20 cue funnel
-  // audio-hardware access through.
-  function playTone(frequency: number, durationMs: number) {
-    const ctx = audioCtxRef.current;
-    if (!ctx || mutedRef.current) {
-      return; // no context, or the host muted everything - silently skip
+  // Task 36c - decodes the 7 crowd files. Called on LOBBY entry (every one,
+  // first game included - see HostScreen's effect mirroring the Task 154
+  // voice-line prefetch's [roomCode, phase] trigger), well after
+  // getAudioCtx() has already run from the "Create Room" click that produced
+  // roomCode. Starts the three loops the moment decoding finishes, which
+  // (per spec) IS "the first host gesture" in practice.
+  async function loadCrowdSounds(): Promise<void> {
+    if (crowdLoadStartedRef.current) {
+      return;
     }
-    try {
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = frequency;
-      // Clearly audible but not harsh, and ramped out (not cut off) so it
-      // doesn't click.
-      const now = ctx.currentTime;
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start(now);
-      oscillator.stop(now + durationMs / 1000);
-    } catch {
-      // Best effort - the game continues silently either way.
+    crowdLoadStartedRef.current = true;
+    const ctx = getAudioCtx();
+    if (!ctx) {
+      return;
+    }
+    const names = [...CROWD_LOOP_NAMES, ...CROWD_ONE_SHOT_NAMES];
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          const res = await fetch(`/crowd/${name}.ogg`);
+          if (!res.ok) {
+            return;
+          }
+          const arrayBuffer = await res.arrayBuffer();
+          crowdBuffersRef.current[name] = await ctx.decodeAudioData(arrayBuffer);
+        } catch {
+          // Best effort - a missing/undecodable file just stays silent.
+        }
+      }),
+    );
+    startCrowdLoops();
+  }
+
+  // Starts murmur/unrest/roar together, at whatever intensity is already
+  // known (or the LOBBY default), and never stops them again for the life
+  // of this hook instance.
+  function startCrowdLoops(): void {
+    if (crowdLoopsStartedRef.current) {
+      return;
+    }
+    const ctx = audioCtxRef.current;
+    const output = outputGainRef.current;
+    if (!ctx || !output) {
+      return;
+    }
+    crowdLoopsStartedRef.current = true;
+
+    const bedGain = ctx.createGain();
+    bedGain.gain.value = CROWD_BED_GAIN;
+    bedGain.connect(output);
+
+    const zoneGains = crowdZoneGains(crowdIntensityRef.current);
+    const loopGains = {} as Record<CrowdLoopName, GainNode>;
+    for (const name of CROWD_LOOP_NAMES) {
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = zoneGains[name];
+      gainNode.connect(bedGain);
+      loopGains[name] = gainNode;
+      const buffer = crowdBuffersRef.current[name];
+      if (buffer) {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(gainNode);
+        source.start();
+      }
+    }
+    crowdLoopGainsRef.current = loopGains;
+  }
+
+  // Task 36c - crowd:intensity's ramp. `from` (if given) SNAPS the loop
+  // gains there first (a fresh phase entry's opening value); with no `from`,
+  // the ramp continues from wherever each gain node currently sits (a
+  // pause's held value, or mid-ramp). Either way the actual move to `value`
+  // is a scheduled AudioParam ramp over rampMs, never a JS timer stepping
+  // the gain by hand.
+  function applyCrowdIntensity(payload: CrowdIntensityPayload): void {
+    crowdIntensityRef.current = payload.value;
+    const ctx = audioCtxRef.current;
+    const loopGains = crowdLoopGainsRef.current;
+    if (!ctx || !loopGains) {
+      return;
+    }
+    const now = ctx.currentTime;
+    const targetGains = crowdZoneGains(payload.value);
+    const fromGains = payload.from !== undefined ? crowdZoneGains(payload.from) : null;
+    for (const name of CROWD_LOOP_NAMES) {
+      const param = loopGains[name].gain;
+      param.cancelScheduledValues(now);
+      if (fromGains) {
+        param.setValueAtTime(fromGains[name], now);
+      } else {
+        param.setValueAtTime(param.value, now);
+      }
+      param.linearRampToValueAtTime(targetGains[name], now + payload.rampMs / 1000);
     }
   }
 
-  function playCountdownTick() {
-    playTone(880, 80); // short, high tick for each of the last 5 seconds
-  }
-
-  function playCountdownExpire() {
-    playTone(220, 160); // lower and slightly longer - clearly distinct "time's up"
-  }
-
-  // Low-level primitive for every OTHER cue (Task 20) - motifs and chords
-  // need several notes scheduled relative to one another, which a single
-  // immediate-start playTone() call can't express. `delaySec` schedules
-  // the note ahead on the SAME AudioContext clock (ctx.currentTime read
-  // once per call, same pattern as playTone), so a whole motif built from
-  // several playToneAt calls in a row stays perfectly in time with itself
-  // regardless of how long the calling function takes to run. Same mute/
-  // missing-context guard and try/catch as playTone.
-  function playToneAt(frequency: number, delaySec: number, durationMs: number, peakGain: number) {
+  // Task 36c - the four one-shots, keyed off crowd:mood. calm/tension play
+  // nothing (per spec); cheer/boo pick small vs big off the last known
+  // intensity and play at gain max(intensity, ONE_SHOT_MIN_GAIN), layered
+  // over the bed through the same shared output gain (never touching the
+  // bed's own gain nodes - this is a separate, one-shot GainNode per play).
+  function playCrowdOneShot(mood: CrowdMood): void {
+    if (mood !== 'cheer' && mood !== 'boo') {
+      return;
+    }
     const ctx = audioCtxRef.current;
-    if (!ctx || mutedRef.current) {
+    const output = outputGainRef.current;
+    if (!ctx || !output || mutedRef.current) {
+      return;
+    }
+    const intensity = crowdIntensityRef.current;
+    const size = intensity < 0.5 ? 'small' : 'big';
+    const name = `${mood}-${size}` as CrowdOneShotName;
+    const buffer = crowdBuffersRef.current[name];
+    if (!buffer) {
       return;
     }
     try {
-      const oscillator = ctx.createOscillator();
-      const gain = ctx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = frequency;
-      const startAt = ctx.currentTime + delaySec;
-      const endAt = startAt + durationMs / 1000;
-      // A short attack (not an instant jump to peakGain like playTone's
-      // single notes use) avoids a click when several of these overlap to
-      // form a chord.
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(peakGain, startAt + Math.min(0.015, durationMs / 4000));
-      gain.gain.setValueAtTime(peakGain, Math.max(startAt, endAt - 0.02));
-      gain.gain.exponentialRampToValueAtTime(0.0001, endAt);
-      oscillator.connect(gain);
-      gain.connect(ctx.destination);
-      oscillator.start(startAt);
-      oscillator.stop(endAt + 0.02);
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = Math.max(intensity, ONE_SHOT_MIN_GAIN);
+      gainNode.connect(output);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gainNode);
+      source.start();
     } catch {
       // Best effort - the game continues silently either way.
     }
   }
 
-  // Task 42b - Socrates' voice lines. Plays a real audio FILE (unlike every
-  // other cue here, which is synthesized) through the same single
+  // Task 42b - Socrates' voice lines. Plays a real audio FILE (unlike the
+  // crowd bed's OGGs, this one always was a file) through the same single
   // AudioContext, via a BufferSource - the only way Web Audio plays a
   // decoded file. `template` is the line's raw, un-substituted pool entry
   // (SocratesShowPayload.lineTemplate) and `tag` is its optional eleven_v3
@@ -268,7 +401,9 @@ export function useGameAudio() {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.onended = onEnded;
-      source.connect(ctx.destination);
+      // Task 36c - through the shared output gain, not ctx.destination
+      // directly, so the one mute toggle covers this too.
+      source.connect(outputGainRef.current ?? ctx.destination);
       source.start();
     } catch {
       // Task 154 - a fetch/decode/start failure used to leave the phase
@@ -308,58 +443,16 @@ export function useGameAudio() {
     void Promise.all(Array.from({ length: 4 }, worker));
   }
 
-  // CUE 1 - QUESTION START, the most important cue: a rising 3-note motif
-  // through the scale, ~450ms total, clearly "look at the TV now". Fires
-  // once per LIVE question:show - never on a state:sync reconnect catching a
-  // host up to a question already in progress, which would be a false "new
-  // question" cue.
-  function playQuestionStartCue() {
-    playToneAt(NOTE.A4, 0, 140, 0.22);
-    playToneAt(NOTE.CS5, 0.13, 140, 0.22);
-    playToneAt(NOTE.FS5, 0.26, 190, 0.24);
-  }
-
-  // CUE 2 - ANSWER RECEIVED: very short and quiet (peakGain 0.08, well
-  // under every other cue's 0.14-0.24) so 7 of these in a row read as a
-  // light patter, not noise. Rises with the running answered-count.
-  function playAnswerBlip(answeredCount: number) {
-    const index = Math.min(Math.max(answeredCount, 1), ANSWER_BLIP_SCALE.length) - 1;
-    playToneAt(ANSWER_BLIP_SCALE[index], 0, 55, 0.08);
-  }
-
-  // CUE 5 - REVEAL: an A-major triad struck together - a CHORD, not a
-  // single tone, so it's unmistakably distinct in texture from the low
-  // single-tone expiry cue it often lands right after.
-  function playRevealCue() {
-    playToneAt(NOTE.A4, 0, 380, 0.14);
-    playToneAt(NOTE.CS5, 0, 380, 0.12);
-    playToneAt(NOTE.E5, 0, 380, 0.12);
-  }
-
-  // CUE 7 - GAME OVER: the one cue allowed to be long (~1s) - an ascending
-  // 4-note flourish resolving into a held 3-note chord, clearly a finale.
-  function playGameOverFanfare() {
-    playToneAt(NOTE.A4, 0, 130, 0.2);
-    playToneAt(NOTE.CS5, 0.12, 130, 0.2);
-    playToneAt(NOTE.E5, 0.24, 130, 0.2);
-    playToneAt(NOTE.FS5, 0.36, 150, 0.22);
-    playToneAt(NOTE.A5, 0.5, 480, 0.2);
-    playToneAt(NOTE.CS6, 0.5, 480, 0.16);
-    playToneAt(NOTE.E6, 0.5, 480, 0.14);
-  }
-
   return {
     muted,
     toggleMuted,
     startKeepAliveAudio,
     suspendAudio,
     resumeAudio,
-    playQuestionStartCue,
-    playAnswerBlip,
-    playCountdownTick,
-    playCountdownExpire,
-    playRevealCue,
-    playGameOverFanfare,
+    loadCrowdSounds,
+    applyCrowdIntensity,
+    playCrowdOneShot,
+    holdCrowdIntensity,
     playSocratesLine,
     prefetchSocratesLines,
   };

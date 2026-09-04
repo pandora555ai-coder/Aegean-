@@ -13,7 +13,7 @@ import {
   isSocratesHostPayload,
   isStealHostPayload,
   isTrialQuestionHostPayload,
-  type AnswerProgressPayload,
+  type CrowdIntensityPayload,
   type CrowdMood,
   type CrowdMoodPayload,
   type DrawShowHostPayload,
@@ -153,12 +153,10 @@ export default function HostScreen() {
     startKeepAliveAudio,
     suspendAudio,
     resumeAudio,
-    playQuestionStartCue,
-    playAnswerBlip,
-    playCountdownTick,
-    playCountdownExpire,
-    playRevealCue,
-    playGameOverFanfare,
+    loadCrowdSounds,
+    applyCrowdIntensity,
+    playCrowdOneShot,
+    holdCrowdIntensity,
     playSocratesLine,
     prefetchSocratesLines,
   } = useGameAudio();
@@ -185,9 +183,6 @@ export default function HostScreen() {
   // any side effect (like playing a tone) placed inside one.
   const secondsLeftRef = useRef(Math.ceil(DEFAULT_ROOM_SETTINGS.questionTimeMs / 1000));
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Mirrors `paused` - answer:progress cues must not play mid-pause, and the
-  // handler that receives them is registered once, same stale-closure issue.
-  const pausedRef = useRef(false);
 
   // Every call site that sets `secondsLeft` goes through this, so the ref
   // never drifts from the displayed value.
@@ -195,10 +190,6 @@ export default function HostScreen() {
     secondsLeftRef.current = value;
     setSecondsLeft(value);
   }
-
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
 
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
@@ -231,6 +222,17 @@ export default function HostScreen() {
 
     function handleCrowdMood(payload: CrowdMoodPayload) {
       setCrowdMood(payload.mood);
+      // Task 36c - the one-shots (cheer/boo only; calm/tension play
+      // nothing). Not gated on `paused`: a mood change while paused isn't
+      // structurally reachable (phase transitions are frozen too), but the
+      // hook itself is a no-op without a live AudioContext regardless.
+      playCrowdOneShot(payload.mood);
+    }
+
+    // Task 36c - the crowd bed's ramp target. Host-only, exactly like
+    // crowd:mood.
+    function handleCrowdIntensity(payload: CrowdIntensityPayload) {
+      applyCrowdIntensity(payload);
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -283,15 +285,6 @@ export default function HostScreen() {
         setSocrates(null);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
-        // The "look at the TV" cue - fires on EVERY live question:show
-        // (first question after Έναρξη, and every question after a
-        // scoreboard alike), never on a state:sync reconnect catching a
-        // host up to a question already in progress (that's a different
-        // handler, below). A fresh question is never already paused in
-        // practice, but the guard is here defensively either way.
-        if (!payload.paused) {
-          playQuestionStartCue();
-        }
       }
     }
 
@@ -323,10 +316,10 @@ export default function HostScreen() {
       setSocrates(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
-      // Only for a LIVE entrance into the beat, exactly like playRevealCue
-      // below - never on a state:sync reconnect catching a host up to a beat
-      // already in progress, which would replay the line from its start (and
-      // could never legitimately ack completion of a clip it didn't play).
+      // Only for a LIVE entrance into the beat - never on a state:sync
+      // reconnect catching a host up to a beat already in progress, which
+      // would replay the line from its start (and could never legitimately
+      // ack completion of a clip it didn't play).
       if (!payload.paused) {
         // Task 42c - tells the server the instant this clip genuinely ends,
         // so the phase advances exactly then instead of at a guessed
@@ -357,17 +350,6 @@ export default function HostScreen() {
     // in here too means the announcement lands even if that one is missed.
     function handleStealResolved(payload: StealResolvedPayload) {
       setSteal((current) => (current ? { ...current, resolved: payload } : current));
-      if (!pausedRef.current) {
-        playRevealCue();
-      }
-    }
-
-    // Kept for the sound alone (Task 115): the TV shows no answered counter
-    // any more, but each landing answer still gets its blip.
-    function handleAnswerProgress(payload: AnswerProgressPayload) {
-      if (!pausedRef.current) {
-        playAnswerBlip(payload.answered);
-      }
     }
 
     function handleRevealShow(payload: RevealShowPayload) {
@@ -375,24 +357,6 @@ export default function HostScreen() {
         setReveal(payload);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
-        // The expire tone can't safely be decided from inside the QUESTION
-        // countdown interval: the server ends the round on its OWN clock,
-        // and that authoritative end routinely beats the client's local
-        // "seconds -> 0" tick across the network, so the interval's final
-        // tick is often cancelled (its cleanup runs on this very phase
-        // change) before it gets a chance to fire. Deciding it here instead
-        // - a low leftover local count means time genuinely ran out; a
-        // still-high count means everyone answered early, and per spec no
-        // tone should play for that case.
-        if (secondsLeftRef.current <= 1) {
-          playCountdownExpire();
-        }
-        // Unlike the expire tone, the reveal cue plays REGARDLESS of how
-        // the question ended (timeout or everyone answering early) - per
-        // spec, REVEAL still plays even when the expiry tone doesn't.
-        if (!payload.paused) {
-          playRevealCue();
-        }
       }
     }
 
@@ -416,9 +380,6 @@ export default function HostScreen() {
       setTrialReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
-      if (!pausedRef.current) {
-        playRevealCue();
-      }
     }
 
     // Drawing mode (Task 56b). The host branch of an asymmetric event -
@@ -453,9 +414,6 @@ export default function HostScreen() {
       setGuessReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
-      if (!pausedRef.current) {
-        playRevealCue();
-      }
     }
 
     // Numeric mode (Task 66). The host branch of an asymmetric event -
@@ -479,9 +437,6 @@ export default function HostScreen() {
       setNumericReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
-      if (!pausedRef.current) {
-        playRevealCue();
-      }
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -495,6 +450,10 @@ export default function HostScreen() {
       if (phaseRef.current === 'SOCRATES') {
         suspendAudio();
       }
+      // Task 36c - the crowd bed itself is NOT scoped to SOCRATES: it keeps
+      // humming through a pause in any phase, so pausing it means freezing
+      // whatever ramp is in flight, not suspending playback.
+      holdCrowdIntensity();
     }
 
     function handleGameResumed(payload: ResumedPayload) {
@@ -540,9 +499,6 @@ export default function HostScreen() {
       // unless/until "play again" makes the room live again (see
       // handlePhaseChanged's LOBBY branch, which re-arms this).
       clearStoredHostRoomCode();
-      // The game can't be paused once it's over, so this always plays -
-      // the finale, timed with the confetti/firework entrance.
-      playGameOverFanfare();
     }
 
     // Catches the TV display up to whatever's live right now - the normal
@@ -707,7 +663,6 @@ export default function HostScreen() {
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
-    socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
     socket.on(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
@@ -725,6 +680,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     socket.on(ServerEvents.CROWD_MOOD, handleCrowdMood);
+    socket.on(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
     socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
     socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
 
@@ -735,7 +691,6 @@ export default function HostScreen() {
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
-      socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
       socket.off(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
@@ -753,6 +708,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
       socket.off(ServerEvents.CROWD_MOOD, handleCrowdMood);
+      socket.off(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
       socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
       socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);
     };
@@ -763,11 +719,9 @@ export default function HostScreen() {
   // was (per-second reset to the full/authoritative value happens
   // explicitly in handleQuestionShow/handleStateSync/handleGameResumed
   // above, not here, so a reconnect mid-question or mid-pause never gets
-  // clobbered back to the full duration). Also drives the per-second tick
-  // sound: since this interval only runs while live (not paused) and stops
-  // the instant the phase changes away from QUESTION, a tick can only ever
-  // fire for a second that was genuinely, live-ly reached. The expire tone
-  // is handled separately in handleRevealShow (see its comment).
+  // clobbered back to the full duration). Task 36c retired the countdown
+  // tick/expire tones this used to also drive - the crowd bed's own QUESTION
+  // ramp (crowd:intensity) carries that tension now.
   useEffect(() => {
     if (phase !== 'QUESTION' || !question || paused) {
       return;
@@ -775,16 +729,11 @@ export default function HostScreen() {
     const interval = setInterval(() => {
       // Decrement via the ref, not a setState functional updater - React 18
       // StrictMode double-invokes updater functions in dev to catch impure
-      // ones, which would double-fire the tone side effects below.
+      // ones.
       const current = secondsLeftRef.current;
       const next = Math.max(0, current - 1);
       secondsLeftRef.current = next;
       setSecondsLeft(next); // plain value, immune to the double-invoke
-      // The expire tone is NOT fired from here - see the comment in
-      // handleRevealShow for why that decision lives there instead.
-      if (next >= 1 && next <= 5) {
-        playCountdownTick();
-      }
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, question?.questionIndex, paused]);
@@ -1059,6 +1008,19 @@ export default function HostScreen() {
       return;
     }
     socket.emit(ClientEvents.DEV_GET_VOICE_LINES);
+  }, [roomCode, phase]);
+
+  // Task 36c - decode the 7 crowd files on every LOBBY entry (first game
+  // included - roomCode only ever becomes non-null via the ROOM_CREATED
+  // handler, which already ran startKeepAliveAudio and so already has an
+  // AudioContext to decode into). loadCrowdSounds guards its own decode/
+  // loop-start against a StrictMode double-invoke, so this effect can fire
+  // more than once with no duplicate loops.
+  useEffect(() => {
+    if (!roomCode || phase !== 'LOBBY') {
+      return;
+    }
+    void loadCrowdSounds();
   }, [roomCode, phase]);
 
   function handleCreateRoom() {
