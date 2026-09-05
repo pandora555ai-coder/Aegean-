@@ -4,6 +4,8 @@ import {
   DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   ServerEvents,
+  isBlitzRevealHostPayload,
+  isBlitzShowHostPayload,
   isDrawHostPayload,
   isGuessHostPayload,
   isNumericQuestionHostPayload,
@@ -14,6 +16,10 @@ import {
   isStealHostPayload,
   isTrialQuestionHostPayload,
   type AnswerProgressPayload,
+  type BlitzRevealHostPayload,
+  type BlitzRevealPayload,
+  type BlitzShowHostPayload,
+  type BlitzShowPayload,
   type CrowdIntensityPayload,
   type CrowdMood,
   type CrowdMoodPayload,
@@ -77,6 +83,8 @@ import { NumericQuestionView } from './host/NumericQuestionView';
 import { NumericRevealView } from './host/NumericRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
+import { BlitzView } from './host/BlitzView';
+import { BlitzRevealView } from './host/BlitzRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { SocratesFigure } from '../components/SocratesFigure';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
@@ -147,6 +155,11 @@ export default function HostScreen() {
   const [numericQuestionSecondsLeft, setNumericQuestionSecondsLeft] = useState(0);
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
   const [numericRevealSecondsLeft, setNumericRevealSecondsLeft] = useState(0);
+  // Task 156a - the blitz mode's phase payload, same one-per-phase pattern.
+  const [blitz, setBlitz] = useState<BlitzShowHostPayload | null>(null);
+  const [blitzSecondsLeft, setBlitzSecondsLeft] = useState(0);
+  const [blitzReveal, setBlitzReveal] = useState<BlitzRevealHostPayload | null>(null);
+  const [blitzRevealSecondsLeft, setBlitzRevealSecondsLeft] = useState(0);
   // Η Δίκη (Task 128) - same pattern as QUESTION/REVEAL: the payload is set
   // once per beat/reconnect, and durationMs/autoAdvanceMs is always the
   // server's live remaining time. trialQuestionSecondsLeft doubles as the
@@ -269,6 +282,8 @@ export default function HostScreen() {
         setNumericReveal(null);
         setTrialQuestion(null);
         setTrialReveal(null);
+        setBlitz(null);
+        setBlitzReveal(null);
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -454,6 +469,26 @@ export default function HostScreen() {
       setPausedByName(payload.pausedByName);
     }
 
+    // Blitz mode (Task 156a). The host branch of an asymmetric event, same
+    // pattern as numeric's own show/reveal handlers above.
+    function handleBlitzShow(payload: BlitzShowPayload) {
+      if (isBlitzShowHostPayload(payload)) {
+        setBlitzReveal(null);
+        setBlitz(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    function handleBlitzRevealShow(payload: BlitzRevealPayload) {
+      if (isBlitzRevealHostPayload(payload)) {
+        setBlitz(null);
+        setBlitzReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -536,6 +571,8 @@ export default function HostScreen() {
       setNumericReveal(null);
       setTrialQuestion(null);
       setTrialReveal(null);
+      setBlitz(null);
+      setBlitzReveal(null);
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -662,6 +699,22 @@ export default function HostScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Task 156a - the blitz mode, same live-broadcast builders as the
+        // fresh phase entry.
+        case 'BLITZ':
+          if (isBlitzShowHostPayload(payload)) {
+            setBlitz(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'BLITZ_REVEAL':
+          if (isBlitzRevealHostPayload(payload)) {
+            setBlitzReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
       }
     }
 
@@ -691,6 +744,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
     socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
     socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+    socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+    socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -720,6 +775,8 @@ export default function HostScreen() {
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
       socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
       socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+      socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+      socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -940,6 +997,42 @@ export default function HostScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [numericReveal, paused]);
+
+  // Blitz mode (Task 156a) - same pattern as numeric's above.
+  useEffect(() => {
+    if (!blitz) {
+      return;
+    }
+    setBlitzSecondsLeft(Math.ceil(blitz.durationMs / 1000));
+    setTimerTotalSeconds(Math.ceil(blitz.durationMs / 1000));
+  }, [blitz]);
+
+  useEffect(() => {
+    if (!blitz || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setBlitzSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [blitz, paused]);
+
+  useEffect(() => {
+    if (!blitzReveal) {
+      return;
+    }
+    setBlitzRevealSecondsLeft(Math.ceil(blitzReveal.autoAdvanceMs / 1000));
+  }, [blitzReveal]);
+
+  useEffect(() => {
+    if (!blitzReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setBlitzRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [blitzReveal, paused]);
 
   // Η Δίκη (Task 128) - TRIAL_QUESTION's own countdown, same pattern as
   // QUESTION's above. Its tick is also what the cosmetic drain (see
@@ -1204,6 +1297,10 @@ export default function HostScreen() {
         return trialQuestion ? trialDisplayStandings() : null;
       case 'TRIAL_REVEAL':
         return trialReveal?.standings ?? null;
+      case 'BLITZ':
+        return blitz?.standings ?? null;
+      case 'BLITZ_REVEAL':
+        return blitzReveal?.standings ?? null;
       default:
         return null;
     }
@@ -1241,6 +1338,9 @@ export default function HostScreen() {
       return Object.fromEntries(
         trialReveal.results.map((result) => [result.playerId, result.lifeAfter - result.lifeBefore]),
       );
+    }
+    if (phase === 'BLITZ_REVEAL' && blitzReveal) {
+      return Object.fromEntries(blitzReveal.results.map((result) => [result.playerId, result.pointsAwarded]));
     }
     return null;
   }
@@ -1375,6 +1475,23 @@ export default function HostScreen() {
       );
     }
 
+    // Blitz mode (Task 156a, stub views - 156b builds the real screen).
+    if (phase === 'BLITZ' && blitz) {
+      return <BlitzView blitz={blitz} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+    }
+
+    if (phase === 'BLITZ_REVEAL' && blitzReveal) {
+      return (
+        <BlitzRevealView
+          reveal={blitzReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          secondsLeft={blitzRevealSecondsLeft}
+        />
+      );
+    }
+
     // An in-game phase whose own payload is still in flight (phase:changed
     // always lands before it) renders NOTHING for that one beat - the row
     // and the scene are still there. Falling through to the lobby here put
@@ -1444,6 +1561,8 @@ export default function HostScreen() {
         return ring(numericQuestionSecondsLeft, 5);
       case 'TRIAL_QUESTION':
         return ring(trialQuestionSecondsLeft, 5);
+      case 'BLITZ':
+        return ring(blitzSecondsLeft, 5);
       default:
         // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL show their
         // remaining time as the progress bar at the foot of their own

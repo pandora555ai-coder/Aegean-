@@ -13,6 +13,8 @@ import {
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   ServerEvents,
+  isBlitzRevealHostPayload,
+  isBlitzShowHostPayload,
   isDrawHostPayload,
   isGuessHostPayload,
   isNumericQuestionHostPayload,
@@ -27,6 +29,10 @@ import {
   totalQuestionsForLength,
   type ActiveSabotage,
   type AnswerAcceptedPayload,
+  type BlitzRevealPayload,
+  type BlitzRevealPlayerPayload,
+  type BlitzShowPayload,
+  type BlitzShowPlayerPayload,
   type DifficultyMix,
   type DrawShowPayload,
   type DrawShowPlayerPayload,
@@ -361,6 +367,14 @@ export default function ControllerScreen() {
   // NUMERIC_REVEAL - public and symmetric, so every phone gets the same
   // payload the TV does; this phone's own row is found by playerId.
   const [numericReveal, setNumericReveal] = useState<NumericRevealShowPayload | null>(null);
+  // Blitz mode (Task 156a). `blitzIndex` is the next statement to show - it
+  // starts at the server's answeredCount (non-zero only on a reconnect) and
+  // only ever advances, one per accepted swipe. BLITZ_REVEAL is this phone's
+  // OWN counts and nothing about anyone else. The swipe surface itself
+  // (156b/156c) isn't built yet - this is a STUB render only.
+  const [blitz, setBlitz] = useState<BlitzShowPlayerPayload | null>(null);
+  const [blitzIndex, setBlitzIndex] = useState(0);
+  const [blitzReveal, setBlitzReveal] = useState<BlitzRevealPlayerPayload | null>(null);
   // Η Δίκη (Task 129). `trialQuestion.onTrial` decides picker vs spectator -
   // there is no per-choice ack event (see TRIAL_SUBMIT's doc comment in
   // shared), so `trialPendingChoice` is this phone's OWN optimistic tap and
@@ -452,6 +466,14 @@ export default function ControllerScreen() {
       trialSentRef.current = payload?.lockedIn ?? false;
     }
 
+    // Blitz mode (Task 156a) - set together for the same reason applyDraw
+    // is: the swipe surface and the next-index can never disagree about how
+    // far this phone already got.
+    function applyBlitz(payload: BlitzShowPlayerPayload | null) {
+      setBlitz(payload);
+      setBlitzIndex(payload?.answeredCount ?? 0);
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -469,11 +491,22 @@ export default function ControllerScreen() {
         setGuessReveal(null);
         applyNumericQuestion(null);
         setNumericReveal(null);
+        applyBlitz(null);
+        setBlitzReveal(null);
         applyTrialQuestion(null);
         setTrialReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
+      }
+      // Blitz (Task 156a) - the Task 140 trap: phase-scoped state is cleared
+      // on EVERY transition that could follow it, not just the one that
+      // "normally" ends it. BLITZ_REVEAL clears `blitz` in its own handler
+      // and GAME_OVER clears both in handleGameOver; any other phase
+      // arriving means this phone must not still be swiping.
+      if (payload.phase !== 'BLITZ' && payload.phase !== 'BLITZ_REVEAL' && payload.phase !== 'GAME_OVER') {
+        applyBlitz(null);
+        setBlitzReveal(null);
       }
     }
 
@@ -667,6 +700,38 @@ export default function ControllerScreen() {
       setPausedByName(payload.pausedByName);
     }
 
+    // Blitz mode (Task 156a) - the player branch of an asymmetric event. The
+    // host variant (progress per player, no texts) is not this screen's
+    // business.
+    function handleBlitzShow(payload: BlitzShowPayload) {
+      if (!isBlitzShowHostPayload(payload)) {
+        setQuestion(null);
+        setReveal(null);
+        applyPowerUp(null);
+        applySteal(null);
+        applyDraw(null);
+        applyGuess(null);
+        setGuessReveal(null);
+        applyNumericQuestion(null);
+        setNumericReveal(null);
+        setBlitzReveal(null);
+        applyBlitz(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // This phone's own counts only - the host's per-player variant never
+    // reaches a phone.
+    function handleBlitzRevealShow(payload: BlitzRevealPayload) {
+      if (!isBlitzRevealHostPayload(payload)) {
+        applyBlitz(null);
+        setBlitzReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
     // Η Δίκη (Task 129) - the player branch of an asymmetric event. The host
     // variant (everyone's life and lock-in state, in aggregate) is not this
     // screen's business.
@@ -713,6 +778,8 @@ export default function ControllerScreen() {
       setGuessReveal(null);
       applyNumericQuestion(null);
       setNumericReveal(null);
+      applyBlitz(null);
+      setBlitzReveal(null);
       applyTrialQuestion(null);
       setTrialReveal(null);
     }
@@ -745,6 +812,8 @@ export default function ControllerScreen() {
       setGuessReveal(null);
       applyNumericQuestion(null);
       setNumericReveal(null);
+      applyBlitz(null);
+      setBlitzReveal(null);
       applyTrialQuestion(null);
       setTrialReveal(null);
 
@@ -858,6 +927,24 @@ export default function ControllerScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Blitz mode (Task 156a) - same reconnect reasoning: applyBlitz
+        // reads how far this phone already got (answeredCount) straight
+        // from the server's own state, so a reconnect resumes at the right
+        // statement.
+        case 'BLITZ':
+          if (!isBlitzShowHostPayload(payload)) {
+            applyBlitz(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'BLITZ_REVEAL':
+          if (!isBlitzRevealHostPayload(payload)) {
+            setBlitzReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
         // Η Δίκη (Task 129) - same reconnect reasoning as QUESTION above:
         // applyTrialQuestion reads whatever this phone already did (locked
         // in) straight from the server's own state. TRIAL_REVEAL, like
@@ -895,6 +982,8 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
     socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+    socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+    socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
     socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -922,6 +1011,8 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.GUESS_REVEAL_SHOW, handleGuessRevealShow);
       socket.off(ServerEvents.NUMERIC_QUESTION_SHOW, handleNumericQuestionShow);
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
+      socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+      socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
       socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -1688,6 +1779,73 @@ export default function ControllerScreen() {
             </div>
           </>
         )}
+        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Blitz mode (Task 156a) - BLITZ. STUB VIEW ONLY: the real swipe surface
+  // (156b/156c) isn't built yet, so this just proves the phase renders
+  // without error and tracks progress. No correctness feedback - the truth
+  // isn't on this device.
+  if (blitz) {
+    const finished = blitzIndex >= blitz.total;
+    const currentText = blitz.statements[blitzIndex] ?? null;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.category}>Η Παλαίστρα</div>
+        <div data-testid="blitz-progress">
+          {Math.min(blitzIndex, blitz.total)}/{blitz.total}
+        </div>
+        {finished || !currentText ? (
+          <div style={styles.lookAtTv} data-testid="blitz-finished">
+            Περίμενε τους υπόλοιπους...
+          </div>
+        ) : (
+          <div data-testid="blitz-statement">{currentText}</div>
+        )}
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+      </div>
+    );
+  }
+
+  // Blitz mode (Task 156a) - BLITZ_REVEAL. This phone's own three counts and
+  // nothing else - points and standings are on the TV's column.
+  if (blitzReveal) {
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.category}>Η Παλαίστρα</div>
+        <div style={styles.revealCorrect} data-testid="blitz-reveal-correct">
+          Σωστά: {blitzReveal.correct}
+        </div>
+        <div style={styles.revealTotal} data-testid="blitz-reveal-wrong">
+          Λάθος: {blitzReveal.wrong}
+        </div>
+        <div style={styles.revealTotal} data-testid="blitz-reveal-unanswered">
+          Αναπάντητα: {blitzReveal.unanswered}
+        </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
