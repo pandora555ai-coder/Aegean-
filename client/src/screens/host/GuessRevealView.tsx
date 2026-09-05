@@ -1,13 +1,16 @@
 import type { CSSProperties } from 'react';
 import { GUESS_REVEAL_DURATION_MS, type GuessRevealShowPayload, type RoomCode } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
+import { CheckMark } from '../../components/CheckMark';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
-// Θέατρο palette pass - GUESS_REVEAL's own content, mirroring
-// RevealView's redesign exactly: correctness reads as opacity/weight only
-// (no hue), and the picture/word/options all sit on marble.
+// Task 163d - correctness is never colour-coded: full opacity + heavier
+// weight + the check-mark shape (CheckMark, --wine-2) for the right word,
+// 42% opacity for the rest - the SAME language RevealView uses. One column
+// (matching GUESS's own layout, design/theatre-reference.html's guess()),
+// sized in cqh off the read column's own container.
 //
 // The per-player result list was deleted (names/scores live in the sophists
 // row - see HostScreen) because at 8 players it pushed this panel's bottom
@@ -19,60 +22,43 @@ import { styles } from './hostStyles';
 // player or counts them - the drawer's +N is above their figure like
 // everyone else's. The drawer heading ABOVE the drawing stays: it says whose
 // sketch this is, not who scored.
-//
-// Task 161 - one slab, the reference's .drawing grid: picture left, the
-// word and the options beside it. The read area is 57vh tall now that the
-// sophists row owns the foot of the screen, and the old two-slab stack no
-// longer fit in it.
+// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
+// comment - this container measures roughly half the reference's own).
 const WRONG_OPACITY = 0.42;
 
 const drawingGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'auto 1fr',
-  gap: '1.5rem',
+  gap: '8cqh',
   alignItems: 'center',
   width: '100%',
 };
 
-// Boxed option, no letter - same treatment as RevealView. Border colour is
-// fixed regardless of correctness; only opacity/weight signal it.
+const optionsColumnStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr',
+  gap: '2.4cqh',
+  width: '100%',
+  minWidth: 0,
+};
+
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
-  gap: '1rem',
-  fontSize: '2rem',
-  lineHeight: 1.15,
-  fontWeight: isCorrect ? 800 : 500,
+  gap: '2.4cqh',
+  fontSize: '6.8cqh',
+  fontWeight: isCorrect ? 800 : 700,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--carve)',
-  padding: '0.35rem 1.25rem',
-  border: '1px solid var(--marble-3)',
-  borderRadius: '0.5rem',
   minWidth: 0,
 });
 
-// Task 103 - independent fix, not the overflow bug's cause (see
-// MarbleSlab.tsx for that): a long option word had nowhere to shrink to,
-// so it wrapped to a second line inside its cell instead of eating the
-// panel's spare width. A flex item's `min-width` defaults to `auto` (its
-// own content size), not 0 - nested one level deep (row -> cell -> this
-// span), EVERY level needs its own `flex`+`minWidth:0` or the ellipsis
-// truncation below never engages. Keeps every option on one line
-// regardless of word length ("Υδραγωγείο", "Κρεμάστρα" verified).
 const optionTextStyle: CSSProperties = {
   flex: '1 1 0',
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-};
-
-const correctWordStyle: CSSProperties = {
-  fontSize: '1.75rem',
-  lineHeight: 1.15,
-  fontWeight: 800,
-  color: 'var(--carve)',
-  textAlign: 'center',
 };
 
 const progressBarTrackStyle: CSSProperties = {
@@ -110,36 +96,27 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
           {guessReveal.drawerName} ζωγράφισε:
         </span>
       </div>
-      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={drawingGridStyle}>
           <div style={styles.drawingImageWrap}>
             <img src={guessReveal.image} alt="" style={styles.drawingImage} data-testid="guess-reveal-drawing" />
           </div>
-          {/* Task 103 - ONE flex column (word heading + the two option rows
-              as direct siblings), one fewer level of flex-in-flex nesting. */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minWidth: 0 }}>
-            <div style={correctWordStyle} data-testid="guess-reveal-word">
-              {guessReveal.correctWord}
-            </div>
-            {[0, 1].map((rowStart) => (
-              <div key={rowStart} style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
-                {guessReveal.options.slice(rowStart * 2, rowStart * 2 + 2).map((option, colIndex) => {
-                  const index = rowStart * 2 + colIndex;
-                  const isCorrect = index === guessReveal.correctIndex;
-                  return (
-                    <div
-                      key={index}
-                      data-testid="guess-reveal-option"
-                      data-correct={isCorrect}
-                      className={isCorrect ? 'correct-pop' : undefined}
-                      style={{ ...optionRowStyle(isCorrect), flex: '1 1 0' }}
-                    >
-                      <span style={optionTextStyle}>{option}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+          <div style={optionsColumnStyle}>
+            {guessReveal.options.map((option, index) => {
+              const isCorrect = index === guessReveal.correctIndex;
+              return (
+                <div
+                  key={index}
+                  data-testid="guess-reveal-option"
+                  data-correct={isCorrect}
+                  className={isCorrect ? 'correct-pop' : undefined}
+                  style={optionRowStyle(isCorrect)}
+                >
+                  <CheckMark visible={isCorrect} />
+                  <span style={optionTextStyle}>{option}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </MarbleSlab>

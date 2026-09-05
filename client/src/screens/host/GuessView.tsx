@@ -5,40 +5,44 @@ import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
-// Task 161 - the reference's .drawing grid: the picture on the left, the
-// options beside it, on ONE slab. The read area is 57vh tall now that the
-// sophists row owns the foot of the screen, and the old two-slab stack
-// (picture above, options below) no longer fit in it.
+// Task 161/163d - the reference's .drawing grid: the picture on the left,
+// the options beside it, on ONE slab. Doubled from the reference's literal
+// cqh figures (see CheckMark.tsx's comment - this container measures
+// roughly half the reference's own).
 const drawingGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'auto 1fr',
-  gap: '1.5rem',
+  gap: '8cqh',
   alignItems: 'center',
   width: '100%',
 };
 
-// Boxed options, no letters - same treatment as RevealView (see that file's
-// own optionsGridStyle/optionRowStyle). The correct index never reaches
-// this payload, so there's no correctness to signal here.
-const optionsGridStyle: CSSProperties = {
+// ONE column (design/theatre-reference.html's guess(): .opts with an inline
+// grid-template-columns:1fr override) - four short words read better as a
+// list beside a square picture than as a cramped 2x2 grid would.
+const optionsColumnStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: '0.75rem',
+  gridTemplateColumns: '1fr',
+  gap: '2.4cqh',
   width: '100%',
   minWidth: 0,
 };
 
-const optionBoxStyle: CSSProperties = {
+const optionRowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '1rem',
-  fontSize: '1.85rem',
-  fontWeight: 600,
+  fontSize: '6.8cqh',
+  fontWeight: 700,
   color: 'var(--carve)',
-  padding: '0.75rem 1.25rem',
-  border: '1px solid var(--marble-3)',
-  borderRadius: '0.5rem',
   minWidth: 0,
+};
+
+const optionTextStyle: CSSProperties = {
+  flex: '1 1 0',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 interface GuessViewProps {
@@ -48,10 +52,10 @@ interface GuessViewProps {
   pausedByName: string | null;
 }
 
-// Task 56b - the TV during GUESS: the drawing large and the 4 options (the
-// countdown is the krater at the top-right, Task 112/161). The correct index
-// never reaches this payload at all (see buildGuessHostPayload) - every
-// option renders identically until GUESS_REVEAL.
+// Task 56b/163d - the TV during GUESS: the drawing large and the 4 options
+// (the countdown is the krater at the top-right, Task 112/161). The correct
+// index never reaches this payload at all (see buildGuessHostPayload) -
+// every option renders identically until GUESS_REVEAL.
 //
 // Task 115 deleted the "N/M μάντεψαν" counter under the options, with NO
 // replacement. The drawer heading ABOVE the drawing stays: it is not a
@@ -74,15 +78,15 @@ export function GuessView({ guess, roomCode, paused, pausedByName }: GuessViewPr
           {guess.drawerName} ζωγράφισε αυτό
         </span>
       </div>
-      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto', padding: '1rem 1.5rem' }}>
+      <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={drawingGridStyle}>
           <div style={styles.drawingImageWrap}>
             <img src={guess.image} alt="" style={styles.drawingImage} data-testid="guess-drawing" />
           </div>
-          <div style={optionsGridStyle}>
+          <div style={optionsColumnStyle}>
             {guess.options.map((option, index) => (
-              <div key={index} data-testid="guess-option" style={optionBoxStyle}>
-                <span>{option}</span>
+              <div key={index} data-testid="guess-option" style={optionRowStyle}>
+                <span style={optionTextStyle}>{option}</span>
               </div>
             ))}
           </div>

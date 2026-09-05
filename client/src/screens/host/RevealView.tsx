@@ -5,45 +5,54 @@ import {
   type RevealHostPayload,
   type RoomCode,
 } from '@game/shared';
+import { CheckMark } from '../../components/CheckMark';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
-// Θέατρο palette pass - REVEAL's own content (the shared chrome
-// - score panel, timer, category - is ported in hostStyles.ts already).
-// Correctness is never colour-coded here: it reads purely as
-// full-opacity/bold (correct) vs 42%-opacity/regular (wrong) -
-// see WRONG_OPACITY below - so nothing here needs a correctness hue.
+// Task 163d - correctness is never colour-coded: full opacity + heavier
+// weight + the check-mark shape (CheckMark, --wine-2) for the right answer,
+// 42% opacity for the rest. design/theatre-reference.html's own .opts (2
+// columns, gap 1.2cqh/3.5cqh, 4cqh/700 base) and .opt/.opt.ok - sized in
+// cqh off the read column's own container (hostStyles.gameLayout), not
+// rem/vh, so it scales with the TV frame rather than needing a densityScale
+// step table the way the old boxed-card version never had one for anyway.
+// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
+// comment - this container measures roughly half the reference's own).
 const WRONG_OPACITY = 0.42;
 
-// Task: each option gets its own bordered box (--marble-3, on papyrus) instead
-// of a bare row - the border colour never changes with correctness, only
-// this row's opacity/weight does (see WRONG_OPACITY).
 const optionsGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: '1rem',
+  gap: '2.4cqh 7cqh',
   width: '100%',
-  maxWidth: '1100px',
 };
 
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
-  gap: '1rem',
-  fontSize: '2.25rem',
-  fontWeight: isCorrect ? 800 : 500,
+  gap: '3.2cqh',
+  fontSize: '8cqh',
+  fontWeight: isCorrect ? 800 : 700,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--carve)',
-  padding: '0.75rem 1.25rem',
-  border: '1px solid var(--marble-3)',
-  borderRadius: '0.5rem',
+  minWidth: 0,
 });
+
+const optionTextStyle: CSSProperties = {
+  flex: '1 1 0',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
 
 const answerCountStyle: CSSProperties = {
   marginLeft: 'auto',
   fontWeight: 800,
+  fontSize: '4.4cqh',
   color: 'var(--carve)',
+  flex: '0 0 auto',
 };
 
 const progressBarTrackStyle: CSSProperties = {
@@ -94,7 +103,8 @@ export function RevealView({ reveal, question, roomCode, paused, pausedByName, r
                 className={isCorrect ? 'correct-pop' : undefined}
                 style={optionRowStyle(isCorrect)}
               >
-                <span>{option}</span>
+                <CheckMark visible={isCorrect} />
+                <span style={optionTextStyle}>{option}</span>
                 <span style={answerCountStyle} data-testid="answer-count">
                   {reveal.answerCounts[index]}
                 </span>

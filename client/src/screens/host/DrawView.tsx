@@ -1,22 +1,43 @@
-import { useRef, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { type DrawShowHostPayload, type RoomCode } from '@game/shared';
-import { useFitFontSize } from '../../hooks/useFitFontSize';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
-// questionTextTv/progress are shared with other phases (hostStyles.ts) and
-// still carry pre-Θέατρο tokens there - this phase's content is ported
-// on its own, so the papyrus text gets local ink overrides instead of
-// touching those shared entries. Same layout as PowerUpView's identical
-// "instruction card" pattern.
-const papyrusTextBlockStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
+// Task 163d - design/theatre-reference.html's .drawing grid: a canvas-shaped
+// square left, text right. DRAW never sends the host WHAT anyone is drawing
+// (see buildDrawHostPayload) or WHO - everyone draws at once, so unlike
+// GUESS there's no single artist to name (the standing "names a player"
+// exception is GUESS's drawer line only) - so the canvas here is blank
+// paper, not a picture, and the text names no one.
+// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
+// comment - this container measures roughly half the reference's own).
+const drawingGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'auto 1fr',
+  gap: '8cqh',
   alignItems: 'center',
-  justifyContent: 'center',
-  gap: '0.75rem',
   width: '100%',
+};
+
+const titleStyle: CSSProperties = {
+  fontFamily: '"Gentium Book Plus", Georgia, "Times New Roman", serif',
+  fontSize: '11.6cqh',
+  lineHeight: 1.2,
+  fontWeight: 700,
+  color: 'var(--carve)',
+};
+
+// The reference's .mid is --marble-3 (a dark-ground colour) - on this
+// marble slab (light ground) that would be nearly invisible, so this reads
+// as --carve at a lighter weight/size instead, the same substitution every
+// other slab on this TV already makes for "muted but still legible".
+const waitingLineStyle: CSSProperties = {
+  fontSize: '6.4cqh',
+  marginTop: '3.2cqh',
+  color: 'var(--carve)',
+  fontWeight: 600,
+  opacity: 0.7,
 };
 
 interface DrawViewProps {
@@ -26,32 +47,31 @@ interface DrawViewProps {
   pausedByName: string | null;
 }
 
-// Task 56b - the TV during DRAW. WHAT anyone is drawing is never sent to the
-// host at all (see buildDrawHostPayload), so there is nothing here that could
-// spoil it before the GUESS phase.
+// Task 56b/163d - the TV during DRAW. WHAT anyone is drawing is never sent to
+// the host at all (see buildDrawHostPayload), so there is nothing here that
+// could spoil it before the GUESS phase - the canvas is blank paper, a
+// placeholder for "everyone is drawing right now", not a preview.
 //
 // Task 115 deleted the "N/M υπέβαλαν" counter and the submitted-avatar strip
 // under it, with NO replacement: the score column already names everyone in
 // the room. The server still counts submissions and still ends the phase
 // early once everyone has submitted.
 export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps) {
-  const titleBlockRef = useRef<HTMLDivElement | null>(null);
-  const titleTextRef = useRef<HTMLDivElement | null>(null);
-  // "Ζωγραφίστε!" is one unbroken word - no space to wrap on, so a fixed
-  // 6rem (questionTextTv) ran it past the panel's width with no fallback.
-  useFitFontSize(titleBlockRef, titleTextRef, [], { maxRem: 6, minRem: 2 });
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={draw.standings}>
       <div className="enter-pop" style={styles.category}>
         Ζωγραφική
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
-        <div style={papyrusTextBlockStyle} ref={titleBlockRef}>
-          <div style={{ ...styles.questionTextTv, color: 'var(--carve)' }} data-testid="draw-title" ref={titleTextRef}>
-            Ζωγραφίστε!
-          </div>
-          <div style={{ ...styles.progress, color: 'var(--carve)' }} data-testid="draw-subtitle">
-            Στα κινητά σας
+        <div style={drawingGridStyle}>
+          <div style={styles.drawingImageWrap} data-testid="draw-canvas" />
+          <div>
+            <div style={titleStyle} data-testid="draw-title">
+              Ζωγραφίστε!
+            </div>
+            <div style={waitingLineStyle} data-testid="draw-subtitle">
+              Στα κινητά σας
+            </div>
           </div>
         </div>
       </MarbleSlab>

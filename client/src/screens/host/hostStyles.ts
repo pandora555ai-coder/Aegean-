@@ -68,6 +68,14 @@ export const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '3vh 0',
     overflow: 'hidden',
+    // Task 163d - a container-query root: its own width/height are already
+    // fixed by this same box (not by its content), so this carries no
+    // circular-sizing risk. Slab content (the drawing canvas, the options
+    // grid, the number line) sizes itself in cqh off THIS box instead of
+    // vh/rem, matching design/theatre-reference.html's own .tv/#main
+    // relationship - one container, every read-column phase's content
+    // scales off it consistently.
+    containerType: 'size',
     // Task 159c - transparent, not var(--night-1): TheatreScene (158) sits
     // behind every /host phase; only the reading panel gets its own surface.
     background: 'transparent',
@@ -291,13 +299,6 @@ export const styles: Record<string, CSSProperties> = {
   // RevealHostPayload, TrialRevealShowPayload carries only the one correct
   // answer's text, not a per-option tally (Task 127 never built one), so the
   // reveal reads as a single answer rather than a 2x2 aggregate.
-  trialCorrectAnswer: {
-    fontSize: '3rem',
-    fontWeight: 800,
-    textAlign: 'center',
-    color: 'var(--carve)',
-    padding: '1rem',
-  },
   trialOutcomeLine: {
     fontSize: '1.5rem',
     fontWeight: 700,
@@ -310,20 +311,24 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: '999px',
     transition: 'width 1s linear',
   },
-  // Drawing mode (Task 56b) - GUESS/GUESS_REVEAL's picture. Fixed square
-  // (drawings export at 512x512 - see DRAWING_EXPORT_SIZE), sized off the
-  // viewport's smaller dimension so it never pushes the options grid off
-  // the read area at any player count (criterion 4).
+  // Drawing mode (Task 56b/163d) - DRAW/GUESS/GUESS_REVEAL's canvas, the
+  // reference's .canvas{width:30cqh;height:30cqh;background:#F6EEDC;
+  // box-shadow:inset 0 0 0 .4cqh #CFC5B0} - #CFC5B0 IS --marble-2 (exact
+  // hex match), so the inset ring is the token, not the literal. The paper
+  // colour itself (PAPER in DrawingCanvas.tsx) stays the one sanctioned
+  // literal - the palette has no parchment token and this is what the
+  // drawing is actually baked onto, so objectFit:contain's letterbox bars
+  // (a picture narrower than it is tall, or vice versa) are invisible
+  // against it. Doubled from the reference's literal 30cqh (see
+  // CheckMark.tsx's comment - this read column's own container measures
+  // roughly half the reference's full-viewport basis).
   drawingImageWrap: {
-    // Task 161 - shrunk again from 36vh/32vw: the picture now sits BESIDE
-    // the options on ONE slab (the reference's .drawing grid, canvas 30cqh)
-    // instead of above a second one, because the read area is 57vh tall
-    // now that the sophists row owns the bottom of the screen.
-    width: 'min(26vh, 24vw)',
-    aspectRatio: '1 / 1',
-    borderRadius: '1rem',
+    width: '60cqh',
+    height: '60cqh',
+    borderRadius: '1cqh',
     overflow: 'hidden',
-    border: '3px solid var(--marble-3)',
+    boxShadow: 'inset 0 0 0 0.8cqh var(--marble-2)',
+    background: '#F6EEDC',
     flexShrink: 0,
   },
   drawingImage: {
@@ -331,9 +336,7 @@ export const styles: Record<string, CSSProperties> = {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
-    // Matches the paper the drawing is baked onto (PAPER in DrawingCanvas),
-    // so objectFit:contain's letterbox bars are invisible against it.
-    background: 'var(--marble)',
+    background: '#F6EEDC',
   },
   // Steal (Task 32) - the TV during and after a theft.
   stealThiefRow: {
