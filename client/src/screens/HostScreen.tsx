@@ -78,6 +78,7 @@ import { NumericRevealView } from './host/NumericRevealView';
 import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
+import { SocratesFigure } from '../components/SocratesFigure';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
 import { SophistsRow, STEAL_TOKEN_FLIGHT_MS, type SophistStanding } from '../components/SophistsRow';
 import { Krater, type TimerState } from '../components/Krater';
@@ -1527,6 +1528,7 @@ export default function HostScreen() {
     <>
       <MarbleFilterDefs />
       <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
+      <SocratesFigure phase={phase} />
       {showFullscreenToggle && (
         <button
           type="button"
