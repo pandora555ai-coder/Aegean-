@@ -23,7 +23,14 @@ import { getConnectedPlayers, getRoom, type Room } from '../state.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { calculatePoints } from '../scoring.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
-import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from '../crowd.js';
+import {
+  armCrowdTensionTimer,
+  armDrawWarningTimer,
+  clearCrowdTensionTimer,
+  clearDrawWarningTimer,
+  emitCrowdIntensity,
+  setCrowdMood,
+} from '../crowd.js';
 import { enterSocratesBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { io } from '../realtime.js';
@@ -360,6 +367,7 @@ function enterDrawPhase(room: Room, state: DrawState): void {
   // round. AFTER phase:changed, mirroring the quiz's startQuestion ordering.
   setCrowdMood(room, 'calm');
   armCrowdTensionTimer(room, DRAW_DURATION_MS);
+  armDrawWarningTimer(room, DRAW_DURATION_MS);
 
   broadcastDrawShow(room);
   console.log(`room ${room.code} draw phase started - ${state.assignment.size} players drawing`);
@@ -490,6 +498,7 @@ export function endDrawPhase(code: RoomCode): void {
   // already fired: a DRAW that ends early (everyone submitted before the
   // last third) would otherwise leave it armed to fire LATE, into GUESS.
   clearCrowdTensionTimer(room);
+  clearDrawWarningTimer(room);
 
   // The guess queue is a SNAPSHOT, fixed the instant DRAW ends - a Map's
   // keys iterate in insertion (submission) order, so this is already "in a

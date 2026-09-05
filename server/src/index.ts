@@ -49,7 +49,14 @@ import {
   type Room,
 } from './state.js';
 import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
-import { emitCrowdIntensity, emitCrowdIntensityResume, pauseCrowdTensionTimer, resumeCrowdTensionTimer } from './crowd.js';
+import {
+  emitCrowdIntensity,
+  emitCrowdIntensityResume,
+  pauseCrowdTensionTimer,
+  pauseDrawWarningTimer,
+  resumeCrowdTensionTimer,
+  resumeDrawWarningTimer,
+} from './crowd.js';
 import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
@@ -1199,6 +1206,8 @@ io.on('connection', (socket) => {
     // Crowd mood (Task 35) - `paused` doesn't itself change the mood, but the
     // mid-QUESTION tension switch is a separate timer and must freeze too.
     pauseCrowdTensionTimer(room);
+    // Task 165 - same freeze for the DRAW-only warning timer.
+    pauseDrawWarningTimer(room);
 
     const payload: PausedPayload = { byName: player.name };
     io.to(room.code).emit(ServerEvents.GAME_PAUSED, payload);
@@ -1235,6 +1244,7 @@ io.on('connection', (socket) => {
       resumeActiveTimer(room, onFire);
     }
     resumeCrowdTensionTimer(room); // no-op if nothing armed it (outside a timed round)
+    resumeDrawWarningTimer(room); // no-op if nothing armed it (outside DRAW)
     // Crowd intensity (Task 36b) - re-emit the current phase's own target,
     // ramping over whatever's actually left rather than the full nominal
     // rampMs a fresh phase entry would have used.

@@ -266,6 +266,11 @@ export interface Room {
   // the whole time), so it has its own SimpleTimer rather than sharing the
   // room's single activeTimer slot. null outside QUESTION.
   crowdTensionTimer: SimpleTimer | null;
+  // Task 165 - the DRAW-only warning timer that bumps crowd:intensity once
+  // the drawer's remaining time crosses DRAW_WARNING_MS. Same shape as
+  // crowdTensionTimer: its own SimpleTimer, alongside activeTimer, null
+  // outside DRAW.
+  drawWarningTimer: SimpleTimer | null;
   // Task 36b - crowd:intensity. The ctx the CURRENT phase was entered with,
   // stashed purely so a pause/resume can recompute the exact same target
   // (see emitCrowdIntensityResume in crowd.ts) without index.ts's
@@ -329,6 +334,7 @@ export function createRoom(hostSocketId: string): Room {
     trial: null,
     crowdMood: 'calm',
     crowdTensionTimer: null,
+    drawWarningTimer: null,
     crowdIntensityCtx: null,
   };
 
@@ -351,6 +357,7 @@ export function deleteRoom(code: RoomCode): boolean {
       clearTimeout(room.emptyTtlTimer);
     }
     clearSimpleTimer(room.crowdTensionTimer);
+    clearSimpleTimer(room.drawWarningTimer);
   }
   return rooms.delete(code);
 }
@@ -616,6 +623,8 @@ export function resetRoomForNewGame(room: Room): void {
   room.crowdMood = 'calm';
   clearSimpleTimer(room.crowdTensionTimer);
   room.crowdTensionTimer = null;
+  clearSimpleTimer(room.drawWarningTimer);
+  room.drawWarningTimer = null;
   room.crowdIntensityCtx = null;
   // Settings PERSIST across play_again (room.settings is untouched) - the
   // VIP doesn't have to reconfigure every game, only the question SET gets

@@ -7,6 +7,7 @@ import {
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
+  DRAW_WARNING_MS,
   GAME_LENGTH_OPTIONS,
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
@@ -94,6 +95,13 @@ const SURFACE_GLOW = 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 22px rgba(
 // the TV: correctness reads as full-opacity/bold vs 42%-opacity/regular,
 // never as a colour swap.
 const WRONG_OPACITY = 0.42;
+
+// Task 165 - the same chamfer MarbleSlab.tsx clips the TV's slabs to
+// (design/theatre-reference.html's --slab). Duplicated here as a literal
+// rather than exported/imported: the phone's flat --marble fill (no vein,
+// no lit sheen, no filter - phone rule) is a strict subset of MarbleSlab's
+// look, so sharing the shape is enough without sharing the component.
+const OPTION_SLAB_CLIP = 'polygon(1.5% 0, 98.5% 0.6%, 100% 3%, 99.4% 97%, 98% 100%, 2% 99.4%, 0 96%, 0.6% 3%)';
 
 // Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
 // side ("freeze them"), unlike the victim-side banner during QUESTION.
@@ -323,6 +331,16 @@ export default function ControllerScreen() {
   const drawCanvasRef = useRef<DrawingCanvasHandle>(null);
   const [drawStrokeCount, setDrawStrokeCount] = useState(0);
   const drawSentRef = useRef(false);
+  // Task 165 - the drawer's own countdown, same "remaining snapshot + local
+  // elapsed clock" idiom as the sabotage stack above: draw.durationMs is the
+  // server's remaining-time snapshot at broadcast time (never a fresh full
+  // duration), reset to 0 in applyDraw whenever a new one arrives.
+  const [drawElapsedMs, setDrawElapsedMs] = useState(0);
+  const drawElapsedRef = useRef(0);
+  // One-shot guard for the DRAW_WARNING_MS flip (ember + one size step,
+  // vibrate once) - must never re-fire on every subsequent tick.
+  const [drawWarningActive, setDrawWarningActive] = useState(false);
+  const drawWarningFiredRef = useRef(false);
   // GUESS. `guess.isDrawer` decides which of the two views renders - the
   // drawer's own payload has no `options` field AT ALL (see
   // GuessShowDrawerPayload), so there is nothing here that could even be
@@ -393,6 +411,13 @@ export default function ControllerScreen() {
     function applyDraw(payload: DrawShowPlayerPayload | null) {
       setDraw(payload);
       drawSentRef.current = payload?.submitted ?? false;
+      // Task 165 - payload.durationMs is a fresh remaining-time snapshot
+      // computed by the server this instant, same reasoning as
+      // applySabotages above: the local clock restarts at 0.
+      drawElapsedRef.current = 0;
+      setDrawElapsedMs(0);
+      drawWarningFiredRef.current = false;
+      setDrawWarningActive(false);
     }
 
     // `yourGuess` only exists (and is only ever non-null) on the GUESSER
@@ -942,6 +967,43 @@ export default function ControllerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sabotages, paused]);
 
+  // Task 165 - the drawer's own countdown, same anchoring discipline as the
+  // sabotage ticker above: torn down while paused (freezes it, same as the
+  // server's pause-aware timer), stops once nothing is left to count.
+  useEffect(() => {
+    if (!draw || draw.submitted || paused) {
+      return;
+    }
+    const anchoredAt = Date.now();
+    const alreadyElapsedMs = drawElapsedRef.current;
+    const handle = setInterval(() => {
+      const elapsed = alreadyElapsedMs + (Date.now() - anchoredAt);
+      drawElapsedRef.current = elapsed;
+      setDrawElapsedMs(elapsed);
+      if (elapsed >= draw.durationMs) {
+        clearInterval(handle);
+      }
+    }, 100);
+    return () => clearInterval(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draw, paused]);
+
+  // Task 165 - the ONE flip, guarded so it can never re-fire once the
+  // remaining time has already crossed the threshold this round.
+  useEffect(() => {
+    if (!draw || draw.submitted || drawWarningFiredRef.current) {
+      return;
+    }
+    const remainingMs = draw.durationMs - drawElapsedMs;
+    if (remainingMs <= DRAW_WARNING_MS) {
+      drawWarningFiredRef.current = true;
+      setDrawWarningActive(true);
+      if (typeof navigator.vibrate === 'function') {
+        navigator.vibrate(200);
+      }
+    }
+  }, [draw, drawElapsedMs]);
+
   // Fires a fresh room:peek whenever the code reaches a complete 4 digits -
   // covers both "just finished typing" and "came back to fix a typo", so
   // the avatar grid's grey-outs never silently go stale mid-flow.
@@ -1244,8 +1306,13 @@ export default function ControllerScreen() {
         <div style={styles.scoreboardRank} data-testid="gameover-rank">
           #{me ? me.rank : '-'}
         </div>
-        <div style={styles.scoreboardScore} data-testid="gameover-score">
-          {me ? me.score : 0} πόντοι
+        {/* Task 165 - the player's own score as a plaque: the TV plaque's
+            shape (name over score), phone units (rem, not the TV's cqh). */}
+        <div style={styles.plaque} data-testid="gameover-plaque">
+          <div style={styles.plaqueName}>{joined?.name ?? ''}</div>
+          <div style={styles.plaqueScore} data-testid="gameover-score">
+            {me ? me.score : 0} πόντοι
+          </div>
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
         {isVip && (
@@ -1651,8 +1718,16 @@ export default function ControllerScreen() {
           </div>
         ) : (
           <>
-            <div style={styles.title} data-testid="draw-word">
-              Ζωγράφισε: {draw.wordToDraw}
+            <div style={styles.drawHeaderRow}>
+              <div style={styles.title} data-testid="draw-word">
+                Ζωγράφισε: {draw.wordToDraw}
+              </div>
+              <div
+                style={drawWarningActive ? styles.drawTimeWarning : styles.drawTime}
+                data-testid="draw-time-remaining"
+              >
+                {Math.ceil(Math.max(0, draw.durationMs - drawElapsedMs) / 1000)}΄΄
+              </div>
             </div>
             <DrawingCanvas ref={drawCanvasRef} onStrokeCountChange={setDrawStrokeCount} />
             <button
@@ -2340,6 +2415,23 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
   },
   title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--marble)' },
+  // Task 165 - shares ONE row with draw-word (title's own line-height already
+  // covers it) rather than a separate block: DRAW's canvas + two-row toolbar
+  // + submit already fill 360x640 with no headroom to spare (a pre-existing
+  // fit, not something this task touches - see DrawingCanvas.tsx), so a new
+  // element here must add zero extra height.
+  drawHeaderRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+  },
+  // The drawer's own countdown, text on the ground (--marble) until
+  // DRAW_WARNING_MS, then a plain state-driven swap (no transition) to
+  // --ember one size up. Never an animation - phone motion is finger-driven
+  // only.
+  drawTime: { fontSize: '1.1rem', fontWeight: 700, color: 'var(--marble)', flexShrink: 0 },
+  drawTimeWarning: { fontSize: '1.35rem', fontWeight: 700, color: 'var(--ember)', flexShrink: 0 },
   status: { textAlign: 'center', color: 'var(--marble-3)' },
   subtitle: { fontSize: '1.1rem', color: 'var(--marble-3)', textAlign: 'center' },
   lobbyCount: { fontSize: '1rem', color: 'var(--marble-3)', textAlign: 'center' },
@@ -2759,6 +2851,11 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
   },
+  // Task 165 - the option becomes a marble slab: MarbleSlab's own chamfer
+  // clip-path, flat --marble (no vein/lit/filter - TV-only texture, banned
+  // on the phone), --carve text. Selected reads as heavier weight + a
+  // --wine-2 edge, not a colour swap - correctness only ever reads through
+  // opacity (WRONG_OPACITY, reveal text), never through hue.
   answerButton: {
     display: 'flex',
     alignItems: 'center',
@@ -2769,7 +2866,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.15rem',
     fontWeight: 700,
     padding: '0.75rem',
-    borderRadius: '1rem',
+    clipPath: OPTION_SLAB_CLIP,
     border: '3px solid',
     borderColor: 'var(--marble-3)',
     background: 'var(--marble)',
@@ -2777,6 +2874,7 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
   },
   answerButtonSelected: {
+    fontWeight: 800,
     borderColor: 'var(--wine-2)',
     background: 'color-mix(in srgb, var(--wine-2) 12%, var(--marble))',
   },
@@ -2790,14 +2888,13 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '1.15rem',
     fontWeight: 700,
     padding: '0.75rem',
-    borderRadius: '1rem',
+    clipPath: OPTION_SLAB_CLIP,
     border: '3px solid',
     borderColor: 'var(--marble-3)',
     background: 'var(--marble)',
     color: 'var(--carve)',
     textAlign: 'center',
     opacity: 0.35,
-    filter: 'grayscale(0.7)',
   },
   answerText: {
     color: 'var(--carve)',
@@ -2883,11 +2980,39 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     color: 'var(--ember)',
   },
-  scoreboardScore: {
-    fontSize: '1.75rem',
+  // Task 165 - the player's own score as a plaque: design/theatre-reference.
+  // html's .plaque shape (name over score), same background(--marble)/
+  // color(--carve) as an option slab, phone units instead of the TV's cqh.
+  plaque: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.15rem',
+    alignSelf: 'center',
+    minWidth: '44px',
+    minHeight: '44px',
+    padding: '0.6rem 1.4rem',
+    borderRadius: '0.6rem',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
+  },
+  // --carve, not the TV plaque's --marble-3 - the phone rule is stricter
+  // than the TV's (never --marble-3 for anything read); the name/score
+  // hierarchy comes from size and weight instead.
+  plaqueName: {
+    fontSize: '0.85rem',
     fontWeight: 700,
-    textAlign: 'center',
-    color: 'var(--marble)',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: 'var(--carve)',
+    lineHeight: 1,
+  },
+  plaqueScore: {
+    fontSize: '1.75rem',
+    fontWeight: 800,
+    fontVariantNumeric: 'tabular-nums',
+    lineHeight: 1.2,
+    color: 'var(--carve)',
   },
   // Power-up (Task 30b) - big tap targets, since both steps are decided
   // under a 10 second clock the phone doesn't even display.

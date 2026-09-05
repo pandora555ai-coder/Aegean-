@@ -436,6 +436,8 @@ export interface CrowdIntensityContext {
   round?: number;
   isLastQuestionOfStage?: boolean;
   closeScoresPending?: boolean;
+  // Task 165 - the drawer's remaining time crossed DRAW_WARNING_MS.
+  drawWarningCrossed?: boolean;
 }
 
 // Caps a modifier stack at .95 - GAME_OVER's own .8 base is deliberately
@@ -504,6 +506,9 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
     value = Math.min(CROWD_INTENSITY_MODIFIER_CAP, value + 0.15);
   }
   if (ctx.closeScoresPending) {
+    value = Math.min(CROWD_INTENSITY_MODIFIER_CAP, value + 0.15);
+  }
+  if (ctx.drawWarningCrossed) {
     value = Math.min(CROWD_INTENSITY_MODIFIER_CAP, value + 0.15);
   }
   return { ...result, value };
@@ -1646,6 +1651,9 @@ export interface DevVoiceLinesPayload {
 export const DRAW_MIN_PLAYERS = 2;
 
 export const DRAW_DURATION_MS = 75_000;
+// Task 165 - the remaining-time threshold (not elapsed) that flips the
+// drawer's phone into urgency and bumps crowd:intensity.
+export const DRAW_WARNING_MS = 13_000;
 export const GUESS_DURATION_MS = 20_000;
 export const GUESS_REVEAL_DURATION_MS = 8_000;
 

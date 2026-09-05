@@ -2,7 +2,13 @@
 // decides what the crowd is feeling and tells the host, which is where the
 // audio will eventually live. Server-derived and HOST ONLY: the client never
 // computes a mood itself, and phones never receive crowd:mood at all.
-import { crowdIntensityFor, ServerEvents, type CrowdIntensityContext, type CrowdMood } from '@game/shared';
+import {
+  crowdIntensityFor,
+  DRAW_WARNING_MS,
+  ServerEvents,
+  type CrowdIntensityContext,
+  type CrowdMood,
+} from '@game/shared';
 import { io } from './realtime.js';
 import type { Room } from './state.js';
 import {
@@ -85,4 +91,37 @@ export function emitCrowdIntensityResume(room: Room): void {
 export function clearCrowdTensionTimer(room: Room): void {
   clearSimpleTimer(room.crowdTensionTimer);
   room.crowdTensionTimer = null;
+}
+
+// Task 165 - a SECOND DRAW-only timer, same shape as the tension timer
+// above: runs alongside DRAW's activeTimer, arms at the moment the
+// drawer's remaining time crosses DRAW_WARNING_MS (drawDurationMs -
+// DRAW_WARNING_MS elapsed), and bumps crowd:intensity by +.15 (via the
+// drawWarningCrossed ctx modifier) ramped over 400ms. Spreads the
+// room's LAST-emitted ctx so the bump composes with whatever the phase
+// already set (and so a later pause/resume replay via
+// emitCrowdIntensityResume keeps the bump).
+export function armDrawWarningTimer(room: Room, drawDurationMs: number): void {
+  clearDrawWarningTimer(room);
+  const warningAtMs = drawDurationMs - DRAW_WARNING_MS;
+  room.drawWarningTimer = armSimpleTimer(warningAtMs, () => {
+    room.drawWarningTimer = null;
+    emitCrowdIntensity(room, { ...room.crowdIntensityCtx, drawWarningCrossed: true }, 400);
+  });
+}
+
+export function pauseDrawWarningTimer(room: Room): void {
+  pauseSimpleTimer(room.drawWarningTimer);
+}
+
+export function resumeDrawWarningTimer(room: Room): void {
+  resumeSimpleTimer(room.drawWarningTimer, () => {
+    room.drawWarningTimer = null;
+    emitCrowdIntensity(room, { ...room.crowdIntensityCtx, drawWarningCrossed: true }, 400);
+  });
+}
+
+export function clearDrawWarningTimer(room: Room): void {
+  clearSimpleTimer(room.drawWarningTimer);
+  room.drawWarningTimer = null;
 }
