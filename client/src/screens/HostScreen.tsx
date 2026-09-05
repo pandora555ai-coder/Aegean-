@@ -1639,6 +1639,17 @@ export default function HostScreen() {
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
   const confirmedOutPlayerIds = phase === 'TRIAL_REVEAL' ? trialConfirmedOutPlayerIds() : null;
   const lockedInPlayerIds = phase === 'TRIAL_QUESTION' ? (trialQuestion?.lockedInPlayerIds ?? null) : null;
+  // Task 156b - the blitz mode's own live "n/K" ember counter, reusing the
+  // row's delta slot (same position, same ember styling) rather than a new
+  // one: the two never appear on the same phase (deltas is null during
+  // BLITZ, this is null everywhere else). No tween - this is the server's
+  // live count re-rendered on every blitz:progress, never a client guess.
+  const counterByPlayerId =
+    phase === 'BLITZ' && blitz
+      ? Object.fromEntries(
+          Object.entries(blitz.progressByPlayerId).map(([id, count]) => [id, `${count}/${blitz.total}`]),
+        )
+      : null;
   const timer = showShell ? timerForPhase() : null;
 
   const phaseView = renderPhaseView();
@@ -1677,6 +1688,7 @@ export default function HostScreen() {
         hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
         stealFlight={stealFlightTargets}
         sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
+        counterByPlayerId={counterByPlayerId}
       />
     </>
   );

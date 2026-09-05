@@ -271,6 +271,9 @@ export function buildBlitzRevealHostShow(room: Room): BlitzRevealHostPayload | n
     total: state.statements.length,
     results: state.lastReveal.results,
     mostMissed: state.lastReveal.mostMissed,
+    // Task 156b - safe now that BLITZ_REVEAL has resolved; HOST payload
+    // only (buildBlitzRevealPlayerShow below is untouched).
+    statements: state.statements,
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,

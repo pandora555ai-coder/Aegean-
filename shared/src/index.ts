@@ -2306,6 +2306,11 @@ export interface BlitzRevealHostPayload {
   total: number;
   results: BlitzRevealResult[];
   mostMissed: BlitzMostMissed | null;
+  // Task 156b - the round's own K statements, in dealt order, WITH their
+  // truth - safe now that BLITZ_REVEAL has resolved. HOST ONLY: the TV's
+  // Αληθινά/Ψεύτικα columns read straight off this; BlitzRevealPlayerPayload
+  // gains nothing here, a phone still learns only its own three counts.
+  statements: BlitzStatement[];
   autoAdvanceMs: number;
   paused: boolean;
   pausedByName: string | null;

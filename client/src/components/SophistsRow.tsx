@@ -93,6 +93,13 @@ interface SophistsRowProps {
   // in). Sparse per QuestionShowHostPayload.sabotage: a playerId absent
   // here is under neither effect.
   sabotageByPlayerId?: Record<string, PlayerSabotageState> | null;
+  // Task 156b - BLITZ only: each player's live "n/K" swipe progress,
+  // already formatted by the caller (this component knows nothing about
+  // blitz specifically). Shares the delta's own `.d` slot/styling - the two
+  // never coexist (deltas is null during BLITZ, this is null everywhere
+  // else) - and is never animated: it's the server's live count, re-shown
+  // as-is on every render, not a value that tweens toward a target.
+  counterByPlayerId?: Record<string, string> | null;
 }
 
 // The five himation colours from the reference's `hues`, by join index
@@ -361,6 +368,7 @@ function Sophist({
   delta,
   hideScore,
   sabotage,
+  counter,
 }: {
   standing: SophistStanding;
   joinIndex: number;
@@ -372,9 +380,12 @@ function Sophist({
   delta: number | undefined;
   hideScore: boolean;
   sabotage: PlayerSabotageState | undefined;
+  counter: string | undefined;
 }) {
   const displayScore = useAnimatedNumber(standing.score);
   const showDelta = delta !== undefined && delta !== 0;
+  const showOverlay = counter !== undefined || showDelta;
+  const overlayText = counter ?? (showDelta ? formatDelta(delta as number) : '');
   const iced = sabotage?.iceMs !== undefined;
   const inked = sabotage?.inkLevel !== undefined;
   const className = [
@@ -401,8 +412,8 @@ function Sophist({
       data-iced={iced}
       data-inked={inked}
     >
-      <div className={showDelta ? 'd on' : 'd'} data-testid="sophist-delta">
-        {showDelta ? formatDelta(delta) : ''}
+      <div className={showOverlay ? 'd on' : 'd'} data-testid="sophist-delta">
+        {overlayText}
       </div>
       <div className="fx ice" data-testid="sophist-ice">
         <IceCrystal />
@@ -439,6 +450,7 @@ export function SophistsRow({
   hideScores = false,
   stealFlight = null,
   sabotageByPlayerId = null,
+  counterByPlayerId = null,
 }: SophistsRowProps) {
   // `standings` still carries every player - useDisplayOrder needs the full
   // set to sort correctly - so removal is a final filter applied AFTER
@@ -502,6 +514,7 @@ export function SophistsRow({
               delta={deltas?.[id]}
               hideScore={hideScores}
               sabotage={sabotageByPlayerId?.[id]}
+              counter={counterByPlayerId?.[id]}
             />
           );
         })}
