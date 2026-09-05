@@ -343,6 +343,7 @@ function flattenToPaper(ctx: CanvasRenderingContext2D, canvasSize: number) {
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(
   function DrawingCanvas({ onStrokeCountChange }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const stageRef = useRef<HTMLDivElement | null>(null);
     const wheelRef = useRef<HTMLDivElement | null>(null);
     // Finished strokes live in a ref, not in state: they are redrawn
     // imperatively and a re-render per pointermove would be the lag.
@@ -357,6 +358,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     const [tool, setTool] = useState<Tool>('pen');
     const [color, setColor] = useState(INK);
     const [brushSize, setBrushSize] = useState<SizeKey>('medium');
+    // Task 169 - the square's CSS side, in React state so it renders as an
+    // explicit pixel style (see styles.canvas usage below) instead of
+    // fighting a plain object-literal `style` prop that would reset it back
+    // to the percentage/aspect-ratio fallback on every unrelated re-render.
+    // 0 until the first measurement; canvas isn't visible for that one frame.
+    const [canvasCssSize, setCanvasCssSize] = useState(0);
 
     useEffect(() => {
       onStrokeCountChange?.(strokeCount);
@@ -396,21 +403,35 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
     // The canvas backing store follows its laid-out size x devicePixelRatio
     // (capped at 2 - a 3x phone gains nothing visible here and pays for it
     // in fill rate), and everything below draws in CSS pixels.
+    //
+    // Task 169 - cssSize = min(stage width, stage height), read off the
+    // STAGE's own box (not the canvas's), because a <canvas> is a replaced
+    // element: with CSS width/height left auto, its "auto" size follows its
+    // intrinsic HTML width/height attributes clamped by max-width/
+    // max-height, NOT "grow to fill available space" - a pure-CSS
+    // aspect-ratio + max-width/max-height on the canvas itself measurably
+    // undershoots the stage's actual available box (measured ~294px where
+    // the stage allowed 328px). Observing the stage and setting the
+    // canvas's CSS size explicitly (via React state, not a hardcoded
+    // pixel - this reads the real flex/dvh-derived layout every resize)
+    // sidesteps that replaced-element quirk entirely.
     useEffect(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) {
+      const stage = stageRef.current;
+      if (!stage) {
         return;
       }
 
       function resize() {
         const element = canvasRef.current;
+        const stageElement = stageRef.current;
         const ctx = element?.getContext('2d');
-        if (!element || !ctx) {
+        if (!element || !stageElement || !ctx) {
           return;
         }
 
-        const cssSize = element.getBoundingClientRect().width;
-        if (cssSize === 0) {
+        const stageRect = stageElement.getBoundingClientRect();
+        const cssSize = Math.min(stageRect.width, stageRect.height);
+        if (cssSize <= 0) {
           return;
         }
 
@@ -419,12 +440,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
         element.height = Math.round(cssSize * ratio);
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         sizeRef.current = cssSize;
+        setCanvasCssSize(cssSize);
         redraw();
       }
 
       resize();
       const observer = new ResizeObserver(resize);
-      observer.observe(canvas);
+      observer.observe(stage);
       return () => observer.disconnect();
     }, [redraw]);
 
@@ -618,10 +640,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 
     return (
       <div style={styles.wrapper}>
-        <div style={styles.stage}>
+        <div style={styles.stage} ref={stageRef}>
           <canvas
             ref={canvasRef}
-            style={styles.canvas}
+            style={canvasCssSize > 0 ? { ...styles.canvas, width: canvasCssSize, height: canvasCssSize } : styles.canvas}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -659,6 +681,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
             ))}
             <div
               ref={wheelRef}
+              data-testid="wheel-hit"
               style={styles.wheelHit}
               onPointerDown={handleWheelPointerDown}
               onPointerMove={handleWheelPointerMove}
@@ -737,8 +760,27 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>
 );
 
 const styles: Record<string, CSSProperties> = {
-  wrapper: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-  stage: { position: 'relative' },
+  // Task 169 - `flex: 1 1 auto` + `minHeight: 0` is what lets this wrapper
+  // actually SHRINK below its children's natural stacked height inside the
+  // fixed-height column ControllerScreen's DRAW view now renders it in
+  // (drawContainer, height: 100dvh) - without minHeight:0 a flex item never
+  // shrinks past its content's own minimum size, which is exactly why the
+  // canvas used to just overflow the viewport instead of getting smaller.
+  wrapper: { display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: '1 1 auto', minHeight: 0 },
+  // The one flexible child: it claims whatever height is left over after
+  // toolbar/buttonRow take their own (content-protected) minimum, and hands
+  // it to the canvas below via `align-items: center` + the canvas's own
+  // max-width/max-height (never a hardcoded pixel size in either file).
+  stage: {
+    position: 'relative',
+    flex: '1 1 auto',
+    minHeight: 0,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   canvas: {
     // `touch-action: none` is the whole of criterion 1's "no
     // scroll-hijacking": without it the browser owns the gesture and pans
@@ -748,7 +790,17 @@ const styles: Record<string, CSSProperties> = {
     userSelect: 'none',
     WebkitUserSelect: 'none',
     WebkitTouchCallout: 'none',
-    width: '100%',
+    // Task 169 - side = min(available width, available height). Neither
+    // dimension is set explicitly: both stay `auto` with only max-width/
+    // max-height as constraints, which is what lets the aspect-ratio
+    // algorithm derive the SAME used value for both axes from whichever
+    // constraint actually binds, instead of fixing width first (the old
+    // `width: 100%` did that, and ignored .stage's height entirely - the
+    // pre-existing 165 overflow this task fixes).
+    width: 'auto',
+    height: 'auto',
+    maxWidth: '100%',
+    maxHeight: '100%',
     aspectRatio: '1 / 1',
     display: 'block',
     borderRadius: '0.75rem',

@@ -1699,7 +1699,7 @@ export default function ControllerScreen() {
   // assigned word and a submit button; a waiting screen once submitted.
   if (draw) {
     return (
-      <div style={styles.container}>
+      <div style={styles.drawContainer}>
         {joined && (
           <div style={styles.avatarCorner} data-testid="my-avatar-corner">
             <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
@@ -2415,11 +2415,34 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
   },
   title: { fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', color: 'var(--marble)' },
-  // Task 165 - shares ONE row with draw-word (title's own line-height already
-  // covers it) rather than a separate block: DRAW's canvas + two-row toolbar
-  // + submit already fill 360x640 with no headroom to spare (a pre-existing
-  // fit, not something this task touches - see DrawingCanvas.tsx), so a new
-  // element here must add zero extra height.
+  // Task 169 - a FIXED-height (not minHeight) column so the flex children
+  // below can actually divide up a bounded space: DrawingCanvas's own
+  // wrapper is the one child that opts into shrinking (flex + minHeight:0),
+  // so it's the only thing that gives up height when the viewport is short
+  // - everything else here (header, submit, pause) keeps its natural
+  // content-driven minimum for free (a flex item's default min-height:auto
+  // already refuses to shrink below its own content unless it opts out via
+  // overflow, which none of these do). overflow:hidden is the backstop in
+  // case some other content still doesn't fit; it should never be visibly
+  // clipping anything once DrawingCanvas's own square shrinks to fit.
+  drawContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: '0.6rem',
+    padding: '0.75rem 1rem',
+    maxWidth: '480px',
+    margin: '0 auto',
+    background: 'var(--night-0)',
+    color: 'var(--marble)',
+    height: '100dvh',
+    overflow: 'hidden',
+    boxSizing: 'border-box',
+  },
+  // Task 165 - shares ONE row with draw-word (title's own line-height
+  // already covers it) rather than a separate block, so a new element here
+  // must add zero extra height - see drawContainer above and
+  // DrawingCanvas.tsx for how the canvas itself absorbs the rest (Task 169).
   drawHeaderRow: {
     display: 'flex',
     alignItems: 'baseline',
