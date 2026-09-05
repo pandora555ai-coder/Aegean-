@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GamePhase } from '@game/shared';
+import type { GamePhase, PlayerSabotageState } from '@game/shared';
 import { DEFAULT_DURATION_MS, useAnimatedNumber } from '../hooks/useAnimatedNumber';
+
+// Task 163c - the ice crystal's glow. The palette has no ice-blue token (by
+// design, same as Krater's KRATER_CRITICAL red) - this is the one other
+// place a literal is warranted rather than inventing a token nothing else
+// would use. The reference's own --ice:#BFE6FF.
+const ICE_GLOW = '#BFE6FF';
 
 // Task 161 - the players are the sophists Socrates debates. They stand in a
 // row on the orchestra at the foot of the TV, each a figure with a marble
@@ -82,6 +88,11 @@ interface SophistsRowProps {
   // against THIS render's own left-position lookup, so the token always
   // starts/ends exactly where the two figures currently stand.
   stealFlight?: { thiefPlayerId: string; victimPlayerId: string } | null;
+  // Task 163c - QUESTION only (HostScreen passes null everywhere else,
+  // REVEAL included - the effect stops mattering the instant answers lock
+  // in). Sparse per QuestionShowHostPayload.sabotage: a playerId absent
+  // here is under neither effect.
+  sabotageByPlayerId?: Record<string, PlayerSabotageState> | null;
 }
 
 // The five himation colours from the reference's `hues`, by join index
@@ -118,9 +129,17 @@ const ROW_STYLE_TAG = `
 .soph.lead .wreath{display:block}
 .soph.out{opacity:0;transform:translateX(-50%) translateY(8cqh) scale(.9)}
 .soph.out .plaque{background:var(--marble-3)}
+.fx{position:absolute;left:50%;top:1cqh;transform:translateX(-50%);width:11cqh;height:14cqh;opacity:0;
+  transition:opacity 400ms;pointer-events:none}
+.fx svg{width:100%;height:100%;overflow:visible}
+.soph.iced .fx.ice{opacity:1}
+.soph.inked .fx.ink{opacity:1}
+.soph.iced svg.fig{filter:drop-shadow(0 0 1cqh ${ICE_GLOW}) saturate(.3) brightness(1.2)}
+.soph.inked svg.fig{filter:brightness(.55)}
+.soph.iced.inked svg.fig{filter:drop-shadow(0 0 1cqh ${ICE_GLOW}) saturate(.3) brightness(.66)}
 .steal-token{position:absolute;bottom:22cqh;width:5cqh;height:6cqh;z-index:4;opacity:0;
   transition:left ${STEAL_TOKEN_FLIGHT_MS}ms cubic-bezier(.3,0,.2,1),transform ${STEAL_TOKEN_FLIGHT_MS}ms cubic-bezier(.3,-.6,.2,1.3),opacity 300ms}
-@media (prefers-reduced-motion:reduce){.sophists,.soph,.d,.steal-token{transition:none}}
+@media (prefers-reduced-motion:reduce){.sophists,.soph,.d,.steal-token,.fx{transition:none}}
 `;
 
 // Highest rank first. Array.prototype.sort is stable (guaranteed since
@@ -262,6 +281,34 @@ function Kylix() {
   );
 }
 
+// The reference's .fx.ice svg - a crystal of cracks over the figure. The
+// stroke is ICE_GLOW (the palette has no ice-blue token); decorative FX
+// art, the same exemption Figure()'s own hexes already use.
+function IceCrystal() {
+  return (
+    <svg viewBox="0 0 60 80" aria-hidden="true">
+      <g stroke={ICE_GLOW} strokeWidth={3} strokeLinecap="round" fill="none">
+        <path d="M30 6 V74 M8 20 L52 60 M52 20 L8 60 M30 6 L22 14 M30 6 L38 14 M30 74 L22 66 M30 74 L38 66" />
+      </g>
+      <circle cx={30} cy={40} r={6} fill={ICE_GLOW} />
+    </svg>
+  );
+}
+
+// The reference's .fx.ink svg - a spreading blot. Raw hex, same as
+// IceCrystal above: decorative FX art, not a palette-token colour.
+function InkBlot() {
+  return (
+    <svg viewBox="0 0 60 80" aria-hidden="true">
+      <path
+        d="M30 10 C50 10 58 30 50 44 C60 56 40 74 30 66 C18 76 2 58 12 44 C2 30 12 10 30 10Z"
+        fill="#12101A"
+      />
+      <circle cx={22} cy={30} r={4} fill="#3A3650" />
+    </svg>
+  );
+}
+
 // Task 163b - the steal flight: appears at the victim's row position and
 // flies to the thief's over STEAL_TOKEN_FLIGHT_MS. Mirrors the reference's
 // own trick (steal(): snap to the start position with no transition, force
@@ -313,6 +360,7 @@ function Sophist({
   isInvolved,
   delta,
   hideScore,
+  sabotage,
 }: {
   standing: SophistStanding;
   joinIndex: number;
@@ -323,10 +371,21 @@ function Sophist({
   isInvolved: boolean;
   delta: number | undefined;
   hideScore: boolean;
+  sabotage: PlayerSabotageState | undefined;
 }) {
   const displayScore = useAnimatedNumber(standing.score);
   const showDelta = delta !== undefined && delta !== 0;
-  const className = ['soph', isLeader ? 'lead' : '', isOut ? 'out' : ''].filter(Boolean).join(' ');
+  const iced = sabotage?.iceMs !== undefined;
+  const inked = sabotage?.inkLevel !== undefined;
+  const className = [
+    'soph',
+    isLeader ? 'lead' : '',
+    isOut ? 'out' : '',
+    iced ? 'iced' : '',
+    inked ? 'inked' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const disconnected = standing.connected === false;
   return (
     <div
@@ -339,9 +398,17 @@ function Sophist({
       data-score={standing.score}
       data-lead={isLeader}
       data-out={isOut}
+      data-iced={iced}
+      data-inked={inked}
     >
       <div className={showDelta ? 'd on' : 'd'} data-testid="sophist-delta">
         {showDelta ? formatDelta(delta) : ''}
+      </div>
+      <div className="fx ice" data-testid="sophist-ice">
+        <IceCrystal />
+      </div>
+      <div className="fx ink" data-testid="sophist-ink">
+        <InkBlot />
       </div>
       <Figure joinIndex={joinIndex} />
       <Wreath />
@@ -371,6 +438,7 @@ export function SophistsRow({
   victimPlayerId = null,
   hideScores = false,
   stealFlight = null,
+  sabotageByPlayerId = null,
 }: SophistsRowProps) {
   // `standings` still carries every player - useDisplayOrder needs the full
   // set to sort correctly - so removal is a final filter applied AFTER
@@ -433,6 +501,7 @@ export function SophistsRow({
               isInvolved={id === thiefPlayerId || id === victimPlayerId}
               delta={deltas?.[id]}
               hideScore={hideScores}
+              sabotage={sabotageByPlayerId?.[id]}
             />
           );
         })}

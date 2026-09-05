@@ -97,6 +97,13 @@ const question: QuestionShowHostPayload = {
   pausedByName: null,
   socratesIntro: null,
   standings: STANDINGS,
+  // Task 163c - one of each, plus a stacked target, so this route alone
+  // previews every row-FX combination without a live game.
+  sabotage: {
+    p2: { iceMs: 3000 },
+    p3: { inkLevel: 2 },
+    p4: { iceMs: 1500, inkLevel: 1 },
+  },
 };
 
 const reveal: RevealHostPayload = {

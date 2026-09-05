@@ -102,6 +102,7 @@ import {
   buildTrialQuestionPlayerPayload,
   buildTrialRevealPayload,
   buildGameOver,
+  buildQuestionHostSabotage,
   computeStandings,
 } from './payloads.js';
 import { isPowerUpEffect } from './powerups.js';
@@ -326,6 +327,7 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
         // buildRevealHostPayload, same as the live broadcast).
         socratesIntro: null,
         standings: computeStandings(room),
+        sabotage: buildQuestionHostSabotage(room),
       };
     }
     case 'REVEAL': {

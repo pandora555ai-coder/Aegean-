@@ -59,6 +59,7 @@ import {
   buildTrialQuestionPlayerPayload,
   buildTrialRevealPayload,
   buildGameOver,
+  buildQuestionHostSabotage,
   computeStandings,
 } from './payloads.js';
 
@@ -404,6 +405,7 @@ export function startQuestion(room: Room): void {
     pausedByName: room.pausedByName,
     socratesIntro,
     standings: computeStandings(room),
+    sabotage: buildQuestionHostSabotage(room),
   };
   if (room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.QUESTION_SHOW, hostPayload);

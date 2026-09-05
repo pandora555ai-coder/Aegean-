@@ -1555,6 +1555,7 @@ export default function HostScreen() {
         victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
         hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
         stealFlight={stealFlightTargets}
+        sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
       />
     </>
   );

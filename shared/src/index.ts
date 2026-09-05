@@ -851,6 +851,18 @@ export interface ActiveSabotage {
   intensity: number;
 }
 
+// Task 163c - the HOST's own view of a single target's currently-landed
+// effects, on QuestionShowHostPayload only (see below). Shaped differently
+// from ActiveSabotage/`yourSabotages` on purpose: the TV never needs a
+// player's remaining-vs-total split (no fade-out countdown is drawn from
+// this), just "is this figure iced/inked right now, and how hard" - a
+// resolved snapshot, not the timer data a phone's own effect view needs.
+// `shuffle` has no entry here - it has no visual FX (see SabotageEffect).
+export interface PlayerSabotageState {
+  iceMs?: number; // remaining, not total - a figure's crystal doesn't need a duration
+  inkLevel?: number; // 1..MAX_INK_INTENSITY
+}
+
 // ---------------------------------------------------------------------------
 // POWER_UP phase (Task 30a)
 // ---------------------------------------------------------------------------
@@ -1133,6 +1145,13 @@ export interface QuestionShowHostPayload {
   // Task 38 - every player's current score, for the TV's persistent right
   // column. See PlayerStanding.
   standings: PlayerStanding[];
+  // Task 163c - who is currently iced/inked, so the sophists row can show
+  // it - the row has no other way to learn this, since a player's own
+  // `yourSabotages` (below) is per-player-private and never broadcast.
+  // Sparse: a playerId with nothing landed on them is simply absent, never
+  // an empty object. HOST ONLY - QuestionShowPlayerPayload does not gain
+  // this field; see server/src/payloads.ts's buildQuestionHostSabotage.
+  sabotage: Record<string, PlayerSabotageState>;
 }
 
 export interface QuestionShowPlayerPayload {

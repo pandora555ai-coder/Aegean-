@@ -9,6 +9,7 @@ import {
   stageForQuestionIndex,
   type GameOverPayload,
   type GameOverStanding,
+  type PlayerSabotageState,
   type PlayerStanding,
   type PowerUpShowHostPayload,
   type PowerUpShowPlayerPayload,
@@ -29,6 +30,7 @@ import { resolveSocratesDurationMs } from './socratesAudio.js';
 // The registry only, a leaf module - nothing imports this file back, so the
 // graph stays acyclic (see the note in modes/types.ts).
 import { stagesForRoom } from './modes/registry.js';
+import { activeSabotagesFor } from './sabotage.js';
 import { getConnectedPlayers, type Room } from './state.js';
 import { remainingActiveTimerMs } from './timers.js';
 
@@ -302,6 +304,34 @@ export function buildPowerUpPlayerPayload(room: Room, playerId: string): PowerUp
     paused: room.paused,
     pausedByName: room.pausedByName,
   };
+}
+
+// Task 163c - the host's view of who is currently iced/inked, for
+// QuestionShowHostPayload.sabotage (live emit: server/src/phases.ts's
+// startQuestion; reconnect: server/src/index.ts's buildStateSyncForHost).
+// Reads activeSabotagesFor - the SAME resolved (remaining-time, already
+// stacked) state a player's own `yourSabotages` comes from - rather than
+// room.activeSabotageByTarget's raw casts directly, so a mid-question call
+// (a reconnecting TV) reports exactly what's still running, not what was
+// originally applied. `shuffle` has no PlayerSabotageState field and is
+// silently dropped - it has no row FX (see PlayerSabotageState). Sparse:
+// a player with nothing active is simply absent from the result.
+export function buildQuestionHostSabotage(room: Room): Record<string, PlayerSabotageState> {
+  const sabotage: Record<string, PlayerSabotageState> = {};
+  for (const targetPlayerId of room.activeSabotageByTarget.keys()) {
+    const state: PlayerSabotageState = {};
+    for (const active of activeSabotagesFor(room, targetPlayerId)) {
+      if (active.effect === 'ice') {
+        state.iceMs = active.remainingMs;
+      } else if (active.effect === 'ink') {
+        state.inkLevel = active.intensity;
+      }
+    }
+    if (state.iceMs !== undefined || state.inkLevel !== undefined) {
+      sabotage[targetPlayerId] = state;
+    }
+  }
+  return sabotage;
 }
 
 // ---------------------------------------------------------------------------
