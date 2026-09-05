@@ -68,14 +68,14 @@ export const styles: Record<string, CSSProperties> = {
     boxSizing: 'border-box',
     padding: '3vh 0',
     overflow: 'hidden',
-    // Task 163d - a container-query root: its own width/height are already
-    // fixed by this same box (not by its content), so this carries no
-    // circular-sizing risk. Slab content (the drawing canvas, the options
-    // grid, the number line) sizes itself in cqh off THIS box instead of
-    // vh/rem, matching design/theatre-reference.html's own .tv/#main
-    // relationship - one container, every read-column phase's content
-    // scales off it consistently.
-    containerType: 'size',
+    // Task 163d follow-up - NOT a container-query root: an earlier version
+    // put containerType:'size' here, making this 410px-tall box (not the
+    // ~720px #root) the nearest container for every cqh value inside it -
+    // exactly half the intended basis, which is why that version had to
+    // double every cqh figure to compensate. The real container is #root
+    // (palette-theatro.css) - the same ~100vh basis every other cqh usage
+    // on this TV (SophistsRow/SpeechSlab/the three overlay roots) already
+    // resolves against.
     // Task 159c - transparent, not var(--night-1): TheatreScene (158) sits
     // behind every /host phase; only the reading panel gets its own surface.
     background: 'transparent',
@@ -319,15 +319,14 @@ export const styles: Record<string, CSSProperties> = {
   // literal - the palette has no parchment token and this is what the
   // drawing is actually baked onto, so objectFit:contain's letterbox bars
   // (a picture narrower than it is tall, or vice versa) are invisible
-  // against it. Doubled from the reference's literal 30cqh (see
-  // CheckMark.tsx's comment - this read column's own container measures
-  // roughly half the reference's full-viewport basis).
+  // against it. The literal reference figure - see CheckMark.tsx's comment
+  // for why this no longer needs doubling.
   drawingImageWrap: {
-    width: '60cqh',
-    height: '60cqh',
-    borderRadius: '1cqh',
+    width: '30cqh',
+    height: '30cqh',
+    borderRadius: '0.5cqh',
     overflow: 'hidden',
-    boxShadow: 'inset 0 0 0 0.8cqh var(--marble-2)',
+    boxShadow: 'inset 0 0 0 0.4cqh var(--marble-2)',
     background: '#F6EEDC',
     flexShrink: 0,
   },

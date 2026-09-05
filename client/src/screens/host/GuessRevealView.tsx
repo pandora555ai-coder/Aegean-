@@ -22,14 +22,14 @@ import { styles } from './hostStyles';
 // player or counts them - the drawer's +N is above their figure like
 // everyone else's. The drawer heading ABOVE the drawing stays: it says whose
 // sketch this is, not who scored.
-// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
-// comment - this container measures roughly half the reference's own).
+// The literal reference figures - see CheckMark.tsx's comment for why
+// these no longer need doubling.
 const WRONG_OPACITY = 0.42;
 
 const drawingGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'auto 1fr',
-  gap: '8cqh',
+  gap: '4cqh',
   alignItems: 'center',
   width: '100%',
 };
@@ -37,7 +37,7 @@ const drawingGridStyle: CSSProperties = {
 const optionsColumnStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr',
-  gap: '2.4cqh',
+  gap: '1.2cqh',
   width: '100%',
   minWidth: 0,
 };
@@ -45,8 +45,8 @@ const optionsColumnStyle: CSSProperties = {
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
-  gap: '2.4cqh',
-  fontSize: '6.8cqh',
+  gap: '1.2cqh',
+  fontSize: '3.4cqh',
   fontWeight: isCorrect ? 800 : 700,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--carve)',

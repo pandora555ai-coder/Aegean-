@@ -10,19 +10,19 @@ import { styles } from './hostStyles';
 // GUESS there's no single artist to name (the standing "names a player"
 // exception is GUESS's drawer line only) - so the canvas here is blank
 // paper, not a picture, and the text names no one.
-// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
-// comment - this container measures roughly half the reference's own).
+// The literal reference figures - see CheckMark.tsx's comment for why
+// these no longer need doubling.
 const drawingGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'auto 1fr',
-  gap: '8cqh',
+  gap: '4cqh',
   alignItems: 'center',
   width: '100%',
 };
 
 const titleStyle: CSSProperties = {
   fontFamily: '"Gentium Book Plus", Georgia, "Times New Roman", serif',
-  fontSize: '11.6cqh',
+  fontSize: '5.8cqh',
   lineHeight: 1.2,
   fontWeight: 700,
   color: 'var(--carve)',
@@ -33,8 +33,8 @@ const titleStyle: CSSProperties = {
 // as --carve at a lighter weight/size instead, the same substitution every
 // other slab on this TV already makes for "muted but still legible".
 const waitingLineStyle: CSSProperties = {
-  fontSize: '6.4cqh',
-  marginTop: '3.2cqh',
+  fontSize: '3.2cqh',
+  marginTop: '1.6cqh',
   color: 'var(--carve)',
   fontWeight: 600,
   opacity: 0.7,

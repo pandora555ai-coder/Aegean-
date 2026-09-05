@@ -6,17 +6,16 @@ import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // Task 163d - the same check-mark-carries-correctness language as REVEAL
-// (CheckMark, 8cqh/800, --carve, doubled from the reference's literal
-// figure - see CheckMark.tsx's comment), just centred: there's only ever
-// ONE answer here (no options array, no per-option tally - Task 127 never
-// built one), so there's nothing to grid against and nothing that's ever
-// "wrong".
+// (CheckMark, 4cqh/800, --carve - the literal reference figure, see
+// CheckMark.tsx's comment), just centred: there's only ever ONE answer here
+// (no options array, no per-option tally - Task 127 never built one), so
+// there's nothing to grid against and nothing that's ever "wrong".
 const rowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '3.2cqh',
-  fontSize: '8cqh',
+  gap: '1.6cqh',
+  fontSize: '4cqh',
   fontWeight: 800,
   color: 'var(--carve)',
 };

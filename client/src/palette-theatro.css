@@ -30,9 +30,20 @@
 /* The host roots take --tv-safe-top as a MARGIN, and a child's top margin
    collapses out through a plain block parent - which pushed #root itself
    (height: 100%) down by that margin and made the page 36px scrollable at
-   720p. flow-root contains the margin instead. */
+   720p. flow-root contains the margin instead.
+
+   container-type:size (Task 163d follow-up) - the ONE size-containment
+   root for the whole app: #root already has a context-derived height
+   (100%, not content), so this carries no collapse risk. Every host cqh
+   usage (SophistsRow/SpeechSlab/StageAnnounceOverlay/LobbyView/
+   GameOverView's own inset:0 roots, and hostStyles.gameLayout's read
+   column) resolves against THIS - the actual ~100vh basis
+   design/theatre-reference.html's .tv is - never against a narrower
+   nested container. /play and every other route mounted at #root use no
+   cqh/cqw units at all, so this changes nothing for them. */
 #root {
   display: flow-root;
+  container-type: size;
 }
 
 /* ============================= reset ============================= */

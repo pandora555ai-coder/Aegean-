@@ -6,13 +6,12 @@ import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
 
 // Task 161/163d - the reference's .drawing grid: the picture on the left,
-// the options beside it, on ONE slab. Doubled from the reference's literal
-// cqh figures (see CheckMark.tsx's comment - this container measures
-// roughly half the reference's own).
+// the options beside it, on ONE slab. The literal reference figures - see
+// CheckMark.tsx's comment for why these no longer need doubling.
 const drawingGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'auto 1fr',
-  gap: '8cqh',
+  gap: '4cqh',
   alignItems: 'center',
   width: '100%',
 };
@@ -23,7 +22,7 @@ const drawingGridStyle: CSSProperties = {
 const optionsColumnStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr',
-  gap: '2.4cqh',
+  gap: '1.2cqh',
   width: '100%',
   minWidth: 0,
 };
@@ -31,7 +30,7 @@ const optionsColumnStyle: CSSProperties = {
 const optionRowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  fontSize: '6.8cqh',
+  fontSize: '3.4cqh',
   fontWeight: 700,
   color: 'var(--carve)',
   minWidth: 0,

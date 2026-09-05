@@ -33,7 +33,10 @@ const NUMLINE_USABLE_PCT = 100 - NUMLINE_PADDING_PCT * 2;
 // component has no DOM measurement pass (server-driven content, no fit
 // hook) - a fixed, generous horizontal budget per label is the simplest
 // heuristic that keeps two labels sharing a lane from overlapping across
-// the range an 8-player round actually produces.
+// the range an 8-player round actually produces. Sized in cqh off #root
+// (palette-theatro.css) like everything else in this task - see
+// CheckMark.tsx's comment for why these figures are the literal reference
+// numbers, not doubled.
 const NUMLINE_OVERLAP_THRESHOLD_PCT = 15;
 // How far apart (in cqh, off the label's own font-size band) each stacked
 // depth level sits - see the placement loop below. Two labels can share a
@@ -41,7 +44,7 @@ const NUMLINE_OVERLAP_THRESHOLD_PCT = 15;
 // vertically that they never overlap each other regardless of horizontal
 // position - so only same-(side,depth) pairs ever need the horizontal
 // threshold at all.
-const NUMLINE_DEPTH_STEP_CQH = 8;
+const NUMLINE_DEPTH_STEP_CQH = 4;
 
 interface NumlineMarker {
   key: string;
@@ -96,18 +99,18 @@ function buildNumlineMarkers(reveal: NumericRevealShowPayload): NumlineMarker[] 
 const numlineRootStyle: CSSProperties = {
   position: 'relative',
   width: '100%',
-  height: '12cqh',
-  marginTop: '12cqh',
-  marginBottom: '8cqh',
-  borderBottom: '0.8cqh solid var(--marble-3)',
+  height: '6cqh',
+  marginTop: '6cqh',
+  marginBottom: '4cqh',
+  borderBottom: '0.4cqh solid var(--marble-3)',
 };
 
 const tickStyle = (isTruth: boolean): CSSProperties => ({
   position: 'absolute',
   bottom: 0,
   left: 0,
-  width: isTruth ? '1.4cqh' : '1cqh',
-  height: isTruth ? '10.8cqh' : '6cqh',
+  width: isTruth ? '0.7cqh' : '0.5cqh',
+  height: isTruth ? '5.4cqh' : '3cqh',
   background: isTruth ? 'var(--wine-2)' : 'var(--marble-3)',
   transform: 'translateX(-50%)',
 });
@@ -117,11 +120,11 @@ const labelStyle = (isTruth: boolean, side: 'above' | 'below', depth: number): C
   left: 0,
   [side === 'above' ? 'bottom' : 'top']: `calc(100% + ${depth * NUMLINE_DEPTH_STEP_CQH}cqh)`,
   transform: 'translateX(-50%)',
-  fontSize: isTruth ? '5.6cqh' : '4.4cqh',
+  fontSize: isTruth ? '2.8cqh' : '2.2cqh',
   fontWeight: 700,
   whiteSpace: 'nowrap',
   color: isTruth ? 'var(--wine-2)' : 'var(--carve)',
-  padding: side === 'above' ? '0 0 0.8cqh' : '0.8cqh 0 0',
+  padding: side === 'above' ? '0 0 0.4cqh' : '0.4cqh 0 0',
 });
 
 function Numline({ reveal }: { reveal: NumericRevealShowPayload }) {

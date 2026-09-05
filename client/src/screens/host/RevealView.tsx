@@ -14,25 +14,24 @@ import { styles } from './hostStyles';
 // weight + the check-mark shape (CheckMark, --wine-2) for the right answer,
 // 42% opacity for the rest. design/theatre-reference.html's own .opts (2
 // columns, gap 1.2cqh/3.5cqh, 4cqh/700 base) and .opt/.opt.ok - sized in
-// cqh off the read column's own container (hostStyles.gameLayout), not
-// rem/vh, so it scales with the TV frame rather than needing a densityScale
-// step table the way the old boxed-card version never had one for anyway.
-// Doubled from the reference's literal cqh figures (see CheckMark.tsx's
-// comment - this container measures roughly half the reference's own).
+// cqh off #root (palette-theatro.css), not rem/vh, so it scales with the TV
+// frame rather than needing a densityScale step table the way the old
+// boxed-card version never had one for anyway. Literal reference figures -
+// see CheckMark.tsx's comment for why these no longer need doubling.
 const WRONG_OPACITY = 0.42;
 
 const optionsGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: '2.4cqh 7cqh',
+  gap: '1.2cqh 3.5cqh',
   width: '100%',
 };
 
 const optionRowStyle = (isCorrect: boolean): CSSProperties => ({
   display: 'flex',
   alignItems: 'center',
-  gap: '3.2cqh',
-  fontSize: '8cqh',
+  gap: '1.6cqh',
+  fontSize: '4cqh',
   fontWeight: isCorrect ? 800 : 700,
   opacity: isCorrect ? 1 : WRONG_OPACITY,
   color: 'var(--carve)',
@@ -50,7 +49,7 @@ const optionTextStyle: CSSProperties = {
 const answerCountStyle: CSSProperties = {
   marginLeft: 'auto',
   fontWeight: 800,
-  fontSize: '4.4cqh',
+  fontSize: '2.2cqh',
   color: 'var(--carve)',
   flex: '0 0 auto',
 };
