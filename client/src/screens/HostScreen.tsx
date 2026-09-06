@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ClientEvents,
   DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
+  MAX_BOTS,
   ServerEvents,
   isBlitzRevealHostPayload,
   isBlitzShowHostPayload,
@@ -93,6 +95,15 @@ import { Krater, type TimerState } from '../components/Krater';
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
+  const [searchParams] = useSearchParams();
+  // Task 176 - ?bot=N: read once at mount (never re-derived - a stray
+  // change to the URL bar after the room already exists must not resend
+  // bots on a later, unrelated create_room). Clamped to [0, MAX_BOTS];
+  // anything missing/non-numeric/negative is just 0 bots.
+  const [botCount] = useState(() => {
+    const param = Number(searchParams.get('bot'));
+    return Number.isFinite(param) ? Math.max(0, Math.min(MAX_BOTS, Math.floor(param))) : 0;
+  });
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
@@ -1139,7 +1150,7 @@ export default function HostScreen() {
   }, [roomCode, phase]);
 
   function handleCreateRoom() {
-    socket.emit(ClientEvents.CREATE_ROOM, {});
+    socket.emit(ClientEvents.CREATE_ROOM, botCount > 0 ? { botCount } : {});
   }
 
   const players = lobby?.players ?? [];

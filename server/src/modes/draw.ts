@@ -34,6 +34,7 @@ import {
 import { enterSocratesBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { io } from '../realtime.js';
+import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
 
@@ -992,6 +993,7 @@ function finishGame(room: Room): void {
   const gameOverPayload = buildGameOver(room);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} draw game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
+  cleanupRoomBots(room.code);
 }
 
 // Exported since Task 134 - see QUIZ_CONTINUATIONS' note in quiz.ts.

@@ -127,6 +127,9 @@ export type RoomCode = string;
 export const MAX_PLAYERS = 8;
 export const MAX_NAME_LENGTH = 12;
 export const MIN_PLAYERS = 2;
+// Task 176 - the ?bot=N ceiling: leaves room for at least one human
+// (MAX_PLAYERS - MAX_BOTS = 1) even at a full room of bots.
+export const MAX_BOTS = 7;
 
 // ~150 common Greek first names, roughly balanced masculine/feminine,
 // including short forms people actually go by (Μάκης, Τάκης, Ρούλα,
@@ -235,7 +238,12 @@ export interface ServerErrorPayload {
   message: string;
 }
 
-export interface HostCreateRoomPayload {}
+export interface HostCreateRoomPayload {
+  // Task 176 - ?bot=N: how many server-side bots to spawn into the room the
+  // instant it's created. Clamped server-side to MAX_BOTS regardless of what
+  // a client sends.
+  botCount?: number;
+}
 
 export interface RoomCreatedPayload {
   code: RoomCode;
@@ -280,6 +288,10 @@ export interface PlayerJoinPayload {
   name: string;
   playerId: string;
   avatarId: string;
+  // Task 176 - set only by the server's own bot sockets. A real client
+  // sending this doesn't gain anything (a bot can never claim VIP), so it's
+  // not worth distrusting.
+  isBot?: boolean;
 }
 
 export interface PlayerJoinedPayload {
@@ -318,6 +330,8 @@ export interface Player {
    *  at join time, never trusted from the client. Task 25 (TTS) will use
    *  this to pick pre-generated audio vs. live synthesis for spoken names. */
   isPresetName: boolean;
+  /** Task 176 - a server-spawned bot player. Never VIP-eligible. */
+  isBot: boolean;
 }
 
 /** Player as seen by clients - never includes socketId, which is server-internal only. */

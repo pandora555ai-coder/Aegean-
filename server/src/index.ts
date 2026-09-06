@@ -6,6 +6,7 @@ import type { Socket } from 'socket.io';
 import {
   ClientEvents,
   DRAWING_MAX_BYTES,
+  MAX_BOTS,
   MIN_PLAYERS,
   PRESET_NAMES,
   ServerEvents,
@@ -135,6 +136,7 @@ import {
 } from './sabotage.js';
 import { initRealtime, io, httpServer } from './realtime.js';
 import { registerBlitzLog } from './blitzLog.js';
+import { cleanupRoomBots, spawnBots } from './bots.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -556,13 +558,19 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on(ClientEvents.CREATE_ROOM, () => {
+  socket.on(ClientEvents.CREATE_ROOM, (payload) => {
     const room = createRoom(socket.id);
     socketAssociationBySocketId.set(socket.id, { role: 'host', code: room.code });
     socket.join(room.code);
     socket.emit(ServerEvents.ROOM_CREATED, { code: room.code });
     console.log(`room ${room.code} created by ${socket.id}`);
     console.log(`active room count: ${getActiveRoomCount()}`);
+
+    // Task 176 - ?bot=N: never trust the client's number, clamp to MAX_BOTS.
+    const botCount = Math.max(0, Math.min(MAX_BOTS, Math.floor(payload?.botCount ?? 0)));
+    if (botCount > 0) {
+      spawnBots(room.code, botCount);
+    }
   });
 
   socket.on(ClientEvents.HOST_REJOIN, (payload) => {
@@ -608,7 +616,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on(ClientEvents.PLAYER_JOIN, (payload) => {
-    const { code, name, playerId, avatarId } = payload;
+    const { code, name, playerId, avatarId, isBot } = payload;
 
     const room = getRoom(code);
     if (!room) {
@@ -639,8 +647,10 @@ io.on('connection', (socket) => {
       // Only matters if VIP had gone vacant (everyone left, then this
       // player was first back) - a no-op if VIP is already held, so a
       // former VIP reconnecting after someone else took over does NOT
-      // reclaim it here.
-      claimVipIfVacant(room, existingPlayer);
+      // reclaim it here. Task 176 - a bot never claims VIP, even a vacant one.
+      if (!existingPlayer.isBot) {
+        claimVipIfVacant(room, existingPlayer);
+      }
       refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
       socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
       socket.join(code);
@@ -702,10 +712,14 @@ io.on('connection', (socket) => {
       isVip: false,
       avatarId,
       isPresetName,
+      isBot: isBot === true,
     };
     addPlayer(code, player);
-    // The first player to ever join a room becomes VIP; a no-op otherwise.
-    claimVipIfVacant(room, player);
+    // The first HUMAN to join a room becomes VIP - a bot never claims it,
+    // even one joining before any human (see host:create_room's botCount).
+    if (!player.isBot) {
+      claimVipIfVacant(room, player);
+    }
     refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
@@ -1279,6 +1293,11 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 176 - this is reachable mid-game (unlike vip:play_again, which
+    // only fires from GAME_OVER, by which point finishGame already cleaned
+    // up any bots) - an abandoned bot game must not leave bot ghosts in the
+    // fresh LOBBY this produces.
+    cleanupRoomBots(room.code);
     resetRoomForNewGame(room);
     armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });

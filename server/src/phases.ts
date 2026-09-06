@@ -46,6 +46,7 @@ import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } fro
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
 import { io } from './realtime.js';
+import { cleanupRoomBots } from './bots.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -1165,4 +1166,8 @@ function finishGame(room: Room): void {
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   logMomentFireSummary(room.socrates, room.code);
+  // Task 176 - one person's bot game reaches its verdict here; clean them up
+  // now rather than leaving them in the roster for a play-again that didn't
+  // ask for them.
+  cleanupRoomBots(room.code);
 }
