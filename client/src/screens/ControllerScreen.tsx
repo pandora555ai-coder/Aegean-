@@ -77,6 +77,7 @@ import {
 } from '@game/shared';
 import { socket } from '../socket';
 import { useSocketConnection } from '../useSocketConnection';
+import { clearLastSession, getLastSession, saveLastSession } from '../lastSession';
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
@@ -175,6 +176,21 @@ function SegmentedRow<T extends string | number>({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Task 174 - a dropped socket mid-game. Pure state, no transition: it
+// mounts/unmounts on `visible` flipping rather than fading, matching the
+// "no motion not driven by the finger" phone rule. `position: fixed` so it
+// reads the same regardless of where in a phase view it's rendered from.
+function ConnectionBanner({ visible }: { visible: boolean }) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div style={styles.connectionBanner} data-testid="connection-banner">
+      Χάθηκε η σύνδεση…
     </div>
   );
 }
@@ -418,10 +434,31 @@ export default function ControllerScreen() {
   // phone's own choice out of `trialQuestion.options`.
   const [trialReveal, setTrialReveal] = useState<TrialRevealShowPayload | null>(null);
 
+  // Task 174 - auto-resume. A stored session (written on every successful
+  // join/reconnect, see handleJoined) means this playerId belongs to a room
+  // as of the LAST page load - `resuming` gates the dedicated "Επανασύνδεση…"
+  // screen below (shown only until the first join attempt of THIS page load
+  // resolves one way or the other) while `identityRef` is the ONE thing the
+  // reconnect effect further down actually needs, kept as a ref rather than
+  // state since it's read from inside socket handlers registered once at
+  // mount (the same staleness reason codeRef/deepLinkCodeRef exist below).
+  // No stored session at all (a first-ever visit, or after a cleared
+  // identity) leaves both at their inert defaults and this page behaves
+  // exactly as it did before this task.
+  const [pendingResume] = useState(() => getLastSession());
+  const [resuming, setResuming] = useState(() => pendingResume !== null);
+  const identityRef = useRef(pendingResume);
+
   useEffect(() => {
     function handleJoined(payload: PlayerJoinedPayload) {
       setJoined(payload);
       setError(null);
+      // Task 174 - every accepted join (fresh, manual reconnect, or this
+      // page load's own auto-resume) becomes the identity a LATER socket
+      // reconnect replays automatically (see the `connected`-keyed effect
+      // below) and the one restored on a full page reload after that.
+      identityRef.current = { code: payload.code, name: payload.name, avatarId: payload.avatarId };
+      saveLastSession(identityRef.current);
     }
 
     // Power-up (Task 30b) - always set together, so the step, the locked-in
@@ -545,6 +582,15 @@ export default function ControllerScreen() {
         setSelectedAvatarId(null);
         setJoinStep('avatar');
       }
+      // Task 174 - a stored identity that no longer holds (the room is gone,
+      // most commonly - see PLAYER_JOIN's existing-player fast path, which
+      // is the only route a resume ever takes and bypasses every OTHER
+      // rejection reason). Drop it so this page falls through to the normal
+      // form instead of retrying it forever, and a later reconnect effect
+      // run can't replay a code that just got rejected.
+      identityRef.current = null;
+      clearLastSession();
+      setResuming(false);
     }
 
     function handleRoomPeekResult(payload: RoomPeekResultPayload) {
@@ -1058,6 +1104,22 @@ export default function ControllerScreen() {
     codeRef.current = code;
   }, [code]);
 
+  // Task 174 - fires on EVERY transition into `connected`, which covers both
+  // cases this task cares about with one emit: the very first connect of a
+  // fresh page load (auto-resume, `identityRef` seeded from localStorage)
+  // and a later socket.io auto-reconnect after a mid-game drop (identityRef
+  // by then holds whatever handleJoined last confirmed, since a new
+  // underlying socket.id means the server has no association for this
+  // phone until it re-announces itself). A page with no stored identity and
+  // no join yet leaves identityRef.current null, so this is a no-op until
+  // the manual form's own handleJoin sends the first PLAYER_JOIN itself.
+  useEffect(() => {
+    if (connected && identityRef.current) {
+      const { code: resumeCode, name, avatarId } = identityRef.current;
+      socket.emit(ClientEvents.PLAYER_JOIN, { code: resumeCode, name, playerId, avatarId });
+    }
+  }, [connected, playerId]);
+
   // Sabotage (Task 28b) - the only countdown the phone runs, and since Task
   // 31a ONE countdown for the whole stack: it advances `sabotageElapsedMs`,
   // which every effect's own remaining time is measured against. Deliberately
@@ -1191,6 +1253,14 @@ export default function ControllerScreen() {
 
   const canJoin = connected && code.length === 4 && selectedName !== null && selectedAvatarId !== null;
   const isVip = vipPlayerId === playerId;
+  // Task 174 - every in-game tap/slider/submit gates on this, not `paused`
+  // alone: a dropped socket must lock inputs exactly like a VIP pause does,
+  // so a buffered emit can never fire against a phase this phone never saw
+  // (socket.io queues emits made while disconnected and flushes them on
+  // reconnect otherwise). The connection banner's own visibility is a
+  // separate check (`!connected && joined !== null`) - this is only the
+  // input-disabling half.
+  const inputsLocked = paused || !connected;
 
   // Sabotage (Task 28b). Ice blocks answering for its first N seconds; ink
   // only obscures, so inked buttons stay fully tappable throughout. Both are
@@ -1214,7 +1284,7 @@ export default function ControllerScreen() {
   const inkIntensity = ink ? ink.intensity : 1;
 
   function handleAnswerTap(index: number) {
-    if (pendingChoice !== null || paused || icedMs > 0) {
+    if (pendingChoice !== null || inputsLocked || icedMs > 0) {
       return; // optimistic lock - first tap is final, no changing the answer
     }
     setPendingChoice(index);
@@ -1225,7 +1295,7 @@ export default function ControllerScreen() {
   // this phone to the target list, so the back button below is a pure local
   // undo with no server round-trip to take back.
   function handlePowerUpPickEffect(effect: PowerUpEffect) {
-    if (powerUpSentRef.current || paused) {
+    if (powerUpSentRef.current || inputsLocked) {
       return;
     }
     setPowerUpEffect(effect);
@@ -1243,7 +1313,7 @@ export default function ControllerScreen() {
   // gap before React re-renders; the server rejects duplicates anyway, but
   // this phone should never be the one asking.
   function handlePowerUpPickTarget(targetPlayerId: string) {
-    if (powerUpSentRef.current || powerUpEffect === null || paused) {
+    if (powerUpSentRef.current || powerUpEffect === null || inputsLocked) {
       return;
     }
     powerUpSentRef.current = true;
@@ -1257,7 +1327,7 @@ export default function ControllerScreen() {
   // ref rather than the state it sets, so a double tap can't slip a second
   // player:steal_choose through the gap before React re-renders.
   function handleStealPick(targetPlayerId: string) {
-    if (stealSentRef.current || paused) {
+    if (stealSentRef.current || inputsLocked) {
       return;
     }
     stealSentRef.current = true;
@@ -1270,7 +1340,7 @@ export default function ControllerScreen() {
   // same reason handleStealPick's is - a double tap can't slip a second
   // draw:submit through the gap before React re-renders.
   function handleDrawSubmit() {
-    if (drawSentRef.current || paused) {
+    if (drawSentRef.current || inputsLocked) {
       return;
     }
     const image = drawCanvasRef.current?.exportDataUrl();
@@ -1286,7 +1356,7 @@ export default function ControllerScreen() {
   // for the drawer's own round since that view renders no option buttons
   // at all (criterion 3), but guarded here too as defense in depth.
   function handleGuessTap(index: number) {
-    if (guessSentRef.current || paused || !guess || guess.isDrawer) {
+    if (guessSentRef.current || inputsLocked || !guess || guess.isDrawer) {
       return;
     }
     guessSentRef.current = true;
@@ -1298,7 +1368,7 @@ export default function ControllerScreen() {
   // TRIAL_SUBMIT's doc comment in shared), so a ref guards the double-tap
   // race the same way handleDrawSubmit/handleGuessTap's do.
   function handleTrialAnswerTap(index: number) {
-    if (trialSentRef.current || paused) {
+    if (trialSentRef.current || inputsLocked) {
       return;
     }
     trialSentRef.current = true;
@@ -1334,7 +1404,7 @@ export default function ControllerScreen() {
 
   // One tap, one send, ref-guarded like handleDrawSubmit.
   function handleNumericSubmit() {
-    if (numericSentRef.current || paused || !numericQuestion) {
+    if (numericSentRef.current || inputsLocked || !numericQuestion) {
       return;
     }
     numericSentRef.current = true;
@@ -1348,7 +1418,7 @@ export default function ControllerScreen() {
   // against a stray double-fire re-sending the statement this phone already
   // advanced past.
   function handleBlitzSwipe(index: number, answeredTrue: boolean) {
-    if (paused || !blitz || index !== blitzIndex || index >= blitz.total) {
+    if (inputsLocked || !blitz || index !== blitzIndex || index >= blitz.total) {
       return;
     }
     setBlitzIndex(index + 1);
@@ -1389,6 +1459,22 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_RESET_TO_LOBBY, {});
   }
 
+  // Task 174 - shown only until THIS page load's own auto-resume attempt
+  // resolves (handleJoined lands on the real phase view below via `joined`/
+  // state:sync; handleRejected flips `resuming` off and falls through to
+  // the normal form further down). Never reappears after that first
+  // resolution - a LATER mid-game drop gets the connection banner instead,
+  // not this full-screen replacement.
+  if (resuming && !joined) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.title} data-testid="resuming-notice">
+          Επανασύνδεση…
+        </div>
+      </div>
+    );
+  }
+
   // Η Δίκη (Task 129) - the spectator view, shared by TRIAL_QUESTION
   // (`onTrial: false`) and TRIAL_REVEAL (no entry in `results`, or an entry
   // with `eliminated: true`). A static "you are out" statement and nothing
@@ -1406,6 +1492,7 @@ export default function ControllerScreen() {
           Αποκλείστηκες
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -1521,7 +1608,7 @@ export default function ControllerScreen() {
                   data-testid="steal-target-option"
                   style={styles.powerUpTargetButton}
                   onClick={() => handleStealPick(target.playerId)}
-                  disabled={paused || steal.yourChoice !== null}
+                  disabled={inputsLocked || steal.yourChoice !== null}
                 >
                   <Avatar avatarId={target.avatarId} sizeRem={2.4} />
                   <span style={styles.powerUpTargetName}>{target.name}</span>
@@ -1549,6 +1636,7 @@ export default function ControllerScreen() {
         )}
 
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1594,11 +1682,12 @@ export default function ControllerScreen() {
             {reveal.yourTimeMs !== null && ` — ${(reveal.yourTimeMs / 1000).toFixed(1)}΄΄`}
           </div>
         )}
-        {isVip && !paused && (
+        {isVip && !inputsLocked && (
           <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
             Παράλειψη
           </button>
         )}
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1646,6 +1735,7 @@ export default function ControllerScreen() {
         <div style={styles.trialLife} data-testid="trial-reveal-life">
           Ζωή: {Math.max(0, myTrialResult.lifeAfter)}
         </div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1697,6 +1787,7 @@ export default function ControllerScreen() {
           </>
         ) : null}
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1748,7 +1839,7 @@ export default function ControllerScreen() {
               onChange={handleNumericSliderChange}
               style={styles.numericSlider}
               data-testid="numeric-slider"
-              disabled={paused}
+              disabled={inputsLocked}
             />
             <div style={styles.numericRangeLabels}>
               <span>0</span>
@@ -1764,19 +1855,20 @@ export default function ControllerScreen() {
               onChange={handleNumericInputChange}
               style={styles.numericNumberInput}
               data-testid="numeric-number-input"
-              disabled={paused}
+              disabled={inputsLocked}
             />
             <button
               type="button"
               data-testid="numeric-submit-button"
-              style={paused ? styles.buttonDisabled : styles.button}
+              style={inputsLocked ? styles.buttonDisabled : styles.button}
               onClick={handleNumericSubmit}
-              disabled={paused}
+              disabled={inputsLocked}
             >
               Υποβολή
             </button>
           </>
         )}
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -1822,6 +1914,7 @@ export default function ControllerScreen() {
           </>
         )}
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1858,10 +1951,11 @@ export default function ControllerScreen() {
           <BlitzSwipeCard
             key={blitzIndex}
             text={currentText}
-            disabled={paused}
+            disabled={inputsLocked}
             onCommit={(answeredTrue) => handleBlitzSwipe(blitzIndex, answeredTrue)}
           />
         )}
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -1893,6 +1987,7 @@ export default function ControllerScreen() {
           Αναπάντητα: {blitzReveal.unanswered}
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
@@ -1937,14 +2032,15 @@ export default function ControllerScreen() {
             <button
               type="button"
               data-testid="draw-submit-button"
-              style={drawStrokeCount === 0 || paused ? styles.buttonDisabled : styles.button}
+              style={drawStrokeCount === 0 || inputsLocked ? styles.buttonDisabled : styles.button}
               onClick={handleDrawSubmit}
-              disabled={drawStrokeCount === 0 || paused}
+              disabled={drawStrokeCount === 0 || inputsLocked}
             >
               Υποβολή
             </button>
           </>
         )}
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -1973,6 +2069,7 @@ export default function ControllerScreen() {
           </div>
           <div style={styles.subtitle}>Οι υπόλοιποι μαντεύουν τι ζωγράφισες</div>
           <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+          <ConnectionBanner visible={!connected && joined !== null} />
           <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         </div>
       );
@@ -2005,7 +2102,7 @@ export default function ControllerScreen() {
           {guess.options.map((option, index) => {
             const isMine = index === guessChoice;
             const dimmed = answered && !isMine;
-            const disabled = answered || paused;
+            const disabled = answered || inputsLocked;
             return (
               <button
                 key={index}
@@ -2032,6 +2129,7 @@ export default function ControllerScreen() {
           })}
         </div>
         <div style={styles.questionFooter}>
+          <ConnectionBanner visible={!connected && joined !== null} />
           <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         </div>
       </div>
@@ -2083,7 +2181,7 @@ export default function ControllerScreen() {
                   data-effect={effect}
                   style={styles.powerUpEffectButton}
                   onClick={() => handlePowerUpPickEffect(effect)}
-                  disabled={paused}
+                  disabled={inputsLocked}
                 >
                   <span style={styles.powerUpEffectIcon}>{POWER_UP_LABELS[effect].icon}</span>
                   <span style={styles.powerUpEffectTitle}>{POWER_UP_LABELS[effect].title}</span>
@@ -2105,7 +2203,7 @@ export default function ControllerScreen() {
                   data-testid="power-up-target-option"
                   style={styles.powerUpTargetButton}
                   onClick={() => handlePowerUpPickTarget(target.playerId)}
-                  disabled={paused}
+                  disabled={inputsLocked}
                 >
                   <Avatar avatarId={target.avatarId} sizeRem={2.4} />
                   <span style={styles.powerUpTargetName}>{target.name}</span>
@@ -2122,6 +2220,7 @@ export default function ControllerScreen() {
         )}
 
         <div style={styles.lookAtTv}>Κανείς δεν βλέπει τι διάλεξες</div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -2203,7 +2302,7 @@ export default function ControllerScreen() {
           {question.options.map((option, index) => {
             const isMine = index === myChoice;
             const dimmed = answered && !isMine;
-            const disabled = answered || paused || icedMs > 0;
+            const disabled = answered || inputsLocked || icedMs > 0;
             return (
               <button
                 key={index}
@@ -2230,7 +2329,8 @@ export default function ControllerScreen() {
           })}
         </div>
         <div style={styles.questionFooter}>
-          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
           {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
         </div>
       </div>
@@ -2280,7 +2380,7 @@ export default function ControllerScreen() {
           {trialQuestion.options.map((option, index) => {
             const isMine = index === myChoice;
             const dimmed = answered && !isMine;
-            const disabled = answered || paused;
+            const disabled = answered || inputsLocked;
             return (
               <button
                 key={index}
@@ -2307,7 +2407,8 @@ export default function ControllerScreen() {
           })}
         </div>
         <div style={styles.questionFooter}>
-          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
           {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
         </div>
       </div>
@@ -2331,6 +2432,7 @@ export default function ControllerScreen() {
       !canStart && selectedModeOption ? `χρειάζονται ${selectedModeOption.minPlayers}+ παίκτες για ${selectedModeOption.label}` : '';
     return (
       <div style={styles.container}>
+        <ConnectionBanner visible={!connected} />
         {joined && (
           <div style={styles.avatarCorner} data-testid="my-avatar-corner">
             <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
@@ -2996,6 +3098,20 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid var(--wine-2)',
     borderRadius: '0.5rem',
     padding: '0.6rem 1rem',
+  },
+  connectionBanner: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    fontSize: '0.85rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: 'var(--marble)',
+    background: 'var(--night-1)',
+    borderBottom: '1px solid var(--marble-3)',
+    padding: '0.5rem 1rem',
   },
   // Θέατρο pass - the palette has no red. A destructive action reads
   // as heavier, not hued: --marble-3 (a solid fill, not the thin outline every
