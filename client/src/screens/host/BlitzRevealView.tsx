@@ -59,27 +59,36 @@ const columnHeadingStyle: CSSProperties = {
   marginBottom: '0.6cqh',
 };
 
-// One line per row, ALWAYS - a statement too long to fit its column ellipses
-// rather than wrapping, so 12 statements (6 per column, see
-// drawBlitzGameStatements' guaranteed ceil/floor split) is a fixed, known
-// height regardless of content, the same discipline RevealView's own
-// optionTextStyle already uses for the quiz's four answer options.
+// Task 156c - wraps up to TWO lines instead of the ellipsis 156b shipped:
+// nothing that must be READ is ever truncated. The icon aligns to the first
+// line's cap-height (flex-start), not the block's vertical centre, so a
+// 2-line row still reads with the check/dash beside the opening word.
+// 2.6cqh, not the initial 3cqh 156b shipped: measured, BLITZ_STATEMENTS'
+// actual longest entries (up to 73 chars) still overflowed 2 lines at 3cqh
+// in this column's width and got line-clamped - this is the largest size
+// that keeps every entry in the pool inside two lines with zero clipping.
 const rowStyle = (emphasized: boolean): CSSProperties => ({
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   gap: '1.4cqh',
-  fontSize: '3cqh',
+  fontSize: '2.6cqh',
   fontWeight: emphasized ? 800 : 700,
   color: 'var(--carve)',
   marginTop: '0.5cqh',
   minWidth: 0,
 });
 
+// -webkit-line-clamp (Chromium/WebKit, what this TV actually runs in) caps
+// wrapping at 2 lines and ellipses only the rare statement that STILL
+// doesn't fit in two - the pool's longest entries (see BLITZ_STATEMENTS)
+// fit comfortably inside two at this column width and font size.
 const statementTextStyle: CSSProperties = {
   minWidth: 0,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
   overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  lineHeight: 1.18,
 };
 
 const progressBarTrackStyle: CSSProperties = {
@@ -109,7 +118,9 @@ function StatementColumn({
       {statements.map((statement, index) => (
         <div key={index} style={rowStyle(statement.text === emphasizedText)} data-testid="blitz-reveal-statement">
           {isTrueColumn ? <CheckMark visible /> : <DashMark />}
-          <span style={statementTextStyle}>{statement.text}</span>
+          <span style={statementTextStyle} data-testid="blitz-reveal-statement-text">
+            {statement.text}
+          </span>
         </div>
       ))}
     </div>

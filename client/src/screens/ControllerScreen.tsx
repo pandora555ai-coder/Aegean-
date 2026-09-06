@@ -81,6 +81,7 @@ import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
 import { Avatar } from '../components/Avatar';
+import { BlitzSwipeCard } from '../components/BlitzSwipeCard';
 import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
 import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
@@ -1313,6 +1314,19 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.NUMERIC_SUBMIT, { value: numericValue });
   }
 
+  // Task 156c - one swipe, one send, no ack (see BLITZ_SWIPE's own doc
+  // comment in shared): the phone advances optimistically and the server is
+  // the one that validates (phase, pause, next-index-only). `index` guards
+  // against a stray double-fire re-sending the statement this phone already
+  // advanced past.
+  function handleBlitzSwipe(index: number, answeredTrue: boolean) {
+    if (paused || !blitz || index !== blitzIndex || index >= blitz.total) {
+      return;
+    }
+    setBlitzIndex(index + 1);
+    socket.emit(ClientEvents.BLITZ_SWIPE, { index, answeredTrue });
+  }
+
   function handleStartGame() {
     socket.emit(ClientEvents.VIP_START_GAME, {});
   }
@@ -1786,10 +1800,9 @@ export default function ControllerScreen() {
     );
   }
 
-  // Blitz mode (Task 156a) - BLITZ. STUB VIEW ONLY: the real swipe surface
-  // (156b/156c) isn't built yet, so this just proves the phase renders
-  // without error and tracks progress. No correctness feedback - the truth
-  // isn't on this device.
+  // Blitz mode (Task 156c) - BLITZ. Drag right for ΣΩΣΤΟ, left for ΛΑΘΟΣ
+  // (BlitzSwipeCard) - no correctness feedback here, the truth isn't on
+  // this device until BLITZ_REVEAL.
   if (blitz) {
     const finished = blitzIndex >= blitz.total;
     const currentText = blitz.statements[blitzIndex] ?? null;
@@ -1806,7 +1819,7 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.category}>Η Παλαίστρα</div>
-        <div data-testid="blitz-progress">
+        <div style={styles.blitzProgress} data-testid="blitz-progress">
           {Math.min(blitzIndex, blitz.total)}/{blitz.total}
         </div>
         {finished || !currentText ? (
@@ -1814,7 +1827,12 @@ export default function ControllerScreen() {
             Περίμενε τους υπόλοιπους...
           </div>
         ) : (
-          <div data-testid="blitz-statement">{currentText}</div>
+          <BlitzSwipeCard
+            key={blitzIndex}
+            text={currentText}
+            disabled={paused}
+            onCommit={(answeredTrue) => handleBlitzSwipe(blitzIndex, answeredTrue)}
+          />
         )}
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
@@ -2980,6 +2998,14 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
+  },
+  // Task 156c - the "n/12" progress readout above the swipe card.
+  blitzProgress: {
+    fontSize: '1.4rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: 'var(--marble)',
+    fontVariantNumeric: 'tabular-nums',
   },
   lookAtTv: {
     fontSize: '1.1rem',

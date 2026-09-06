@@ -34,11 +34,20 @@ function shuffle<T>(items: readonly T[], rng: () => number): T[] {
 // random from the pool, then shuffled together so the order carries no
 // signal. Falls back to whatever the pool has if one side runs short (the
 // shipped pool is 109/109, so that is theoretical).
+// Task 156c - dev-only hook for testing the reveal's worst case (a TV that
+// must fit BLITZ_STATEMENTS' own longest entries, not just whatever a random
+// draw happens to deal). NODE_ENV-guarded exactly like FORCE_QUESTION_ID
+// (questions.ts) - can never fire in production even if the env var leaks
+// there. Ignores `rng`/order on purpose: the point is deterministic content,
+// not a realistic shuffle.
 export function drawBlitzGameStatements(
   count: number,
   rng: () => number = Math.random,
   pool: readonly BlitzStatement[] = BLITZ_STATEMENTS,
 ): BlitzStatement[] {
+  if (process.env.NODE_ENV !== 'production' && process.env.FORCE_BLITZ_LONGEST === '1') {
+    return [...pool].sort((a, b) => b.text.length - a.text.length).slice(0, count);
+  }
   const trueCount = Math.ceil(count / 2);
   const falseCount = count - trueCount;
   const trues = shuffle(pool.filter((s) => s.isTrue), rng).slice(0, trueCount);
