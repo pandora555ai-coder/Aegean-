@@ -1154,6 +1154,12 @@ export type RoomSettings = {
   difficultyMix: DifficultyMix;
   gameLength: GameLength;
   drawRounds: number;
+  // Task 177 - gates the POWER_UP phase (see beginRound in server/src/
+  // phases.ts): quiz stage 2 and full's stage 1 both flag
+  // powerUpBeforeEveryQuestion, but neither mode enters that phase unless
+  // this is also true. The sabotage machinery itself (ice/ink gates, the
+  // host `sabotage` field, the FX) is untouched either way.
+  powerUpsEnabled: boolean;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -1161,6 +1167,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   difficultyMix: 'normal',
   gameLength: 'long',
   drawRounds: 1,
+  // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
+  powerUpsEnabled: false,
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,

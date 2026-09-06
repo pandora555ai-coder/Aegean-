@@ -112,6 +112,10 @@ const WRONG_OPACITY = 0.42;
 // look, so sharing the shape is enough without sharing the component.
 const OPTION_SLAB_CLIP = 'polygon(1.5% 0, 98.5% 0.6%, 100% 3%, 99.4% 97%, 98% 100%, 2% 99.4%, 0 96%, 0.6% 3%)';
 
+// Task 177 - the two options for the powerUpsEnabled SegmentedRow. false
+// first so it renders as the left (default) segment.
+const POWER_UPS_ENABLED_OPTIONS = [false, true] as const;
+
 // Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
 // side ("freeze them"), unlike the victim-side banner during QUESTION.
 const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blurb: string }> = {
@@ -138,7 +142,7 @@ const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
 // One row of the VIP settings panel - either a row of tappable segmented
 // buttons (VIP) or plain read-only text (everyone else). `T` is inferred
 // from the props at each call site, no explicit type argument needed.
-function SegmentedRow<T extends string | number>({
+function SegmentedRow<T extends string | number | boolean>({
   label,
   options,
   current,
@@ -2532,6 +2536,17 @@ export default function ControllerScreen() {
                 onSelect={(mix) => handleSettingChange({ difficultyMix: mix })}
                 readOnly={!isVip}
                 testIdPrefix="setting-difficulty"
+              />
+              {/* Task 177 - POWER_UP is off by default; this is the one VIP
+                  knob that turns the sophist-trick round back on. */}
+              <SegmentedRow
+                label="Σοφιστικά τεχνάσματα"
+                options={POWER_UPS_ENABLED_OPTIONS}
+                current={roomSettings.powerUpsEnabled}
+                format={(enabled: boolean) => (enabled ? 'Ενεργά' : 'Ανενεργά')}
+                onSelect={(enabled) => handleSettingChange({ powerUpsEnabled: enabled })}
+                readOnly={!isVip}
+                testIdPrefix="setting-powerups"
               />
               <div style={styles.estimatedLength} data-testid="estimated-length">
                 ~{estimatedMinutes} λεπτά

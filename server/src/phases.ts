@@ -289,7 +289,12 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
 // Everything the gate does once any stage announcement is out of the way -
 // reached either directly (mid-stage) or from endStageAnnounce.
 function beginRound(room: Room): void {
-  if (stageOfQuestion(room, room.currentQuestionIndex).powerUpBeforeEveryQuestion) {
+  // Task 177 - POWER_UP is off by default (room.settings.powerUpsEnabled):
+  // a stage flagging powerUpBeforeEveryQuestion is necessary but no longer
+  // sufficient. The sabotage machinery this phase feeds (ice/ink gates, the
+  // host sabotage payload, the FX) is untouched - only entering THIS phase
+  // is gated.
+  if (stageOfQuestion(room, room.currentQuestionIndex).powerUpBeforeEveryQuestion && room.settings.powerUpsEnabled) {
     startPowerUp(room);
     return;
   }

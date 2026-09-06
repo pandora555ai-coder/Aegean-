@@ -451,6 +451,11 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   if (partial.drawRounds !== undefined && (DRAW_ROUNDS_OPTIONS as readonly number[]).includes(partial.drawRounds)) {
     room.settings.drawRounds = partial.drawRounds;
   }
+  // Task 177 - a plain boolean, not an enum from an options list like the
+  // fields above; still validated by type rather than trusting the client.
+  if (typeof partial.powerUpsEnabled === 'boolean') {
+    room.settings.powerUpsEnabled = partial.powerUpsEnabled;
+  }
   return room.settings;
 }
 
