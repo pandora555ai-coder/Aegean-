@@ -288,6 +288,14 @@ export interface PlayerJoinedPayload {
   code: RoomCode;
   avatarId: string;
   isPresetName: boolean;
+  // Task 175 - the room's CURRENT phase at the moment this join/reconnect is
+  // accepted. state:sync (below) covers the rich per-phase view but returns
+  // NOTHING for a phase with no player-representable payload yet (SOCRATES
+  // before the first reveal, STAGE_ANNOUNCE - neither is in
+  // buildStateSyncForPlayer's switch) - a VIP reconnecting into exactly that
+  // window would otherwise have no way to know the game already left LOBBY.
+  // This field is the one signal that is ALWAYS present, on every join.
+  phase: GamePhase;
 }
 
 export interface JoinRejectedPayload {

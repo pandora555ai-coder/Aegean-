@@ -39,6 +39,7 @@ import {
   type GameLength,
   type GameModeId,
   type GameOverPayload,
+  type GamePhase,
   type GuessRevealShowPayload,
   type GuessShowDrawerPayload,
   type GuessShowGuesserPayload,
@@ -328,6 +329,14 @@ export default function ControllerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
+  // Task 175 - the ONE thing that decides whether the LOBBY-waiting view
+  // below may render «Έναρξη»: set from player:joined (the only signal
+  // ALWAYS present, even for a phase state:sync has no payload for yet -
+  // see PlayerJoinedPayload's own doc comment), kept current after that by
+  // phase:changed and state:sync. A second real vip:start_game tap is
+  // already rejected server-side (room.phase !== 'LOBBY'); this is the
+  // cosmetic half of that same guard.
+  const [phase, setPhase] = useState<GamePhase>('LOBBY');
   const [question, setQuestion] = useState<QuestionShowPlayerPayload | null>(null);
   const [pendingChoice, setPendingChoice] = useState<number | null>(null);
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
@@ -453,6 +462,9 @@ export default function ControllerScreen() {
     function handleJoined(payload: PlayerJoinedPayload) {
       setJoined(payload);
       setError(null);
+      // Task 175 - the only signal that's ALWAYS present on a join/reconnect,
+      // even for a phase state:sync below has no payload for yet.
+      setPhase(payload.phase);
       // Task 174 - every accepted join (fresh, manual reconnect, or this
       // page load's own auto-resume) becomes the identity a LATER socket
       // reconnect replays automatically (see the `connected`-keyed effect
@@ -538,6 +550,7 @@ export default function ControllerScreen() {
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
+      setPhase(payload.phase);
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
         // view so we fall back to the `joined` waiting view below, with no
@@ -872,6 +885,7 @@ export default function ControllerScreen() {
     }
 
     function handleStateSync(payload: StateSyncPayload) {
+      setPhase(payload.phase);
       // Always start from a clean slate - only ONE of these ends up set,
       // matching whatever phase we're catching up to.
       setQuestion(null);
@@ -2539,19 +2553,31 @@ export default function ControllerScreen() {
           )}
         </div>
 
-        {isVip ? (
-          <button
-            data-testid="start-button"
-            style={canStart ? styles.button : styles.buttonDisabled}
-            type="button"
-            onClick={handleStartGame}
-            disabled={!canStart}
-          >
-            Έναρξη{startBlockedReason && ` (${startBlockedReason})`}
-          </button>
+        {phase === 'LOBBY' ? (
+          isVip ? (
+            <button
+              data-testid="start-button"
+              style={canStart ? styles.button : styles.buttonDisabled}
+              type="button"
+              onClick={handleStartGame}
+              disabled={!canStart}
+            >
+              Έναρξη{startBlockedReason && ` (${startBlockedReason})`}
+            </button>
+          ) : (
+            <div style={styles.subtitle} data-testid="waiting-for-vip">
+              Ο/Η {vipName ?? '...'} θα ξεκινήσει το παιχνίδι
+            </div>
+          )
         ) : (
-          <div style={styles.subtitle} data-testid="waiting-for-vip">
-            Ο/Η {vipName ?? '...'} θα ξεκινήσει το παιχνίδι
+          // Task 175 - the game already left LOBBY server-side (the game
+          // intro/stage announce beat this phone has no view of yet - see
+          // PlayerJoinedPayload's phase field), so «Έναρξη» must not still
+          // be tappable here: a second vip:start_game is rejected server-
+          // side regardless, but the button reappearing at all invited the
+          // accidental second tap this task exists to remove.
+          <div style={styles.lookAtTv} data-testid="game-started-notice">
+            Το παιχνίδι ξεκίνησε — κοίτα την τηλεόραση
           </div>
         )}
       </div>

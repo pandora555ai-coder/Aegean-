@@ -650,6 +650,7 @@ io.on('connection', (socket) => {
         code,
         avatarId: existingPlayer.avatarId,
         isPresetName: existingPlayer.isPresetName,
+        phase: room.phase,
       });
       console.log(`player ${existingPlayer.name} reconnected to room ${code}`);
       broadcastLobbyUpdate(code);
@@ -708,7 +709,7 @@ io.on('connection', (socket) => {
     refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
-    socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code, avatarId, isPresetName });
+    socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code, avatarId, isPresetName, phase: room.phase });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code} as ${avatarId}`);
     broadcastLobbyUpdate(code);
     if (room.phase !== 'LOBBY') {
