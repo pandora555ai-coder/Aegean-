@@ -117,6 +117,14 @@ const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blur
   ink: { icon: '🖋️', title: 'Μελάνι', blurb: 'Θολώνει τις απαντήσεις του' },
 };
 
+// Task 171 - a control must stay visibly (not just functionally) disabled
+// until the socket is actually connected, so a tap in the pre-connect
+// window lands on something the player can see is not ready, rather than
+// a silent no-op.
+function withDisabled<T extends CSSProperties>(style: T, disabled: boolean): T {
+  return disabled ? { ...style, opacity: 0.35, cursor: 'not-allowed' } : style;
+}
+
 const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
   ROOM_FULL: 'Το δωμάτιο είναι γεμάτο',
@@ -2315,7 +2323,9 @@ export default function ControllerScreen() {
         )}
         <div style={styles.title}>{joined.name}</div>
         <div style={styles.subtitle}>waiting for the game to start</div>
-        <div style={styles.lobbyCount}>{connectedCount} παίκτες στο δωμάτιο</div>
+        <div style={styles.lobbyCount}>
+          {connectedCount} {connectedCount === 1 ? 'παίκτης' : 'παίκτες'} στο δωμάτιο
+        </div>
 
         <div style={styles.settingsPanel} data-testid="settings-panel">
           {fullscreenSupported && (
@@ -2430,9 +2440,15 @@ export default function ControllerScreen() {
     <div style={styles.container}>
       <div style={styles.title}>PLAYER</div>
       <div style={styles.status}>{connected ? 'connected' : 'disconnected'}</div>
+      {!connected && (
+        <div style={styles.connectingIndicator} data-testid="connecting-indicator">
+          Σύνδεση με τον διακομιστή...
+        </div>
+      )}
 
       <input
-        style={styles.input}
+        style={withDisabled(styles.input, !connected)}
+        disabled={!connected}
         inputMode="numeric"
         pattern="[0-9]*"
         maxLength={4}
@@ -2446,7 +2462,8 @@ export default function ControllerScreen() {
         (!customNameMode ? (
           <>
             <input
-              style={styles.input}
+              style={withDisabled(styles.input, !connected)}
+              disabled={!connected}
               placeholder="Αναζήτηση ονόματος"
               value={nameFilter}
               onChange={(event) => setNameFilter(event.target.value)}
@@ -2457,7 +2474,8 @@ export default function ControllerScreen() {
                 <button
                   key={presetName}
                   type="button"
-                  style={styles.nameOption}
+                  style={withDisabled(styles.nameOption, !connected)}
+                  disabled={!connected}
                   data-testid="preset-name-option"
                   onClick={() => handleSelectPresetName(presetName)}
                 >
@@ -2470,7 +2488,8 @@ export default function ControllerScreen() {
             </div>
             <button
               type="button"
-              style={styles.customNameButton}
+              style={withDisabled(styles.customNameButton, !connected)}
+              disabled={!connected}
               data-testid="custom-name-toggle"
               onClick={() => setCustomNameMode(true)}
             >
@@ -2480,7 +2499,8 @@ export default function ControllerScreen() {
         ) : (
           <>
             <input
-              style={styles.input}
+              style={withDisabled(styles.input, !connected)}
+              disabled={!connected}
               // NOT MAX_NAME_LENGTH - that cap belongs on the SANITIZED
               // result (sanitizeCustomName's own .slice), applied AFTER
               // stripping. A native maxLength here would count raw
@@ -2498,17 +2518,18 @@ export default function ControllerScreen() {
               autoFocus
             />
             <button
-              style={customDraft.trim().length > 0 ? styles.button : styles.buttonDisabled}
+              style={connected && customDraft.trim().length > 0 ? styles.button : styles.buttonDisabled}
               type="button"
               onClick={handleConfirmCustomName}
-              disabled={customDraft.trim().length === 0}
+              disabled={!connected || customDraft.trim().length === 0}
               data-testid="custom-name-confirm"
             >
               Επόμενο
             </button>
             <button
               type="button"
-              style={styles.skipButton}
+              style={withDisabled(styles.skipButton, !connected)}
+              disabled={!connected}
               data-testid="custom-name-cancel"
               onClick={() => setCustomNameMode(false)}
             >
@@ -2533,6 +2554,7 @@ export default function ControllerScreen() {
             {availableAvatars.map((avatar) => {
               const taken = !poolExhausted && avatar.id !== selectedAvatarId && peekedTakenAvatarIds.includes(avatar.id);
               const selected = avatar.id === selectedAvatarId;
+              const avatarDisabled = taken || !connected;
               return (
                 <button
                   key={avatar.id}
@@ -2540,8 +2562,8 @@ export default function ControllerScreen() {
                   data-testid="avatar-option"
                   data-taken={taken}
                   data-selected={selected}
-                  disabled={taken}
-                  style={taken ? styles.avatarOptionTaken : selected ? styles.avatarOptionSelected : styles.avatarOption}
+                  disabled={avatarDisabled}
+                  style={avatarDisabled ? styles.avatarOptionTaken : selected ? styles.avatarOptionSelected : styles.avatarOption}
                   onClick={() => handleSelectAvatar(avatar.id)}
                 >
                   <Avatar avatarId={avatar.id} sizeRem={3} />
@@ -2553,7 +2575,8 @@ export default function ControllerScreen() {
           </div>
           <button
             type="button"
-            style={styles.skipButton}
+            style={withDisabled(styles.skipButton, !connected)}
+            disabled={!connected}
             data-testid="back-to-name"
             onClick={handleBackToName}
           >
@@ -2632,6 +2655,12 @@ const styles: Record<string, CSSProperties> = {
   drawTime: { fontSize: '1.1rem', fontWeight: 700, color: 'var(--marble)', flexShrink: 0 },
   drawTimeWarning: { fontSize: '1.35rem', fontWeight: 700, color: 'var(--ember)', flexShrink: 0 },
   status: { textAlign: 'center', color: 'var(--marble-3)' },
+  connectingIndicator: {
+    textAlign: 'center',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: 'var(--ember)',
+  },
   subtitle: { fontSize: '1.1rem', color: 'var(--marble-3)', textAlign: 'center' },
   lobbyCount: { fontSize: '1rem', color: 'var(--marble-3)', textAlign: 'center' },
   settingsPanel: {
