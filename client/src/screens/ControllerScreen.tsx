@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   AVATAR_CATALOGUE,
   ClientEvents,
+  DEFAULT_AUDIO_VOLUME,
   DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
@@ -278,6 +279,56 @@ function ResetToLobbyControl({ onConfirm }: { onConfirm: () => void }) {
   );
 }
 
+// Task 178 - VIP-only crowd/voice sliders for the host's live playback
+// levels. Fires on every drag tick (not a locked-in submit, unlike the
+// numeric mode's own slider) - there is nothing to "lock in", the host
+// applies whatever the VIP last set. `value` is percent (0-100); style
+// matches the numeric slider (accentColor var(--wine-2)).
+function VipAudioControls({
+  crowdVolume,
+  voiceVolume,
+  onChange,
+}: {
+  crowdVolume: number;
+  voiceVolume: number;
+  onChange: (partial: { crowdVolume?: number; voiceVolume?: number }) => void;
+}) {
+  return (
+    <div style={styles.vipAudioControls} data-testid="vip-audio-controls">
+      <div style={styles.vipAudioRow}>
+        <div style={styles.vipAudioLabel}>
+          <span>Πλήθος</span>
+          <span data-testid="vip-crowd-volume-value">{crowdVolume}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={crowdVolume}
+          onChange={(event) => onChange({ crowdVolume: Number(event.target.value) })}
+          style={styles.vipAudioSlider}
+          data-testid="vip-crowd-volume-slider"
+        />
+      </div>
+      <div style={styles.vipAudioRow}>
+        <div style={styles.vipAudioLabel}>
+          <span>Φωνή</span>
+          <span data-testid="vip-voice-volume-value">{voiceVolume}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={voiceVolume}
+          onChange={(event) => onChange({ voiceVolume: Number(event.target.value) })}
+          style={styles.vipAudioSlider}
+          data-testid="vip-voice-volume-slider"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ControllerScreen() {
   const { connected } = useSocketConnection();
   const [playerId] = useState(() => getOrCreatePlayerId());
@@ -349,6 +400,12 @@ export default function ControllerScreen() {
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
+  // Task 178 - VIP crowd/voice sliders. Local-only: nothing echoes the
+  // room's real value back to the VIP's own phone (AUDIO_VOLUME_CHANGED is
+  // host-socket-targeted only), so this is purely "where the VIP last left
+  // it this session" - starts at the same 100/100 default the host applies
+  // before any change ever lands.
+  const [audioVolume, setAudioVolume] = useState(DEFAULT_AUDIO_VOLUME);
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
   // Sabotage (Task 28b, stacked in Task 31a) - everything running against ME
@@ -1459,6 +1516,14 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, partial);
   }
 
+  // Task 178 - unlike handleSettingChange, this fires live on every drag
+  // tick (see VipAudioControls' onChange below), not on a locked-in choice,
+  // and works every phase, not just LOBBY.
+  function handleAudioVolumeChange(partial: { crowdVolume?: number; voiceVolume?: number }) {
+    setAudioVolume((current) => ({ ...current, ...partial }));
+    socket.emit(ClientEvents.VIP_SET_AUDIO_VOLUME, partial);
+  }
+
   // Task 57 - separate event from handleSettingChange: mode isn't a
   // RoomSettings field (see VipSetModePayload's own doc comment in shared).
   function handleModeChange(mode: GameModeId) {
@@ -1656,6 +1721,13 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -1707,6 +1779,13 @@ export default function ControllerScreen() {
         )}
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -1755,6 +1834,13 @@ export default function ControllerScreen() {
         </div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -1807,6 +1893,13 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -1934,6 +2027,13 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -2007,6 +2107,13 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
       </div>
     );
@@ -2349,7 +2456,14 @@ export default function ControllerScreen() {
         <div style={styles.questionFooter}>
           <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
-          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+          {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
         </div>
       </div>
     );
@@ -2427,7 +2541,14 @@ export default function ControllerScreen() {
         <div style={styles.questionFooter}>
           <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
-          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+          {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
         </div>
       </div>
     );
@@ -2863,6 +2984,36 @@ const styles: Record<string, CSSProperties> = {
     fontSize: '0.9rem',
     fontWeight: 700,
     color: 'var(--wine-2)',
+  },
+  // Task 178 - VIP crowd/voice sliders, same panel chrome as settingsPanel.
+  vipAudioControls: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.6rem',
+    width: '100%',
+    padding: '0.9rem',
+    borderRadius: '0.75rem',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
+    boxShadow: SURFACE_GLOW,
+    boxSizing: 'border-box',
+  },
+  vipAudioRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+  },
+  vipAudioLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--carve)',
+  },
+  vipAudioSlider: {
+    width: '100%',
+    accentColor: 'var(--wine-2)',
+    height: '2.75rem',
   },
   segmentedGroup: {
     display: 'flex',

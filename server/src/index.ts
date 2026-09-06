@@ -50,6 +50,7 @@ import {
   refreshRoomTtl,
   removePlayer,
   resetRoomForNewGame,
+  updateAudioVolume,
   updateRoomSettings,
   type Room,
 } from './state.js';
@@ -595,6 +596,9 @@ io.on('connection', (socket) => {
     // TV lands on the right mood instead of defaulting to 'calm' until the
     // next transition.
     socket.emit(ServerEvents.CROWD_MOOD, { mood: room.crowdMood });
+    // Task 178 - same reasoning: a reattaching TV must land on the VIP's real
+    // crowd/voice levels, not the hook's own 100/100 default.
+    socket.emit(ServerEvents.AUDIO_VOLUME_CHANGED, room.audioVolume);
 
     console.log(`room ${room.code} host display reattached by ${socket.id} (phase=${room.phase})`);
   });
@@ -808,6 +812,23 @@ io.on('connection', (socket) => {
     const settingsPayload: SettingsUpdatedPayload = updated;
     io.to(room.code).emit(ServerEvents.SETTINGS_UPDATED, settingsPayload);
     console.log(`room ${room.code} settings updated: ${JSON.stringify(updated)}`);
+  });
+
+  // Task 178 - VIP crowd/voice volume sliders. Deliberately NO phase/paused
+  // guard (unlike vip:update_settings above): these adjust live playback, so
+  // they must work mid-game. Host-socket-targeted only, exactly like
+  // crowd:mood/crowd:intensity - phones never see the resulting numbers.
+  socket.on(ClientEvents.VIP_SET_AUDIO_VOLUME, (payload) => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_SET_AUDIO_VOLUME);
+    if (!room) {
+      return;
+    }
+
+    const updated = updateAudioVolume(room, payload);
+    if (room.hostSocketId) {
+      io.to(room.hostSocketId).emit(ServerEvents.AUDIO_VOLUME_CHANGED, updated);
+    }
+    console.log(`room ${room.code} audio volume updated: ${JSON.stringify(updated)}`);
   });
 
   // Task 57 - picks WHICH game the room runs, LOBBY-only (same guard as

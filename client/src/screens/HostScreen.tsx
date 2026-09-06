@@ -18,6 +18,7 @@ import {
   isStealHostPayload,
   isTrialQuestionHostPayload,
   type AnswerProgressPayload,
+  type AudioVolumePayload,
   type BlitzRevealHostPayload,
   type BlitzRevealPayload,
   type BlitzShowHostPayload,
@@ -184,6 +185,8 @@ export default function HostScreen() {
   const {
     muted,
     toggleMuted,
+    setCrowdVolume,
+    setVoiceVolume,
     startKeepAliveAudio,
     suspendAudio,
     resumeAudio,
@@ -264,6 +267,14 @@ export default function HostScreen() {
     // crowd:mood.
     function handleCrowdIntensity(payload: CrowdIntensityPayload) {
       applyCrowdIntensity(payload);
+    }
+
+    // Task 178 - the VIP's crowd/voice volume, host-only exactly like
+    // crowd:mood/crowd:intensity above; sent again on HOST_REJOIN so a
+    // reload lands on the real levels too.
+    function handleAudioVolumeChanged(payload: AudioVolumePayload) {
+      setCrowdVolume(payload.crowdVolume);
+      setVoiceVolume(payload.voiceVolume);
     }
 
     // Task 36d - each landed answer bumps the crowd ramp a step further;
@@ -762,6 +773,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
     socket.on(ServerEvents.CROWD_MOOD, handleCrowdMood);
     socket.on(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
+    socket.on(ServerEvents.AUDIO_VOLUME_CHANGED, handleAudioVolumeChanged);
     socket.on(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
     socket.on(ServerEvents.GAME_PAUSED, handleGamePaused);
     socket.on(ServerEvents.GAME_RESUMED, handleGameResumed);
@@ -793,6 +805,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
       socket.off(ServerEvents.CROWD_MOOD, handleCrowdMood);
       socket.off(ServerEvents.CROWD_INTENSITY, handleCrowdIntensity);
+      socket.off(ServerEvents.AUDIO_VOLUME_CHANGED, handleAudioVolumeChanged);
       socket.off(ServerEvents.ANSWER_PROGRESS, handleAnswerProgress);
       socket.off(ServerEvents.GAME_PAUSED, handleGamePaused);
       socket.off(ServerEvents.GAME_RESUMED, handleGameResumed);

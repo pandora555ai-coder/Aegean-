@@ -62,6 +62,19 @@ export function useGameAudio() {
   // than two separate ad-hoc checks. Created alongside the AudioContext
   // itself in getAudioCtx, never elsewhere.
   const outputGainRef = useRef<GainNode | null>(null);
+  // Task 178 - VIP-controlled volume, BELOW the mute-gated output gain so
+  // muting still silences everything regardless of slider position. voiceGain
+  // sits between every Socrates BufferSource and outputGain (mirrors bedGain
+  // below); bedGain is the crowd bed's own master gain, created once in
+  // startCrowdLoops and re-targeted (never touching the three per-loop
+  // crossfade gains individually) by setCrowdVolume.
+  const voiceGainRef = useRef<GainNode | null>(null);
+  const bedGainRef = useRef<GainNode | null>(null);
+  // Fractions (0-1), NOT percent - 1 reproduces today's levels exactly
+  // (CROWD_BED_GAIN unscaled, voice unattenuated). Refs, not state: read
+  // inside the same once-registered handlers/closures as mutedRef.
+  const crowdVolumeRef = useRef(1);
+  const voiceVolumeRef = useRef(1);
   // Decoded Socrates line audio (Task 42b), keyed by lineHash - a game only
   // ever plays each pool line at most once (recordRoundAndPickLine never
   // repeats one), so this mostly saves nothing within a single game, but
@@ -192,6 +205,38 @@ export function useGameAudio() {
     }
   }
 
+  // Task 178 - the VIP's crowd/voice sliders. `percent` is 0-100 (server-
+  // clamped already, but never trust the wire); a short live ramp, exactly
+  // toggleMuted's pattern, targeting bedGain/voiceGain instead of outputGain
+  // so mute and volume stay two independent ramps on two different nodes.
+  function setCrowdVolume(percent: number): void {
+    const fraction = Math.min(1, Math.max(0, percent / 100));
+    crowdVolumeRef.current = fraction;
+    const ctx = audioCtxRef.current;
+    const bedGain = bedGainRef.current;
+    if (!ctx || !bedGain) {
+      return;
+    }
+    const now = ctx.currentTime;
+    bedGain.gain.cancelScheduledValues(now);
+    bedGain.gain.setValueAtTime(bedGain.gain.value, now);
+    bedGain.gain.linearRampToValueAtTime(CROWD_BED_GAIN * fraction, now + MUTE_RAMP_SEC);
+  }
+
+  function setVoiceVolume(percent: number): void {
+    const fraction = Math.min(1, Math.max(0, percent / 100));
+    voiceVolumeRef.current = fraction;
+    const ctx = audioCtxRef.current;
+    const voiceGain = voiceGainRef.current;
+    if (!ctx || !voiceGain) {
+      return;
+    }
+    const now = ctx.currentTime;
+    voiceGain.gain.cancelScheduledValues(now);
+    voiceGain.gain.setValueAtTime(voiceGain.gain.value, now);
+    voiceGain.gain.linearRampToValueAtTime(fraction, now + MUTE_RAMP_SEC);
+  }
+
   // The ONE place that constructs an AudioContext - reads/writes
   // audioCtxRef directly so a second call (e.g. a StrictMode double-invoke
   // of whatever triggered it) is a no-op and returns the SAME instance
@@ -214,6 +259,14 @@ export function useGameAudio() {
       output.connect(ctx.destination);
       audioCtxRef.current = ctx;
       outputGainRef.current = output;
+      // Task 178 - created in lockstep with output, same reasoning as output
+      // itself: a Socrates line can play before any VIP volume event ever
+      // arrives, so the node must exist (at the fraction's default, 1) from
+      // the first getAudioCtx call, not lazily on first use.
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.value = voiceVolumeRef.current;
+      voiceGain.connect(output);
+      voiceGainRef.current = voiceGain;
     } catch {
       return null; // AudioContext unavailable or blocked. Continue without it.
     }
@@ -288,8 +341,12 @@ export function useGameAudio() {
     crowdLoopsStartedRef.current = true;
 
     const bedGain = ctx.createGain();
-    bedGain.gain.value = CROWD_BED_GAIN;
+    // Task 178 - the VIP's crowd-volume fraction multiplies the fixed mix
+    // level, never the other way around: at fraction 1 this is exactly
+    // CROWD_BED_GAIN, today's unchanged level.
+    bedGain.gain.value = CROWD_BED_GAIN * crowdVolumeRef.current;
     bedGain.connect(output);
+    bedGainRef.current = bedGain;
 
     const zoneGains = crowdZoneGains(crowdIntensityRef.current);
     const loopGains = {} as Record<CrowdLoopName, GainNode>;
@@ -438,7 +495,11 @@ export function useGameAudio() {
     }
     try {
       const gainNode = ctx.createGain();
-      gainNode.gain.value = Math.max(intensity, ONE_SHOT_MIN_GAIN);
+      // Task 178 - a one-shot is layered straight onto `output`, never
+      // through bedGain (see its own comment above), so it needs the same
+      // crowd-volume fraction applied here explicitly to stay in proportion
+      // with the bed at any slider position.
+      gainNode.gain.value = Math.max(intensity, ONE_SHOT_MIN_GAIN) * crowdVolumeRef.current;
       gainNode.connect(output);
       const source = ctx.createBufferSource();
       source.buffer = buffer;
@@ -498,8 +559,10 @@ export function useGameAudio() {
       source.buffer = buffer;
       source.onended = onEnded;
       // Task 36c - through the shared output gain, not ctx.destination
-      // directly, so the one mute toggle covers this too.
-      source.connect(outputGainRef.current ?? ctx.destination);
+      // directly, so the one mute toggle covers this too. Task 178 - via
+      // voiceGain first, so the VIP's voice slider applies without touching
+      // outputGain (mute stays a completely separate ramp on top).
+      source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
       source.start();
     } catch {
       // Task 154 - a fetch/decode/start failure used to leave the phase
@@ -542,6 +605,8 @@ export function useGameAudio() {
   return {
     muted,
     toggleMuted,
+    setCrowdVolume,
+    setVoiceVolume,
     startKeepAliveAudio,
     suspendAudio,
     resumeAudio,

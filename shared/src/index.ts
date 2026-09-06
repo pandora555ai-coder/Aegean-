@@ -12,6 +12,10 @@ export const ClientEvents = {
   // field (it's Room's own, read by modeForRoom everywhere), so it gets its
   // own tiny event rather than being smuggled into the settings partial.
   VIP_SET_MODE: 'vip:set_mode',
+  // Task 178 - VIP-only crowd/voice volume sliders. Live-adjustable mid-game
+  // (unlike VIP_UPDATE_SETTINGS, which is LOBBY-only), so it's its own event
+  // rather than a RoomSettings field.
+  VIP_SET_AUDIO_VOLUME: 'vip:set_audio_volume',
   GAME_PAUSE: 'game:pause',
   GAME_RESUME: 'game:resume',
   VIP_RESET_TO_LOBBY: 'vip:reset_to_lobby',
@@ -87,6 +91,10 @@ export const ServerEvents = {
   // which one-shots/loops are in play, this is the single 0..1 number that
   // crossfades between them. Host-only, exactly like crowd:mood.
   CROWD_INTENSITY: 'crowd:intensity',
+  // Task 178 - the VIP's crowd/voice volume, host-targeted exactly like
+  // CROWD_MOOD/CROWD_INTENSITY: sent on every VIP change, and again on
+  // HOST_REJOIN so a reload lands on the real levels instead of defaulting.
+  AUDIO_VOLUME_CHANGED: 'audio:volume_changed',
   DEV_DRAWING_RECEIVED: 'dev:drawing_received',
   // Task 67 - the response half of DEV_GET_NUMERIC_QUESTIONS above.
   DEV_NUMERIC_QUESTIONS: 'dev:numeric_questions',
@@ -481,6 +489,26 @@ export interface CrowdIntensityContext {
   // Task 165 - the drawer's remaining time crossed DRAW_WARNING_MS.
   drawWarningCrossed?: boolean;
 }
+
+// Task 178 - VIP-controlled crowd/voice playback levels on the host. Percent
+// (0-100), NOT the raw 0-1 gain: 100 reproduces today's levels exactly
+// (crowd bed at CROWD_BED_GAIN, voice unattenuated). Lives on the room like
+// crowdMood, pushed to hostSocketId only - phones never see the numbers land,
+// only the VIP's own slider position. Persists across play_again like
+// RoomSettings (a VIP preference, not per-game state), unlike crowdMood.
+export interface AudioVolumePayload {
+  crowdVolume: number;
+  voiceVolume: number;
+}
+
+export const DEFAULT_AUDIO_VOLUME: AudioVolumePayload = {
+  crowdVolume: 100,
+  voiceVolume: 100,
+};
+
+// VIP -> server: only the field(s) being changed, same partial-then-broadcast
+// shape as VipUpdateSettingsPayload.
+export type VipSetAudioVolumePayload = Partial<AudioVolumePayload>;
 
 // Caps a modifier stack at .95 - GAME_OVER's own .8 base is deliberately
 // left room to still read as a step down from a maxed-out trial round.
@@ -2700,6 +2728,7 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
   [ClientEvents.VIP_SET_MODE]: (payload: VipSetModePayload) => void;
+  [ClientEvents.VIP_SET_AUDIO_VOLUME]: (payload: VipSetAudioVolumePayload) => void;
   [ClientEvents.GAME_PAUSE]: (payload: GamePausePayload) => void;
   [ClientEvents.GAME_RESUME]: (payload: GameResumePayload) => void;
   [ClientEvents.VIP_RESET_TO_LOBBY]: (payload: VipResetToLobbyPayload) => void;
@@ -2744,6 +2773,7 @@ export type ServerToClientEvents = {
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;
   [ServerEvents.CROWD_INTENSITY]: (payload: CrowdIntensityPayload) => void;
+  [ServerEvents.AUDIO_VOLUME_CHANGED]: (payload: AudioVolumePayload) => void;
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DEV_VOICE_LINES]: (payload: DevVoiceLinesPayload) => void;

@@ -1,4 +1,5 @@
 import {
+  type AudioVolumePayload,
   type CrowdIntensityContext,
   type CrowdMood,
   type GameModeId,
@@ -12,6 +13,7 @@ import {
   type SabotageEffect,
   type StealResolvedPayload,
   type TrialRevealShowPayload,
+  DEFAULT_AUDIO_VOLUME,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
@@ -277,6 +279,11 @@ export interface Room {
   // GAME_RESUME handler having to reconstruct mode-specific context
   // (a trial round number, a stage boundary) it has no business knowing.
   crowdIntensityCtx: CrowdIntensityContext | null;
+  // Task 178 - VIP-controlled crowd/voice playback levels, percent (0-100).
+  // Lives alongside crowdMood as HOST-ONLY audio state, but (unlike
+  // crowdMood) PERSISTS across resetRoomForNewGame - a VIP preference, not
+  // per-game state, same as `settings`.
+  audioVolume: AudioVolumePayload;
   // Task 172 - one grace timer per currently-disconnected LOBBY player,
   // keyed by playerId. Armed on a LOBBY disconnect, cancelled by a reconnect
   // within the grace window (see armLobbyDisconnectGrace/
@@ -343,6 +350,7 @@ export function createRoom(hostSocketId: string): Room {
     crowdTensionTimer: null,
     drawWarningTimer: null,
     crowdIntensityCtx: null,
+    audioVolume: { ...DEFAULT_AUDIO_VOLUME },
     lobbyGraceTimers: new Map(),
   };
 
@@ -457,6 +465,22 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
     room.settings.powerUpsEnabled = partial.powerUpsEnabled;
   }
   return room.settings;
+}
+
+// Task 178 - never trust the client: clamp+round each field independently,
+// same "validate per field, ignore what fails" shape as updateRoomSettings.
+function clampVolumePercent(value: number): number {
+  return Math.round(Math.min(100, Math.max(0, value)));
+}
+
+export function updateAudioVolume(room: Room, partial: Partial<AudioVolumePayload>): AudioVolumePayload {
+  if (typeof partial.crowdVolume === 'number' && Number.isFinite(partial.crowdVolume)) {
+    room.audioVolume.crowdVolume = clampVolumePercent(partial.crowdVolume);
+  }
+  if (typeof partial.voiceVolume === 'number' && Number.isFinite(partial.voiceVolume)) {
+    room.audioVolume.voiceVolume = clampVolumePercent(partial.voiceVolume);
+  }
+  return room.audioVolume;
 }
 
 export function getActiveRoomCount(): number {
