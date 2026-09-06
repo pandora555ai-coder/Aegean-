@@ -26,9 +26,12 @@ import {
 import {
   addPlayer,
   allAvailableAvatarsTaken,
+  armLobbyDisconnectGrace,
   attachHostDisplay,
   buildRoomQuestions,
+  canStartRoom,
   claimVipIfVacant,
+  clearLobbyDisconnectGrace,
   createRoom,
   detachHostDisplay,
   getActiveRoomCount,
@@ -44,6 +47,7 @@ import {
   migrateVipAwayFrom,
   normalizePlayerName,
   refreshRoomTtl,
+  removePlayer,
   resetRoomForNewGame,
   updateRoomSettings,
   type Room,
@@ -189,7 +193,9 @@ function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
   // (draw's is 3, quiz's is MIN_PLAYERS), not a flat floor - so a lobby that
   // has picked 'draw' with only 2 connected players correctly reports
   // canStart: false instead of the quiz-only threshold letting it through.
-  const canStart = players.filter((player) => player.connected).length >= modeForRoom(room).minPlayers;
+  // Task 172 - canStartRoom is the ONE function this decision goes
+  // through; vip:start_game's guard reuses the exact same call.
+  const canStart = canStartRoom(room);
 
   return { code, players, canStart, settings: room.settings, mode: room.mode, availableModes: listGameModeOptions() };
 }
@@ -198,6 +204,49 @@ function broadcastLobbyUpdate(code: RoomCode): void {
   const payload = buildLobbyUpdate(code);
   if (payload) {
     io.to(code).emit(ServerEvents.LOBBY_UPDATE, payload);
+  }
+}
+
+// Task 172 - fires once a LOBBY disconnect's grace window has elapsed with
+// no reconnect (see armLobbyDisconnectGrace's caller above). Migrates VIP
+// away first (deferred exactly until here - a reconnect within the window
+// cancels this whole callback via clearLobbyDisconnectGrace, so a blipped
+// VIP never sees this run at all), then drops the seat for good. Guarded
+// against the game having started mid-grace: a mid-game disconnect follows
+// its own, unrelated, unchanged path.
+function expireLobbyDisconnect(room: Room, playerId: string): void {
+  if (room.phase !== 'LOBBY') {
+    return;
+  }
+  const player = getPlayer(room.code, playerId);
+  if (!player || player.connected) {
+    return;
+  }
+  if (isVip(room, playerId)) {
+    const newVip = migrateVipAwayFrom(room, playerId);
+    if (newVip) {
+      const vipChangedPayload: VipChangedPayload = { playerId: newVip.playerId, name: newVip.name };
+      io.to(room.code).emit(ServerEvents.VIP_CHANGED, vipChangedPayload);
+      console.log(`room ${room.code} VIP transferred to ${newVip.name} (${newVip.playerId}) after lobby grace expiry`);
+    } else {
+      console.log(`room ${room.code} has no connected players left - VIP vacant`);
+    }
+  }
+  removePlayer(room.code, playerId);
+  console.log(`room ${room.code}: dropped ${player.name} (${playerId}) from lobby roster after grace expiry`);
+  refreshRoomTtl(room);
+  broadcastLobbyUpdate(room.code);
+}
+
+// Task 172 - a player who disconnected mid-game and never came back is
+// still sitting in room.players (in-game disconnects never drop a seat) -
+// landing back in LOBBY via play-again/reset must start their grace clock
+// too, or they'd sit as a permanent ghost through every game that follows.
+function armLobbyGraceForAllDisconnected(room: Room): void {
+  for (const player of room.players.values()) {
+    if (!player.connected) {
+      armLobbyDisconnectGrace(room, player.playerId, () => expireLobbyDisconnect(room, player.playerId));
+    }
   }
 }
 
@@ -582,6 +631,11 @@ io.on('connection', (socket) => {
     if (existingPlayer) {
       existingPlayer.socketId = socket.id;
       existingPlayer.connected = true;
+      // Task 172 - a reconnect within the grace window cancels the pending
+      // drop (and, since VIP migration is deferred until that same timer
+      // fires - see the disconnect handler - this is also what lets a VIP
+      // who blipped keep their seat). A no-op if nothing was armed.
+      clearLobbyDisconnectGrace(room, playerId);
       // Only matters if VIP had gone vacant (everyone left, then this
       // player was first back) - a no-op if VIP is already held, so a
       // former VIP reconnecting after someone else took over does NOT
@@ -676,9 +730,11 @@ io.on('connection', (socket) => {
     // is actually disabled on) - never the flat MIN_PLAYERS floor, so a
     // client bug that somehow got past the disabled button still can't
     // start 'draw' with 2 players.
-    const requiredPlayers = modeForRoom(room).minPlayers;
-    const connectedCount = Array.from(room.players.values()).filter((player) => player.connected).length;
-    if (connectedCount < requiredPlayers) {
+    // Task 172 - canStartRoom is the actual gate; requiredPlayers/
+    // connectedCount below exist only to make the rejection log readable.
+    if (!canStartRoom(room)) {
+      const requiredPlayers = modeForRoom(room).minPlayers;
+      const connectedCount = getConnectedPlayers(room).length;
       console.log(
         `rejected ${ClientEvents.VIP_START_GAME} for room ${room.code}: only ${connectedCount} connected players, mode '${room.mode}' needs ${requiredPlayers}`,
       );
@@ -1198,6 +1254,7 @@ io.on('connection', (socket) => {
     }
 
     resetRoomForNewGame(room);
+    armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     emitCrowdIntensity(room);
     broadcastLobbyUpdate(room.code);
@@ -1222,6 +1279,7 @@ io.on('connection', (socket) => {
     }
 
     resetRoomForNewGame(room);
+    armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     emitCrowdIntensity(room);
     broadcastLobbyUpdate(room.code);
@@ -1354,7 +1412,10 @@ io.on('connection', (socket) => {
       // couch game and control moving to whoever's sitting next to them is
       // fine. Must happen before broadcastLobbyUpdate so the lobby payload
       // already reflects the new VIP.
-      if (room && isVip(room, association.playerId)) {
+      // Task 172 - EXCEPT in LOBBY: there, migration is deferred to the
+      // grace timer below (expireLobbyDisconnect), so a VIP who just
+      // blipped and reconnects within the window never loses their seat.
+      if (room && room.phase !== 'LOBBY' && isVip(room, association.playerId)) {
         const newVip = migrateVipAwayFrom(room, association.playerId);
         if (newVip) {
           const vipChangedPayload: VipChangedPayload = { playerId: newVip.playerId, name: newVip.name };
@@ -1363,6 +1424,14 @@ io.on('connection', (socket) => {
         } else {
           console.log(`room ${room.code} has no connected players left - VIP vacant`);
         }
+      }
+
+      // Task 172 - a LOBBY disconnect reserves this player's seat (identity,
+      // avatar, score, and VIP status if they held it) for the grace
+      // window rather than dropping or migrating anything immediately.
+      if (room && room.phase === 'LOBBY') {
+        const disconnectedPlayerId = association.playerId;
+        armLobbyDisconnectGrace(room, disconnectedPlayerId, () => expireLobbyDisconnect(room, disconnectedPlayerId));
       }
 
       if (room) {

@@ -277,6 +277,13 @@ export interface Room {
   // GAME_RESUME handler having to reconstruct mode-specific context
   // (a trial round number, a stage boundary) it has no business knowing.
   crowdIntensityCtx: CrowdIntensityContext | null;
+  // Task 172 - one grace timer per currently-disconnected LOBBY player,
+  // keyed by playerId. Armed on a LOBBY disconnect, cancelled by a reconnect
+  // within the grace window (see armLobbyDisconnectGrace/
+  // clearLobbyDisconnectGrace) - a player still disconnected when theirs
+  // fires is dropped from the roster for good. In-game disconnects never
+  // touch this map at all.
+  lobbyGraceTimers: Map<string, NodeJS.Timeout>;
 }
 
 const rooms = new Map<RoomCode, Room>();
@@ -336,6 +343,7 @@ export function createRoom(hostSocketId: string): Room {
     crowdTensionTimer: null,
     drawWarningTimer: null,
     crowdIntensityCtx: null,
+    lobbyGraceTimers: new Map(),
   };
 
   rooms.set(code, room);
@@ -358,6 +366,10 @@ export function deleteRoom(code: RoomCode): boolean {
     }
     clearSimpleTimer(room.crowdTensionTimer);
     clearSimpleTimer(room.drawWarningTimer);
+    for (const handle of room.lobbyGraceTimers.values()) {
+      clearTimeout(handle);
+    }
+    room.lobbyGraceTimers.clear();
   }
   return rooms.delete(code);
 }
@@ -522,6 +534,48 @@ export function haveAllConnectedPlayersAnswered(room: Room): boolean {
 export function haveAllConnectedPlayersChosenPowerUp(room: Room): boolean {
   const connectedPlayers = getConnectedPlayers(room);
   return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.powerUpChoices.has(player.playerId));
+}
+
+// Task 172 - how long a LOBBY player who disconnects stays reserved a seat
+// (identity, avatar, score, VIP) before being dropped from the roster for
+// good. Long enough to survive a phone lock or a page refresh; short enough
+// that a real walkout clears the ghost well inside a minute. In-game
+// disconnects are untouched - this only ever fires for a LOBBY disconnect
+// (see armLobbyDisconnectGrace's caller in index.ts).
+export const LOBBY_DISCONNECT_GRACE_MS = 20000;
+
+// Arms - replacing any existing timer for the same player - a grace timer
+// that calls `onExpire` once, after LOBBY_DISCONNECT_GRACE_MS, unless
+// cancelled first by clearLobbyDisconnectGrace (a reconnect within the
+// window). `onExpire` is the caller's (index.ts's) job because dropping a
+// VIP's seat here also has to emit VIP_CHANGED - this module has no socket
+// access, and shouldn't grow one just for this.
+export function armLobbyDisconnectGrace(room: Room, playerId: string, onExpire: () => void): void {
+  clearLobbyDisconnectGrace(room, playerId);
+  const handle = setTimeout(() => {
+    room.lobbyGraceTimers.delete(playerId);
+    onExpire();
+  }, LOBBY_DISCONNECT_GRACE_MS);
+  room.lobbyGraceTimers.set(playerId, handle);
+}
+
+export function clearLobbyDisconnectGrace(room: Room, playerId: string): void {
+  const handle = room.lobbyGraceTimers.get(playerId);
+  if (handle) {
+    clearTimeout(handle);
+    room.lobbyGraceTimers.delete(playerId);
+  }
+}
+
+// Task 172 - the ONE place that decides whether a room's currently
+// connected roster is enough to start the room's currently selected mode.
+// Reused by buildLobbyUpdate's `canStart` (what the lobby's start button is
+// disabled on) and the vip:start_game guard (what actually gates the
+// start) - before this they re-derived the same
+// `connected-count >= modeForRoom(room).minPlayers` check independently,
+// which is exactly the "second count" this task exists to remove.
+export function canStartRoom(room: Room): boolean {
+  return getConnectedPlayers(room).length >= modeForRoom(room).minPlayers;
 }
 
 export function isVip(room: Room, playerId: string): boolean {
