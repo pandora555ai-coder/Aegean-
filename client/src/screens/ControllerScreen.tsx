@@ -262,13 +262,30 @@ export default function ControllerScreen() {
   const [playerId] = useState(() => getOrCreatePlayerId());
   const [searchParams] = useSearchParams();
 
-  // Pre-fills from a QR/join link's ?code=XXXX, but never auto-joins - a
-  // name is still required, so the player must still tap Join themselves.
-  // A malformed param (not exactly 4 digits) is silently ignored.
-  const [code, setCode] = useState(() => {
-    const param = searchParams.get('code');
-    return param && /^\d{4}$/.test(param) ? param : '';
+  // Task 173 - a deep-linked ?room=XXXX. Read ONCE at mount into plain
+  // state (not derived from `searchParams` on every render): the code
+  // field lets the player edit `code` freely afterwards, and this value
+  // must stay fixed at whatever the link actually said so the "was this a
+  // deep link" question below never flips mid-session.
+  const [deepLinkCode] = useState(() => {
+    const param = searchParams.get('room');
+    return param && /^\d{4}$/.test(param) ? param : null;
   });
+  // A ref mirror for the socket-listener effect below (registered once,
+  // empty deps) to close over - same reasoning as codeRef, though this one
+  // never actually changes after mount.
+  const deepLinkCodeRef = useRef(deepLinkCode);
+  // Pre-fills from the deep link, but never auto-joins - a name is still
+  // required, so the player must still tap Join themselves. A malformed
+  // param (not exactly 4 digits) is silently ignored (manual form, no
+  // notice - see the acceptance criteria in tasks/173-qr-deeplink.md).
+  const [code, setCode] = useState(() => deepLinkCode ?? '');
+  // null = not checked yet (room:peek hasn't answered for this code, or
+  // there's no deep link at all - the manual-entry path never touches
+  // this). Only meaningful while `deepLinkCode` is set: it decides whether
+  // the code field stays hidden (assume valid until told otherwise) or
+  // reappears with an invalid-code notice.
+  const [deepLinkRoomFound, setDeepLinkRoomFound] = useState<boolean | null>(null);
   // The identity picker (Task 26) - NAME then AVATAR, each one tap (or one
   // typed line + confirm for a custom name) to move on, ending on a preview
   // + the actual Join button, all on the avatar step - never a third
@@ -533,6 +550,9 @@ export default function ControllerScreen() {
     function handleRoomPeekResult(payload: RoomPeekResultPayload) {
       if (payload.code === codeRef.current) {
         setPeekedTakenAvatarIds(payload.takenAvatarIds);
+        if (payload.code === deepLinkCodeRef.current) {
+          setDeepLinkRoomFound(payload.found);
+        }
       }
     }
 
@@ -2446,17 +2466,28 @@ export default function ControllerScreen() {
         </div>
       )}
 
-      <input
-        style={withDisabled(styles.input, !connected)}
-        disabled={!connected}
-        inputMode="numeric"
-        pattern="[0-9]*"
-        maxLength={4}
-        placeholder="Κωδικός"
-        value={code}
-        onChange={handleCodeChange}
-        data-testid="code-input"
-      />
+      {/* Task 173 - a deep link hides the code field outright (assumed
+          valid until room:peek says otherwise); it reappears, with a
+          notice, only once the peek comes back not-found. No deep link at
+          all renders exactly as before. */}
+      {!(deepLinkCode && deepLinkRoomFound !== false) && (
+        <input
+          style={withDisabled(styles.input, !connected)}
+          disabled={!connected}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={4}
+          placeholder="Κωδικός"
+          value={code}
+          onChange={handleCodeChange}
+          data-testid="code-input"
+        />
+      )}
+      {deepLinkCode && deepLinkRoomFound === false && (
+        <div style={styles.error} data-testid="deep-link-invalid-notice">
+          Ο κωδικός από τον σύνδεσμο δεν βρέθηκε - πληκτρολόγησέ τον
+        </div>
+      )}
 
       {joinStep === 'name' &&
         (!customNameMode ? (

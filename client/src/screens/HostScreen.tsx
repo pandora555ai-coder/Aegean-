@@ -1103,7 +1103,7 @@ export default function HostScreen() {
     }
     // Never hardcode the domain - derive from wherever this page was
     // actually served from, so dev/staging/prod all just work.
-    const joinUrl = `${window.location.origin}/play?code=${roomCode}`;
+    const joinUrl = `${window.location.origin}/play?room=${roomCode}`;
     QRCode.toCanvas(canvas, joinUrl, {
       width: QR_SIZE_PX,
       margin: 2,
