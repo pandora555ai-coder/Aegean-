@@ -124,6 +124,10 @@ export interface TrialLockIn {
 export interface TrialState {
   questions: Question[];
   questionIndex: number; // -1 until the first trial question starts
+  // The highest entry score among the contestants at trial start (Task 185)
+  // - every penalty and the drain rate scale off this, fixed here so a
+  // later round's drain can never move its own yardstick.
+  referenceLife: number;
   // Everyone still above zero, in join order. Shrinks only at a reveal.
   livingPlayerIds: string[];
   // Whether the question currently open is a sudden-death decider, and

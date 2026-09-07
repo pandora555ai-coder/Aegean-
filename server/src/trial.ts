@@ -1,4 +1,4 @@
-import { DRAIN_PER_SEC, WRONG_HIT, type TrialRevealResult } from '@game/shared';
+import { trialDrainPerSec, trialWrongHit, type TrialRevealResult } from '@game/shared';
 import { sortAndRankResults } from './scoring.js';
 
 // Η Δίκη (Task 127) - the PURE mechanic of the quiz finale: how much life a
@@ -8,8 +8,12 @@ import { sortAndRankResults } from './scoring.js';
 // mechanic is checkable without a game running.
 //
 // The one rule the rest of the file exists to serve:
-//   lifeAfter = lifeBefore - round(elapsed_s * DRAIN_PER_SEC) - (wrong ? WRONG_HIT : 0)
-// with "no answer at all" being elapsed = the full question timer, AND wrong.
+//   lifeAfter = lifeBefore - round(elapsed_s * trialDrainPerSec(referenceLife))
+//               - (wrong ? trialWrongHit(referenceLife, answered) : 0)
+// with "no answer at all" being elapsed = the full question timer, AND wrong
+// (the smaller, unanswered-but-wrong hit does not apply - see trialWrongHit).
+// `referenceLife` is fixed once, at trial start (Task 185) - see
+// server/src/state.ts's TrialState.referenceLife.
 
 // One player's lock-in as the round hands it over. `elapsedMs` is the
 // pause-aware figure the phase machine measured at lock-in time (question
@@ -26,8 +30,8 @@ export interface TrialRoundEntry {
 
 // The drain a given elapsed time costs. Rounded ONCE, here, so no caller can
 // disagree with the reveal about what a lock-in cost.
-export function trialDrain(elapsedMs: number): number {
-  return Math.round((elapsedMs / 1000) * DRAIN_PER_SEC);
+export function trialDrain(elapsedMs: number, referenceLife: number): number {
+  return Math.round((elapsedMs / 1000) * trialDrainPerSec(referenceLife));
 }
 
 // Scores one trial round. `suddenDeath` rounds take NO drain and NO hit:
@@ -42,13 +46,14 @@ export function scoreTrialRound(
   correctIndex: number,
   questionTimeMs: number,
   suddenDeath: boolean,
+  referenceLife: number,
 ): TrialRevealResult[] {
   const results: TrialRevealResult[] = entries.map((entry) => {
     const correct = entry.choice !== null && entry.choice === correctIndex;
-    // No lock-in: the full timer's drain, and a wrong answer's hit on top.
+    // No lock-in: the full timer's drain, and the larger hit on top.
     const elapsedMs = entry.elapsedMs ?? questionTimeMs;
-    const drain = suddenDeath ? 0 : trialDrain(elapsedMs);
-    const hit = suddenDeath || correct ? 0 : WRONG_HIT;
+    const drain = suddenDeath ? 0 : trialDrain(elapsedMs, referenceLife);
+    const hit = suddenDeath || correct ? 0 : trialWrongHit(referenceLife, entry.choice !== null);
     const lifeAfter = entry.lifeBefore - drain - hit;
     return {
       playerId: entry.playerId,

@@ -865,6 +865,10 @@ export function startTrial(room: Room): boolean {
   const trial: TrialState = {
     questions,
     questionIndex: -1,
+    // The leader's entry score, converted to life - fixed here, once, per
+    // Task 185: every hit and the drain rate scale off this for the whole
+    // trial, whatever life the room's players end it at.
+    referenceLife: Math.max(...contestants.map((player) => player.score)),
     // Everyone walks in alive, carrying the score they earned as LIFE -
     // including a player sitting on 0, who simply has one round to fix that.
     livingPlayerIds: contestants.map((player) => player.playerId),
@@ -1056,6 +1060,7 @@ export function endTrialQuestion(code: RoomCode): void {
     question.correctIndex,
     questionTimeMs,
     wasSuddenDeath,
+    trial.referenceLife,
   );
   for (const result of results) {
     const player = room.players.get(result.playerId);

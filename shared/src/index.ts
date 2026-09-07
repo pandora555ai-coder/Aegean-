@@ -2123,14 +2123,31 @@ export interface NumericRevealShowPayload {
 // drains for as long as a trial question sits unanswered. Eliminations are
 // checked at TRIAL_REVEAL and nowhere else.
 
+// Task 185 - the deferred balance pass. Absolute constants (a flat 150 hit,
+// a flat 10/s drain) felt identical in a 400-point lobby trial and a
+// 9000-point blowout - fine for the first and nearly untouchable for the
+// second. Every trial figure now scales off `referenceLife`: the HIGHEST
+// entry score any contestant walked into the trial with, fixed once at
+// trial start (TrialState.referenceLife, server/src/state.ts) so a later
+// round's drain never moves its own yardstick. Lives here, not in
+// server/src/trial.ts, because the dev Monte Carlo harness (Task 184) and
+// the live game both need the same numbers without one importing the other.
+export const TRIAL_WRONG_ANSWER_HIT_PCT = 0.11; // locked in, but wrong
+export const TRIAL_NO_ANSWER_HIT_PCT = 0.23; // never locked in - also pays the FULL timer's drain
+export const TRIAL_DRAIN_PCT_PER_SEC = 0.01; // per second a question stays open against you
+
+// The extra bite taken at TRIAL_REVEAL - two tiers by trigger condition,
+// unchanged from before this task: a wrong-but-locked-in answer costs less
+// than never answering at all.
+export function trialWrongHit(referenceLife: number, answered: boolean): number {
+  return Math.round(referenceLife * (answered ? TRIAL_WRONG_ANSWER_HIT_PCT : TRIAL_NO_ANSWER_HIT_PCT));
+}
+
 // How much life a living player loses per SECOND that a trial question
 // stays open against them - stopped the instant they lock an answer in.
-// Placeholder for the deferred balance pass (Task 127), like WRONG_HIT.
-export const DRAIN_PER_SEC = 10;
-// The extra bite taken at TRIAL_REVEAL from anyone whose lock-in was wrong,
-// and from anyone who never locked in at all (who also pays the FULL
-// timer's drain). Placeholder, same pass.
-export const WRONG_HIT = 150;
+export function trialDrainPerSec(referenceLife: number): number {
+  return referenceLife * TRIAL_DRAIN_PCT_PER_SEC;
+}
 
 // How many questions the trial draws out of the UNUSED quiz pool when it
 // begins. A bound, not an expectation: the trial normally ends when one
@@ -2229,8 +2246,8 @@ export interface TrialRevealResult {
   timeMs: number | null; // elapsed at lock-in, from the pause-aware clock
   answerRank: number | null; // 1-based among CORRECT lock-ins, by speed
   lifeBefore: number;
-  drain: number; // round(elapsed_s * DRAIN_PER_SEC), full timer if no answer
-  hit: number; // WRONG_HIT or 0
+  drain: number; // round(elapsed_s * trialDrainPerSec(referenceLife)), full timer if no answer
+  hit: number; // trialWrongHit(referenceLife, answered) or 0
   lifeAfter: number; // NOT clamped at 0 - the arithmetic is what it is
   eliminated: boolean; // crossed to <= 0 in THIS reveal
 }
