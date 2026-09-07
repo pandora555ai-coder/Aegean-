@@ -9,7 +9,7 @@ TypeScript monorepo, npm workspaces: /shared /server /client
 Server: Node + Express + Socket.IO (tsx, no build step, systemd)
 Client: Vite + React. Routes: / (landing), /host (TV), /play (phone),
 plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
-/dev/voice-ab /dev/voice-matrix /dev/voice-eq (devRoutes.tsx)
+/dev/voice-ab /dev/voice-matrix /dev/voice-eq /dev/crowd (devRoutes.tsx)
 
 ## WHERE YOU WORK — read this before running anything
 
@@ -41,8 +41,9 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 - **Report NUMBERS in words** — bounding boxes, heights, counts.
   Never screenshots: they are the most expensive thing entering context.
 - `npm run screenshot:phases` reads bot count from the `BOT_COUNT` env var
-  (default 4) but captures at a hardcoded 1920x1080, so measuring at
-  1280x720 needs its own short throwaway script.
+  (default 4) and captures the TV context at a hardcoded 1280x720 (the
+  separate phone context is 360x640 — see below); no throwaway script is
+  needed for either resolution.
 - The harness writes its PNGs to client/public/dev/shots (17 TV + 9 phone,
   360x640) — served under the protected /dev basic-auth prefix and linked
   from ΔΟΚΙΜΕΣ (Task 180). Anything new for testing/review goes UNDER
@@ -68,10 +69,10 @@ server/src/steal.ts      STEAL thief selection + the clamped point transfer
 server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
                          what the next round must be. No Room, no io, no timers; the phase
                          shell around it is in phases.ts.
-server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY,
-                         no playback yet (Task 36 not built). Wired into all four modes:
-                         quiz via phases.ts since Task 35, draw/numeric got their own
-                         wiring in Task 151.
+server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY.
+                         Playback IS built (Task 36a-d — see Crowd mood below). Wired into
+                         every mode: quiz via phases.ts since Task 35, draw/numeric got
+                         their own wiring in Task 151, blitz had its own from Task 156a.
 server/src/realtime.ts   Socket.IO server instance (io, httpServer)
 server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
@@ -85,42 +86,50 @@ server/src/data/questions.json  899 questions, 49 categories
 client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the sophists row + krater
 client/src/components/SophistsRow.tsx    The players (Task 161): figure + plaque per player on the
                          orchestra at the foot of the TV. Replaced the score column.
-client/src/screens/host/                 One file per TV phase, plus GameLayout/PapyrusPanel
+client/src/screens/host/                 One file per TV phase, plus GameLayout.tsx
+client/src/components/MarbleSlab.tsx     The read column's slab — renamed off PapyrusPanel
+                         when Task 159 swapped the palette Ελαιογραφία → Θέατρο
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
 client/src/components/DrawingCanvas.tsx  Canvas, tools, colour wheel
-client/src/palette-elaiografia.css       THE colour source: tokens, base reset, AND all
+client/src/palette-theatro.css           THE colour source: tokens, base reset, AND all
                          keyframes (moved in 123) — not tokens-only, don't
-                         "clean" the keyframes out
+                         "clean" the keyframes out. Renamed off
+                         palette-elaiografia.css in Task 159.
 
 ## Colour
 
-- **palette-elaiografia.css is the single source** — ten :root tokens:
-  --ground --deep --panel --pap-1 --pap-2 --ink --wood --gold --cream --dim.
+- **palette-theatro.css is the single source** (renamed off
+  palette-elaiografia.css in Task 159's Ελαιογραφία → Θέατρο swap) —
+  twelve :root tokens: --night-0 --night-1 --marble --marble-2 --marble-3
+  --carve --wine --wine-2 --ember --olive --tv-safe-top --tv-safe-bottom.
 - On any screen you touch: zero raw hex, and **no `var(--x)` naming a token
   the palette does not define.** Check by inversion, not by a blocklist —
   a blocklist of five names passed clean while `--surface-strong`,
   `--text-faint` and `--text-dim` were live on the TV:
   `comm -23 <(grep -aroE "var\(--[a-z0-9-]+" <files> | sed 's/.*var(//' | sort -u) \`
-  `  <(grep -aoE "^ +--[a-z0-9-]+" client/src/palette-elaiografia.css | tr -d ' ' | sort -u)`
-  On phone screens the inversion also turns up the LOCAL inline animation
-  vars a component sets on itself — `--i --delay --w --h --spin --drift
-  --duration --iterations --fx --fy --glow-color`. Those are not palette
-  tokens and are not violations; exclude them. Now that theme.css is gone,
-  these resolve via their own `var(--x, default)` fallback (e.g.
-  `animation-delay: var(--delay, 0s)` in palette-elaiografia.css) rather
-  than a theme.css definition.
+  `  <(grep -aoE "^ +--[a-z0-9-]+" client/src/palette-theatro.css | tr -d ' ' | sort -u)`
+  The inversion currently turns up three LOCAL inline vars a component sets
+  on itself — `--dx --glow-color --i`. Those are not palette tokens and are
+  not violations; exclude them. Now that theme.css is gone, these resolve
+  via their own `var(--x, default)` fallback rather than a theme.css
+  definition.
 - **Colour NEVER encodes correctness.** Correct = opacity 1 + heavier
   weight, wrong = opacity 0.42. Same rule on TV and phone.
-- **One sanctioned raw hex: `#ef4444`, TimerRing's urgency-pulse red**
-  (`.timer-critical` / `.timer-ring-critical` in palette-elaiografia.css).
-  Urgency is not correctness, so this stays a literal on purpose rather
-  than inventing a token nothing else would use — the palette has no red
-  token by design. Grep confirms it's the only one:
+- **Two sanctioned raw hex literals**, each self-documented in its own file
+  as "the palette has no token for this by design": `#ef4444` (Krater.tsx's
+  `KRATER_CRITICAL`, the wine-krater timer's urgency pulse — moved here
+  when Task 162 replaced TimerRing with Krater) and `#BFE6FF`
+  (SophistsRow.tsx's `ICE_GLOW`, the ice-sabotage crystal, Task 163c).
+  Urgency/status is not correctness, so both stay literals on purpose
+  rather than inventing tokens nothing else would use.
   `grep -aroE "#[0-9a-fA-F]{3,8}" client/src --include=*.tsx --include=*.ts --include=*.css`
-  turns up palette-elaiografia.css's own ten root tokens plus `#ef4444`
-  (x2, both TimerRing); the rest are outside this rule's scope — canvas
-  fillStyle literals (DrawingCanvas ink/paper, HostScreen's QR code) and
-  /dev/* debug routes.
+  turns up 93 hits: palette-theatro.css's own ten (its other two tokens are
+  vh values, not colours), the two above, and the rest OUTSIDE this rule's
+  scope — self-documented SVG art (TheatreScene.tsx's backdrop, "same
+  exception as drawing ink"; SocratesFigure.tsx's gradients), the drawing/
+  canvas literals (DrawingCanvas ink/paper, hostStyles.ts's drawing-phase
+  panel reusing the PAPER value verbatim, HostScreen's QR code), and
+  /dev/* debug routes (DevBlitzScreen.tsx).
 
 ## Core rules — do not break these
 
@@ -221,7 +230,10 @@ thing between the last quiz question and GAME_OVER. Score IS life there;
 elimination is checked at TRIAL_REVEAL and nowhere else, and elapsed comes
 from remainingActiveTimerMs() so a pause freezes the drain. Drain itself is
 computed ONCE, server-side, at lock-in (trialElapsedMs + trialDrain in
-phases.ts/trial.ts) — there is no per-second server tick. The TV's
+phases.ts/trial.ts) — there is no per-second server tick. Both the hit and
+the drain rate are PROPORTIONAL, not fixed: trialWrongHit/trialDrainPerSec
+(shared/src/index.ts) scale off `referenceLife`, the highest entry score
+among the trial's contestants, fixed once at trial start (Task 185). The TV's
 per-second countdown-driven drain (HostScreen.trialDisplayStandings) is a
 COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
@@ -264,8 +276,9 @@ intensity (cap 3), both via addAppliedSabotage().
 - **Centered flex overflow is INVISIBLE to scrollHeight.** The host
   container is overflow:hidden, so content is clipped silently. Only
   per-element bounding-box checks against the viewport catch it.
-- **PapyrusPanel must stay `flex: 0 0 auto`.** Its content is text and
-  cannot compress; let it shrink and the text bleeds off the parchment.
+- **MarbleSlab (renamed off PapyrusPanel in Task 159) must stay
+  `flex: 0 0 auto`.** Its content is text and cannot compress; let it
+  shrink and the text bleeds off the slab.
 - **TOP is read, BOTTOM is players (Task 161).** The read column
   (hostStyles.gameLayout: left 7%, width 72%, top --tv-safe-top, height
   READ_AREA_HEIGHT = 100vh − safe-top − 38vh, i.e. 5vh..62vh) holds the
@@ -334,22 +347,30 @@ scoreNumericSubmissions (server-only; the /dev/numeric client tool doesn't
 import it) scores only SUBMITTERS — N is the submitted count, not the room's
 player count. A non-submitter is flat 0, ranked past every real rank.
 
-## Blitz — dev-only prototype, NOT a mode
+## Blitz — a real mode now (Task 156), plus its own dev prototype
 
-/dev/blitz (DevBlitzScreen.tsx, Task 69) is a solo phone swipe minigame —
-one true/false statement at a time, swipe right for ΣΩΣΤΟ, left for ΛΑΘΟΣ,
-time-bound round (BLITZ_DURATIONS_SEC 30/45/60/90) — with ALL state local
-(React + localStorage), no socket, no room. There is NO blitz phase machine
-server-side, NO TV view, NO ControllerScreen view, and it is NOT in the
-mode registry (GameModeId is quiz|draw|numeric|full; nothing calls
-registerGameMode for it). The only server piece is blitzLog.ts (Task 70):
-one POST route at BLITZ_LOG_PATH appending finished rounds to
-/var/lib/aegean-blitz/rounds.jsonl, read over ssh, never served. 218
-authored statements (109 Σ / 109 Λ) live in blitz-statements.md at the repo
-root and are GENERATED into shared's BLITZ_STATEMENTS block by `npm run
-blitz:generate` — edit the .md, never the block. Live but unwired: it is a
-standalone prototype whose pool the real mode was meant to reuse, not dead
-code and not a game the room can play.
+GameModeId (shared/src/index.ts) is `'quiz' | 'draw' | 'numeric' | 'full' |
+'blitz'` (GAME_MODE_IDS), and server/src/modes/blitz.ts calls
+registerGameMode — it IS in the registry, with its own phases (LOBBY,
+BLITZ, BLITZ_REVEAL, GAME_OVER). A room can play blitz as a real
+multiplayer game: the TV has host/BlitzView.tsx and
+host/BlitzRevealView.tsx, and the phone has its own branch in
+ControllerScreen.tsx (BlitzSwipeCard, Task 181's "card follows the finger"
+rebuild, titled "Η Παλαίστρα" through greekUpper same as every other
+title). Crowd mood is wired in from the mode's own Task 156a build (see
+Crowd mood below).
+Separately, /dev/blitz (DevBlitzScreen.tsx, Task 69) is STILL a standalone
+solo phone-swipe prototype — one true/false statement at a time, swipe
+right for ΣΩΣΤΟ, left for ΛΑΘΟΣ, time-bound round (BLITZ_DURATIONS_SEC
+30/45/60/90) — with ALL state local (React + localStorage), no socket, no
+room, and its own swipe-card implementation (not BlitzSwipeCard). The only
+server piece specific to IT is blitzLog.ts (Task 70): one POST route at
+BLITZ_LOG_PATH appending finished rounds to
+/var/lib/aegean-blitz/rounds.jsonl, read over ssh, never served.
+Both share the same statement pool: 218 authored statements (109 Σ / 109
+Λ) live in blitz-statements.md at the repo root and are GENERATED into
+shared's BLITZ_STATEMENTS block by `npm run blitz:generate` — edit the
+.md, never the block.
 
 ## Voice
 
@@ -409,9 +430,10 @@ loops (murmur/unrest/roar) by `crowd:intensity` plus four cheer/boo
 one-shots by `crowd:mood`, and this fully retired the earlier synthesized
 cue set (Task 20) — do not describe playback as unbuilt or the old cue set
 as still live.
-Since Task 151 it's wired into all four modes (quiz already had it via
+Since Task 151 it's wired into every mode (quiz already had it via
 phases.ts; draw.ts and numeric.ts had ZERO wiring before, so a `full`
-game's draw/numeric stages were silent). A short full game emits 48
+game's draw/numeric stages were silent; blitz had its own wiring from its
+Task 156a build). A short full game emits 48
 crowd:mood events. LOBBY and TRIAL_QUESTION never get one attributed to
 them — LOBBY because nothing ever calls setCrowdMood there, TRIAL_QUESTION
 because its own setCrowdMood fires BEFORE that phase's `phase:changed`,
