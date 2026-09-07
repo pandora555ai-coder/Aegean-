@@ -21,6 +21,8 @@ import {
   ServerEvents,
   type BlitzShowPayload,
   type ClimbQuestionShowPayload,
+  DUEL_WEAPONS,
+  type DuelPickShowPayload,
   type DrawShowPayload,
   type GuessShowPayload,
   type JoinRejectedPayload,
@@ -160,6 +162,18 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     }
     const choice = randomChoice(payload.options.length);
     setTimeout(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice }), profileDelayMs(profile));
+  });
+
+  // Task 188b - the climb's duel: a duelist bot picks uniformly at random
+  // after 400-1500ms (its own window, not the profile's - a duel is a snap
+  // decision for either profile). A spectator, or a catch-up that says it
+  // already picked, does nothing.
+  socket.on(ServerEvents.DUEL_PICK_SHOW, (payload: DuelPickShowPayload) => {
+    if (!('youDuel' in payload) || !payload.youDuel || payload.picked) {
+      return;
+    }
+    const weapon = DUEL_WEAPONS[randomChoice(DUEL_WEAPONS.length)];
+    setTimeout(() => socket.emit(ClientEvents.DUEL_PICK, { weapon }), 400 + Math.random() * 1100);
   });
 
   // blitz:show broadcasts once per game (never re-sent per-swipe), so this

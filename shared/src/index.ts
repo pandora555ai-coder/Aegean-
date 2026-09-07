@@ -57,6 +57,9 @@ export const ClientEvents = {
   // TRIAL_SUBMIT is: the server records a pause-aware elapsed figure, and the
   // phase guard is CLIMB_QUESTION, not QUESTION.
   CLIMB_SUBMIT: 'player:climb_submit',
+  // Task 188b - a duelist's weapon pick in the climb's duel (DUEL_PICK). The
+  // server records it and reveals NOTHING about it until DUEL_REVEAL.
+  DUEL_PICK: 'player:duel_pick',
   // Task 156 - the blitz mode. One swipe per statement, in order: the phone
   // sends the statement's index and which way it went; the server stamps
   // it, checks it is the NEXT expected index (no going back, no skipping)
@@ -129,6 +132,16 @@ export const ServerEvents = {
   // and fastest flag, a phone gets only its own step and delta.
   CLIMB_QUESTION_SHOW: 'climb_question:show',
   CLIMB_REVEAL_SHOW: 'climb_reveal:show',
+  // Task 188b - Η Μονομαχία, the climb's duel. DUEL_PICK is asymmetric (the
+  // TV gets both duelists and WHO has picked; a duelist's phone gets its
+  // pick prompt, a spectator's only a flag); DUEL_PROGRESS is the host-only
+  // "who has picked" ticker; DUEL_LOCKED is the host-only early-lock beat
+  // the moment the second pick lands; DUEL_REVEAL is the first moment either
+  // weapon leaves the server - both weapons and the winner, to everyone.
+  DUEL_PICK_SHOW: 'duel_pick:show',
+  DUEL_PROGRESS: 'duel:progress',
+  DUEL_LOCKED: 'duel:locked',
+  DUEL_REVEAL_SHOW: 'duel_reveal:show',
   // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
   // has locked in, never what they guessed.
   // Task 156 - the blitz mode. BLITZ_SHOW is asymmetric like question:show
@@ -458,6 +471,11 @@ export type GamePhase =
   // Reached from the same site as the trial and left only for GAME_OVER.
   | 'CLIMB_QUESTION'
   | 'CLIMB_REVEAL'
+  // Task 188b - Η Μονομαχία, the climb's duel: two arrivals at CLIMB_TOP in
+  // one reveal (or a shared highest step at the round cap) settle it with
+  // one weapon pick each, then a reveal; a tied pick re-enters DUEL_PICK.
+  | 'DUEL_PICK'
+  | 'DUEL_REVEAL'
   // Task 156 - the 'blitz' mode's own phases: everyone swipes through the
   // same K true/false statements at their own pace, then one reveal.
   | 'BLITZ'
@@ -586,6 +604,14 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
       break;
     case 'CLIMB_REVEAL':
       result = { value: 0.35, rampMs: 800 };
+      break;
+    // Task 188b - the duel: a held breath while the two pick, then the
+    // loudest the crowd gets when the weapons come out.
+    case 'DUEL_PICK':
+      result = { value: 0.55, rampMs: 800 };
+      break;
+    case 'DUEL_REVEAL':
+      result = { value: 0.9, rampMs: 600 };
       break;
     case 'BLITZ':
       result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? BLITZ_DURATION_MS };
@@ -1699,6 +1725,11 @@ export type StateSyncClimbQuestionPlayerPayload = ClimbQuestionShowPlayerPayload
 };
 export type StateSyncClimbRevealHostPayload = ClimbRevealHostPayload & { phase: 'CLIMB_REVEAL' };
 export type StateSyncClimbRevealPlayerPayload = ClimbRevealPlayerPayload & { phase: 'CLIMB_REVEAL' };
+// Task 188b - the duel, same conventions.
+export type StateSyncDuelPickHostPayload = DuelPickShowHostPayload & { phase: 'DUEL_PICK'; remainingMs: number };
+export type StateSyncDuelPickPlayerPayload = DuelPickShowPlayerPayload & { phase: 'DUEL_PICK'; remainingMs: number };
+export type StateSyncDuelRevealHostPayload = DuelRevealHostPayload & { phase: 'DUEL_REVEAL' };
+export type StateSyncDuelRevealPlayerPayload = DuelRevealPayload & { phase: 'DUEL_REVEAL' };
 // Task 156 - the blitz mode, same builder-plus-remainingMs shape. durationMs
 // in both BLITZ payloads is already "time STILL LEFT" (see BlitzShowHostPayload).
 export type StateSyncBlitzHostPayload = BlitzShowHostPayload & { phase: 'BLITZ'; remainingMs: number };
@@ -1735,6 +1766,10 @@ export type StateSyncPayload =
   | StateSyncClimbQuestionPlayerPayload
   | StateSyncClimbRevealHostPayload
   | StateSyncClimbRevealPlayerPayload
+  | StateSyncDuelPickHostPayload
+  | StateSyncDuelPickPlayerPayload
+  | StateSyncDuelRevealHostPayload
+  | StateSyncDuelRevealPlayerPayload
   | StateSyncBlitzHostPayload
   | StateSyncBlitzPlayerPayload
   | StateSyncBlitzRevealHostPayload
@@ -2266,6 +2301,114 @@ export const CLIMB_QUESTION_TIME_MS = 22000;
 // rounds to a verdict): if the pool runs out first, the highest step wins.
 export const CLIMB_MAX_QUESTIONS = 20;
 
+// Task 188b - the round cap: the climb ends after this many rounds even with
+// questions left (CLIMB_MAX_QUESTIONS stays above it, so pool exhaustion is
+// now a second guard that should never fire first). At the cap the highest
+// step wins; a shared highest step sends its two fastest occupants (by the
+// final round's answerRank) to the duel, exactly as a two-arrival reveal
+// does - one tie-break everywhere (climb.ts's pickDuelists). The Monte Carlo
+// harness (server/scripts/trial-montecarlo.ts --finale climb) measures p99
+// rounds-to-verdict well under this, so it almost never fires for real.
+export const CLIMB_MAX_ROUNDS = 16;
+
+// ------------------------ Η Μονομαχία, the duel (Task 188b) ------------------------
+// Rock-paper-scissors with the hoplite's kit: xifos (sword) beats dory
+// (spear), dory beats aspida (shield), aspida beats xifos. Picks are
+// server-side only until DUEL_REVEAL.
+export type DuelWeapon = 'xifos' | 'dory' | 'aspida';
+export const DUEL_WEAPONS: readonly DuelWeapon[] = ['xifos', 'dory', 'aspida'];
+const DUEL_BEATS: Record<DuelWeapon, DuelWeapon> = { xifos: 'dory', dory: 'aspida', aspida: 'xifos' };
+
+// Pure: which of the two picks wins, or a tie (same weapon).
+export function duelOutcome(a: DuelWeapon, b: DuelWeapon): 'A' | 'B' | 'TIE' {
+  if (a === b) {
+    return 'TIE';
+  }
+  return DUEL_BEATS[a] === b ? 'A' : 'B';
+}
+
+// How long the two duelists get to pick. Fixed, like CLIMB_QUESTION_TIME_MS.
+export const DUEL_PICK_TIME_MS = 20000;
+// The early-lock beat: once the second pick lands, the reveal waits at least
+// this long (and for Socrates' line to end, if one fires - today the
+// DUEL_LOCKED pool is empty, so this floor alone carries the beat).
+export const DUEL_LOCK_FLOOR_MS = 2000;
+
+export interface DuelPickPayload {
+  weapon: DuelWeapon;
+}
+
+export interface DuelistStanding {
+  playerId: string;
+  name: string;
+  avatarId: string;
+}
+
+// The TV's view of DUEL_PICK: who duels, WHO has picked (never what), and
+// how many tied rounds preceded this one.
+export interface DuelPickShowHostPayload {
+  duelists: [DuelistStanding, DuelistStanding];
+  pickedPlayerIds: string[];
+  tieCount: number;
+  durationMs: number; // time STILL LEFT, frozen while paused
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+// One phone's view: a duelist gets the prompt (youDuel) and its opponent's
+// name; a spectator gets youDuel false and nothing else about the picks.
+// No weapon string appears here in either case - the three weapons are the
+// DUEL_WEAPONS constant the client already has.
+export interface DuelPickShowPlayerPayload {
+  youDuel: boolean;
+  opponentName: string | null;
+  picked: boolean; // true on a state:sync catch-up after already picking
+  tieCount: number;
+  durationMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type DuelPickShowPayload = DuelPickShowHostPayload | DuelPickShowPlayerPayload;
+
+// HOST ONLY - the "who has picked" ticker (the answer:progress contract).
+export interface DuelProgressPayload {
+  pickedPlayerIds: string[];
+}
+
+// HOST ONLY - the early-lock beat. socratesLine is null while the DUEL_LOCKED
+// pool is empty (Task 188b ships no lines; D1 blocks new ones).
+export interface DuelLockedPayload {
+  duelists: [DuelistStanding, DuelistStanding];
+  socratesLine: string | null;
+  socratesLineTemplate: string | null;
+  socratesLineTag: string | null;
+}
+
+export interface DuelRevealDuelist extends DuelistStanding {
+  weapon: DuelWeapon;
+  assigned: boolean; // true when the timer ran out and the server picked for them
+}
+
+// Both weapons and the winner, to everyone (symmetric, like trial_reveal:show).
+// winnerPlayerId is null exactly when the weapons tied; the phase then
+// re-enters DUEL_PICK with tieCount + 1.
+export interface DuelRevealPayload {
+  duelists: [DuelRevealDuelist, DuelRevealDuelist];
+  winnerPlayerId: string | null;
+  winnerName: string | null;
+  tie: boolean;
+  tieCount: number; // ties BEFORE this reveal; the host shows "again" off this
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export interface DuelRevealHostPayload extends DuelRevealPayload {
+  standings: PlayerStanding[];
+}
+
 // The stage card for the climb - the same held STAGE_ANNOUNCE beat the trial
 // gets (buildStageAnnounce branches on room.climb exactly as on room.trial).
 export const CLIMB_STAGE_TITLE = 'Η Ανάβαση';
@@ -2340,6 +2483,10 @@ export interface ClimbRevealHostPayload {
   // Set only on the reveal that ends the climb.
   winnerPlayerId: string | null;
   winnerName: string | null;
+  // Task 188b - set when THIS reveal sends two players to the duel (two
+  // arrivals, or a shared highest step at the round cap): DUEL_PICK follows
+  // instead of the next question. Null otherwise.
+  duelistIds: [string, string] | null;
   autoAdvanceMs: number;
   paused: boolean;
   pausedByName: string | null;
@@ -2361,6 +2508,9 @@ export interface ClimbRevealPlayerPayload {
   yourStep: number; // after this round
   winnerPlayerId: string | null;
   winnerName: string | null;
+  // Task 188b - a duel follows this reveal, and whether THIS phone is in it.
+  duelPending: boolean;
+  youDuel: boolean;
   autoAdvanceMs: number;
   paused: boolean;
   pausedByName: string | null;
@@ -2968,6 +3118,7 @@ export type ClientToServerEvents = {
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
   [ClientEvents.TRIAL_SUBMIT]: (payload: TrialSubmitPayload) => void;
   [ClientEvents.CLIMB_SUBMIT]: (payload: ClimbSubmitPayload) => void;
+  [ClientEvents.DUEL_PICK]: (payload: DuelPickPayload) => void;
   [ClientEvents.BLITZ_SWIPE]: (payload: BlitzSwipePayload) => void;
 };
 
@@ -3011,6 +3162,10 @@ export type ServerToClientEvents = {
   [ServerEvents.TRIAL_REVEAL_SHOW]: (payload: TrialRevealShowPayload) => void;
   [ServerEvents.CLIMB_QUESTION_SHOW]: (payload: ClimbQuestionShowPayload) => void;
   [ServerEvents.CLIMB_REVEAL_SHOW]: (payload: ClimbRevealPayload) => void;
+  [ServerEvents.DUEL_PICK_SHOW]: (payload: DuelPickShowPayload) => void;
+  [ServerEvents.DUEL_PROGRESS]: (payload: DuelProgressPayload) => void;
+  [ServerEvents.DUEL_LOCKED]: (payload: DuelLockedPayload) => void;
+  [ServerEvents.DUEL_REVEAL_SHOW]: (payload: DuelRevealPayload | DuelRevealHostPayload) => void;
   [ServerEvents.BLITZ_SHOW]: (payload: BlitzShowPayload) => void;
   [ServerEvents.BLITZ_PROGRESS]: (payload: BlitzProgressPayload) => void;
   [ServerEvents.BLITZ_REVEAL_SHOW]: (payload: BlitzRevealPayload) => void;

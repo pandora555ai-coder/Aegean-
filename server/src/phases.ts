@@ -1,6 +1,13 @@
 import {
   CLIMB_MAX_QUESTIONS,
+  CLIMB_MAX_ROUNDS,
   CLIMB_QUESTION_TIME_MS,
+  DUEL_LOCK_FLOOR_MS,
+  DUEL_PICK_TIME_MS,
+  DUEL_WEAPONS,
+  duelOutcome,
+  type DuelRevealDuelist,
+  type DuelWeapon,
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
   SOCRATES_MAX_DURATION_MS,
@@ -41,7 +48,7 @@ import {
   scoreTrialRound,
   type TrialRoundEntry,
 } from './trial.js';
-import { applyClimbRound, nextAfterClimbRound, type ClimbRoundEntry } from './climb.js';
+import { applyClimbDuelResult, applyClimbRound, nextAfterClimbRound, resolveClimbAtCap, type ClimbRoundEntry } from './climb.js';
 import {
   LINES,
   logMomentFireSummary,
@@ -50,6 +57,7 @@ import {
   pickStageIntroLine,
   pickTrialIntroLine,
   pickWinnerLine,
+  recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
   type PickedLine,
   type SocratesPlayerRoundInput,
@@ -75,6 +83,10 @@ import {
   buildClimbQuestionPlayerPayload,
   buildClimbRevealHostPayload,
   buildClimbRevealPlayerPayload,
+  buildDuelPickHostPayload,
+  buildDuelPickPlayerPayload,
+  buildDuelRevealHostPayload,
+  buildDuelRevealPayload,
   buildGameOver,
   buildQuestionHostSabotage,
   computeCompetitionRanks,
@@ -102,7 +114,12 @@ export type QuizTimerKind =
   // Task 188a - the climb finale, the trial's alternative: same table, same
   // pause/resume machinery.
   | 'CLIMB_QUESTION'
-  | 'CLIMB_REVEAL';
+  | 'CLIMB_REVEAL'
+  // Task 188b - the climb's duel: the pick window, the early-lock beat's
+  // floor/backstop, the reveal.
+  | 'DUEL_PICK'
+  | 'DUEL_LOCKED'
+  | 'DUEL_REVEAL';
 
 // The shared timer helper, narrowed to this mode's kinds - so a typo in a
 // phase name is still a compile error here even though timers.ts itself no
@@ -1246,6 +1263,7 @@ export function startClimb(room: Room): boolean {
     winnerPlayerId: null,
     lastResults: null,
     lastCorrectIndex: null,
+    duel: null,
   };
   room.climb = climb;
   // The finale row of the room's table, same card beat as the trial;
@@ -1275,8 +1293,20 @@ function startClimbQuestion(room: Room): void {
   }
   climb.questionIndex += 1;
   if (climb.questionIndex >= climb.questions.length) {
-    climb.winnerPlayerId = climbLeaderPlayerId(climb);
-    console.log(`room ${room.code} climb pool exhausted after ${climb.roundsPlayed} round(s) — highest step wins`);
+    // Task 188b - the second guard (CLIMB_MAX_ROUNDS fires first whenever the
+    // draw is full-size): same verdict as the cap, from the last round's
+    // rows. With no reveal left to announce a duel from, a shared highest
+    // step goes straight to DUEL_PICK.
+    const verdict = resolveClimbAtCap(climb.lastResults ?? []);
+    for (const result of climb.lastResults ?? []) {
+      climb.steps.set(result.playerId, result.stepAfter);
+    }
+    console.log(`room ${room.code} climb pool exhausted after ${climb.roundsPlayed} round(s) — ${verdict.kind} at the highest step`);
+    if (verdict.kind === 'DUEL') {
+      startDuel(room, verdict.playerIds);
+      return;
+    }
+    climb.winnerPlayerId = verdict.winnerPlayerId;
     endClimb(room);
     return;
   }
@@ -1362,19 +1392,6 @@ export function recheckClimbPhaseOnDisconnect(room: Room): void {
   }
 }
 
-// The leader by step, ties by the last round's answerRank (fastest first),
-// then join order - the pool-exhausted verdict, and the same order GAME_OVER
-// ranks by (buildGameOver's climb branch).
-function climbLeaderPlayerId(climb: ClimbState): string | null {
-  const lastRank = new Map(climb.lastResults?.map((result) => [result.playerId, result.answerRank]) ?? []);
-  const ordered = [...climb.climberIds].sort(
-    (a, b) =>
-      (climb.steps.get(b) ?? 0) - (climb.steps.get(a) ?? 0) ||
-      (lastRank.get(a) ?? Infinity) - (lastRank.get(b) ?? Infinity),
-  );
-  return ordered[0] ?? null;
-}
-
 // Ends the climb question exactly once - guarded by the phase check, so
 // whichever of (everyone locked in) / (the timer fired) happens first wins.
 // THE one place steps move.
@@ -1408,19 +1425,27 @@ export function endClimbQuestion(code: RoomCode): void {
   });
 
   const scored = applyClimbRound(entries, question.correctIndex);
-  const next = nextAfterClimbRound(scored); // may hold 3+-way arrivals one step below the top
+  climb.roundsPlayed += 1;
+  // May hold 3+-way arrivals one step below the top - and, Task 188b, at the
+  // round cap (CLIMB_MAX_ROUNDS) a round nobody won is settled from the same
+  // rows: highest step alone wins, a shared highest step duels. Both paths
+  // rewrite held occupants' stepAfter IN PLACE, so steps are copied after.
+  let next = nextAfterClimbRound(scored);
+  if (next.kind === 'CONTINUE' && climb.roundsPlayed >= CLIMB_MAX_ROUNDS) {
+    next = resolveClimbAtCap(scored);
+    console.log(`room ${room.code} climb round cap (${CLIMB_MAX_ROUNDS}) reached — ${next.kind} at the highest step`);
+  }
   for (const result of scored) {
     climb.steps.set(result.playerId, result.stepAfter);
   }
-  climb.roundsPlayed += 1;
 
   if (next.kind === 'WINNER') {
     climb.winnerPlayerId = next.winnerPlayerId;
   } else if (next.kind === 'DUEL') {
-    // TODO(188b): the duel. Until it lands, two arrivals in the same reveal
-    // are settled PROVISIONALLY by answerRank - nextAfterClimbRound already
-    // lists the duelists fastest first.
-    climb.winnerPlayerId = next.playerIds[0];
+    // Task 188b - the duel opens after this reveal (endClimbReveal); the
+    // reveal itself only announces who. Picks stay server-side until
+    // DUEL_REVEAL.
+    climb.duel = { duelistIds: next.playerIds, picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
   }
 
   const results: ClimbRevealHostResult[] = scored.map((result) => ({ ...result, fastest: result.answerRank === 1 }));
@@ -1467,7 +1492,252 @@ export function endClimbReveal(code: RoomCode): void {
     endClimb(room);
     return;
   }
+  if (climb.duel) {
+    startDuel(room, climb.duel.duelistIds);
+    return;
+  }
   startClimbQuestion(room);
+}
+
+// ---------------------------------------------------------------------------
+// Η Μονομαχία (Task 188b) - the climb's duel
+// ---------------------------------------------------------------------------
+// Two players who reached the top in the same reveal (or share the highest
+// step at the round cap) each pick one weapon; xifos > dory > aspida > xifos
+// (duelOutcome, shared). DUEL_PICK -> DUEL_REVEAL, re-entering DUEL_PICK on a
+// tie with no cap; a winner takes the temple and the climb ends as it does
+// for a lone arrival. The picks are the one secret of the phase: they live
+// in room.climb.duel.picks and reach a payload only through the reveal's
+// frozen snapshot.
+
+// Opens (or, after a tie, re-opens) the pick window. Idempotent on the duel
+// state: the duelists are fixed for the whole duel, the picks are per round.
+function startDuel(room: Room, duelistIds: [string, string]): void {
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
+  const duel = climb.duel ?? { duelistIds, picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
+  climb.duel = duel;
+  duel.picks.clear();
+  duel.lock = null;
+
+  room.phase = 'DUEL_PICK';
+  armQuizTimer(room, 'DUEL_PICK', DUEL_PICK_TIME_MS, () => endDuelPick(room.code));
+  setCrowdMood(room, 'tension');
+
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
+  broadcastDuelPick(room);
+
+  const names = duel.duelistIds.map((id) => room.players.get(id)?.name ?? id);
+  console.log(`room ${room.code} duel pick open — ${names.join(' vs ')}, tie count ${duel.tieCount}`);
+}
+
+// Per phone, like every asymmetric phase: the TV gets both duelists and who
+// has picked; a duelist gets its prompt; a spectator gets a flag.
+function broadcastDuelPick(room: Room): void {
+  const hostPayload = buildDuelPickHostPayload(room);
+  if (hostPayload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.DUEL_PICK_SHOW, hostPayload);
+  }
+  for (const player of getConnectedPlayers(room)) {
+    const playerPayload = buildDuelPickPlayerPayload(room, player.playerId);
+    if (playerPayload) {
+      io.to(player.socketId).emit(ServerEvents.DUEL_PICK_SHOW, playerPayload);
+    }
+  }
+}
+
+function isDuelWeapon(value: unknown): value is DuelWeapon {
+  return typeof value === 'string' && (DUEL_WEAPONS as readonly string[]).includes(value);
+}
+
+// Records one pick; returns whether it was accepted. Every rule lives here:
+// the phase, the pause, a real weapon, being a duelist, one pick per round.
+// The second pick locks the duel (the early-lock beat) - unless the first
+// duelist to pick is the only one still connected, in which case the lock
+// waits for the timer to assign the absentee's weapon.
+export function submitDuelPick(room: Room, playerId: string, weapon: unknown): boolean {
+  if (room.phase !== 'DUEL_PICK' || room.paused) {
+    return false;
+  }
+  const duel = room.climb?.duel;
+  if (!duel || duel.lock || !isDuelWeapon(weapon)) {
+    return false;
+  }
+  if (!duel.duelistIds.includes(playerId) || duel.picks.has(playerId)) {
+    return false;
+  }
+  duel.picks.set(playerId, { weapon, assigned: false });
+  // Never the weapon - only that a pick landed, and from whom.
+  console.log(`room ${room.code} duel pick from ${playerId} — ${duel.picks.size}/2 picked`);
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.DUEL_PROGRESS, { pickedPlayerIds: Array.from(duel.picks.keys()) });
+  }
+  if (duel.picks.size === 2) {
+    lockDuel(room);
+  }
+  return true;
+}
+
+// No disconnect recheck for DUEL_PICK, deliberately: a duelist who drops
+// stays in the duel and the timer assigns their weapon at the 20s mark
+// (flagged `assigned`), so a lost connection never hands the temple to
+// whoever stayed online.
+
+// The early-lock beat: both picks are in, so the reveal is scheduled for
+// max(the DUEL_LOCK_FLOOR_MS floor, Socrates' line ending) - the same
+// "moment detected, pool empty, beat stays silent" pattern as Task 138, so
+// today the floor alone carries it. Host-only DUEL_LOCKED goes out at once;
+// the weapons still don't.
+function lockDuel(room: Room): void {
+  const duel = room.climb?.duel;
+  if (!duel || duel.lock) {
+    return;
+  }
+  const names: [string, string] = [
+    room.players.get(duel.duelistIds[0])?.name ?? '',
+    room.players.get(duel.duelistIds[1])?.name ?? '',
+  ];
+  const line = recordDuelLockedAndPickLine(room.socrates, names);
+  duel.lock = { floorPassed: false, awaitingAudio: line !== null, audioEnded: false };
+  armQuizTimer(room, 'DUEL_LOCKED', DUEL_LOCK_FLOOR_MS, () => onDuelLockTimer(room.code));
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.DUEL_LOCKED, {
+      duelists: [
+        { playerId: duel.duelistIds[0], name: names[0], avatarId: room.players.get(duel.duelistIds[0])?.avatarId ?? '' },
+        { playerId: duel.duelistIds[1], name: names[1], avatarId: room.players.get(duel.duelistIds[1])?.avatarId ?? '' },
+      ],
+      socratesLine: line?.text ?? null,
+      socratesLineTemplate: line?.template ?? null,
+      socratesLineTag: line?.tag ?? null,
+    });
+  }
+  console.log(`room ${room.code} duel locked — reveal in >= ${DUEL_LOCK_FLOOR_MS}ms${line ? ' (waiting on Socrates too)' : ''}`);
+}
+
+// The DUEL_LOCKED timer, in two stages under ONE kind (so a pause resumes
+// either): the floor, after which the reveal goes out unless a line is still
+// playing; then, only in that case, the SOCRATES_MAX_DURATION_MS backstop
+// that guarantees a dead clip can't hold the duel.
+export function onDuelLockTimer(code: RoomCode): void {
+  const room = getRoom(code);
+  const duel = room?.climb?.duel;
+  if (!room || room.phase !== 'DUEL_PICK' || !duel?.lock) {
+    return;
+  }
+  if (!duel.lock.floorPassed) {
+    duel.lock.floorPassed = true;
+    if (duel.lock.awaitingAudio && !duel.lock.audioEnded) {
+      armQuizTimer(room, 'DUEL_LOCKED', SOCRATES_MAX_DURATION_MS - DUEL_LOCK_FLOOR_MS, () => onDuelLockTimer(room.code));
+      return;
+    }
+  }
+  revealDuel(room);
+}
+
+// The host's socrates:audio_ended during DUEL_PICK (index.ts routes it here
+// when the phase is not SOCRATES). Before the floor it only marks the line
+// done; after it, it is what releases the reveal.
+export function onDuelAudioEnded(room: Room): void {
+  const duel = room.climb?.duel;
+  if (room.phase !== 'DUEL_PICK' || !duel?.lock?.awaitingAudio) {
+    return;
+  }
+  duel.lock.audioEnded = true;
+  if (duel.lock.floorPassed) {
+    revealDuel(room);
+  }
+}
+
+// The pick window ran out: whoever hasn't picked gets a uniform random
+// weapon, flagged `assigned` in the reveal, and the reveal goes out at once -
+// no early-lock beat at the 20s mark. Also the continuation a paused
+// DUEL_PICK timer resumes into.
+export function endDuelPick(code: RoomCode): void {
+  const room = getRoom(code);
+  const duel = room?.climb?.duel;
+  if (!room || room.phase !== 'DUEL_PICK' || !duel || duel.lock) {
+    return;
+  }
+  for (const playerId of duel.duelistIds) {
+    if (!duel.picks.has(playerId)) {
+      duel.picks.set(playerId, { weapon: DUEL_WEAPONS[Math.floor(Math.random() * DUEL_WEAPONS.length)], assigned: true });
+      console.log(`room ${room.code} duel pick window over — assigned a random weapon to ${playerId}`);
+    }
+  }
+  revealDuel(room);
+}
+
+// THE one place the weapons leave the server: freezes the reveal snapshot
+// from the picks, then DUEL_REVEAL to everyone.
+function revealDuel(room: Room): void {
+  const climb = room.climb;
+  const duel = climb?.duel;
+  if (!climb || !duel || room.phase !== 'DUEL_PICK') {
+    return;
+  }
+  const duelists = duel.duelistIds.map((playerId): DuelRevealDuelist => {
+    const pick = duel.picks.get(playerId);
+    const player = room.players.get(playerId);
+    return {
+      playerId,
+      name: player?.name ?? '',
+      avatarId: player?.avatarId ?? '',
+      weapon: pick?.weapon ?? DUEL_WEAPONS[0],
+      assigned: pick?.assigned ?? true,
+    };
+  }) as [DuelRevealDuelist, DuelRevealDuelist];
+  const outcome = duelOutcome(duelists[0].weapon, duelists[1].weapon);
+  const winnerPlayerId = outcome === 'A' ? duelists[0].playerId : outcome === 'B' ? duelists[1].playerId : null;
+  duel.lastReveal = {
+    duelists,
+    winnerPlayerId,
+    winnerName: winnerPlayerId ? (room.players.get(winnerPlayerId)?.name ?? null) : null,
+    tie: outcome === 'TIE',
+    tieCount: duel.tieCount,
+  };
+  duel.lock = null;
+
+  room.phase = 'DUEL_REVEAL';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
+  armQuizTimer(room, 'DUEL_REVEAL', REVEAL_DURATION_MS, () => endDuelReveal(room.code));
+  setCrowdMood(room, outcome === 'TIE' ? 'boo' : 'cheer');
+
+  const hostPayload = buildDuelRevealHostPayload(room);
+  if (hostPayload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.DUEL_REVEAL_SHOW, hostPayload);
+  }
+  const playerPayload = buildDuelRevealPayload(room);
+  if (playerPayload) {
+    for (const player of getConnectedPlayers(room)) {
+      io.to(player.socketId).emit(ServerEvents.DUEL_REVEAL_SHOW, playerPayload);
+    }
+  }
+  console.log(
+    `room ${room.code} duel revealed — ${duelists.map((d) => `${d.name}:${d.weapon}${d.assigned ? '(assigned)' : ''}`).join(' vs ')} ` +
+      `-> ${outcome === 'TIE' ? `tie #${duel.tieCount + 1}` : `winner ${duel.lastReveal.winnerName}`}`,
+  );
+}
+
+// Ends the reveal beat exactly once: a tie re-opens the pick window (no
+// cap), a winner takes the temple and the climb ends as for a lone arrival.
+export function endDuelReveal(code: RoomCode): void {
+  const room = getRoom(code);
+  const climb = room?.climb;
+  const duel = climb?.duel;
+  if (!room || !climb || !duel?.lastReveal || room.phase !== 'DUEL_REVEAL') {
+    return;
+  }
+  if (duel.lastReveal.winnerPlayerId === null) {
+    duel.tieCount += 1;
+    startDuel(room, duel.duelistIds);
+    return;
+  }
+  climb.winnerPlayerId = applyClimbDuelResult(duel.duelistIds, duel.lastReveal.winnerPlayerId);
+  endClimb(room);
 }
 
 // The climb is over (a verdict, or the pool running out): Socrates names the

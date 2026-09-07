@@ -17,6 +17,11 @@ import {
   type ClimbRevealHostResult,
   type ClimbRevealPlayerPayload,
   type ClimbStanding,
+  type DuelistStanding,
+  type DuelPickShowHostPayload,
+  type DuelPickShowPlayerPayload,
+  type DuelRevealHostPayload,
+  type DuelRevealPayload,
   type GameOverPayload,
   type GameOverStanding,
   type PlayerSabotageState,
@@ -709,11 +714,24 @@ export function buildClimbRevealHostPayload(room: Room): ClimbRevealHostPayload 
     results,
     winnerPlayerId: climb.winnerPlayerId,
     winnerName: climb.winnerPlayerId ? (room.players.get(climb.winnerPlayerId)?.name ?? null) : null,
+    duelistIds: pendingDuelistIds(room),
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
     standings: computeStandings(room),
   };
+}
+
+// Task 188b - the duel THIS reveal leads into, if any: set the moment the
+// reveal declares it and cleared by nothing (the duel state lives on through
+// GAME_OVER), so it is gated on the phase - only CLIMB_REVEAL with no
+// winner yet means "the duel comes next".
+function pendingDuelistIds(room: Room): [string, string] | null {
+  const climb = room.climb;
+  if (!climb?.duel || climb.winnerPlayerId || room.phase !== 'CLIMB_REVEAL') {
+    return null;
+  }
+  return climb.duel.duelistIds;
 }
 
 // Per phone: the correct answer and THIS player's own round only. A
@@ -739,8 +757,79 @@ export function buildClimbRevealPlayerPayload(room: Room, playerId: string): Cli
     yourStep: own?.stepAfter ?? step,
     winnerPlayerId: climb.winnerPlayerId,
     winnerName: climb.winnerPlayerId ? (room.players.get(climb.winnerPlayerId)?.name ?? null) : null,
+    duelPending: pendingDuelistIds(room) !== null,
+    youDuel: pendingDuelistIds(room)?.includes(playerId) ?? false,
     autoAdvanceMs: remainingActiveTimerMs(room),
     paused: room.paused,
     pausedByName: room.pausedByName,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Η Μονομαχία, the duel (Task 188b)
+// ---------------------------------------------------------------------------
+// The leak rule these four builders exist to keep: NOTHING below reads
+// climb.duel.picks. A weapon reaches a payload only through the reveal's
+// frozen snapshot (duel.lastReveal), which endDuelPick writes after the
+// picks are final.
+
+function duelistStanding(room: Room, playerId: string): DuelistStanding {
+  const player = room.players.get(playerId);
+  return { playerId, name: player?.name ?? '', avatarId: player?.avatarId ?? '' };
+}
+
+// HOST ONLY - the two duelists, WHO has picked (never what), the tie count.
+export function buildDuelPickHostPayload(room: Room): DuelPickShowHostPayload | null {
+  const duel = room.climb?.duel;
+  if (!duel) {
+    return null;
+  }
+  return {
+    duelists: [duelistStanding(room, duel.duelistIds[0]), duelistStanding(room, duel.duelistIds[1])],
+    pickedPlayerIds: Array.from(duel.picks.keys()),
+    tieCount: duel.tieCount,
+    durationMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+    standings: computeStandings(room),
+  };
+}
+
+// Per phone: a duelist's prompt (and its opponent's name), or a spectator's
+// flag. No weapon string in either shape.
+export function buildDuelPickPlayerPayload(room: Room, playerId: string): DuelPickShowPlayerPayload | null {
+  const duel = room.climb?.duel;
+  if (!duel) {
+    return null;
+  }
+  const youDuel = duel.duelistIds.includes(playerId);
+  const opponentId = youDuel ? duel.duelistIds.find((id) => id !== playerId) : undefined;
+  return {
+    youDuel,
+    opponentName: opponentId ? (room.players.get(opponentId)?.name ?? null) : null,
+    picked: duel.picks.has(playerId),
+    tieCount: duel.tieCount,
+    durationMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+// Symmetric: both weapons and the winner, from the frozen snapshot.
+export function buildDuelRevealPayload(room: Room): DuelRevealPayload | null {
+  const duel = room.climb?.duel;
+  if (!duel?.lastReveal) {
+    return null;
+  }
+  return {
+    ...duel.lastReveal,
+    autoAdvanceMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+export function buildDuelRevealHostPayload(room: Room): DuelRevealHostPayload | null {
+  const payload = buildDuelRevealPayload(room);
+  return payload ? { ...payload, standings: computeStandings(room) } : null;
 }

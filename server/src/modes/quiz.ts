@@ -20,6 +20,9 @@ import {
   endTrialReveal,
   endClimbQuestion,
   endClimbReveal,
+  endDuelPick,
+  endDuelReveal,
+  onDuelLockTimer,
   enterQuestionOrPowerUp,
   resolveSteal,
   type QuizTimerKind,
@@ -48,6 +51,9 @@ const QUIZ_PHASES: readonly GamePhase[] = [
   // Task 188a - the climb, the trial's alternative finale (finaleMode).
   'CLIMB_QUESTION',
   'CLIMB_REVEAL',
+  // Task 188b - the climb's duel.
+  'DUEL_PICK',
+  'DUEL_REVEAL',
   'GAME_OVER',
 ];
 
@@ -72,6 +78,11 @@ export const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
   // Task 188a - the climb's two timers, so a pause mid-climb resumes.
   CLIMB_QUESTION: (room) => endClimbQuestion(room.code),
   CLIMB_REVEAL: (room) => endClimbReveal(room.code),
+  // Task 188b - the duel's three timers: the pick window, the early-lock
+  // floor/backstop (one kind, two stages - see onDuelLockTimer), the reveal.
+  DUEL_PICK: (room) => endDuelPick(room.code),
+  DUEL_LOCKED: (room) => onDuelLockTimer(room.code),
+  DUEL_REVEAL: (room) => endDuelReveal(room.code),
 };
 
 export const quizMode: GameMode = {

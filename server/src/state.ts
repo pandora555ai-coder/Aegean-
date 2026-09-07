@@ -1,6 +1,8 @@
 import {
   type AudioVolumePayload,
   type ClimbRevealHostResult,
+  type DuelRevealPayload,
+  type DuelWeapon,
   type CrowdIntensityContext,
   type CrowdMood,
   type GameModeId,
@@ -168,13 +170,31 @@ export interface ClimbState {
   lockIns: Map<string, TrialLockIn>; // THIS question only, cleared each round
   roundsPlayed: number;
   // Set once, by the reveal that ends the climb (one arrival at CLIMB_TOP,
-  // or the provisional fastest-of-several until 188b's duel lands).
+  // the highest step at the round cap, or the duel's winner - Task 188b).
   winnerPlayerId: string | null;
   // The last reveal's scored rounds, frozen the instant the round resolved
   // (state:sync replays it) - and the tie-break GAME_OVER's step order
   // reads answerRank from.
   lastResults: ClimbRevealHostResult[] | null;
   lastCorrectIndex: number | null;
+  // Task 188b - Η Μονομαχία in flight, null until a reveal sends two
+  // players to it; stays set through GAME_OVER (the reveal snapshot is what
+  // a state:sync mid-DUEL_REVEAL replays).
+  duel: ClimbDuelState | null;
+}
+
+// Task 188b - the duel. Picks live HERE and nowhere else until DUEL_REVEAL:
+// no payload builder reads `picks` before `lastReveal` is frozen.
+export interface ClimbDuelState {
+  duelistIds: [string, string];
+  picks: Map<string, { weapon: DuelWeapon; assigned: boolean }>; // THIS pick round only
+  tieCount: number; // same-weapon rounds so far
+  // The early-lock beat (second pick landed): the reveal waits for BOTH the
+  // DUEL_LOCK_FLOOR_MS floor and, when a line fired, the host's audio_ended.
+  lock: { floorPassed: boolean; awaitingAudio: boolean; audioEnded: boolean } | null;
+  // Frozen by the reveal, replayed by state:sync. autoAdvanceMs/paused/
+  // pausedByName/standings are always read live.
+  lastReveal: Omit<DuelRevealPayload, 'autoAdvanceMs' | 'paused' | 'pausedByName'> | null;
 }
 
 // Task 48 - the line currently held by a SOCRATES beat that ISN'T a

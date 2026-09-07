@@ -22,18 +22,20 @@
 //   --t-sd MS           lock-in time spread, ms (4000); clamped to [500, timer]
 //   --seed N            RNG seed (default 184)
 //   --finale trial|climb  which finale mechanic to simulate (Task 187; default trial)
+//   --cap N             climb only: round cap to simulate (default CLIMB_MAX_ROUNDS;
+//                       a high value shows the uncapped tail - Task 188b calibration)
 //   --json              print the aggregate as JSON instead of prose
 
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { CLIMB_TOP, DEFAULT_ROOM_SETTINGS, TRIAL_MAX_QUESTIONS, climbEntryStep, type Player } from '@game/shared';
+import { CLIMB_MAX_ROUNDS, CLIMB_TOP, DEFAULT_ROOM_SETTINGS, TRIAL_MAX_QUESTIONS, climbEntryStep, type Player } from '@game/shared';
 import { initRealtime } from '../src/realtime.js';
 import '../src/modes/index.js';
 import { createRoom, deleteRoom, type Room } from '../src/state.js';
 import { installTimerClock, type TimerClock } from '../src/timers.js';
 import { endTrialQuestion, startTrial, submitTrialAnswer } from '../src/phases.js';
 import { computeCompetitionRanks } from '../src/payloads.js';
-import { applyClimbRound, nextAfterClimbRound, type ClimbRoundEntry } from '../src/climb.js';
+import { applyClimbRound, nextAfterClimbRound, resolveClimbAtCap, type ClimbRoundEntry } from '../src/climb.js';
 
 // ---------------------------------------------------------------------------
 // Virtual clock - the injected TimerClock. Timers queue up in virtual time and
@@ -128,6 +130,7 @@ interface Config {
   // phase machine exactly as before; 'climb' calls climb.ts's pure
   // functions directly (there is no phase machine for it yet).
   finale: 'trial' | 'climb';
+  cap: number;
   json: boolean;
 }
 
@@ -145,6 +148,7 @@ function parseArgs(argv: string[]): Config {
     tSdMs: 4000,
     seed: 184,
     finale: 'trial',
+    cap: CLIMB_MAX_ROUNDS,
     json: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -199,6 +203,10 @@ function parseArgs(argv: string[]): Config {
           throw new Error(`--finale must be 'trial' or 'climb', got '${value}'`);
         }
         cfg.finale = value;
+        i++;
+        break;
+      case '--cap':
+        cfg.cap = Number(value);
         i++;
         break;
       case '--json':
@@ -404,7 +412,10 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
 // ---------------------------------------------------------------------------
 interface ClimbRunResult {
   rounds: number;
-  outcome: 'winner' | 'duel' | 'cap';
+  // Task 188b - 'cap-winner'/'cap-duel' are the round cap's two verdicts
+  // (highest step alone / shared highest step -> duel), resolved by
+  // climb.ts's resolveClimbAtCap exactly as the phase machine does.
+  outcome: 'winner' | 'duel' | 'cap-winner' | 'cap-duel';
   winnerId: string | null;
   duelPlayerIds: [string, string] | null;
   duelWasThreeWayPlus: boolean;
@@ -413,7 +424,6 @@ interface ClimbRunResult {
   anomalies: string[];
 }
 
-const CLIMB_ROUND_CAP = 60;
 
 function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
   const anomalies: string[] = [];
@@ -443,12 +453,12 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
   }
 
   let rounds = 0;
-  let outcome: ClimbRunResult['outcome'] = 'cap';
+  let outcome: ClimbRunResult['outcome'] | null = null;
   let winnerId: string | null = null;
   let duelPlayerIds: [string, string] | null = null;
   let duelWasThreeWayPlus = false;
 
-  while (rounds < CLIMB_ROUND_CAP) {
+  while (outcome === null) {
     rounds += 1;
     const correctIndex = 0; // arbitrary and fixed - only correctness (via pCorrect) matters, not which option
 
@@ -484,17 +494,21 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
       duelWasThreeWayPlus = arrivalCount > 2;
       break;
     }
-  }
-  if (outcome === 'cap') {
-    anomalies.push(`round cap (${CLIMB_ROUND_CAP}) hit with no winner or duel`);
+    if (rounds >= cfg.cap) {
+      // Task 188b - the cap: same resolver the phase machine calls.
+      const verdict = resolveClimbAtCap(results);
+      for (const result of results) steps.set(result.playerId, result.stepAfter);
+      if (verdict.kind === 'WINNER') {
+        outcome = 'cap-winner';
+        winnerId = verdict.winnerPlayerId;
+      } else {
+        outcome = 'cap-duel';
+        duelPlayerIds = verdict.playerIds;
+      }
+    }
   }
 
-  const comeback =
-    outcome === 'winner'
-      ? winnerId !== entryLeader.playerId
-      : outcome === 'duel'
-        ? !duelPlayerIds!.includes(entryLeader.playerId)
-        : false;
+  const comeback = winnerId !== null ? winnerId !== entryLeader.playerId : !duelPlayerIds!.includes(entryLeader.playerId);
 
   return {
     rounds,
@@ -516,6 +530,14 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Task 188b - nearest-rank percentile (p in 0..100), for the p99 the round
+// cap is calibrated against.
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))];
 }
 
 function runTrialBatch(cfg: Config): void {
@@ -613,16 +635,23 @@ function runClimbBatch(cfg: Config): void {
   const winners = results.filter((r) => r.outcome === 'winner');
   const duels = results.filter((r) => r.outcome === 'duel');
   const threeWayPlus = duels.filter((r) => r.duelWasThreeWayPlus);
-  const capHits = results.filter((r) => r.outcome === 'cap');
+  const capWinners = results.filter((r) => r.outcome === 'cap-winner');
+  const capDuels = results.filter((r) => r.outcome === 'cap-duel');
   const summary = {
     config: cfg,
     runs: results.length,
     roundsMedian: median(results.map((r) => r.rounds)),
+    roundsP90: percentile(results.map((r) => r.rounds), 90),
+    roundsP95: percentile(results.map((r) => r.rounds), 95),
+    roundsP99: percentile(results.map((r) => r.rounds), 99),
+    roundsMax: Math.max(...results.map((r) => r.rounds)),
     winnerCount: winners.length,
     duelCount: duels.length,
     twoWayDuelCount: duels.length - threeWayPlus.length,
     threeWayPlusCount: threeWayPlus.length,
-    capHitCount: capHits.length,
+    capHitCount: capWinners.length + capDuels.length,
+    capWinnerCount: capWinners.length,
+    capDuelCount: capDuels.length,
     comebackCount: results.filter((r) => r.comeback).length,
     comebackPct: (100 * results.filter((r) => r.comeback).length) / results.length,
     anomalies: results.flatMap((r, i) => r.anomalies.map((a) => `run ${i + 1}: ${a}`)),
@@ -637,7 +666,9 @@ function runClimbBatch(cfg: Config): void {
     `climb monte carlo — ${summary.runs} runs, ${cfg.players} players, entry ${cfg.entryLo}-${cfg.entryHi}, ` +
       `pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
       `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
-    `rounds to resolution: median ${summary.roundsMedian ?? 'n/a'}; cap (${CLIMB_ROUND_CAP}) hit: ${summary.capHitCount}`,
+    `rounds to resolution: median ${summary.roundsMedian ?? 'n/a'}, p90 ${summary.roundsP90 ?? 'n/a'}, p95 ${summary.roundsP95 ?? 'n/a'}, ` +
+      `p99 ${summary.roundsP99 ?? 'n/a'}, max ${summary.roundsMax}; ` +
+      `cap (${cfg.cap}) hit: ${summary.capHitCount} (highest step ${summary.capWinnerCount}, cap-tie duel ${summary.capDuelCount})`,
     `outcome: single winner ${summary.winnerCount}, duel ${summary.duelCount} (2-way ${summary.twoWayDuelCount}, ` +
       `3+-way collapsed to duel ${summary.threeWayPlusCount})`,
     `comebacks (winner/duel excludes entry leader): ${summary.comebackCount}/${summary.runs} (${summary.comebackPct.toFixed(1)}%)`,

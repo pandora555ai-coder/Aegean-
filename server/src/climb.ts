@@ -75,21 +75,45 @@ export function nextAfterClimbRound(results: ClimbRevealResult[]): ClimbNext {
   if (arrivals.length === 1) {
     return { kind: 'WINNER', winnerPlayerId: arrivals[0].playerId };
   }
-  // Two or more arrived in the same reveal: the two fastest lock-ins duel
-  // for the temple. Anyone past the top two is held one step below it -
-  // still very much alive, not eliminated; they simply weren't fast enough
-  // to be one of the two who settle it.
-  const sorted = [...arrivals].sort((a, b) => (a.answerRank ?? Infinity) - (b.answerRank ?? Infinity));
+  return pickDuelists(arrivals, CLIMB_TOP);
+}
+
+// Task 188b - THE one tie-break, shared by the two-arrival reveal above and
+// the round cap below: of everyone standing on the contested step, the two
+// fastest by the final round's answerRank duel for the temple (a null rank -
+// no correct lock-in that round - sorts last; equal ranks keep the given
+// order, i.e. join order). Anyone past the top two is held one step below
+// the contested step IN PLACE (stepAfter is rewritten) - still very much
+// alive, not eliminated; they simply weren't fast enough to be one of the
+// two who settle it.
+function pickDuelists(occupants: ClimbRevealResult[], contestedStep: number): Extract<ClimbNext, { kind: 'DUEL' }> {
+  const sorted = [...occupants].sort((a, b) => (a.answerRank ?? Infinity) - (b.answerRank ?? Infinity));
   for (const held of sorted.slice(2)) {
-    held.stepAfter = CLIMB_TOP - 1;
+    held.stepAfter = contestedStep - 1;
   }
   return { kind: 'DUEL', playerIds: [sorted[0].playerId, sorted[1].playerId] };
 }
 
-// The duel itself (rock-paper-scissors, best-of-N, whatever it becomes) is
-// explicitly NOT this task - only what happens once it resolves: the winner
-// takes the temple. Validates the winner really was one of the two
-// duelists; returns their id for the caller to record as the game's winner.
+// Task 188b - the verdict at the round cap (CLIMB_MAX_ROUNDS), or at pool
+// exhaustion, the second guard: the highest step wins outright; a shared
+// highest step is settled by pickDuelists over its occupants, using the
+// FINAL round's results (the same rows the last reveal scored, so held
+// occupants are rewritten there too). Never CONTINUE: the climb is over
+// either way. Callers pass the last round's results, which must cover every
+// climber (endClimbQuestion scores everyone, lock-in or not).
+export function resolveClimbAtCap(finalRoundResults: ClimbRevealResult[]): Exclude<ClimbNext, { kind: 'CONTINUE' }> {
+  const highest = Math.max(...finalRoundResults.map((result) => result.stepAfter));
+  const occupants = finalRoundResults.filter((result) => result.stepAfter === highest);
+  if (occupants.length === 1) {
+    return { kind: 'WINNER', winnerPlayerId: occupants[0].playerId };
+  }
+  return pickDuelists(occupants, highest);
+}
+
+// What happens once the duel resolves: the winner takes the temple.
+// Validates the winner really was one of the two duelists; returns their id
+// for the caller to record as the game's winner. The duel's own mechanic
+// (one weapon each, duelOutcome in shared) lives in the phase shell.
 export function applyClimbDuelResult(duelPlayerIds: readonly [string, string], winnerPlayerId: string): string {
   if (winnerPlayerId !== duelPlayerIds[0] && winnerPlayerId !== duelPlayerIds[1]) {
     throw new Error(`climb duel winner ${winnerPlayerId} was not one of the duelists ${duelPlayerIds.join(', ')}`);

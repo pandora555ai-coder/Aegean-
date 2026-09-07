@@ -69,6 +69,8 @@ import {
   endPowerUp,
   endTrialReveal,
   endClimbReveal,
+  endDuelReveal,
+  onDuelAudioEnded,
   advanceFromReveal,
   advanceFromSteal,
   recheckTrialPhaseOnDisconnect,
@@ -76,6 +78,7 @@ import {
   resolveSteal,
   submitTrialAnswer,
   submitClimbAnswer,
+  submitDuelPick,
 } from './phases.js';
 // Task 52 - importing the barrel is what REGISTERS every game mode, so it
 // must stay even if only these two names are used.
@@ -130,6 +133,10 @@ import {
   buildClimbQuestionPlayerPayload,
   buildClimbRevealHostPayload,
   buildClimbRevealPlayerPayload,
+  buildDuelPickHostPayload,
+  buildDuelPickPlayerPayload,
+  buildDuelRevealHostPayload,
+  buildDuelRevealPayload,
   buildGameOver,
   buildQuestionHostSabotage,
   computeStandings,
@@ -370,6 +377,16 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildClimbRevealPlayerPayload(room, playerId);
       return payload ? { ...payload, phase: 'CLIMB_REVEAL' } : null;
     }
+    // Task 188b - the climb's duel: a duelist's prompt (with whether it
+    // already picked) or a spectator's flag; the reveal is symmetric.
+    case 'DUEL_PICK': {
+      const payload = buildDuelPickPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'DUEL_PICK', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'DUEL_REVEAL': {
+      const payload = buildDuelRevealPayload(room);
+      return payload ? { ...payload, phase: 'DUEL_REVEAL' } : null;
+    }
     // Task 156 - the blitz mode, same reasoning as every phase above: the
     // phone gets its texts back plus how far IT already got, read live.
     case 'BLITZ': {
@@ -487,6 +504,15 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'CLIMB_REVEAL': {
       const payload = buildClimbRevealHostPayload(room);
       return payload ? { ...payload, phase: 'CLIMB_REVEAL' } : null;
+    }
+    // Task 188b - the climb's duel, same shapes.
+    case 'DUEL_PICK': {
+      const payload = buildDuelPickHostPayload(room);
+      return payload ? { ...payload, phase: 'DUEL_PICK', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'DUEL_REVEAL': {
+      const payload = buildDuelRevealHostPayload(room);
+      return payload ? { ...payload, phase: 'DUEL_REVEAL' } : null;
     }
     // Task 156 - the blitz mode, same builder-plus-remainingMs shape.
     case 'BLITZ': {
@@ -1144,8 +1170,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 188b - the duel's reveal, same skip; DUEL_PICK is not skippable
+    // (it would assign weapons to duelists still choosing).
+    if (room.phase === 'DUEL_REVEAL') {
+      console.log(`room ${room.code} skipped past duel reveal (VIP)`);
+      endDuelReveal(room.code);
+      return;
+    }
+
     console.log(
-      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES, TRIAL_REVEAL or CLIMB_REVEAL`,
+      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES, TRIAL_REVEAL, CLIMB_REVEAL or DUEL_REVEAL`,
     );
   });
 
@@ -1158,6 +1192,14 @@ io.on('connection', (socket) => {
   socket.on(ClientEvents.SOCRATES_AUDIO_ENDED, () => {
     const room = getHostRoomForSocket(socket, ClientEvents.SOCRATES_AUDIO_ENDED);
     if (!room) {
+      return;
+    }
+    // Task 188b - the duel's early-lock beat plays its line INSIDE
+    // DUEL_PICK (the phase never changes), so its audio_ended is routed to
+    // the duel rather than rejected. Today the pool is empty and this branch
+    // only ever sees an ack for a line that never fired - a no-op there.
+    if (room.phase === 'DUEL_PICK') {
+      onDuelAudioEnded(room);
       return;
     }
     if (room.phase !== 'SOCRATES') {
@@ -1294,6 +1336,22 @@ io.on('connection', (socket) => {
       return;
     }
     socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
+  });
+
+  // Task 188b - a duelist's weapon pick. Every rule lives in submitDuelPick,
+  // which also locks the duel once both picks are in. The ack carries no
+  // weapon: the phone already knows what it pressed, and the wire stays
+  // clean of both picks until DUEL_REVEAL.
+  socket.on(ClientEvents.DUEL_PICK, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.DUEL_PICK);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitDuelPick(room, playerId, payload?.weapon)) {
+      console.log(`rejected ${ClientEvents.DUEL_PICK} from player ${playerId} in room ${room.code}`);
+      return;
+    }
   });
 
   // Task 156 - the blitz mode. All validation (phase, pause, next-index

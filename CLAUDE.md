@@ -249,10 +249,30 @@ draws from the unused pool, runs CLIMB_QUESTION (CLIMB_QUESTION_TIME_MS =
 table, and ends at GAME_OVER with `isTrialResult: true` (steps are not
 scores; no digits). Steps live in room.climb.steps, NEVER player.score; the
 mechanic is climb.ts (Task 187). CLIMB_REVEAL is ASYMMETRIC (host gets every
-row, a phone only its own `your*` fields) — unlike TRIAL_REVEAL. Until 188b's
-duel lands, two arrivals in one reveal are settled provisionally by
-answerRank (TODO(188b) in endClimbQuestion). No client view exists yet
-(189/190) — the TV/phone render nothing for CLIMB_* today.
+row, a phone only its own `your*` fields) — unlike TRIAL_REVEAL. Two
+arrivals in one reveal go to the duel below. No client view exists yet
+(189/190) — the TV/phone render nothing for CLIMB_* or DUEL_* today.
+**Η Μονομαχία (Task 188b) is the climb's duel**, two more quiz phases
+DUEL_PICK -> DUEL_REVEAL. Trigger: two arrivals at CLIMB_TOP in one reveal
+(3+: the two fastest duel, the rest are held at TOP−1), OR a shared highest
+step at the round cap — CLIMB_MAX_ROUNDS = 16 (shared) ends the climb even
+with questions left; pool exhaustion is a second guard the same resolver
+(resolveClimbAtCap) serves. ONE tie-break everywhere: climb.ts's
+pickDuelists, by the final round's answerRank. Weapons xifos > dory >
+aspida > xifos (duelOutcome, shared). Picks live in room.climb.duel.picks
+and are SERVER-SIDE ONLY until DUEL_REVEAL — no builder reads `picks`; the
+reveal payload comes from the frozen duel.lastReveal. DUEL_PICK is 20s
+(DUEL_PICK_TIME_MS) on the quiz continuations table; the second pick fires
+the host-only `duel:locked` beat and re-arms the timer as 'DUEL_LOCKED'
+(DUEL_LOCK_FLOOR_MS = 2000, then the audio backstop only if a line fired —
+DUEL_LINES.DUEL_LOCKED is EMPTY by design, the 138 pattern, so the floor
+alone carries it; `socrates:audio_ended` during DUEL_PICK routes to
+onDuelAudioEnded). Timeout assigns a uniform-random weapon flagged
+`assigned: true`. Same weapon = tie: DUEL_PICK again, no cap, tieCount in
+the host payload. Bots pick at random after 400–1500ms. The Monte Carlo
+harness measures p99 rounds-to-verdict at exactly the cap (uncapped p99 is
+21, cap fires ~5% of runs at 0.7/0.5 skill) — a calibration finding, not a
+bug; `--cap N` shows the uncapped tail. No client view yet.
 A trial GAME_OVER shows NO digits — no rank, no score — gated on
 `gameOver.isTrialResult` (SophistsRow's hideScores; GameOverView has no
 list at all since 161); standings are SURVIVAL order (winner, then reverse

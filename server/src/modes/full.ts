@@ -67,6 +67,9 @@ const FULL_PHASES: readonly GamePhase[] = [
   // Task 188a - or the climb, when finaleMode is 'climb'.
   'CLIMB_QUESTION',
   'CLIMB_REVEAL',
+  // Task 188b - the climb's duel.
+  'DUEL_PICK',
+  'DUEL_REVEAL',
   'GAME_OVER',
 ];
 

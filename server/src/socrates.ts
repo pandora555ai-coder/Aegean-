@@ -57,6 +57,11 @@ export type IntroMoment = 'FINAL_QUESTION' | 'HALFWAY_POINT' | 'CATEGORY_CALLOUT
 // bookkeeping and the `pickLine` weighting logic every pool already uses.
 export type DrawMoment = 'DRAW_INTRO' | 'NOBODY_GUESSED' | 'EVERYBODY_GUESSED' | 'SPLIT_GUESS' | 'DRAW_WINNER';
 export type NumericMoment = 'EXACT_HIT' | 'WILDLY_OFF' | 'ALL_CLUSTERED' | 'NOBODY_CLOSE';
+// Task 188b - the climb duel's one beat: the second weapon pick just landed
+// (DUEL_LOCKED). Detection-only for now, the Task 138 pattern - the pool
+// below is EMPTY (D1 blocks new lines), so the beat stays silent and the
+// DUEL_LOCK_FLOOR_MS floor carries it.
+export type DuelMoment = 'DUEL_LOCKED';
 
 // 0 = HIGH (bypasses cooldown), 1 = MEDIUM, 2 = LOW.
 type Priority = 0 | 1 | 2;
@@ -119,7 +124,7 @@ export interface SocratesState {
   // loosely enough (not just `Moment`) that the draw/numeric detectors below
   // share the exact same cap and the exact same map - one room, one game,
   // one set of moment budgets, regardless of which mode is running.
-  momentFireCounts: Map<Moment | DrawMoment | NumericMoment, number>;
+  momentFireCounts: Map<Moment | DrawMoment | NumericMoment | DuelMoment, number>;
 }
 
 export function createSocratesState(): SocratesState {
@@ -529,6 +534,13 @@ export const DRAW_LINES: Record<DrawMoment, readonly string[]> = {
     'Ένα χέρι σήμερα ήταν πιο πειστικό από κάθε επιχείρημα που ακούστηκε εδώ. Κρατήστε το υπόψη όταν έρθει η ώρα να με πείσετε.',
     "Ο νικητής αυτού του γύρου δεν φώναξε και δεν επιχειρηματολόγησε. Απλώς έγινε κατανοητός, και αυτό είναι σπανιότερο απ' όσο νομίζετε.",
   ],
+};
+
+// Task 188b - empty by design (see DuelMoment). Writing a line here makes the
+// early-lock beat audible with no other change: phases.ts already waits for
+// the host's audio_ended once a line fires.
+export const DUEL_LINES: Record<DuelMoment, readonly string[]> = {
+  DUEL_LOCKED: [],
 };
 
 export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
@@ -1550,6 +1562,26 @@ export function recordNumericRoundAndPickLine(state: SocratesState, context: Num
   return null;
 }
 
+// Task 188b - called once per duel lock (the second pick landing). Detection
+// logs unconditionally; the pool is empty today, so this returns null and the
+// beat stays silent - exactly the draw/numeric shape above.
+export function recordDuelLockedAndPickLine(state: SocratesState, duelistNames: [string, string]): PickedLine | null {
+  const moment: DuelMoment = 'DUEL_LOCKED';
+  logDrawNumericDetection('duel', moment, `duelists=${JSON.stringify(duelistNames)}`);
+  if ((state.momentFireCounts.get(moment) ?? 0) >= MOMENT_FIRE_CAP) {
+    return null;
+  }
+  const line = pickLine(state, DUEL_LINES[moment], {});
+  if (!line) {
+    return null; // pool empty by design - detection was still logged above
+  }
+  state.momentFireCounts.set(moment, (state.momentFireCounts.get(moment) ?? 0) + 1);
+  if (!isProduction) {
+    console.log(`[socrates] fired moment=${moment} lineHash=${lineHash(line.template, line.tag)}`);
+  }
+  return line;
+}
+
 // Task 61, dev-only: called once at GAME_OVER. Prints every Moment from
 // LINES (so rarer moments that never fired still show up as 0) alongside
 // how many times it actually got picked this game - the whole point being
@@ -1618,6 +1650,9 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
     add(moment, pool);
   }
   for (const [moment, pool] of Object.entries(NUMERIC_LINES)) {
+    add(moment, pool);
+  }
+  for (const [moment, pool] of Object.entries(DUEL_LINES)) {
     add(moment, pool);
   }
   return entries;
