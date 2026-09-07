@@ -18,6 +18,8 @@ import {
   endStageAnnounce,
   endTrialQuestion,
   endTrialReveal,
+  endClimbQuestion,
+  endClimbReveal,
   enterQuestionOrPowerUp,
   resolveSteal,
   type QuizTimerKind,
@@ -43,6 +45,9 @@ const QUIZ_PHASES: readonly GamePhase[] = [
   // question run (advanceToNextQuestionOrGameOver) and lead to GAME_OVER.
   'TRIAL_QUESTION',
   'TRIAL_REVEAL',
+  // Task 188a - the climb, the trial's alternative finale (finaleMode).
+  'CLIMB_QUESTION',
+  'CLIMB_REVEAL',
   'GAME_OVER',
 ];
 
@@ -64,6 +69,9 @@ export const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
   SOCRATES: (room) => advanceFromSocrates(room.code),
   TRIAL_QUESTION: (room) => endTrialQuestion(room.code),
   TRIAL_REVEAL: (room) => endTrialReveal(room.code),
+  // Task 188a - the climb's two timers, so a pause mid-climb resumes.
+  CLIMB_QUESTION: (room) => endClimbQuestion(room.code),
+  CLIMB_REVEAL: (room) => endClimbReveal(room.code),
 };
 
 export const quizMode: GameMode = {

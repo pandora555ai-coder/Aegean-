@@ -1,5 +1,6 @@
 import {
   type AudioVolumePayload,
+  type ClimbRevealHostResult,
   type CrowdIntensityContext,
   type CrowdMood,
   type GameModeId,
@@ -17,6 +18,7 @@ import {
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
+  FINALE_MODE_OPTIONS,
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
@@ -150,6 +152,31 @@ export interface TrialState {
   lastReveal: Omit<TrialRevealShowPayload, 'autoAdvanceMs' | 'paused' | 'pausedByName' | 'standings'> | null;
 }
 
+// The climb finale in flight (Task 188a) - the TrialState shape, minus what
+// the climb has no need of (no life, no elimination, no sudden death: nobody
+// exits the ladder, falling behind IS the punishment). Null until the finale
+// begins, then set through GAME_OVER, since it holds the verdict. Steps live
+// HERE, never in player.score: a step is not a score, and GAME_OVER shows no
+// digits for this finale.
+export interface ClimbState {
+  questions: Question[];
+  questionIndex: number; // -1 until the first climb question starts
+  // Everyone in the race (connected at finale entry), in join order. Never
+  // shrinks - the climb has no elimination.
+  climberIds: string[];
+  steps: Map<string, number>; // current step per climber, entry steps at start
+  lockIns: Map<string, TrialLockIn>; // THIS question only, cleared each round
+  roundsPlayed: number;
+  // Set once, by the reveal that ends the climb (one arrival at CLIMB_TOP,
+  // or the provisional fastest-of-several until 188b's duel lands).
+  winnerPlayerId: string | null;
+  // The last reveal's scored rounds, frozen the instant the round resolved
+  // (state:sync replays it) - and the tie-break GAME_OVER's step order
+  // reads answerRank from.
+  lastResults: ClimbRevealHostResult[] | null;
+  lastCorrectIndex: number | null;
+}
+
 // Task 48 - the line currently held by a SOCRATES beat that ISN'T a
 // REVEAL-moment commentary (those keep using RevealSnapshot.socratesLine*
 // above, untouched). Set right before the phase begins, read by
@@ -265,6 +292,9 @@ export interface Room {
   // `steal` this is NOT cleared when its phase ends: it stays set through
   // GAME_OVER, since it holds who the trial declared the winner.
   trial: TrialState | null;
+  // Task 188a - the climb finale, the trial's alternative (finaleMode
+  // 'climb'). Same lifetime as `trial`: at most one of the two is ever set.
+  climb: ClimbState | null;
   // Crowd mood (Task 35) - server-derived, HOST ONLY. See server/src/crowd.ts.
   crowdMood: CrowdMood;
   // The mid-QUESTION timer that switches crowdMood to 'tension' for the last
@@ -350,6 +380,7 @@ export function createRoom(hostSocketId: string): Room {
     pendingPowerUpByTarget: new Map(),
     steal: null,
     trial: null,
+    climb: null,
     crowdMood: 'calm',
     crowdTensionTimer: null,
     drawWarningTimer: null,
@@ -467,6 +498,11 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   // fields above; still validated by type rather than trusting the client.
   if (typeof partial.powerUpsEnabled === 'boolean') {
     room.settings.powerUpsEnabled = partial.powerUpsEnabled;
+  }
+  // Task 188a - which finale ends the game; an enum from an options list,
+  // validated like every field above.
+  if (partial.finaleMode !== undefined && FINALE_MODE_OPTIONS.includes(partial.finaleMode)) {
+    room.settings.finaleMode = partial.finaleMode;
   }
   return room.settings;
 }
@@ -705,6 +741,7 @@ export function resetRoomForNewGame(room: Room): void {
   // Nor last game's trial - including whoever it crowned, which finishGame
   // would otherwise still be reading at the NEXT game's GAME_OVER.
   room.trial = null;
+  room.climb = null;
   // Fresh game, fresh crowd - back to calm, and no leftover tension timer
   // from whatever question was in flight when this reset was triggered.
   room.crowdMood = 'calm';

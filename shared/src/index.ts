@@ -53,6 +53,10 @@ export const ClientEvents = {
   // order and no per-question `answers` map, and what the server records is
   // an elapsed-at-lock-in figure the quiz's own handler has no use for.
   TRIAL_SUBMIT: 'player:trial_submit',
+  // Task 188a - the climb finale's lock-in. Its own event for the same reason
+  // TRIAL_SUBMIT is: the server records a pause-aware elapsed figure, and the
+  // phase guard is CLIMB_QUESTION, not QUESTION.
+  CLIMB_SUBMIT: 'player:climb_submit',
   // Task 156 - the blitz mode. One swipe per statement, in order: the phone
   // sends the statement's index and which way it went; the server stamps
   // it, checks it is the NEXT expected index (no going back, no skipping)
@@ -118,6 +122,13 @@ export const ServerEvents = {
   // lock-in and every drain are safe to send.
   TRIAL_QUESTION_SHOW: 'trial_question:show',
   TRIAL_REVEAL_SHOW: 'trial_reveal:show',
+  // Task 188a - the climb finale. CLIMB_QUESTION is asymmetric like
+  // trial_question:show (the TV gets the question and every step; a phone
+  // gets the options and its OWN step), and - unlike trial_reveal:show -
+  // CLIMB_REVEAL is asymmetric too: the TV gets every player's step, delta
+  // and fastest flag, a phone gets only its own step and delta.
+  CLIMB_QUESTION_SHOW: 'climb_question:show',
+  CLIMB_REVEAL_SHOW: 'climb_reveal:show',
   // Task 66 - host-only progress ticker, same contract as draw:progress: WHO
   // has locked in, never what they guessed.
   // Task 156 - the blitz mode. BLITZ_SHOW is asymmetric like question:show
@@ -441,6 +452,12 @@ export type GamePhase =
   // stage, and left only for GAME_OVER.
   | 'TRIAL_QUESTION'
   | 'TRIAL_REVEAL'
+  // Task 188a - the CLIMB finale (Task 187's mechanic), the alternative to
+  // the trial when room.settings.finaleMode is 'climb': same four-option
+  // questions, but a race up CLIMB_TOP steps instead of a life drain.
+  // Reached from the same site as the trial and left only for GAME_OVER.
+  | 'CLIMB_QUESTION'
+  | 'CLIMB_REVEAL'
   // Task 156 - the 'blitz' mode's own phases: everyone swipes through the
   // same K true/false statements at their own pace, then one reveal.
   | 'BLITZ'
@@ -561,6 +578,14 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
     case 'TRIAL_QUESTION':
     case 'TRIAL_REVEAL':
       result = { value: Math.min(0.9, 0.4 + 0.5 * ((ctx.round ?? 1) / 16)), rampMs: 800 };
+      break;
+    // Task 188a - the climb: a QUESTION-style ramp across its own (22s)
+    // timer, a notch above the quiz's, then a step down for the reveal.
+    case 'CLIMB_QUESTION':
+      result = { value: 0.75, from: 0.3, rampMs: ctx.timerDurationMs ?? CLIMB_QUESTION_TIME_MS };
+      break;
+    case 'CLIMB_REVEAL':
+      result = { value: 0.35, rampMs: 800 };
       break;
     case 'BLITZ':
       result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? BLITZ_DURATION_MS };
@@ -1188,7 +1213,15 @@ export type RoomSettings = {
   // this is also true. The sabotage machinery itself (ice/ink gates, the
   // host `sabotage` field, the FX) is untouched either way.
   powerUpsEnabled: boolean;
+  // Task 188a - which finale follows the last quiz question (see
+  // advanceToNextQuestionOrGameOver in server/src/phases.ts, the ONE site
+  // that branches on it): Η Δίκη's life drain, or the climb's step race.
+  // The 177 pattern - machinery on, default off ('trial').
+  finaleMode: FinaleMode;
 };
+
+export type FinaleMode = 'trial' | 'climb';
+export const FINALE_MODE_OPTIONS: readonly FinaleMode[] = ['trial', 'climb'];
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   questionTimeMs: 20000,
@@ -1197,6 +1230,9 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
+  // Task 188a - the climb is a prototype; the trial stays the finale unless
+  // the VIP opts in.
+  finaleMode: 'trial',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,
@@ -1651,6 +1687,18 @@ export type StateSyncTrialQuestionPlayerPayload = TrialQuestionShowPlayerPayload
   remainingMs: number;
 };
 export type StateSyncTrialRevealPayload = TrialRevealShowPayload & { phase: 'TRIAL_REVEAL' };
+// Task 188a - the climb finale, same conventions as the trial's above; the
+// reveal is asymmetric here, so it has a host and a player shape.
+export type StateSyncClimbQuestionHostPayload = ClimbQuestionShowHostPayload & {
+  phase: 'CLIMB_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncClimbQuestionPlayerPayload = ClimbQuestionShowPlayerPayload & {
+  phase: 'CLIMB_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncClimbRevealHostPayload = ClimbRevealHostPayload & { phase: 'CLIMB_REVEAL' };
+export type StateSyncClimbRevealPlayerPayload = ClimbRevealPlayerPayload & { phase: 'CLIMB_REVEAL' };
 // Task 156 - the blitz mode, same builder-plus-remainingMs shape. durationMs
 // in both BLITZ payloads is already "time STILL LEFT" (see BlitzShowHostPayload).
 export type StateSyncBlitzHostPayload = BlitzShowHostPayload & { phase: 'BLITZ'; remainingMs: number };
@@ -1683,6 +1731,10 @@ export type StateSyncPayload =
   | StateSyncTrialQuestionHostPayload
   | StateSyncTrialQuestionPlayerPayload
   | StateSyncTrialRevealPayload
+  | StateSyncClimbQuestionHostPayload
+  | StateSyncClimbQuestionPlayerPayload
+  | StateSyncClimbRevealHostPayload
+  | StateSyncClimbRevealPlayerPayload
   | StateSyncBlitzHostPayload
   | StateSyncBlitzPlayerPayload
   | StateSyncBlitzRevealHostPayload
@@ -2201,6 +2253,123 @@ export interface ClimbRevealResult {
   stepBefore: number;
   delta: number; // +2 fastest correct, +1 other correct, -1 wrong, -2 no answer
   stepAfter: number; // max(0, stepBefore + delta) - floored, never negative
+}
+
+// ------------------ Climb finale phase wiring (Task 188a) ------------------
+// The climb's own question timer - fixed, NOT room.settings.questionTimeMs:
+// the finale's pace is part of the mechanic Task 187 calibrated, not a VIP
+// knob.
+export const CLIMB_QUESTION_TIME_MS = 22000;
+
+// How many questions the climb draws out of the UNUSED quiz pool when it
+// begins. A bound, not an expectation (Task 187b measured a median of 7-8
+// rounds to a verdict): if the pool runs out first, the highest step wins.
+export const CLIMB_MAX_QUESTIONS = 20;
+
+// The stage card for the climb - the same held STAGE_ANNOUNCE beat the trial
+// gets (buildStageAnnounce branches on room.climb exactly as on room.trial).
+export const CLIMB_STAGE_TITLE = 'Η Ανάβαση';
+export const CLIMB_STAGE_TAGLINE = 'Δέκα σκαλιά ως τον ναό. Όποιος φτάσει πρώτος στην κορυφή, νικά.';
+
+export interface ClimbSubmitPayload {
+  choice: number; // 0-3, validated server-side
+}
+
+// One player's standing on the ladder, as the TV sees it during a question.
+export interface ClimbStanding {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  step: number; // 0..CLIMB_TOP
+  climbing: boolean; // in the race (connected at finale entry); false = spectator
+}
+
+// The TV's view of a climb question. WHO has locked in, never what they
+// picked and never the correct index - the trial_question:show contract.
+export interface ClimbQuestionShowHostPayload {
+  roundIndex: number; // 0-based, within the climb
+  question: string;
+  options: string[];
+  category: string;
+  questionTimeMs: number; // CLIMB_QUESTION_TIME_MS, echoed
+  durationMs: number; // time STILL LEFT, frozen while paused
+  top: number; // CLIMB_TOP, echoed so the TV draws the right ladder
+  steps: ClimbStanding[];
+  lockedInPlayerIds: string[];
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+// One phone's view: the options, its OWN step, and nothing about anyone else.
+export interface ClimbQuestionShowPlayerPayload {
+  roundIndex: number;
+  options: string[];
+  category: string;
+  questionTimeMs: number;
+  durationMs: number;
+  top: number;
+  climbing: boolean; // false for a spectator - the server rejects their submit regardless
+  yourStep: number;
+  lockedIn: boolean; // true on a state:sync catch-up after already locking in
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type ClimbQuestionShowPayload = ClimbQuestionShowHostPayload | ClimbQuestionShowPlayerPayload;
+
+export function isClimbQuestionHostPayload(
+  payload: ClimbQuestionShowPayload,
+): payload is ClimbQuestionShowHostPayload {
+  return 'question' in payload;
+}
+
+// One player's round as the TV gets it: Task 187's scored result plus the
+// `fastest` flag spelled out (answerRank === 1 - the +2 lock-in).
+export interface ClimbRevealHostResult extends ClimbRevealResult {
+  fastest: boolean;
+}
+
+// HOST ONLY - every player's step, delta and fastest flag.
+export interface ClimbRevealHostPayload {
+  roundIndex: number;
+  correctIndex: number;
+  correctOption: string;
+  top: number;
+  results: ClimbRevealHostResult[];
+  // Set only on the reveal that ends the climb.
+  winnerPlayerId: string | null;
+  winnerName: string | null;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+// One phone's view of the reveal: the correct answer (public once the round
+// is over, exactly as reveal:show's player half sends it) and the
+// recipient's OWN step and delta - nobody else's step, delta or flag.
+export interface ClimbRevealPlayerPayload {
+  roundIndex: number;
+  correctIndex: number;
+  correctOption: string;
+  top: number;
+  yourChoice: number | null;
+  yourCorrect: boolean;
+  yourStepBefore: number;
+  yourDelta: number;
+  yourStep: number; // after this round
+  winnerPlayerId: string | null;
+  winnerName: string | null;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type ClimbRevealPayload = ClimbRevealHostPayload | ClimbRevealPlayerPayload;
+
+export function isClimbRevealHostPayload(payload: ClimbRevealPayload): payload is ClimbRevealHostPayload {
+  return 'results' in payload;
 }
 
 export interface TrialSubmitPayload {
@@ -2798,6 +2967,7 @@ export type ClientToServerEvents = {
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
   [ClientEvents.TRIAL_SUBMIT]: (payload: TrialSubmitPayload) => void;
+  [ClientEvents.CLIMB_SUBMIT]: (payload: ClimbSubmitPayload) => void;
   [ClientEvents.BLITZ_SWIPE]: (payload: BlitzSwipePayload) => void;
 };
 
@@ -2839,6 +3009,8 @@ export type ServerToClientEvents = {
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
   [ServerEvents.TRIAL_QUESTION_SHOW]: (payload: TrialQuestionShowPayload) => void;
   [ServerEvents.TRIAL_REVEAL_SHOW]: (payload: TrialRevealShowPayload) => void;
+  [ServerEvents.CLIMB_QUESTION_SHOW]: (payload: ClimbQuestionShowPayload) => void;
+  [ServerEvents.CLIMB_REVEAL_SHOW]: (payload: ClimbRevealPayload) => void;
   [ServerEvents.BLITZ_SHOW]: (payload: BlitzShowPayload) => void;
   [ServerEvents.BLITZ_PROGRESS]: (payload: BlitzProgressPayload) => void;
   [ServerEvents.BLITZ_REVEAL_SHOW]: (payload: BlitzRevealPayload) => void;

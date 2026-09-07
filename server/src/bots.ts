@@ -20,6 +20,7 @@ import {
   MAX_BOTS,
   ServerEvents,
   type BlitzShowPayload,
+  type ClimbQuestionShowPayload,
   type DrawShowPayload,
   type GuessShowPayload,
   type JoinRejectedPayload,
@@ -149,6 +150,16 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     }
     const choice = randomChoice(payload.options.length);
     setTimeout(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice }), profileDelayMs(profile));
+  });
+
+  // Task 188a - the climb finale, answered exactly as a trial question: a
+  // random pick over player:climb_submit after the profile's delay.
+  socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (payload: ClimbQuestionShowPayload) => {
+    if (!('options' in payload) || ('climbing' in payload && !payload.climbing)) {
+      return; // host-shaped payload, or a spectating bot
+    }
+    const choice = randomChoice(payload.options.length);
+    setTimeout(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice }), profileDelayMs(profile));
   });
 
   // blitz:show broadcasts once per game (never re-sent per-swipe), so this

@@ -1,4 +1,6 @@
 import {
+  CLIMB_MAX_QUESTIONS,
+  CLIMB_QUESTION_TIME_MS,
   POWER_UP_DURATION_MS,
   REVEAL_DURATION_MS,
   SOCRATES_MAX_DURATION_MS,
@@ -7,7 +9,9 @@ import {
   STEAL_DURATION_MS,
   TRIAL_MAX_QUESTIONS,
   ServerEvents,
+  climbEntryStep,
   stageForQuestionIndex,
+  type ClimbRevealHostResult,
   type CrowdIntensityContext,
   type QuestionShowHostPayload,
   type QuestionShowPlayerPayload,
@@ -16,7 +20,14 @@ import {
   type StageDefinition,
   type TrialRevealResult,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type PendingSocratesBeat, type Room, type TrialState } from './state.js';
+import {
+  getConnectedPlayers,
+  getRoom,
+  type ClimbState,
+  type PendingSocratesBeat,
+  type Room,
+  type TrialState,
+} from './state.js';
 // The registry only - a leaf module (see modes/registry.ts), so this keeps the
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
@@ -30,6 +41,7 @@ import {
   scoreTrialRound,
   type TrialRoundEntry,
 } from './trial.js';
+import { applyClimbRound, nextAfterClimbRound, type ClimbRoundEntry } from './climb.js';
 import {
   LINES,
   logMomentFireSummary,
@@ -59,8 +71,13 @@ import {
   buildTrialQuestionHostPayload,
   buildTrialQuestionPlayerPayload,
   buildTrialRevealPayload,
+  buildClimbQuestionHostPayload,
+  buildClimbQuestionPlayerPayload,
+  buildClimbRevealHostPayload,
+  buildClimbRevealPlayerPayload,
   buildGameOver,
   buildQuestionHostSabotage,
+  computeCompetitionRanks,
   computeStandings,
 } from './payloads.js';
 
@@ -81,7 +98,11 @@ export type QuizTimerKind =
   // of its own, so its two timers belong to this same table and its two
   // phases pause/resume through the same machinery as every other one.
   | 'TRIAL_QUESTION'
-  | 'TRIAL_REVEAL';
+  | 'TRIAL_REVEAL'
+  // Task 188a - the climb finale, the trial's alternative: same table, same
+  // pause/resume machinery.
+  | 'CLIMB_QUESTION'
+  | 'CLIMB_REVEAL';
 
 // The shared timer helper, narrowed to this mode's kinds - so a typo in a
 // phase name is still a compile error here even though timers.ts itself no
@@ -191,6 +212,13 @@ export function endStageAnnounce(code: RoomCode): void {
       return;
     }
     startTrialQuestion(room);
+    return;
+  }
+  // Task 188a - the climb announces itself through this beat too (startClimb),
+  // and goes straight to its first question: it has no intro lines of its
+  // own yet (the trial's are Η Δίκη lines, with lineHash-keyed mp3s).
+  if (room.climb) {
+    startClimbQuestion(room);
     return;
   }
   // Task 134 - a stage of the full show that is NOT a quiz stage starts its
@@ -808,8 +836,11 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
     // of the game: the WINNER beat and GAME_OVER now come after the TRIAL
     // rather than after the quiz. startTrial declines (and the game ends the
     // way it always did) when there is nobody to put on trial.
-    if (startTrial(room)) {
-      return; // the trial runs its own phases and ends the game itself
+    // Task 188a - the ONE site that branches on finaleMode: the climb takes
+    // the trial's place here and nowhere else.
+    const startFinale = room.settings.finaleMode === 'climb' ? startClimb : startTrial;
+    if (startFinale(room)) {
+      return; // the finale runs its own phases and ends the game itself
     }
     if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
       return; // advanceFromSocrates calls finishGame once the beat is over
@@ -1160,6 +1191,294 @@ function endTrial(room: Room): void {
   finishGame(room);
 }
 
+// ---------------------------------------------------------------------------
+// The climb finale (Task 188a) - the trial's alternative
+// ---------------------------------------------------------------------------
+// The same shape as the trial section above: one continuous run of
+// CLIMB_QUESTION -> CLIMB_REVEAL ending only at GAME_OVER, never through
+// continueAfterReveal. The pure mechanic (round scoring, what comes next) is
+// climb.ts (Task 187); this is the phase/timer/socket shell around it.
+// Steps live in room.climb.steps, never in player.score.
+
+// Opens the climb after the last quiz question. Same declines as startTrial:
+// already run, fewer than two connected players, or nothing unused to draw.
+export function startClimb(room: Room): boolean {
+  if (room.climb || room.trial) {
+    return false;
+  }
+  const contestants = getConnectedPlayers(room);
+  if (contestants.length < 2) {
+    console.log(`room ${room.code} skipping the climb — only ${contestants.length} connected player(s)`);
+    return false;
+  }
+  const questions = getUnusedQuestionSet(
+    room.settings.difficultyMix,
+    room.questions.map((question) => question.id),
+    CLIMB_MAX_QUESTIONS,
+  );
+  if (questions.length === 0) {
+    console.log(`room ${room.code} skipping the climb — no unused questions left`);
+    return false;
+  }
+
+  // Entry steps from the standings at finale entry (climbEntryStep): a
+  // COMPETITION rank among the contestants only - a disconnected player is
+  // not in the race, so they must not open a gap in the ranks either.
+  const ranks = computeCompetitionRanks(
+    contestants,
+    (player) => player.score,
+    (player) => player.playerId,
+  );
+  const steps = new Map(
+    contestants.map((player) => [
+      player.playerId,
+      climbEntryStep(ranks.get(player.playerId) ?? contestants.length, contestants.length),
+    ]),
+  );
+
+  const climb: ClimbState = {
+    questions,
+    questionIndex: -1,
+    climberIds: contestants.map((player) => player.playerId),
+    steps,
+    lockIns: new Map(),
+    roundsPlayed: 0,
+    winnerPlayerId: null,
+    lastResults: null,
+    lastCorrectIndex: null,
+  };
+  room.climb = climb;
+  // The finale row of the room's table, same card beat as the trial;
+  // buildStageAnnounce reads room.climb for the card's words.
+  enterStageAnnounce(room, trialStageNumber(room));
+  setCrowdMood(room, 'tension');
+
+  console.log(
+    `room ${room.code} entering the climb — ${climb.climberIds.length} climbing, ` +
+      `${questions.length} unused question(s) drawn, entry steps ${JSON.stringify([...steps.values()])}`,
+  );
+  return true;
+}
+
+// The pause-aware clock, exactly as trialElapsedMs: elapsed is what the
+// shared timer says is NOT left, so a pause never counts as thinking time.
+function climbElapsedMs(room: Room): number {
+  return Math.min(CLIMB_QUESTION_TIME_MS, Math.max(0, CLIMB_QUESTION_TIME_MS - remainingActiveTimerMs(room)));
+}
+
+// Starts the next climb question, or ends the climb when the drawn pool runs
+// out (highest step wins - see climbLeaderPlayerId).
+function startClimbQuestion(room: Room): void {
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
+  climb.questionIndex += 1;
+  if (climb.questionIndex >= climb.questions.length) {
+    climb.winnerPlayerId = climbLeaderPlayerId(climb);
+    console.log(`room ${room.code} climb pool exhausted after ${climb.roundsPlayed} round(s) — highest step wins`);
+    endClimb(room);
+    return;
+  }
+  climb.lockIns.clear();
+
+  room.phase = 'CLIMB_QUESTION';
+  // Armed BEFORE the payloads are built - they report its remaining time.
+  armQuizTimer(room, 'CLIMB_QUESTION', CLIMB_QUESTION_TIME_MS, () => endClimbQuestion(room.code));
+  setCrowdMood(room, 'tension');
+
+  // House pattern: PHASE_CHANGED first, then the phase's own payload.
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room, { timerDurationMs: CLIMB_QUESTION_TIME_MS });
+  broadcastClimbQuestion(room);
+
+  console.log(
+    `room ${room.code} climb question ${climb.questionIndex + 1}/${climb.questions.length} — ` +
+      `steps ${JSON.stringify(Object.fromEntries(climb.steps))}`,
+  );
+}
+
+// Per phone, never built once and reused: only the host payload carries the
+// question text, the ladder and who has locked in.
+function broadcastClimbQuestion(room: Room): void {
+  const hostPayload = buildClimbQuestionHostPayload(room);
+  if (hostPayload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.CLIMB_QUESTION_SHOW, hostPayload);
+  }
+  for (const player of getConnectedPlayers(room)) {
+    const playerPayload = buildClimbQuestionPlayerPayload(room, player.playerId);
+    if (playerPayload) {
+      io.to(player.socketId).emit(ServerEvents.CLIMB_QUESTION_SHOW, playerPayload);
+    }
+  }
+}
+
+// Every climber who is still CONNECTED has locked in - identity-based, same
+// as allConnectedParticipantsLockedIn.
+function allConnectedClimbersLockedIn(room: Room, climb: ClimbState): boolean {
+  const connected = new Set(getConnectedPlayers(room).map((player) => player.playerId));
+  const waitingOn = climb.climberIds.filter((id) => connected.has(id));
+  return waitingOn.length > 0 && waitingOn.every((id) => climb.lockIns.has(id));
+}
+
+// Records one lock-in; returns whether it was accepted. Every rule lives
+// here: the phase, the pause, a valid choice, being in the race, one lock-in
+// per player per question.
+export function submitClimbAnswer(room: Room, playerId: string, choice: number): boolean {
+  if (room.phase !== 'CLIMB_QUESTION' || room.paused) {
+    return false;
+  }
+  const climb = room.climb;
+  if (!climb) {
+    return false;
+  }
+  if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
+    return false;
+  }
+  if (!climb.climberIds.includes(playerId) || climb.lockIns.has(playerId)) {
+    return false;
+  }
+
+  const elapsedMs = climbElapsedMs(room);
+  climb.lockIns.set(playerId, { choice, elapsedMs });
+  console.log(
+    `room ${room.code} climb lock-in from ${playerId} at ${elapsedMs}ms — ` +
+      `${climb.lockIns.size}/${climb.climberIds.length} locked in`,
+  );
+
+  if (allConnectedClimbersLockedIn(room, climb)) {
+    endClimbQuestion(room.code);
+  }
+  return true;
+}
+
+// Re-run whenever a player disconnects. A no-op outside CLIMB_QUESTION.
+export function recheckClimbPhaseOnDisconnect(room: Room): void {
+  if (room.phase !== 'CLIMB_QUESTION' || !room.climb) {
+    return;
+  }
+  if (allConnectedClimbersLockedIn(room, room.climb)) {
+    endClimbQuestion(room.code);
+  }
+}
+
+// The leader by step, ties by the last round's answerRank (fastest first),
+// then join order - the pool-exhausted verdict, and the same order GAME_OVER
+// ranks by (buildGameOver's climb branch).
+function climbLeaderPlayerId(climb: ClimbState): string | null {
+  const lastRank = new Map(climb.lastResults?.map((result) => [result.playerId, result.answerRank]) ?? []);
+  const ordered = [...climb.climberIds].sort(
+    (a, b) =>
+      (climb.steps.get(b) ?? 0) - (climb.steps.get(a) ?? 0) ||
+      (lastRank.get(a) ?? Infinity) - (lastRank.get(b) ?? Infinity),
+  );
+  return ordered[0] ?? null;
+}
+
+// Ends the climb question exactly once - guarded by the phase check, so
+// whichever of (everyone locked in) / (the timer fired) happens first wins.
+// THE one place steps move.
+export function endClimbQuestion(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'CLIMB_QUESTION') {
+    return;
+  }
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
+  const question = climb.questions[climb.questionIndex];
+
+  const entries: ClimbRoundEntry[] = climb.climberIds.flatMap((playerId) => {
+    const player = room.players.get(playerId);
+    if (!player) {
+      return [];
+    }
+    const lockIn = climb.lockIns.get(playerId);
+    return [
+      {
+        playerId,
+        name: player.name,
+        avatarId: player.avatarId,
+        stepBefore: climb.steps.get(playerId) ?? 0,
+        choice: lockIn ? lockIn.choice : null,
+        elapsedMs: lockIn ? lockIn.elapsedMs : null,
+      },
+    ];
+  });
+
+  const scored = applyClimbRound(entries, question.correctIndex);
+  const next = nextAfterClimbRound(scored); // may hold 3+-way arrivals one step below the top
+  for (const result of scored) {
+    climb.steps.set(result.playerId, result.stepAfter);
+  }
+  climb.roundsPlayed += 1;
+
+  if (next.kind === 'WINNER') {
+    climb.winnerPlayerId = next.winnerPlayerId;
+  } else if (next.kind === 'DUEL') {
+    // TODO(188b): the duel. Until it lands, two arrivals in the same reveal
+    // are settled PROVISIONALLY by answerRank - nextAfterClimbRound already
+    // lists the duelists fastest first.
+    climb.winnerPlayerId = next.playerIds[0];
+  }
+
+  const results: ClimbRevealHostResult[] = scored.map((result) => ({ ...result, fastest: result.answerRank === 1 }));
+  climb.lastResults = results;
+  climb.lastCorrectIndex = question.correctIndex;
+
+  room.phase = 'CLIMB_REVEAL';
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
+  armQuizTimer(room, 'CLIMB_REVEAL', REVEAL_DURATION_MS, () => endClimbReveal(room.code));
+  // Cheer when the round mostly climbed, boo when it mostly fell.
+  setCrowdMood(room, results.filter((result) => result.delta > 0).length * 2 >= results.length ? 'cheer' : 'boo');
+
+  // Asymmetric, unlike the trial's reveal: the TV gets every row, a phone
+  // gets its own.
+  const hostPayload = buildClimbRevealHostPayload(room);
+  if (hostPayload && room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.CLIMB_REVEAL_SHOW, hostPayload);
+  }
+  for (const player of getConnectedPlayers(room)) {
+    const playerPayload = buildClimbRevealPlayerPayload(room, player.playerId);
+    if (playerPayload) {
+      io.to(player.socketId).emit(ServerEvents.CLIMB_REVEAL_SHOW, playerPayload);
+    }
+  }
+
+  console.log(
+    `room ${room.code} climb round ${climb.roundsPlayed} revealed — correctIndex=${question.correctIndex}, ` +
+      `next=${next.kind}, results: ${JSON.stringify(results)}`,
+  );
+}
+
+// Ends the reveal beat exactly once, same one-shot discipline as the trial's.
+export function endClimbReveal(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'CLIMB_REVEAL') {
+    return;
+  }
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
+  if (climb.winnerPlayerId) {
+    endClimb(room);
+    return;
+  }
+  startClimbQuestion(room);
+}
+
+// The climb is over (a verdict, or the pool running out): Socrates names the
+// winner, then finishGame - identical to endTrial.
+function endClimb(room: Room): void {
+  if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
+    return;
+  }
+  finishGame(room);
+}
+
 // The actual GAME_OVER transition - split out from advanceToNextQuestionOrGameOver
 // so the WINNER beat above can sit between "this was the last question" and
 // this, exactly like STAGE_INTRO sits between a stage announcement and its
@@ -1174,7 +1493,8 @@ function finishGame(room: Room): void {
   // one: a sudden death is settled by the earliest correct lock-in between
   // players who are all at or below zero. Null (no trial, or a trial that ran
   // its pool out) leaves GAME_OVER ranking by score exactly as it always did.
-  const gameOverPayload = buildGameOver(room, room.trial?.winnerPlayerId ?? null);
+  // Task 188a - or the climb's verdict, the same way (at most one is set).
+  const gameOverPayload = buildGameOver(room, room.trial?.winnerPlayerId ?? room.climb?.winnerPlayerId ?? null);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   logMomentFireSummary(room.socrates, room.code);

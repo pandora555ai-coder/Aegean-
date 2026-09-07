@@ -1,4 +1,8 @@
 import {
+  CLIMB_QUESTION_TIME_MS,
+  CLIMB_STAGE_TAGLINE,
+  CLIMB_STAGE_TITLE,
+  CLIMB_TOP,
   POWER_UP_EFFECTS,
   SOCRATES_MAX_DURATION_MS,
   TRIAL_STAGE_TAGLINE,
@@ -7,6 +11,12 @@ import {
   stageForQuestionIndex,
   trialDrainPerSec,
   trialWrongHit,
+  type ClimbQuestionShowHostPayload,
+  type ClimbQuestionShowPlayerPayload,
+  type ClimbRevealHostPayload,
+  type ClimbRevealHostResult,
+  type ClimbRevealPlayerPayload,
+  type ClimbStanding,
   type GameOverPayload,
   type GameOverStanding,
   type PlayerSabotageState,
@@ -48,13 +58,15 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
   // rather than an off-table +1. So totalStages is simply the table's length,
   // and the "4/4, never 3/4" fix of Task 128 holds for free at "5/5" too.
   const stages = stagesForRoom(room);
-  if (room.trial) {
+  // Task 188a - the climb takes the trial's row (it IS the finale, just a
+  // different one) and only the card's words change.
+  if (room.trial || room.climb) {
     const trialStage = stages[stages.length - 1].stage;
     return {
       stage: trialStage,
       totalStages: stages.length,
-      title: TRIAL_STAGE_TITLE,
-      tagline: TRIAL_STAGE_TAGLINE,
+      title: room.climb ? CLIMB_STAGE_TITLE : TRIAL_STAGE_TITLE,
+      tagline: room.climb ? CLIMB_STAGE_TAGLINE : TRIAL_STAGE_TAGLINE,
       // Not a fixed run of questions like a quiz stage: the trial lasts until
       // one player is left standing. 0 is what "there is no count to show".
       questionCount: 0,
@@ -413,6 +425,34 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
   const players = [...room.players.values()];
   const declaredWinner = winnerPlayerId !== null ? room.players.get(winnerPlayerId) : undefined;
 
+  // Task 188a - the climb's verdict: standings are FINAL STEP order (ties by
+  // the last round's answerRank, then join order), the winner first. Steps
+  // are not scores, so this reuses the trial's no-digits gating
+  // (isTrialResult) - the TV prints nothing for either finale.
+  if (declaredWinner && room.climb) {
+    const climb = room.climb;
+    const lastRank = new Map(climb.lastResults?.map((result) => [result.playerId, result.answerRank]) ?? []);
+    const stepOf = (player: { playerId: string }): number => climb.steps.get(player.playerId) ?? -1;
+    const rankOf = (player: { playerId: string }): number => lastRank.get(player.playerId) ?? Infinity;
+    const others = players
+      .filter((player) => player.playerId !== declaredWinner.playerId)
+      .sort((a, b) => stepOf(b) - stepOf(a) || rankOf(a) - rankOf(b));
+    const standings: GameOverStanding[] = [declaredWinner, ...others].map((player, index) => ({
+      playerId: player.playerId,
+      name: player.name,
+      avatarId: player.avatarId,
+      score: player.score,
+      rank: index + 1,
+    }));
+    return {
+      standings,
+      winnerName: declaredWinner.name,
+      isTie: false,
+      isTrialResult: true,
+      totalQuestions: room.questions.length,
+    };
+  }
+
   if (declaredWinner) {
     // Task 137 - SURVIVAL order, not score order: the winner, then everyone
     // else in REVERSE elimination order (most recently eliminated finishes
@@ -581,5 +621,126 @@ export function buildTrialRevealPayload(room: Room): TrialRevealShowPayload | nu
     paused: room.paused,
     pausedByName: room.pausedByName,
     standings: computeStandings(room),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The climb finale (Task 188a)
+// ---------------------------------------------------------------------------
+
+// Every player's step - the trial's `lives` table, for the ladder. Host-only
+// in aggregate (a phone gets its own `yourStep` and nothing else), built
+// fresh on every send so a broadcast and a state:sync can never disagree.
+function climbSteps(room: Room): ClimbStanding[] {
+  const climb = room.climb;
+  if (!climb) {
+    return [];
+  }
+  const climbing = new Set(climb.climberIds);
+  return [...room.players.values()].map((player) => ({
+    playerId: player.playerId,
+    name: player.name,
+    avatarId: player.avatarId,
+    step: climb.steps.get(player.playerId) ?? 0,
+    climbing: climbing.has(player.playerId),
+  }));
+}
+
+export function buildClimbQuestionHostPayload(room: Room): ClimbQuestionShowHostPayload | null {
+  const climb = room.climb;
+  const question = climb?.questions[climb.questionIndex];
+  if (!climb || !question) {
+    return null;
+  }
+  return {
+    roundIndex: climb.questionIndex,
+    question: question.question,
+    options: question.options,
+    category: question.category,
+    questionTimeMs: CLIMB_QUESTION_TIME_MS,
+    durationMs: remainingActiveTimerMs(room),
+    top: CLIMB_TOP,
+    steps: climbSteps(room),
+    // WHO has locked in, never what they picked - the answer:progress contract.
+    lockedInPlayerIds: Array.from(climb.lockIns.keys()),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+    standings: computeStandings(room),
+  };
+}
+
+// Per phone: its own step, whether it is in the race and whether it already
+// locked in. No question text, no correct index, nothing about anyone else.
+export function buildClimbQuestionPlayerPayload(room: Room, playerId: string): ClimbQuestionShowPlayerPayload | null {
+  const climb = room.climb;
+  const question = climb?.questions[climb.questionIndex];
+  if (!climb || !question) {
+    return null;
+  }
+  return {
+    roundIndex: climb.questionIndex,
+    options: question.options,
+    category: question.category,
+    questionTimeMs: CLIMB_QUESTION_TIME_MS,
+    durationMs: remainingActiveTimerMs(room),
+    top: CLIMB_TOP,
+    climbing: climb.climberIds.includes(playerId),
+    yourStep: climb.steps.get(playerId) ?? 0,
+    lockedIn: climb.lockIns.has(playerId),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+  };
+}
+
+// HOST ONLY - every player's scored round, from the frozen snapshot plus
+// what is live right now (the same two-source shape as the trial's).
+export function buildClimbRevealHostPayload(room: Room): ClimbRevealHostPayload | null {
+  const climb = room.climb;
+  const results = climb?.lastResults;
+  if (!climb || !results || climb.lastCorrectIndex === null) {
+    return null;
+  }
+  const question = climb.questions[climb.questionIndex];
+  return {
+    roundIndex: climb.questionIndex,
+    correctIndex: climb.lastCorrectIndex,
+    correctOption: question.options[climb.lastCorrectIndex],
+    top: CLIMB_TOP,
+    results,
+    winnerPlayerId: climb.winnerPlayerId,
+    winnerName: climb.winnerPlayerId ? (room.players.get(climb.winnerPlayerId)?.name ?? null) : null,
+    autoAdvanceMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
+    standings: computeStandings(room),
+  };
+}
+
+// Per phone: the correct answer and THIS player's own round only. A
+// spectator (not in the race) gets a zero-delta row at their own step.
+export function buildClimbRevealPlayerPayload(room: Room, playerId: string): ClimbRevealPlayerPayload | null {
+  const climb = room.climb;
+  const results = climb?.lastResults;
+  if (!climb || !results || climb.lastCorrectIndex === null) {
+    return null;
+  }
+  const question = climb.questions[climb.questionIndex];
+  const own: ClimbRevealHostResult | undefined = results.find((result) => result.playerId === playerId);
+  const step = climb.steps.get(playerId) ?? 0;
+  return {
+    roundIndex: climb.questionIndex,
+    correctIndex: climb.lastCorrectIndex,
+    correctOption: question.options[climb.lastCorrectIndex],
+    top: CLIMB_TOP,
+    yourChoice: own?.choice ?? null,
+    yourCorrect: own?.correct ?? false,
+    yourStepBefore: own?.stepBefore ?? step,
+    yourDelta: own?.delta ?? 0,
+    yourStep: own?.stepAfter ?? step,
+    winnerPlayerId: climb.winnerPlayerId,
+    winnerName: climb.winnerPlayerId ? (room.players.get(climb.winnerPlayerId)?.name ?? null) : null,
+    autoAdvanceMs: remainingActiveTimerMs(room),
+    paused: room.paused,
+    pausedByName: room.pausedByName,
   };
 }

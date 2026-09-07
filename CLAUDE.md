@@ -239,6 +239,20 @@ COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
+**The climb (Task 188a) is the trial's ALTERNATIVE finale**, gated by
+`room.settings.finaleMode` ('trial' | 'climb', default 'trial' — the 177
+pattern). advanceToNextQuestionOrGameOver is the ONE site that branches on
+it (startClimb vs startTrial); quiz and full both honour it since they share
+that site. startClimb takes the same finale row (card title Η Ανάβαση),
+draws from the unused pool, runs CLIMB_QUESTION (CLIMB_QUESTION_TIME_MS =
+22000, fixed, not questionTimeMs) -> CLIMB_REVEAL on the quiz's continuations
+table, and ends at GAME_OVER with `isTrialResult: true` (steps are not
+scores; no digits). Steps live in room.climb.steps, NEVER player.score; the
+mechanic is climb.ts (Task 187). CLIMB_REVEAL is ASYMMETRIC (host gets every
+row, a phone only its own `your*` fields) — unlike TRIAL_REVEAL. Until 188b's
+duel lands, two arrivals in one reveal are settled provisionally by
+answerRank (TODO(188b) in endClimbQuestion). No client view exists yet
+(189/190) — the TV/phone render nothing for CLIMB_* today.
 A trial GAME_OVER shows NO digits — no rank, no score — gated on
 `gameOver.isTrialResult` (SophistsRow's hideScores; GameOverView has no
 list at all since 161); standings are SURVIVAL order (winner, then reverse

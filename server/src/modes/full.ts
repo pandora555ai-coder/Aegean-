@@ -64,6 +64,9 @@ const FULL_PHASES: readonly GamePhase[] = [
   // Stage 5 - the trial, which is part of the quiz's own machine.
   'TRIAL_QUESTION',
   'TRIAL_REVEAL',
+  // Task 188a - or the climb, when finaleMode is 'climb'.
+  'CLIMB_QUESTION',
+  'CLIMB_REVEAL',
   'GAME_OVER',
 ];
 

@@ -68,11 +68,14 @@ import {
   endQuestion,
   endPowerUp,
   endTrialReveal,
+  endClimbReveal,
   advanceFromReveal,
   advanceFromSteal,
   recheckTrialPhaseOnDisconnect,
+  recheckClimbPhaseOnDisconnect,
   resolveSteal,
   submitTrialAnswer,
+  submitClimbAnswer,
 } from './phases.js';
 // Task 52 - importing the barrel is what REGISTERS every game mode, so it
 // must stay even if only these two names are used.
@@ -123,6 +126,10 @@ import {
   buildTrialQuestionHostPayload,
   buildTrialQuestionPlayerPayload,
   buildTrialRevealPayload,
+  buildClimbQuestionHostPayload,
+  buildClimbQuestionPlayerPayload,
+  buildClimbRevealHostPayload,
+  buildClimbRevealPlayerPayload,
   buildGameOver,
   buildQuestionHostSabotage,
   computeStandings,
@@ -353,6 +360,16 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildTrialRevealPayload(room);
       return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
     }
+    // Task 188a - the climb finale, same reasoning as the trial's: the phone
+    // gets its OWN step (and its own round at the reveal), read live.
+    case 'CLIMB_QUESTION': {
+      const payload = buildClimbQuestionPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'CLIMB_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'CLIMB_REVEAL': {
+      const payload = buildClimbRevealPlayerPayload(room, playerId);
+      return payload ? { ...payload, phase: 'CLIMB_REVEAL' } : null;
+    }
     // Task 156 - the blitz mode, same reasoning as every phase above: the
     // phone gets its texts back plus how far IT already got, read live.
     case 'BLITZ': {
@@ -461,6 +478,15 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'TRIAL_REVEAL': {
       const payload = buildTrialRevealPayload(room);
       return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
+    }
+    // Task 188a - the climb finale, same builder-plus-remainingMs shape.
+    case 'CLIMB_QUESTION': {
+      const payload = buildClimbQuestionHostPayload(room);
+      return payload ? { ...payload, phase: 'CLIMB_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'CLIMB_REVEAL': {
+      const payload = buildClimbRevealHostPayload(room);
+      return payload ? { ...payload, phase: 'CLIMB_REVEAL' } : null;
     }
     // Task 156 - the blitz mode, same builder-plus-remainingMs shape.
     case 'BLITZ': {
@@ -1110,8 +1136,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 188a - the climb's reveal, same skip; CLIMB_QUESTION is not
+    // skippable for the trial's reason (speed is measured against the timer).
+    if (room.phase === 'CLIMB_REVEAL') {
+      console.log(`room ${room.code} skipped past climb reveal (VIP)`);
+      endClimbReveal(room.code);
+      return;
+    }
+
     console.log(
-      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES or TRIAL_REVEAL`,
+      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES, TRIAL_REVEAL or CLIMB_REVEAL`,
     );
   });
 
@@ -1243,6 +1277,22 @@ io.on('connection', (socket) => {
     }
     // Same ack the quiz question sends - the phone marks the button it
     // pressed, and learns nothing else until TRIAL_REVEAL.
+    socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
+  });
+
+  // Task 188a - the climb finale's lock-in, the TRIAL_SUBMIT shape exactly:
+  // every rule lives in submitClimbAnswer, which also ends the question early
+  // once every climber has locked in.
+  socket.on(ClientEvents.CLIMB_SUBMIT, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.CLIMB_SUBMIT);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitClimbAnswer(room, playerId, payload?.choice)) {
+      console.log(`rejected ${ClientEvents.CLIMB_SUBMIT} from player ${playerId} in room ${room.code}`);
+      return;
+    }
     socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
   });
 
@@ -1530,6 +1580,12 @@ io.on('connection', (socket) => {
       // hand a win to whoever had the better connection.
       if (room) {
         recheckTrialPhaseOnDisconnect(room);
+      }
+
+      // Task 188a - and for the climb. A no-op outside CLIMB_QUESTION; the
+      // player stays in the race while disconnected, same reasoning.
+      if (room) {
+        recheckClimbPhaseOnDisconnect(room);
       }
 
       // Task 156 - same reasoning, for the blitz. A no-op outside BLITZ.
