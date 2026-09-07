@@ -15,6 +15,8 @@
 //   --players N         duelists per trial (default 4)
 //   --entry LO-HI       entry life range; one player always walks in at HI
 //   --p-correct P       per-player, per-round chance of a correct lock-in (0.6)
+//   --p-correct-leader P  overrides pCorrect for the entry leader only (Task 185c)
+//   --p-correct-others P  overrides pCorrect for every other player (Task 185c)
 //   --p-noanswer P      chance a player never locks in that round (0.05)
 //   --t-mean MS         mean lock-in time in ms (8000)
 //   --t-sd MS           lock-in time spread, ms (4000); clamped to [500, timer]
@@ -110,6 +112,11 @@ interface Config {
   entryLo: number;
   entryHi: number;
   pCorrect: number;
+  // Task 185c - per-player skill, so the entry leader can be modeled as the
+  // better player a real leader usually is, not just the one who got lucky
+  // earlier. null means "everyone uses pCorrect", the original behavior.
+  pCorrectLeader: number | null;
+  pCorrectOthers: number | null;
   pNoAnswer: number;
   tMeanMs: number;
   tSdMs: number;
@@ -124,6 +131,8 @@ function parseArgs(argv: string[]): Config {
     entryLo: 400,
     entryHi: 1500,
     pCorrect: 0.6,
+    pCorrectLeader: null,
+    pCorrectOthers: null,
     pNoAnswer: 0.05,
     tMeanMs: 8000,
     tSdMs: 4000,
@@ -151,6 +160,14 @@ function parseArgs(argv: string[]): Config {
       }
       case '--p-correct':
         cfg.pCorrect = Number(value);
+        i++;
+        break;
+      case '--p-correct-leader':
+        cfg.pCorrectLeader = Number(value);
+        i++;
+        break;
+      case '--p-correct-others':
+        cfg.pCorrectOthers = Number(value);
         i++;
         break;
       case '--p-noanswer':
@@ -300,14 +317,17 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
     const correctIndex = trial.questions[trial.questionIndex].correctIndex;
     const participants = trial.suddenDeath ? trial.suddenDeathPlayerIds : trial.livingPlayerIds;
 
-    // Each duelist decides: no answer, or a lock-in (correct with pCorrect) at
-    // a gaussian time clamped inside the timer.
+    // Each duelist decides: no answer, or a lock-in (correct with pCorrect,
+    // or the leader's own skill-correlated override - Task 185c) at a
+    // gaussian time clamped inside the timer.
     const lockIns: { playerId: string; atMs: number; choice: number }[] = [];
     for (const playerId of participants) {
       if (rng() < cfg.pNoAnswer) continue;
       const raw = cfg.tMeanMs + gaussian(rng) * cfg.tSdMs;
       const atMs = Math.round(Math.min(questionTimeMs - 1, Math.max(500, raw)));
-      const correct = rng() < cfg.pCorrect;
+      const isLeader = playerId === entryLeader.playerId;
+      const pCorrect = (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
+      const correct = rng() < pCorrect;
       const choice = correct ? correctIndex : (correctIndex + 1 + Math.floor(rng() * 3)) % 4;
       lockIns.push({ playerId, atMs, choice });
     }
@@ -434,7 +454,8 @@ function main(): void {
   }
   const lines = [
     `trial monte carlo — ${summary.runs} runs, ${cfg.players} players, entry ${cfg.entryLo}-${cfg.entryHi}, ` +
-      `pCorrect ${cfg.pCorrect}, pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
+      `pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
+      `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
     `verdict reached: ${summary.verdictCount}/${summary.runs} (${summary.verdictPct.toFixed(1)}%), ` +
       `pool exhausted (${TRIAL_MAX_QUESTIONS}-round cap): ${summary.poolExhaustedCount}`,
     `rounds to verdict: median ${summary.roundsMedianVerdictRuns ?? 'n/a'} (all runs median ${summary.roundsMedianAllRuns})`,
