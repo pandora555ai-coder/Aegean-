@@ -13,6 +13,7 @@
     "start": "npm run start -w @game/server",
     "typecheck": "npm run typecheck -w @game/shared && npm run typecheck -w @game/server && npm run typecheck -w @game/client",
     "screenshot:phases": "tsx dev/screenshot-phases.ts",
+    "trial:montecarlo": "tsx server/scripts/trial-montecarlo.ts",
     "voice:generate": "tsx dev/generate-voice-lines.ts",
     "voice:index": "tsx dev/generate-voice-index.ts",
     "blitz:generate": "tsx dev/generate-blitz-statements.ts",

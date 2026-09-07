@@ -839,7 +839,9 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
 // nobody to try (fewer than two connected players - a trial between one
 // person and themselves is just GAME_OVER with extra steps), when the trial
 // has already run, or when the question bank has nothing left unused.
-function startTrial(room: Room): boolean {
+// Exported for the Monte Carlo harness (Task 184) only; the live game
+// reaches it solely through advanceToNextQuestionOrGameOver below.
+export function startTrial(room: Room): boolean {
   if (room.trial) {
     return false; // already had its turn - this game ends now
   }

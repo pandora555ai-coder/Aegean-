@@ -31,6 +31,29 @@ interface TimedRoom {
   activeTimer: ActiveTimer | null;
 }
 
+// Task 184 - the time source behind every timer in this file, injectable so
+// an in-process harness (server/scripts/trial-montecarlo.ts) can run the
+// trial's pause-aware clock on virtual time. The default is the real clock
+// and the real event loop; nothing in server/src ever calls
+// installTimerClock, so the live path is unchanged.
+export interface TimerClock {
+  now: () => number;
+  setTimeout: (onFire: () => void, ms: number) => NodeJS.Timeout;
+  clearTimeout: (handle: NodeJS.Timeout) => void;
+}
+
+const REAL_CLOCK: TimerClock = {
+  now: () => Date.now(),
+  setTimeout: (onFire, ms) => setTimeout(onFire, ms),
+  clearTimeout: (handle) => clearTimeout(handle),
+};
+
+let clock: TimerClock = REAL_CLOCK;
+
+export function installTimerClock(next: TimerClock | null): void {
+  clock = next ?? REAL_CLOCK;
+}
+
 // Arms a fresh timer for `kind`, replacing whatever was active before (its
 // handle is cleared first, if any) - the ONE place any phase-advance timer
 // gets created, whether that's a brand-new phase starting or (via
@@ -42,12 +65,12 @@ export function armActiveTimer(
   onFire: () => void,
 ): void {
   if (room.activeTimer?.handle) {
-    clearTimeout(room.activeTimer.handle);
+    clock.clearTimeout(room.activeTimer.handle);
   }
   room.activeTimer = {
     kind,
-    handle: setTimeout(onFire, durationMs),
-    startedAt: Date.now(),
+    handle: clock.setTimeout(onFire, durationMs),
+    startedAt: clock.now(),
     durationMs,
     remainingAtPause: null,
   };
@@ -62,10 +85,10 @@ export function pauseActiveTimer(room: TimedRoom): void {
     return;
   }
   if (timer.handle) {
-    clearTimeout(timer.handle);
+    clock.clearTimeout(timer.handle);
     timer.handle = null;
   }
-  const elapsed = Date.now() - timer.startedAt;
+  const elapsed = clock.now() - timer.startedAt;
   timer.remainingAtPause = Math.max(0, timer.durationMs - elapsed);
 }
 
@@ -80,10 +103,10 @@ export function resumeActiveTimer(room: TimedRoom, onFire: () => void): void {
     return;
   }
   const remaining = timer.remainingAtPause;
-  timer.startedAt = Date.now();
+  timer.startedAt = clock.now();
   timer.durationMs = remaining;
   timer.remainingAtPause = null;
-  timer.handle = setTimeout(onFire, remaining);
+  timer.handle = clock.setTimeout(onFire, remaining);
 }
 
 // How much time is left on the active timer RIGHT NOW - the frozen value
@@ -99,12 +122,12 @@ export function remainingActiveTimerMs(room: TimedRoom): number {
   if (timer.remainingAtPause !== null) {
     return timer.remainingAtPause;
   }
-  return Math.max(0, timer.durationMs - (Date.now() - timer.startedAt));
+  return Math.max(0, timer.durationMs - (clock.now() - timer.startedAt));
 }
 
 export function clearActiveTimer(room: TimedRoom): void {
   if (room.activeTimer?.handle) {
-    clearTimeout(room.activeTimer.handle);
+    clock.clearTimeout(room.activeTimer.handle);
   }
   room.activeTimer = null;
 }
@@ -124,8 +147,8 @@ export interface SimpleTimer {
 
 export function armSimpleTimer(durationMs: number, onFire: () => void): SimpleTimer {
   return {
-    handle: setTimeout(onFire, durationMs),
-    startedAt: Date.now(),
+    handle: clock.setTimeout(onFire, durationMs),
+    startedAt: clock.now(),
     durationMs,
     remainingAtPause: null,
   };
@@ -135,9 +158,9 @@ export function pauseSimpleTimer(timer: SimpleTimer | null): void {
   if (!timer || !timer.handle) {
     return;
   }
-  clearTimeout(timer.handle);
+  clock.clearTimeout(timer.handle);
   timer.handle = null;
-  const elapsed = Date.now() - timer.startedAt;
+  const elapsed = clock.now() - timer.startedAt;
   timer.remainingAtPause = Math.max(0, timer.durationMs - elapsed);
 }
 
@@ -146,14 +169,14 @@ export function resumeSimpleTimer(timer: SimpleTimer | null, onFire: () => void)
     return;
   }
   const remaining = timer.remainingAtPause;
-  timer.startedAt = Date.now();
+  timer.startedAt = clock.now();
   timer.durationMs = remaining;
   timer.remainingAtPause = null;
-  timer.handle = setTimeout(onFire, remaining);
+  timer.handle = clock.setTimeout(onFire, remaining);
 }
 
 export function clearSimpleTimer(timer: SimpleTimer | null): void {
   if (timer?.handle) {
-    clearTimeout(timer.handle);
+    clock.clearTimeout(timer.handle);
   }
 }
