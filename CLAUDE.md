@@ -43,6 +43,12 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 - `npm run screenshot:phases` reads bot count from the `BOT_COUNT` env var
   (default 4) but captures at a hardcoded 1920x1080, so measuring at
   1280x720 needs its own short throwaway script.
+- The harness writes its PNGs to client/public/dev/shots (17 TV + 9 phone,
+  360x640) — served under the protected /dev basic-auth prefix and linked
+  from ΔΟΚΙΜΕΣ (Task 180). Anything new for testing/review goes UNDER
+  /dev, never a public sibling path. These are the LIVE shots on the
+  running site; they only refresh when a harness run is followed by a
+  deploy.
 
 ## Where things live
 
@@ -124,15 +130,29 @@ client/src/palette-elaiografia.css       THE colour source: tokens, base reset, 
 - Same event name can carry DIFFERENT payloads to host vs players.
   Players never receive another player's answer or score breakdown.
 - VIP = first player to join, tracked by playerId. TV cannot control the game.
+- **canStartRoom(room) (state.ts) is the ONLY source of truth for roster
+  count / start eligibility.** Never add a second count elsewhere.
+  LOBBY_DISCONNECT_GRACE_MS = 20000 governs lobby-roster expiry; VIP
+  migration for a LOBBY disconnect defers to grace expiry, while in-game
+  migration stays immediate.
+- `?bot=N` (clamped server-side to MAX_BOTS = 7) spawns server-side bots
+  (server/src/bots.ts) into a room; a bot is never VIP. cleanupRoomBots
+  runs in every mode's finishGame.
+- Uppercased Greek text — titles AND player names — ALWAYS renders through
+  greekUpper (client/src/greekUpper.ts). Never a raw text-transform:
+  uppercase or .toUpperCase() on a Greek string; Greek uppercasing drops
+  the tonos and greekUpper is the only place that's handled correctly.
 - All timers go through the shared timer helper so pause can freeze them.
 - One function decides what follows REVEAL; auto-advance and vip:next both use it.
 - A resumed timer's continuation comes from the MODE's continuations table,
   never a switch — a phase that arms a timer must have an entry or pause breaks.
 - Audio: host only, ONE AudioContext, reused. **There is no CUES_ENABLED
-  flag** — the cues in client/src/hooks/useGameAudio.ts are LIVE, gated
-  only by the host mute toggle (every play* function checks mutedRef).
-  They retire only when the crowd subsystem plays. `answer:progress`
-  STAYS: it drives playAnswerBlip.
+  flag** — client/src/hooks/useGameAudio.ts is LIVE, gated only by the host
+  mute toggle (outputGain, every play* function routes through it via
+  mutedRef). The crowd subsystem (Task 36) has fully retired the earlier
+  synthesized cue set (Task 20, `answer:progress`/playAnswerBlip included)
+  — do not describe that old cue set as still live or as pending crowd
+  playback; playCrowdOneShot and playSocratesLine are what remain.
 - React StrictMode double-invokes effects in dev — guard anything that fires once.
 - Relative imports need explicit .js extensions. tsx runs ESM; typecheck
   passes without them but the server will not boot.
@@ -228,6 +248,11 @@ each FOLLOWED by a STEAL. Stage 3's title is "Η Συκοφαντία" (Η Δί�
 trial finale, not this stage — see Phases for its STAGE_INTRO lines).
 Question count is NOT a setting — it is the sum of the stages. room.stage is server-side; the TV
 announces each stage once.
+`room.settings.powerUpsEnabled` defaults to **false** (Task 177) — with it
+off, stage 2's POWER_UP phase is skipped entirely even though the stage
+still calls for one; the POWER_UP machinery itself must never be deleted.
+The screenshot harness opts in (`powerUpsEnabled: true`) specifically to
+keep its 17/17 TV-phase coverage.
 Landed effects STACK per target: ice in duration (10s cap), ink in
 intensity (cap 3), both via addAppliedSabotage().
 
@@ -378,9 +403,12 @@ this voice and REJECTED. Do not propose either again.
 ## Crowd mood
 
 Server-derived mood (calm/tension/cheer/boo) via server/src/crowd.ts,
-HOST ONLY (`crowd:mood` event) — a decision layer only, no audio plays yet.
-Crowd playback (Task 36) is not built; the existing cue set in
-client/src/hooks/useGameAudio.ts is STILL LIVE and untouched by this.
+HOST ONLY (`crowd:mood` event) — the decision layer. Crowd playback
+(Task 36a-d) IS built: client/src/hooks/useGameAudio.ts crossfades three
+loops (murmur/unrest/roar) by `crowd:intensity` plus four cheer/boo
+one-shots by `crowd:mood`, and this fully retired the earlier synthesized
+cue set (Task 20) — do not describe playback as unbuilt or the old cue set
+as still live.
 Since Task 151 it's wired into all four modes (quiz already had it via
 phases.ts; draw.ts and numeric.ts had ZERO wiring before, so a `full`
 game's draw/numeric stages were silent). A short full game emits 48
@@ -389,6 +417,16 @@ them — LOBBY because nothing ever calls setCrowdMood there, TRIAL_QUESTION
 because its own setCrowdMood fires BEFORE that phase's `phase:changed`,
 the same signal-ordering trap already documented below for PHASE_CHANGED
 vs. a phase's own payload. Known, not fixed.
+
+**VIP audio controls (Task 178):** `vip:set_audio_volume` is relayed
+server→host, giving the VIP two independent sliders — crowd bed and
+Socrates voice. The new crowd-master gain (bedGain) and voice gain
+(voiceGain) sit ABOVE/BELOW the existing mute-gated outputGain and BELOW
+the three-loop equal-power crossfade — never adjust the murmur/unrest/roar
+gains individually to implement volume, always go through bedGain/
+voiceGain. Defaults are 100/100, meaning CROWD_BED_GAIN (.6) and voice at
+1.0 — unscaled, i.e. today's levels. Values persist across a host reload
+via HOST_REJOIN.
 
 ## Traps that have bitten before
 
@@ -435,6 +473,12 @@ vs. a phase's own payload. Known, not fixed.
   level (dev/screenshot-phases.ts:190's `joinBot` returns a raw Socket) and
   never render a phone — a bug like this one needs a Playwright phone
   client or a human, never a bot run.
+- **Deploy confirm strings must be runtime literals — event names, setting
+  keys — never function or variable identifiers.** The production build's
+  minifier renames identifiers freely but leaves string literals alone, so
+  confirming a deploy landed by grepping the built bundle for a function
+  name is worthless; grep for the literal (e.g. `'vip:set_audio_volume'`
+  or `'powerUpsEnabled'`) instead.
 
 ## Working style
 
