@@ -1,5 +1,6 @@
 import type { GameOverPayload } from '@game/shared';
 import type { CSSVars } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 interface GameOverViewProps {
   gameOver: GameOverPayload;
@@ -38,7 +39,7 @@ const CLOSING_LINE = 'Η γνώση, όπως πάντα, μας διέφυγε.
 const STYLE_TAG = `
 .gameover-root{position:fixed;inset:var(--tv-safe-top) 0 var(--tv-safe-bottom) 0;container-type:size;
   display:grid;place-items:center;text-align:center;pointer-events:none;z-index:45;overflow:hidden}
-.gameover-root .n{font-size:3cqh;letter-spacing:.35em;text-transform:uppercase;color:var(--ember);font-weight:700}
+.gameover-root .n{font-size:3cqh;letter-spacing:.35em;color:var(--ember);font-weight:700}
 .gameover-root .t{font-family:"Gentium Book Plus",Georgia,"Times New Roman",serif;font-size:11cqh;font-weight:700;
   line-height:1;color:var(--marble);margin-top:.6cqh;text-shadow:0 .6cqh 3cqh rgba(0,0,0,.8)}
 .gameover-root .r{font-size:3.4cqh;color:var(--marble-2);margin-top:2.2cqh;max-width:40ch;
@@ -60,7 +61,11 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
         ))}
       </div>
       <div>
-        <div className="n">Ο μαθητής</div>
+        {/* "Ο μαθητής" is a fixed kicker, not the winner's name (that's .t,
+            winnerName, below - never uppercase-transformed). A Task 181-style
+            tonos bug ("Ο ΜΑΘΗΤΉΣ"), caught while auditing name displays for
+            Task 182. */}
+        <div className="n">{greekUpper('Ο μαθητής')}</div>
         <div className="t" data-testid="winner-banner">
           {gameOver.winnerName}
         </div>

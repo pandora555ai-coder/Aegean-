@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GamePhase, PlayerSabotageState } from '@game/shared';
 import { DEFAULT_DURATION_MS, useAnimatedNumber } from '../hooks/useAnimatedNumber';
+import { greekUpper } from '../greekUpper';
 
 // Task 163c - the ice crystal's glow. The palette has no ice-blue token (by
 // design, same as Krater's KRATER_CRITICAL red) - this is the one other
@@ -122,7 +123,7 @@ const ROW_STYLE_TAG = `
 .soph svg.fig{width:100%;height:19cqh;display:block;overflow:visible;filter:drop-shadow(-.8cqh .4cqh .6cqh rgba(0,0,0,.5))}
 .plaque{background:var(--marble);color:var(--carve);padding:.9cqh 1cqh .7cqh;margin-top:.4cqh;
   clip-path:polygon(2% 0,98% 0,100% 8%,100% 92%,98% 100%,2% 100%,0 92%,0 8%);box-shadow:0 .8cqh 1.6cqh rgba(0,0,0,.55)}
-.plaque .n{font-size:2.2cqh;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--marble-3);line-height:1;
+.plaque .n{font-size:2.2cqh;font-weight:700;letter-spacing:.08em;color:var(--marble-3);line-height:1;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .plaque .n--involved{font-weight:900;color:var(--carve)}
 .plaque .s{font-size:3.8cqh;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -424,9 +425,12 @@ function Sophist({
       <Figure joinIndex={joinIndex} />
       <Wreath />
       <div className={disconnected ? 'plaque plaque--disconnected' : 'plaque'}>
+        {/* Task 182 - greekUpper(), not CSS text-transform:uppercase (which
+            keeps the Greek tonos: "Ελένη" -> "ΕΛ΄ΕΝΗ", not "ΕΛΕΝΗ") - display
+            only, standing.name itself is untouched. */}
         <div className={isInvolved ? 'n n--involved' : 'n'} data-testid="sophist-name">
           {isLockedIn ? '🔒 ' : ''}
-          {standing.name}
+          {greekUpper(standing.name)}
         </div>
         {!hideScore && (
           <div className="s" data-testid="sophist-score">

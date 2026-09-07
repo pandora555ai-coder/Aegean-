@@ -1613,7 +1613,7 @@ export default function ControllerScreen() {
         {/* Task 165 - the player's own score as a plaque: the TV plaque's
             shape (name over score), phone units (rem, not the TV's cqh). */}
         <div style={styles.plaque} data-testid="gameover-plaque">
-          <div style={styles.plaqueName}>{joined?.name ?? ''}</div>
+          <div style={styles.plaqueName}>{joined?.name ? greekUpper(joined.name) : ''}</div>
           <div style={styles.plaqueScore} data-testid="gameover-score">
             {me ? me.score : 0} πόντοι
           </div>
@@ -3575,12 +3575,13 @@ const styles: Record<string, CSSProperties> = {
   },
   // --carve, not the TV plaque's --marble-3 - the phone rule is stricter
   // than the TV's (never --marble-3 for anything read); the name/score
-  // hierarchy comes from size and weight instead.
+  // hierarchy comes from size and weight instead. Task 182 - no
+  // textTransform:uppercase (it kept the Greek tonos); the call site passes
+  // the name through greekUpper() instead.
   plaqueName: {
     fontSize: '0.85rem',
     fontWeight: 700,
     letterSpacing: '0.08em',
-    textTransform: 'uppercase',
     color: 'var(--carve)',
     lineHeight: 1,
   },
