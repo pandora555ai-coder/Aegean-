@@ -21,16 +21,19 @@
 //   --t-mean MS         mean lock-in time in ms (8000)
 //   --t-sd MS           lock-in time spread, ms (4000); clamped to [500, timer]
 //   --seed N            RNG seed (default 184)
+//   --finale trial|climb  which finale mechanic to simulate (Task 187; default trial)
 //   --json              print the aggregate as JSON instead of prose
 
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { TRIAL_MAX_QUESTIONS, type Player } from '@game/shared';
+import { CLIMB_TOP, DEFAULT_ROOM_SETTINGS, TRIAL_MAX_QUESTIONS, climbEntryStep, type Player } from '@game/shared';
 import { initRealtime } from '../src/realtime.js';
 import '../src/modes/index.js';
 import { createRoom, deleteRoom, type Room } from '../src/state.js';
 import { installTimerClock, type TimerClock } from '../src/timers.js';
 import { endTrialQuestion, startTrial, submitTrialAnswer } from '../src/phases.js';
+import { computeCompetitionRanks } from '../src/payloads.js';
+import { applyClimbRound, nextAfterClimbRound, type ClimbRoundEntry } from '../src/climb.js';
 
 // ---------------------------------------------------------------------------
 // Virtual clock - the injected TimerClock. Timers queue up in virtual time and
@@ -121,6 +124,10 @@ interface Config {
   tMeanMs: number;
   tSdMs: number;
   seed: number;
+  // Task 187 - which finale mechanic to simulate. 'trial' drives the real
+  // phase machine exactly as before; 'climb' calls climb.ts's pure
+  // functions directly (there is no phase machine for it yet).
+  finale: 'trial' | 'climb';
   json: boolean;
 }
 
@@ -137,6 +144,7 @@ function parseArgs(argv: string[]): Config {
     tMeanMs: 8000,
     tSdMs: 4000,
     seed: 184,
+    finale: 'trial',
     json: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -184,6 +192,13 @@ function parseArgs(argv: string[]): Config {
         break;
       case '--seed':
         cfg.seed = Number(value);
+        i++;
+        break;
+      case '--finale':
+        if (value !== 'trial' && value !== 'climb') {
+          throw new Error(`--finale must be 'trial' or 'climb', got '${value}'`);
+        }
+        cfg.finale = value;
         i++;
         break;
       case '--json':
@@ -380,6 +395,120 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
 }
 
 // ---------------------------------------------------------------------------
+// One simulated climb (Task 187) - no Room, no phase machine, no clock:
+// climb.ts has no timers to inject one into. Reuses the SAME player-
+// simulation shape as simulateOne above (RNG-driven lock-in decisions,
+// gaussian lock-in timing, leader/other skill split) so the two mechanics
+// are compared on like-for-like player behavior; only the entry setup and
+// scoring differ, calling climb.ts's pure functions directly.
+// ---------------------------------------------------------------------------
+interface ClimbRunResult {
+  rounds: number;
+  outcome: 'winner' | 'duel' | 'cap';
+  winnerId: string | null;
+  duelPlayerIds: [string, string] | null;
+  duelWasThreeWayPlus: boolean;
+  entryLeaderId: string;
+  comeback: boolean;
+  anomalies: string[];
+}
+
+const CLIMB_ROUND_CAP = 60;
+
+function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
+  const anomalies: string[] = [];
+  const questionTimeMs = DEFAULT_ROOM_SETTINGS.questionTimeMs;
+
+  // Same entry-scale generation as simulateOne, deliberately unused beyond
+  // producing a RANK ORDER: climb entry is ordinal (climbEntryStep), so the
+  // raw score values themselves must have no effect on the outcome.
+  const players: Player[] = [];
+  for (let i = 0; i < cfg.players; i++) {
+    const score = Math.round(cfg.entryLo + (cfg.entryHi - cfg.entryLo) * rng());
+    players.push(makePlayer(`p${i}`, score));
+  }
+  const pinned = Math.floor(rng() * cfg.players);
+  players[pinned].score = cfg.entryHi;
+  let entryLeader = players[0];
+  for (const p of players) if (p.score > entryLeader.score) entryLeader = p;
+
+  const ranks = computeCompetitionRanks(
+    players,
+    (p) => p.score,
+    (p) => p.playerId,
+  );
+  const steps = new Map<string, number>();
+  for (const p of players) {
+    steps.set(p.playerId, climbEntryStep(ranks.get(p.playerId)!, players.length));
+  }
+
+  let rounds = 0;
+  let outcome: ClimbRunResult['outcome'] = 'cap';
+  let winnerId: string | null = null;
+  let duelPlayerIds: [string, string] | null = null;
+  let duelWasThreeWayPlus = false;
+
+  while (rounds < CLIMB_ROUND_CAP) {
+    rounds += 1;
+    const correctIndex = 0; // arbitrary and fixed - only correctness (via pCorrect) matters, not which option
+
+    const entries: ClimbRoundEntry[] = players.map((p) => {
+      const stepBefore = steps.get(p.playerId)!;
+      if (rng() < cfg.pNoAnswer) {
+        return { playerId: p.playerId, name: p.name, avatarId: p.avatarId, stepBefore, choice: null, elapsedMs: null };
+      }
+      const raw = cfg.tMeanMs + gaussian(rng) * cfg.tSdMs;
+      const elapsedMs = Math.round(Math.min(questionTimeMs - 1, Math.max(500, raw)));
+      const isLeader = p.playerId === entryLeader.playerId;
+      const pCorrect = (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
+      const correct = rng() < pCorrect;
+      const choice = correct ? correctIndex : (correctIndex + 1 + Math.floor(rng() * 3)) % 4;
+      return { playerId: p.playerId, name: p.name, avatarId: p.avatarId, stepBefore, choice, elapsedMs };
+    });
+
+    const results = applyClimbRound(entries, correctIndex);
+    // Captured BEFORE nextAfterClimbRound, which clamps any 3+-way arrivals
+    // past the top two back down to CLIMB_TOP - 1 in place.
+    const arrivalCount = results.filter((r) => r.stepAfter >= CLIMB_TOP).length;
+    const next = nextAfterClimbRound(results);
+    for (const result of results) steps.set(result.playerId, result.stepAfter);
+
+    if (next.kind === 'WINNER') {
+      outcome = 'winner';
+      winnerId = next.winnerPlayerId;
+      break;
+    }
+    if (next.kind === 'DUEL') {
+      outcome = 'duel';
+      duelPlayerIds = next.playerIds;
+      duelWasThreeWayPlus = arrivalCount > 2;
+      break;
+    }
+  }
+  if (outcome === 'cap') {
+    anomalies.push(`round cap (${CLIMB_ROUND_CAP}) hit with no winner or duel`);
+  }
+
+  const comeback =
+    outcome === 'winner'
+      ? winnerId !== entryLeader.playerId
+      : outcome === 'duel'
+        ? !duelPlayerIds!.includes(entryLeader.playerId)
+        : false;
+
+  return {
+    rounds,
+    outcome,
+    winnerId,
+    duelPlayerIds,
+    duelWasThreeWayPlus,
+    entryLeaderId: entryLeader.playerId,
+    comeback,
+    anomalies,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Batch + report
 // ---------------------------------------------------------------------------
 function median(values: number[]): number | null {
@@ -389,9 +518,7 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function main(): void {
-  const cfg = parseArgs(process.argv.slice(2));
-
+function runTrialBatch(cfg: Config): void {
   // Sockets: initRealtime builds io on an http server that never listens, so
   // every emit the trial makes lands on an empty room - the production emit
   // sites run, nobody hears them.
@@ -468,6 +595,67 @@ function main(): void {
     `pending virtual timers after batch: ${summary.pendingVirtualTimers}; wall clock ${summary.wallClockMs}ms`,
   ];
   process.stdout.write(`${lines.join('\n')}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// Climb batch + report (Task 187)
+// ---------------------------------------------------------------------------
+function runClimbBatch(cfg: Config): void {
+  const rng = mulberry32(cfg.seed);
+
+  const started = performance.now();
+  const results: ClimbRunResult[] = [];
+  for (let i = 0; i < cfg.runs; i++) {
+    results.push(simulateOneClimb(cfg, rng));
+  }
+  const wallMs = performance.now() - started;
+
+  const winners = results.filter((r) => r.outcome === 'winner');
+  const duels = results.filter((r) => r.outcome === 'duel');
+  const threeWayPlus = duels.filter((r) => r.duelWasThreeWayPlus);
+  const capHits = results.filter((r) => r.outcome === 'cap');
+  const summary = {
+    config: cfg,
+    runs: results.length,
+    roundsMedian: median(results.map((r) => r.rounds)),
+    winnerCount: winners.length,
+    duelCount: duels.length,
+    twoWayDuelCount: duels.length - threeWayPlus.length,
+    threeWayPlusCount: threeWayPlus.length,
+    capHitCount: capHits.length,
+    comebackCount: results.filter((r) => r.comeback).length,
+    comebackPct: (100 * results.filter((r) => r.comeback).length) / results.length,
+    anomalies: results.flatMap((r, i) => r.anomalies.map((a) => `run ${i + 1}: ${a}`)),
+    wallClockMs: Math.round(wallMs),
+  };
+
+  if (cfg.json) {
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    return;
+  }
+  const lines = [
+    `climb monte carlo — ${summary.runs} runs, ${cfg.players} players, entry ${cfg.entryLo}-${cfg.entryHi}, ` +
+      `pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
+      `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
+    `rounds to resolution: median ${summary.roundsMedian ?? 'n/a'}; cap (${CLIMB_ROUND_CAP}) hit: ${summary.capHitCount}`,
+    `outcome: single winner ${summary.winnerCount}, duel ${summary.duelCount} (2-way ${summary.twoWayDuelCount}, ` +
+      `3+-way collapsed to duel ${summary.threeWayPlusCount})`,
+    `comebacks (winner/duel excludes entry leader): ${summary.comebackCount}/${summary.runs} (${summary.comebackPct.toFixed(1)}%)`,
+    `anomalies: ${summary.anomalies.length}${summary.anomalies.length ? '\n  ' + summary.anomalies.join('\n  ') : ''}`,
+    `wall clock ${summary.wallClockMs}ms`,
+  ];
+  process.stdout.write(`${lines.join('\n')}\n`);
+}
+
+function main(): void {
+  const cfg = parseArgs(process.argv.slice(2));
+  // Climb has no Room and logs nothing, so it needs none of runTrialBatch's
+  // own console muting (which stays self-contained, unchanged, below).
+  if (cfg.finale === 'climb') {
+    runClimbBatch(cfg);
+  } else {
+    runTrialBatch(cfg);
+  }
 }
 
 main();

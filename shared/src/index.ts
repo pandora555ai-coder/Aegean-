@@ -2165,6 +2165,44 @@ export const TRIAL_STAGE_TITLE = 'Η Δίκη';
 export const TRIAL_STAGE_TAGLINE =
   'Η βαθμολογία σας είναι πλέον ζωή, και κυλάει όσο σωπαίνετε. Ένας θα μείνει όρθιος.';
 
+// --------------------- Climb finale mechanic (Task 187) -------------------
+// A prototype replacement for the trial above: a race up a ladder of steps
+// instead of a life drain. PURE NUMBERS ONLY at this stage - no UI, no Greek
+// text, no phase wiring, no live-path change. Lives here (not in
+// server/src/climb.ts) for the same reason trialWrongHit/trialDrainPerSec
+// do: the live game (eventually) and the dev Monte Carlo harness both need
+// the identical entry formula.
+export const CLIMB_TOP = 12;
+export const CLIMB_ENTRY_GAP = 3;
+export const CLIMB_ENTRY_BASE = 1;
+
+// Entry step from a COMPETITION rank (1 = leader, N = last; ties share a
+// rank and therefore a step - see computeCompetitionRanks, server/src/
+// payloads.ts), never from the score itself: (playerCount - rank) always
+// spans the full [0, playerCount - 1] range, so dividing by that same span
+// normalizes to [0, 1] regardless of N - the leader always lands on
+// CLIMB_ENTRY_BASE + CLIMB_ENTRY_GAP and last always on CLIMB_ENTRY_BASE,
+// gap locked at CLIMB_ENTRY_GAP for every player count, N = 2 included.
+export function climbEntryStep(rank: number, playerCount: number): number {
+  return CLIMB_ENTRY_BASE + Math.round((CLIMB_ENTRY_GAP * (playerCount - rank)) / Math.max(1, playerCount - 1));
+}
+
+// One player's climb round, scored - the same shape as TrialRevealResult
+// (step instead of life; delta instead of drain/hit, since climb has one
+// signed number per round instead of two always-non-negative ones).
+export interface ClimbRevealResult {
+  playerId: string;
+  name: string;
+  avatarId: string;
+  choice: number | null; // null = never locked in
+  correct: boolean;
+  timeMs: number | null; // elapsed at lock-in
+  answerRank: number | null; // 1-based among CORRECT lock-ins, by speed
+  stepBefore: number;
+  delta: number; // +2 fastest correct, +1 other correct, -1 wrong, -2 no answer
+  stepAfter: number; // max(0, stepBefore + delta) - floored, never negative
+}
+
 export interface TrialSubmitPayload {
   choice: number; // 0-3, validated server-side
 }
