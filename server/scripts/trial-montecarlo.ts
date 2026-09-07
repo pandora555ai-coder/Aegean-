@@ -190,6 +190,12 @@ interface RunResult {
   comeback: boolean;
   leaderDied: boolean;
   leaderMissStreakAtDeath: number | null;
+  // Task 185b - resilience/calibration check: over the whole trial (not
+  // just the fatal streak), how many locked-in-wrong hits the leader
+  // absorbed, and drain vs. hit's share of what actually killed him.
+  leaderWrongLockInHits: number;
+  leaderTotalDrain: number;
+  leaderTotalHit: number;
   suddenDeathFired: number;
   anomalies: string[];
 }
@@ -230,6 +236,9 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
   let leaderMissStreak = 0;
   let leaderDied = false;
   let leaderMissStreakAtDeath: number | null = null;
+  let leaderWrongLockInHits = 0;
+  let leaderTotalDrain = 0;
+  let leaderTotalHit = 0;
   let seenRevealRound = -1;
 
   const observeReveal = (): void => {
@@ -244,6 +253,11 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
     const leaderResult = reveal.results.find((r) => r.playerId === entryLeader.playerId);
     if (leaderResult && !leaderDied) {
       leaderMissStreak = leaderResult.correct ? 0 : leaderMissStreak + 1;
+      if (leaderResult.choice !== null && !leaderResult.correct) {
+        leaderWrongLockInHits += 1;
+      }
+      leaderTotalDrain += leaderResult.drain;
+      leaderTotalHit += leaderResult.hit;
       // Elimination is real only when this reveal does NOT declare sudden
       // death (the 137 trap: a sudden-death-declaring reveal flags everyone).
       if (leaderResult.eliminated && !reveal.nextSuddenDeath) {
@@ -335,6 +349,9 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
     comeback: winnerId !== null && winnerId !== entryLeader.playerId,
     leaderDied,
     leaderMissStreakAtDeath,
+    leaderWrongLockInHits,
+    leaderTotalDrain,
+    leaderTotalHit,
     suddenDeathFired,
     anomalies,
   };
@@ -394,6 +411,16 @@ function main(): void {
     comebackCount: results.filter((r) => r.comeback).length,
     leaderDiedCount: leaderDeaths.length,
     leaderMissStreakAtDeathMedian: median(leaderDeaths.map((r) => r.leaderMissStreakAtDeath ?? 0)),
+    leaderWrongLockInHitsMedian: median(leaderDeaths.map((r) => r.leaderWrongLockInHits)),
+    leaderDrainSharePctMean:
+      leaderDeaths.length === 0
+        ? null
+        : (100 *
+            leaderDeaths.reduce((sum, r) => {
+              const total = r.leaderTotalDrain + r.leaderTotalHit;
+              return sum + (total > 0 ? r.leaderTotalDrain / total : 0);
+            }, 0)) /
+          leaderDeaths.length,
     suddenDeathFiredTotal: results.reduce((sum, r) => sum + r.suddenDeathFired, 0),
     suddenDeathRuns: results.filter((r) => r.suddenDeathFired > 0).length,
     anomalies: results.flatMap((r, i) => r.anomalies.map((a) => `run ${i + 1}: ${a}`)),
@@ -413,6 +440,8 @@ function main(): void {
     `rounds to verdict: median ${summary.roundsMedianVerdictRuns ?? 'n/a'} (all runs median ${summary.roundsMedianAllRuns})`,
     `comebacks (winner ≠ entry leader): ${summary.comebackCount}; entry leader died in ${summary.leaderDiedCount} runs, ` +
       `median consecutive misses at death ${summary.leaderMissStreakAtDeathMedian ?? 'n/a'}`,
+    `dead leader: median locked-in-wrong hits absorbed ${summary.leaderWrongLockInHitsMedian ?? 'n/a'}, ` +
+      `mean drain share of life lost ${summary.leaderDrainSharePctMean === null ? 'n/a' : summary.leaderDrainSharePctMean.toFixed(1) + '%'}`,
     `sudden death fired: ${summary.suddenDeathFiredTotal} times across ${summary.suddenDeathRuns} runs`,
     `anomalies: ${summary.anomalies.length}${summary.anomalies.length ? '\n  ' + summary.anomalies.join('\n  ') : ''}`,
     `pending virtual timers after batch: ${summary.pendingVirtualTimers}; wall clock ${summary.wallClockMs}ms`,

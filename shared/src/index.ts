@@ -2134,7 +2134,7 @@ export interface NumericRevealShowPayload {
 // the live game both need the same numbers without one importing the other.
 export const TRIAL_WRONG_ANSWER_HIT_PCT = 0.11; // locked in, but wrong
 export const TRIAL_NO_ANSWER_HIT_PCT = 0.23; // never locked in - also pays the FULL timer's drain
-export const TRIAL_DRAIN_PCT_PER_SEC = 0.01; // per second a question stays open against you
+export const TRIAL_DRAIN_PCT_PER_SEC = 0.0065; // per second a question stays open against you
 
 // The extra bite taken at TRIAL_REVEAL - two tiers by trigger condition,
 // unchanged from before this task: a wrong-but-locked-in answer costs less
