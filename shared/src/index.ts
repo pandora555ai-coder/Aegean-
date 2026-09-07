@@ -2172,7 +2172,7 @@ export const TRIAL_STAGE_TAGLINE =
 // server/src/climb.ts) for the same reason trialWrongHit/trialDrainPerSec
 // do: the live game (eventually) and the dev Monte Carlo harness both need
 // the identical entry formula.
-export const CLIMB_TOP = 12;
+export const CLIMB_TOP = 10;
 export const CLIMB_ENTRY_GAP = 3;
 export const CLIMB_ENTRY_BASE = 1;
 
