@@ -4,6 +4,7 @@ import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // Task 161/163d - the reference's .drawing grid: the picture on the left,
 // the options beside it, on ONE slab. The literal reference figures - see
@@ -74,7 +75,7 @@ export function GuessView({ guess, roomCode, paused, pausedByName }: GuessViewPr
       <div className="enter-pop" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <Avatar avatarId={guess.drawerAvatarId} sizeRem={2} />
         <span style={styles.category} data-testid="guess-drawer-name">
-          {guess.drawerName} ζωγράφισε αυτό
+          {greekUpper(`${guess.drawerName} ζωγράφισε αυτό`)}
         </span>
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>

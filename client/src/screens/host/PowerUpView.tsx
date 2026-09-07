@@ -3,6 +3,7 @@ import { type PowerUpShowHostPayload, type RoomCode } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // questionTextTv/progress are shared with other phases (hostStyles.ts) and
 // still carry pre-Θέατρο tokens there - this phase's content is ported
@@ -37,7 +38,7 @@ export function PowerUpView({ powerUp, roomCode, paused, pausedByName }: PowerUp
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={powerUp.standings}>
       <div className="enter-pop" style={styles.category}>
-        Σαμποτάζ
+        {greekUpper('Σαμποτάζ')}
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={papyrusTextBlockStyle}>

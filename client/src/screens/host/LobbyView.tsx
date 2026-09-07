@@ -11,6 +11,7 @@ import {
 import { DIFFICULTY_MIX_LABELS } from '../../difficultyLabels';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { QR_SIZE_PX, styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 interface LobbyViewProps {
   connected: boolean;
@@ -37,6 +38,9 @@ interface LobbyViewProps {
 // under the slab. Nothing here names or counts a player - the sophists row
 // (now visible through LOBBY too, HostScreen/SophistsRow) is where joining
 // players show up, so this view stays about the ROOM, not its roster.
+// Task 181 - `.brand small` and `.l` no longer carry text-transform:
+// uppercase (it kept the Greek tonos, e.g. "ΣΩΚΡΆΤΗΣ"); their text is
+// passed through greekUpper() at the call site instead.
 const STYLE_TAG = `
 .lobby-root{position:fixed;inset:var(--tv-safe-top) 0 var(--tv-safe-bottom) 0;container-type:size;
   display:grid;grid-template-columns:1.1fr 1fr;column-gap:5%;align-items:start;padding:8% 6% 0;
@@ -44,11 +48,11 @@ const STYLE_TAG = `
 .lobby-root .brand{font-family:"Gentium Book Plus",Georgia,"Times New Roman",serif;font-size:13cqh;
   font-weight:700;line-height:.95;color:var(--marble);text-shadow:0 .6cqh 3cqh rgba(0,0,0,.8)}
 .lobby-root .brand small{display:block;font-family:-apple-system,sans-serif;font-size:3cqh;
-  font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--ember);margin-top:1.6cqh}
+  font-weight:600;letter-spacing:.22em;color:var(--ember);margin-top:1.6cqh}
 .lobby-root .status{font-size:1.8cqh;color:var(--marble-3);margin-top:1.2cqh}
 .lobby-root .right{display:flex;flex-direction:column;gap:1.4cqh;width:100%}
 .lobby-root .join-inner{display:grid;grid-template-columns:1fr auto;gap:3cqh;align-items:center;width:100%}
-.lobby-root .l{font-size:2.4cqh;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--marble-3)}
+.lobby-root .l{font-size:2.4cqh;font-weight:700;letter-spacing:.14em;color:var(--marble-3)}
 .lobby-root .code{font-size:12cqh;font-weight:900;line-height:1;letter-spacing:.05em;
   font-variant-numeric:tabular-nums;color:var(--carve)}
 .lobby-root .u{font-size:2.5cqh;font-weight:700;color:var(--wine)}
@@ -91,7 +95,7 @@ export function LobbyView({
       <div>
         <div className="brand">
           Αιγαίον
-          <small>Ο Σωκράτης εναντίον των Σοφιστών</small>
+          <small>{greekUpper('Ο Σωκράτης εναντίον των Σοφιστών')}</small>
         </div>
         <div className="status">{connected ? 'connected' : 'disconnected'}</div>
         {phase === 'LOBBY' && wakeLockFailed && (
@@ -122,7 +126,7 @@ export function LobbyView({
             <MarbleSlab data-testid="join-slab" style={{ display: 'grid', padding: '4cqh 5cqh' }}>
               <div className="join-inner">
                 <div>
-                  <div className="l">Κωδικός</div>
+                  <div className="l">{greekUpper('Κωδικός')}</div>
                   <div className="code" data-testid="room-code">
                     {roomCode.split('').join(' ')}
                   </div>

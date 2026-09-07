@@ -9,6 +9,7 @@ import { CheckMark } from '../../components/CheckMark';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // Same wrap footprint as CheckMark.tsx's own (private) box, so a false
 // row's dash lines up flush with a true row's check.
@@ -50,11 +51,12 @@ const columnsGridStyle: CSSProperties = {
   width: '100%',
 };
 
+// Task 181 - no textTransform:uppercase ("Αληθινά"/"Ψεύτικα" would keep
+// their tonos); the heading text is passed through greekUpper() instead.
 const columnHeadingStyle: CSSProperties = {
   fontSize: '2cqh',
   fontWeight: 700,
   letterSpacing: '0.08em',
-  textTransform: 'uppercase',
   color: 'var(--marble-3)',
   marginBottom: '0.6cqh',
 };
@@ -114,7 +116,7 @@ function StatementColumn({
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={columnHeadingStyle}>{heading}</div>
+      <div style={columnHeadingStyle}>{greekUpper(heading)}</div>
       {statements.map((statement, index) => (
         <div key={index} style={rowStyle(statement.text === emphasizedText)} data-testid="blitz-reveal-statement">
           {isTrueColumn ? <CheckMark visible /> : <DashMark />}

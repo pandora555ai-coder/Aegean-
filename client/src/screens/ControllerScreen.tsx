@@ -83,6 +83,7 @@ import { clearLastSession, getLastSession, saveLastSession } from '../lastSessio
 import { getOrCreatePlayerId } from '../playerId';
 import { DIFFICULTY_MIX_LABELS } from '../difficultyLabels';
 import { GAME_LENGTH_LABELS } from '../gameLengthLabels';
+import { greekUpper } from '../greekUpper';
 import { Avatar } from '../components/Avatar';
 import { BlitzSwipeCard } from '../components/BlitzSwipeCard';
 import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
@@ -1934,7 +1935,7 @@ export default function ControllerScreen() {
           </div>
         ) : (
           <>
-            <div style={styles.category}>{numericQuestion.category}</div>
+            <div style={styles.category}>{greekUpper(numericQuestion.category)}</div>
             <div style={styles.title} data-testid="numeric-question-text">
               {numericQuestion.text}
             </div>
@@ -2057,7 +2058,7 @@ export default function ControllerScreen() {
             👑 VIP
           </div>
         )}
-        <div style={styles.category}>Η Παλαίστρα</div>
+        <div style={styles.category}>{greekUpper('Η Παλαίστρα')}</div>
         <div style={styles.blitzProgress} data-testid="blitz-progress">
           {Math.min(blitzIndex, blitz.total)}/{blitz.total}
         </div>
@@ -2094,7 +2095,7 @@ export default function ControllerScreen() {
             👑 VIP
           </div>
         )}
-        <div style={styles.category}>Η Παλαίστρα</div>
+        <div style={styles.category}>{greekUpper('Η Παλαίστρα')}</div>
         <div style={styles.revealCorrect} data-testid="blitz-reveal-correct">
           Σωστά: {blitzReveal.correct}
         </div>
@@ -2214,7 +2215,7 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.questionHeader}>
-          <div style={styles.category}>Τι ζωγράφισε ο/η {guess.drawerName};</div>
+          <div style={styles.category}>{greekUpper(`Τι ζωγράφισε ο/η ${guess.drawerName};`)}</div>
           {answered ? (
             <div style={styles.lookAtTv} data-testid="waiting-message">
               Περίμενε τους υπόλοιπους...
@@ -2386,7 +2387,7 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.questionHeader}>
-          <div style={styles.category}>{question.category}</div>
+          <div style={styles.category}>{greekUpper(question.category)}</div>
           {answered ? (
             <div style={styles.lookAtTv} data-testid="waiting-message">
               Περίμενε τους υπόλοιπους...
@@ -2496,7 +2497,7 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.questionHeader}>
-          <div style={styles.category}>{trialQuestion.category}</div>
+          <div style={styles.category}>{greekUpper(trialQuestion.category)}</div>
           <div style={styles.trialLife} data-testid="trial-your-life">
             Ζωή: {trialQuestion.yourLife}
           </div>
@@ -3359,12 +3360,13 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
   },
   error: { color: 'var(--marble)', fontWeight: 700, textAlign: 'center' },
+  // Task 181 - no textTransform:uppercase (it keeps the Greek tonos);
+  // every call site passes its text through greekUpper() instead.
   category: {
     fontSize: '1rem',
     fontWeight: 600,
     color: 'var(--marble-3)',
     textAlign: 'center',
-    textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
   // Task 156c - the "n/12" progress readout above the swipe card.

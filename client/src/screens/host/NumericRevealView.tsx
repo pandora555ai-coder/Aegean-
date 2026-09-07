@@ -1,6 +1,7 @@
 import { useMemo, useRef, type CSSProperties } from 'react';
 import { NUMERIC_REVEAL_DURATION_MS, type NumericRevealShowPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
+import { greekUpper } from '../../greekUpper';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
@@ -178,7 +179,7 @@ export function NumericRevealView({ reveal, roomCode, paused, pausedByName, seco
       contentKey={reveal.questionIndex}
     >
       <div className="enter-pop" style={styles.category}>
-        {reveal.category}
+        {greekUpper(reveal.category)}
       </div>
       {/* flex:1 1 0 opts back into filling available height - useFitFontSize
           below needs a determinate, flexed container to shrink text against. */}

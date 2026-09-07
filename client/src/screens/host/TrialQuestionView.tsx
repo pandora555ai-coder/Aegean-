@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { type RoomCode, type TrialQuestionShowHostPayload } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
+import { greekUpper } from '../../greekUpper';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
@@ -43,7 +44,7 @@ export function TrialQuestionView({ trialQuestion, roomCode, paused, pausedByNam
         </div>
       )}
       <div className="enter-pop" style={styles.category}>
-        {trialQuestion.category}
+        {greekUpper(trialQuestion.category)}
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }}>
         <div style={styles.questionBlock} ref={questionBlockRef}>

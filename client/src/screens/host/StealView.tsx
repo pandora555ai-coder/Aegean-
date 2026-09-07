@@ -3,6 +3,7 @@ import { type RoomCode, type StealShowHostPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
+import { greekUpper } from '../../greekUpper';
 import { SpeechSlab } from '../../components/SpeechSlab';
 import { densityScale, styles } from './hostStyles';
 
@@ -104,7 +105,7 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
         </SpeechSlab>
       ) : (
         <>
-          <div style={styles.category}>Κλοπή Πόντων</div>
+          <div style={styles.category}>{greekUpper('Κλοπή Πόντων')}</div>
           <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
             <div style={papyrusTextBlockStyle}>
               <div

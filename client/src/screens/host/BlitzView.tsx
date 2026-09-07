@@ -3,6 +3,7 @@ import { type BlitzShowHostPayload, type RoomCode } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // Same serif treatment as DrawView's titleStyle - the one thing on this
 // slab that is actually READ as a headline, everything about players lives
@@ -42,7 +43,7 @@ export function BlitzView({ blitz, roomCode, paused, pausedByName }: BlitzViewPr
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={blitz.standings} contentKey="blitz">
       <div className="enter-pop" style={styles.category}>
-        Η Παλαίστρα
+        {greekUpper('Η Παλαίστρα')}
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div>

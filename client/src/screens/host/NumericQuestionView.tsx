@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { type NumericQuestionShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
+import { greekUpper } from '../../greekUpper';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
@@ -39,7 +40,7 @@ export function NumericQuestionView({ question, roomCode, paused, pausedByName }
       contentKey={question.questionIndex}
     >
       <div className="enter-pop" style={styles.category}>
-        {question.category}
+        {greekUpper(question.category)}
       </div>
       {/* flex:1 1 0 opts back into filling available height - useFitFontSize
           below needs a determinate, flexed container to shrink text against. */}

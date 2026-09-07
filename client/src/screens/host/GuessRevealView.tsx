@@ -5,6 +5,7 @@ import { CheckMark } from '../../components/CheckMark';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // Task 163d - correctness is never colour-coded: full opacity + heavier
 // weight + the check-mark shape (CheckMark, --wine-2) for the right word,
@@ -93,7 +94,7 @@ export function GuessRevealView({ guessReveal, roomCode, paused, pausedByName, s
       <div className="enter-pop" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <Avatar avatarId={guessReveal.drawerAvatarId} sizeRem={2} />
         <span style={styles.category} data-testid="guess-reveal-drawer-name">
-          {guessReveal.drawerName} ζωγράφισε:
+          {greekUpper(`${guessReveal.drawerName} ζωγράφισε:`)}
         </span>
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>

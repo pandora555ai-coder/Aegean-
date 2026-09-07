@@ -3,6 +3,7 @@ import { type DrawShowHostPayload, type RoomCode } from '@game/shared';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
+import { greekUpper } from '../../greekUpper';
 
 // Task 163d - design/theatre-reference.html's .drawing grid: a canvas-shaped
 // square left, text right. DRAW never sends the host WHAT anyone is drawing
@@ -60,7 +61,7 @@ export function DrawView({ draw, roomCode, paused, pausedByName }: DrawViewProps
   return (
     <GameLayout roomCode={roomCode} paused={paused} pausedByName={pausedByName} standings={draw.standings}>
       <div className="enter-pop" style={styles.category}>
-        Ζωγραφική
+        {greekUpper('Ζωγραφική')}
       </div>
       <MarbleSlab className="enter-pop" style={{ flex: '0 0 auto' }}>
         <div style={drawingGridStyle}>

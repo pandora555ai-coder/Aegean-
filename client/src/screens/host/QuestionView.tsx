@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { type QuestionShowHostPayload, type RoomCode } from '@game/shared';
 import { useFitFontSize } from '../../hooks/useFitFontSize';
+import { greekUpper } from '../../greekUpper';
 import { GameLayout } from './GameLayout';
 import { MarbleSlab } from '../../components/MarbleSlab';
 import { styles } from './hostStyles';
@@ -50,7 +51,7 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
         </div>
       )}
       <div className="enter-pop" style={styles.category}>
-        {question.category}
+        {greekUpper(question.category)}
       </div>
       {/* Task 29: the TV shows the question only - no options. Reading four
           answers off the TV and then hunting for the matching button on the

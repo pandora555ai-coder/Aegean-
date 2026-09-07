@@ -198,11 +198,14 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 600,
     color: 'var(--marble-3)',
   },
+  // Task 181 - no textTransform:uppercase here: the browser's uppercase
+  // mapping keeps the Greek tonos ("παλαίστρα" -> "ΠΑΛΑΊΣΤΡΑ", not
+  // "ΠΑΛΑΙΣΤΡΑ"). Every call site passes its text through greekUpper()
+  // instead, which strips the accent before uppercasing.
   category: {
     fontSize: '1.75rem',
     fontWeight: 600,
     color: 'var(--marble-3)',
-    textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
   progress: {
