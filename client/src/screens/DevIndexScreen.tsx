@@ -20,6 +20,17 @@ export default function DevIndexScreen() {
             <span style={styles.rowDesc}>{r.description}</span>
           </Link>
         ))}
+        {/* Task 180 - not a React route: this is a static index.html the
+            screenshot harness writes into client/public/dev/shots, so a
+            plain <a> (full navigation) is used instead of <Link> - React
+            Router has no element for this path. */}
+        <a href="/dev/shots/" style={styles.row} data-testid="dev-link-/dev/shots">
+          <span style={styles.rowHead}>
+            <span style={styles.rowTitle}>Screenshots φάσεων</span>
+            <span style={styles.rowPath}>/dev/shots/</span>
+          </span>
+          <span style={styles.rowDesc}>Every GamePhase, TV + phone, from the last screenshot harness run.</span>
+        </a>
       </div>
       <Link to="/" style={styles.back} data-testid="dev-back">
         ← Αρχική
