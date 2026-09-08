@@ -1512,7 +1512,10 @@ export function endClimbReveal(code: RoomCode): void {
 
 // Opens (or, after a tie, re-opens) the pick window. Idempotent on the duel
 // state: the duelists are fixed for the whole duel, the picks are per round.
-function startDuel(room: Room, duelistIds: [string, string]): void {
+// Exported since Task 191 - the standalone duel mode (modes/duel.ts) is
+// what enters this mechanic from a bare room.climb built just to hold it,
+// rather than from the climb finale reaching CLIMB_TOP.
+export function startDuel(room: Room, duelistIds: [string, string]): void {
   const climb = room.climb;
   if (!climb) {
     return;

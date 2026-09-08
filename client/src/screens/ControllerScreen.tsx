@@ -10,6 +10,7 @@ import {
   DRAW_ROUNDS_OPTIONS,
   DRAW_WARNING_MS,
   DUEL_WEAPONS,
+  FINALE_MODE_OPTIONS,
   GAME_LENGTH_OPTIONS,
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
@@ -51,6 +52,7 @@ import {
   type DuelRevealHostPayload,
   type DuelRevealPayload,
   type DuelWeapon,
+  type FinaleMode,
   type GameLength,
   type GameModeId,
   type GameOverPayload,
@@ -132,6 +134,10 @@ const OPTION_SLAB_CLIP = 'polygon(1.5% 0, 98.5% 0.6%, 100% 3%, 99.4% 97%, 98% 10
 // Task 177 - the two options for the powerUpsEnabled SegmentedRow. false
 // first so it renders as the left (default) segment.
 const POWER_UPS_ENABLED_OPTIONS = [false, true] as const;
+// Task 191 - the finale toggle. FINALE_MODE_OPTIONS is ['trial', 'climb']
+// (shared) - Greek labels only exist here, same split as
+// DIFFICULTY_MIX_LABELS/GAME_LENGTH_LABELS living outside @game/shared.
+const FINALE_MODE_LABELS: Record<FinaleMode, string> = { trial: 'Η Δίκη', climb: 'Η Ανάβασις' };
 
 // Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
 // side ("freeze them"), unlike the victim-side banner during QUESTION.
@@ -3180,6 +3186,18 @@ export default function ControllerScreen() {
                 onSelect={(enabled) => handleSettingChange({ powerUpsEnabled: enabled })}
                 readOnly={!isVip}
                 testIdPrefix="setting-powerups"
+              />
+              {/* Task 191 - which finale ends the game. Η Δίκη (default) or
+                  Η Ανάβασις (188a's climb, previously reachable only by a
+                  redeploy flipping the default). */}
+              <SegmentedRow
+                label="Φινάλε"
+                options={FINALE_MODE_OPTIONS}
+                current={roomSettings.finaleMode}
+                format={(mode: FinaleMode) => FINALE_MODE_LABELS[mode]}
+                onSelect={(mode) => handleSettingChange({ finaleMode: mode })}
+                readOnly={!isVip}
+                testIdPrefix="setting-finale"
               />
               <div style={styles.estimatedLength} data-testid="estimated-length">
                 ~{estimatedMinutes} λεπτά

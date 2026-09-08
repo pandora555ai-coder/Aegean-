@@ -410,8 +410,12 @@ export interface LobbyUpdatePayload {
 // Task 156 - 'blitz' is a standalone true/false swipe mode (BLITZ ->
 // BLITZ_REVEAL), registry-selectable like the other three; not yet composed
 // into 'full'.
-export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full', 'blitz'];
+// Task 191 - 'duel' is Η Μονομαχία (188b) as its own standalone dev-harness
+// mode (DUEL_PICK -> DUEL_REVEAL, ties re-entering DUEL_PICK), the same
+// "stays VIP-selectable" reasoning as the other three; not composed into
+// 'full' (the climb finale already runs the duel mechanic on its own terms).
+export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full', 'blitz', 'duel'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
 
 // Task 57 - one mode as the LOBBY needs to know it: its own display label
