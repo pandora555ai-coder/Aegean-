@@ -21,7 +21,17 @@ interface ClimbQuestionViewProps {
 // the stair is moving. Room-code/pause chrome moved up to HostScreen
 // (AnavasisChrome, rendered once) so it lives OUTSIDE the scene container
 // this view sits inside of.
-const SLAB_WRAP_STYLE = { position: 'fixed', left: '16%', top: '9%', width: '52%', zIndex: 1 } as const;
+// Task 198 - zIndex 3 (not 1): SocratesFigure (z-index 1, absolute, standing
+// at the temple threshold behind this slab in the terrace's own left:57%)
+// and AnavasisClimbers (z-index 2, fixed, a climber can stand at any step
+// including ones behind this slab) both sat at or above this wrapper's old
+// z-index 1, so on a z-index tie the LATER element in the DOM (Socrates)
+// painted over the slab's text. 3 matches the "always-on-top chrome" tier
+// HostScreen already uses for Krater/SpeechSlab, putting the read slab above
+// every scene actor regardless of DOM order - the rule for Frame A (CLAUDE.md/
+// task 198: "the slab is the topmost readable element, nothing overlaps its
+// text, ever").
+const SLAB_WRAP_STYLE = { position: 'fixed', left: '16%', top: '9%', width: '52%', zIndex: 3 } as const;
 
 export function ClimbQuestionView({ climbQuestion }: ClimbQuestionViewProps) {
   const questionBlockRef = useRef<HTMLDivElement | null>(null);
