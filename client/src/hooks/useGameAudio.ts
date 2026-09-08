@@ -543,6 +543,7 @@ export function useGameAudio() {
       if (!buffer) {
         const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);
         if (!res.ok) {
+          console.warn(`[socrates-audio] fetch failed for ${hash}.mp3: HTTP ${res.status}`);
           onEnded(); // Task 154 - a missing clip ends the beat now, not at the backstop
           return;
         }
@@ -564,11 +565,15 @@ export function useGameAudio() {
       // outputGain (mute stays a completely separate ramp on top).
       source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
       source.start();
-    } catch {
+    } catch (err) {
       // Task 154 - a fetch/decode/start failure used to leave the phase
       // sitting silent until the server's SOCRATES_MAX_DURATION_MS backstop
       // (observed: 11010ms on a 404). A room reads 11 silent seconds as
       // "broken", so a dead clip now ends the beat immediately instead.
+      // Task 195 - this used to swallow the error entirely, so a real
+      // playback bug (bad decode, blocked AudioContext) looked identical to
+      // a missing file. Log it; onEnded() behavior is unchanged.
+      console.warn('[socrates-audio] playSocratesLine failed', err);
       onEnded();
     }
   }
