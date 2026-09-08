@@ -1,12 +1,8 @@
 import type { CSSProperties } from 'react';
-import type { DuelPickShowHostPayload, RoomCode } from '@game/shared';
-import { AnavasisChrome } from '../../components/AnavasisScene';
+import type { DuelPickShowHostPayload } from '@game/shared';
 
 interface DuelPickViewProps {
   duelPick: DuelPickShowHostPayload;
-  roomCode: RoomCode | null;
-  paused: boolean;
-  pausedByName: string | null;
 }
 
 // Task 189 - Η Μονομαχία's pick window. The two duelists and whether each
@@ -28,14 +24,11 @@ const CAPTION_STYLE: CSSProperties = {
   zIndex: 1,
 };
 
-export function DuelPickView({ duelPick, roomCode, paused, pausedByName }: DuelPickViewProps) {
+export function DuelPickView({ duelPick }: DuelPickViewProps) {
   return (
-    <>
-      <AnavasisChrome roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
-      <div style={CAPTION_STYLE} className="screen-fade-in" data-testid="duel-pick-caption">
-        Διαλέξτε κρυφά. Η πόλη βλέπει μόνο το αποτέλεσμα.
-        {duelPick.tieCount > 0 && <div>Ξανά, για δεύτερη φορά.</div>}
-      </div>
-    </>
+    <div style={CAPTION_STYLE} className="screen-fade-in" data-testid="duel-pick-caption">
+      Διαλέξτε κρυφά. Η πόλη βλέπει μόνο το αποτέλεσμα.
+      {duelPick.tieCount > 0 && <div>Ξανά, για δεύτερη φορά.</div>}
+    </div>
   );
 }

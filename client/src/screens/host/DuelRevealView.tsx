@@ -1,17 +1,10 @@
-import type { DuelRevealHostPayload, RoomCode } from '@game/shared';
-import { AnavasisChrome } from '../../components/AnavasisScene';
-
-interface DuelRevealViewProps {
-  duelReveal: DuelRevealHostPayload;
-  roomCode: RoomCode | null;
-  paused: boolean;
-  pausedByName: string | null;
-}
-
-// Task 189 - the duel's reveal. Both weapons, the winner and the verdict
-// line are AnavasisDuel's own job (mounted at the HostScreen level, reading
-// duelReveal directly) - this view exists only to carry the same room-code/
-// pause chrome every climb/duel phase needs once it bypasses GameLayout.
-export function DuelRevealView({ duelReveal: _duelReveal, roomCode, paused, pausedByName }: DuelRevealViewProps) {
-  return <AnavasisChrome roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+// Task 189 built this view to carry AnavasisChrome (room-code/pause), the
+// one thing it needed. Task 192 moved that chrome up to HostScreen (a single
+// render for all four climb/duel phases, keeping it OUTSIDE the scene
+// container the text-node audit scopes to) - the weapons, winner and
+// verdict line are AnavasisDuel's own job (mounted at the HostScreen level,
+// reading duelReveal directly), so this phase has nothing left to render.
+// Kept as its own file per the "one file per TV phase" convention.
+export function DuelRevealView() {
+  return null;
 }

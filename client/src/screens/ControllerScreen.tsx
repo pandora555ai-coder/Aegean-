@@ -353,6 +353,11 @@ function ResetToLobbyControl({ onConfirm }: { onConfirm: () => void }) {
 // numeric mode's own slider) - there is nothing to "lock in", the host
 // applies whatever the VIP last set. `value` is percent (0-100); style
 // matches the numeric slider (accentColor var(--wine-2)).
+// Task 192 - collapsed behind one toggle button by default: ten call sites
+// across the phone's phases were putting two full-width sliders on screen
+// for every VIP on every phase, permanently. The two rows only ever render
+// while `expanded` is true; collapsed is this component's own mount state,
+// so every call site starts collapsed with no prop wiring of its own.
 function VipAudioControls({
   crowdVolume,
   voiceVolume,
@@ -362,38 +367,53 @@ function VipAudioControls({
   voiceVolume: number;
   onChange: (partial: { crowdVolume?: number; voiceVolume?: number }) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div style={styles.vipAudioControls} data-testid="vip-audio-controls">
-      <div style={styles.vipAudioRow}>
-        <div style={styles.vipAudioLabel}>
-          <span>Πλήθος</span>
-          <span data-testid="vip-crowd-volume-value">{crowdVolume}%</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={crowdVolume}
-          onChange={(event) => onChange({ crowdVolume: Number(event.target.value) })}
-          style={styles.vipAudioSlider}
-          data-testid="vip-crowd-volume-slider"
-        />
-      </div>
-      <div style={styles.vipAudioRow}>
-        <div style={styles.vipAudioLabel}>
-          <span>Φωνή</span>
-          <span data-testid="vip-voice-volume-value">{voiceVolume}%</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={voiceVolume}
-          onChange={(event) => onChange({ voiceVolume: Number(event.target.value) })}
-          style={styles.vipAudioSlider}
-          data-testid="vip-voice-volume-slider"
-        />
-      </div>
+      <button
+        type="button"
+        style={styles.vipAudioToggle}
+        onClick={() => setExpanded((current) => !current)}
+        data-testid="vip-audio-toggle"
+        aria-expanded={expanded}
+      >
+        <span>🔊 Ήχος</span>
+        <span aria-hidden="true">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <>
+          <div style={styles.vipAudioRow}>
+            <div style={styles.vipAudioLabel}>
+              <span>Πλήθος</span>
+              <span data-testid="vip-crowd-volume-value">{crowdVolume}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={crowdVolume}
+              onChange={(event) => onChange({ crowdVolume: Number(event.target.value) })}
+              style={styles.vipAudioSlider}
+              data-testid="vip-crowd-volume-slider"
+            />
+          </div>
+          <div style={styles.vipAudioRow}>
+            <div style={styles.vipAudioLabel}>
+              <span>Φωνή</span>
+              <span data-testid="vip-voice-volume-value">{voiceVolume}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={voiceVolume}
+              onChange={(event) => onChange({ voiceVolume: Number(event.target.value) })}
+              style={styles.vipAudioSlider}
+              data-testid="vip-voice-volume-slider"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3527,6 +3547,19 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid var(--marble-3)',
     boxShadow: SURFACE_GLOW,
     boxSizing: 'border-box',
+  },
+  // Task 192 - the single toggle that reveals/hides the two rows below.
+  vipAudioToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    padding: '0.35rem 0',
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--carve)',
+    fontSize: '0.9rem',
+    fontWeight: 600,
   },
   vipAudioRow: {
     display: 'flex',

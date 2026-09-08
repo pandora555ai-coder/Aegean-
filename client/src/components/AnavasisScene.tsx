@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CrowdMood, DuelWeapon, RoomCode } from '@game/shared';
 import { greekUpper } from '../greekUpper';
 import { styles as hostStyles, type CSSVars } from '../screens/host/hostStyles';
@@ -338,10 +338,18 @@ export function AnavasisScene({ mood, dimmed }: AnavasisSceneProps) {
 // ---------------------------------------------------------------------------
 const HIMATION_HUES = ['#C9B7A0', '#9FB2C2', '#C2A08F', '#A8B29A', '#B7A6C4'];
 
+// Task 192 - the climb's per-round frame alternation: Frame A (CLIMB_QUESTION)
+// is a motionless read, Frame B (CLIMB_REVEAL) opens with a still ~800ms beat
+// showing each player's up/down arrow on a MOTIONLESS board, then glides
+// everyone to their new step over 1400-1600ms. Fallback values per the task
+// spec (measured timings differ from the design reference's own numbers).
+export const CLIMB_BEAT_MS = 800;
+export const CLIMB_GLIDE_MS = 1500;
+
 const CLIMBERS_STYLE_TAG = `
 .anavasis-climbers-root{position:fixed;inset:0;container-type:size;pointer-events:none;z-index:2}
 .anavasis-soph{position:absolute;width:8cqh;text-align:center;transform:translateX(-50%);
-  transition:left 900ms cubic-bezier(.4,0,.2,1),bottom 900ms cubic-bezier(.35,0,.25,1.12),opacity 600ms;}
+  transition:left ${CLIMB_GLIDE_MS}ms cubic-bezier(.4,0,.2,1),bottom ${CLIMB_GLIDE_MS}ms cubic-bezier(.35,0,.25,1.12),opacity 600ms;}
 .anavasis-soph svg.fig{width:100%;height:9.2cqh;display:block;overflow:visible;filter:drop-shadow(-.45cqh .25cqh .4cqh rgba(0,0,0,.55))}
 .anavasis-soph .nm{display:inline-block;background:var(--marble);color:var(--carve);font-size:1.6cqh;font-weight:700;
   letter-spacing:.05em;padding:.35cqh .7cqh .25cqh;margin-top:.2cqh;
@@ -392,17 +400,78 @@ interface AnavasisClimbersProps {
   hiddenPlayerIds?: readonly string[];
   // Everyone but the winner fades once the game is over.
   fadeExcept?: string | null;
+  // Task 192 - identifies the LIVE reveal round (e.g. String(roundIndex)),
+  // null whenever no reveal is in flight (CLIMB_QUESTION, the duel, GAME_OVER
+  // holding the last positions). Changing to a NEW non-null value is what
+  // starts the beat-then-glide sequence below; every other prop change
+  // (a re-render with the same round, or the null state) applies at once.
+  revealKey?: string | null;
 }
 
-export function AnavasisClimbers({ climbers, top, hiddenPlayerIds = [], fadeExcept = null }: AnavasisClimbersProps) {
+// Holds `climbers` positions back by CLIMB_BEAT_MS whenever `revealKey`
+// changes to a genuinely new round, then releases them together (the glide),
+// clearing `moving` once the CSS transition (CLIMB_GLIDE_MS) has finished -
+// the same "hold the old state, then commit" shape SophistsRow's own
+// useDisplayOrder uses for its settle-then-glide reorder, just timed for the
+// climb's read-then-move rhythm instead of a score tween.
+function useClimbMovement(
+  climbers: AnavasisClimberData[],
+  revealKey: string | null,
+): { displayed: AnavasisClimberData[]; moving: boolean } {
+  const [displayed, setDisplayed] = useState(climbers);
+  const [moving, setMoving] = useState(false);
+  const lastKeyRef = useRef(revealKey);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    // No new reveal round in flight (climb entry, the duel holding last
+    // positions, GAME_OVER's crowning) - OR a fresh mount landing mid-round
+    // (a host reload during a live CLIMB_REVEAL, where revealKey and its
+    // ref's own initial value are the SAME thing): either way, apply the
+    // target positions at once rather than replaying a beat/glide that may
+    // already be over.
+    if (revealKey === null || revealKey === lastKeyRef.current) {
+      lastKeyRef.current = revealKey;
+      setDisplayed(climbers);
+      return;
+    }
+    lastKeyRef.current = revealKey;
+    timersRef.current.forEach(window.clearTimeout);
+    const beatTimer = window.setTimeout(() => {
+      setDisplayed(climbers);
+      setMoving(true);
+      const glideTimer = window.setTimeout(() => setMoving(false), CLIMB_GLIDE_MS);
+      timersRef.current.push(glideTimer);
+    }, CLIMB_BEAT_MS);
+    timersRef.current = [beatTimer];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `climbers` is read
+    // from the closure at schedule time deliberately: only a genuinely NEW
+    // revealKey should restart this sequence, never a re-render that leaves
+    // the round unchanged (the countdown ticks the parent every second).
+  }, [revealKey]);
+
+  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), []);
+
+  return { displayed, moving };
+}
+
+export function AnavasisClimbers({ climbers, top, hiddenPlayerIds = [], fadeExcept = null, revealKey = null }: AnavasisClimbersProps) {
+  const { displayed, moving } = useClimbMovement(climbers, revealKey);
+  const displayedById = new Map(displayed.map((c) => [c.playerId, c]));
   return (
-    <div className="anavasis-climbers-root" aria-hidden="true" data-testid="anavasis-climbers">
+    <div className="anavasis-climbers-root" aria-hidden="true" data-testid="anavasis-climbers" data-moving={moving}>
       <style>{CLIMBERS_STYLE_TAG}</style>
       {climbers.map((climber) => {
-        const visualStep = visualStepFor(climber.step, top);
+        const shown = displayedById.get(climber.playerId) ?? climber;
+        const visualStep = visualStepFor(shown.step, top);
         const hidden = hiddenPlayerIds.includes(climber.playerId);
         const faded = fadeExcept !== null && climber.playerId !== fadeExcept;
-        const showDelta = climber.delta !== undefined && climber.delta !== null && climber.delta !== 0;
+        // Task 192 - the invariant for this whole scene: zero visible text
+        // while a figure is in motion. The arrow (from the TARGET data,
+        // shown from the still beat onward) and the name plaque both blank
+        // for the glide's duration, not merely hide - see the task's own
+        // "blank or hide the text for the glide".
+        const showDelta = !moving && climber.delta !== undefined && climber.delta !== null && climber.delta !== 0;
         const className = ['anavasis-soph', climber.isLeader ? 'win' : '', faded ? 'faded' : '', hidden ? 'hidden' : '']
           .filter(Boolean)
           .join(' ');
@@ -413,14 +482,14 @@ export function AnavasisClimbers({ climbers, top, hiddenPlayerIds = [], fadeExce
             style={{ bottom: `${stepBottomCqh(visualStep)}cqh`, left: `${laneLeftPct(climber.joinIndex, climbers.length, visualStep)}%` }}
             data-testid="anavasis-climber"
             data-player-id={climber.playerId}
-            data-step={climber.step}
+            data-step={shown.step}
           >
             <div className={showDelta ? 'dl on' : 'dl'} data-testid="anavasis-climber-delta">
               {showDelta ? formatClimbDelta(climber.delta as number) : ''}
             </div>
             <ClimberFigure joinIndex={climber.joinIndex} />
             <div className="nm" data-testid="anavasis-climber-name">
-              {greekUpper(climber.name)}
+              {moving ? '' : greekUpper(shown.name)}
             </div>
           </div>
         );

@@ -114,6 +114,7 @@ import {
   AnavasisClimbers,
   AnavasisDuel,
   AnavasisCrowning,
+  AnavasisChrome,
   laneLeftPct,
   visualStepFor,
   type AnavasisClimberData,
@@ -219,7 +220,6 @@ export default function HostScreen() {
   const [climbQuestion, setClimbQuestion] = useState<ClimbQuestionShowHostPayload | null>(null);
   const [climbQuestionSecondsLeft, setClimbQuestionSecondsLeft] = useState(0);
   const [climbReveal, setClimbReveal] = useState<ClimbRevealHostPayload | null>(null);
-  const [climbRevealSecondsLeft, setClimbRevealSecondsLeft] = useState(0);
   // Η Μονομαχία (Task 188b server side) - the climb's own duel.
   const [duelPick, setDuelPick] = useState<DuelPickShowHostPayload | null>(null);
   const [duelPickSecondsLeft, setDuelPickSecondsLeft] = useState(0);
@@ -1288,24 +1288,6 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [duelPick, paused]);
 
-  // CLIMB_REVEAL's progress bar - same pattern as TRIAL_REVEAL's above.
-  useEffect(() => {
-    if (!climbReveal) {
-      return;
-    }
-    setClimbRevealSecondsLeft(Math.ceil(climbReveal.autoAdvanceMs / 1000));
-  }, [climbReveal]);
-
-  useEffect(() => {
-    if (!climbReveal || paused) {
-      return;
-    }
-    const interval = setInterval(() => {
-      setClimbRevealSecondsLeft((current) => Math.max(0, current - 1));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [climbReveal, paused]);
-
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -1727,32 +1709,24 @@ export default function HostScreen() {
     }
 
     // Η Ανάβασις / Η Μονομαχία (Task 189). All four bypass GameLayout - the
-    // whole scene IS the layout - so each view renders its own room-code/
-    // pause chrome (AnavasisChrome) instead of GameLayout's.
+    // whole scene IS the layout. Task 192 - none of the four render their
+    // own chrome any more: HostScreen renders ONE AnavasisChrome for the
+    // whole climb finale (see showAnavasisWorld below), outside the scene
+    // container the string/colour audit scopes to.
     if (phase === 'CLIMB_QUESTION' && climbQuestion) {
-      return (
-        <ClimbQuestionView climbQuestion={climbQuestion} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
-      );
+      return <ClimbQuestionView climbQuestion={climbQuestion} />;
     }
 
     if (phase === 'CLIMB_REVEAL' && climbReveal) {
-      return (
-        <ClimbRevealView
-          climbReveal={climbReveal}
-          roomCode={roomCode}
-          paused={paused}
-          pausedByName={pausedByName}
-          revealSecondsLeft={climbRevealSecondsLeft}
-        />
-      );
+      return <ClimbRevealView climbReveal={climbReveal} />;
     }
 
     if (phase === 'DUEL_PICK' && duelPick) {
-      return <DuelPickView duelPick={duelPick} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+      return <DuelPickView duelPick={duelPick} />;
     }
 
     if (phase === 'DUEL_REVEAL' && duelReveal) {
-      return <DuelRevealView duelReveal={duelReveal} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+      return <DuelRevealView />;
     }
 
     // Blitz mode (Task 156a, stub views - 156b builds the real screen).
@@ -1848,9 +1822,11 @@ export default function HostScreen() {
       case 'BLITZ':
         return ring(blitzSecondsLeft, 5);
       default:
-        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL/CLIMB_REVEAL/
-        // DUEL_REVEAL show their remaining time as the progress bar at the
-        // foot of their own panel (or not at all, DUEL_REVEAL), not as a ring.
+        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL show their
+        // remaining time as the progress bar at the foot of their own
+        // panel, not as a ring. CLIMB_REVEAL/DUEL_REVEAL show no timer at
+        // all - Task 192 dropped CLIMB_REVEAL's own progress bar along with
+        // the rest of its slab (no on-screen text while the climbers move).
         return null;
     }
   }
@@ -1926,6 +1902,11 @@ export default function HostScreen() {
   }
   const climbClimbers = isClimbFinale ? lastClimbClimbersRef.current : [];
   const climbTop = lastClimbTopRef.current;
+  // Task 192 - identifies the LIVE reveal round for AnavasisClimbers' own
+  // beat-then-glide sequence; null whenever no reveal is in flight (climb
+  // entry, the duel, GAME_OVER holding the last positions), which is
+  // exactly when that component should apply positions at once instead.
+  const climbRevealKey = phase === 'CLIMB_REVEAL' && climbReveal ? String(climbReveal.roundIndex) : null;
   const joinIndexForClimber = (playerId: string): number =>
     climbClimbers.find((c) => c.playerId === playerId)?.joinIndex ?? 0;
   // The live duel, from whichever of duelPick/duelReveal is set (never
@@ -2004,7 +1985,37 @@ export default function HostScreen() {
     <>
       <MarbleFilterDefs />
       {showAnavasisWorld ? (
-        <AnavasisScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
+        // Task 192 - everything that's actually the Anavasis WORLD (the
+        // backdrop, the phase's own content, the climbers, the duel) shares
+        // one container: the string/colour audit and the frame-alternation
+        // checks both scope to this subtree, deliberately excluding the
+        // chrome below (room code, pause overlay) and the krater, which are
+        // generic UI present on every phase of every mode, not scene content.
+        <div data-testid="anavasis-scene-container">
+          <AnavasisScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
+          {phaseView}
+          <AnavasisClimbers
+            climbers={climbClimbers}
+            top={climbTop}
+            hiddenPlayerIds={climbHiddenPlayerIds}
+            fadeExcept={climbWinnerId}
+            revealKey={climbRevealKey}
+          />
+          {liveDuel && (
+            <AnavasisDuel
+              a={liveDuel.a}
+              b={liveDuel.b}
+              weaponA={liveDuel.weaponA}
+              weaponB={liveDuel.weaponB}
+              pickedA={liveDuel.pickedA}
+              pickedB={liveDuel.pickedB}
+              revealed={liveDuel.revealed}
+              tie={liveDuel.tie}
+              tieCount={liveDuel.tieCount}
+              winnerPlayerId={liveDuel.winnerPlayerId}
+            />
+          )}
+        </div>
       ) : (
         <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       )}
@@ -2020,31 +2031,20 @@ export default function HostScreen() {
           {isFullscreen ? '⤡' : '⤢'}
         </button>
       )}
-      {showShell ? <div style={hostStyles.gameLayout}>{phaseView}</div> : phaseView}
+      {/* Task 192 - the climb/duel phases' own chrome, rendered ONCE here
+          instead of by each of the four views (was AnavasisChrome duplicated
+          four times) - never at GAME_OVER, matching every other mode's
+          GAME_OVER (no room code, no pause overlay there either). */}
+      {isClimbFinale && isAnavasisPhase && (
+        <AnavasisChrome roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
+      )}
+      {showShell ? <div style={hostStyles.gameLayout}>{phaseView}</div> : !showAnavasisWorld && phaseView}
       {timer && (
         <div style={hostStyles.kraterCorner} data-testid="krater-corner">
           <Krater timer={timer} playerCount={rowStandings.length} />
         </div>
       )}
-      {showAnavasisWorld ? (
-        <>
-          <AnavasisClimbers climbers={climbClimbers} top={climbTop} hiddenPlayerIds={climbHiddenPlayerIds} fadeExcept={climbWinnerId} />
-          {liveDuel && (
-            <AnavasisDuel
-              a={liveDuel.a}
-              b={liveDuel.b}
-              weaponA={liveDuel.weaponA}
-              weaponB={liveDuel.weaponB}
-              pickedA={liveDuel.pickedA}
-              pickedB={liveDuel.pickedB}
-              revealed={liveDuel.revealed}
-              tie={liveDuel.tie}
-              tieCount={liveDuel.tieCount}
-              winnerPlayerId={liveDuel.winnerPlayerId}
-            />
-          )}
-        </>
-      ) : (
+      {!showAnavasisWorld && (
         <SophistsRow
           standings={rowStandings}
           phase={phase}

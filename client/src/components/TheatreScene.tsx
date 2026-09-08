@@ -10,12 +10,18 @@ import type { CrowdMood, GamePhase } from '@game/shared';
 // stage) or dimmed (papyrus speaking) - keyed off phase so no view has to
 // repeat this rhythm as a flag of its own. Moved here from the deleted
 // SceneLayer (Task 159) since TheatreScene is now the only scene layer.
+// Task 192 - CLIMB_REVEAL joins this set for Η Ανάβασις's own frame
+// alternation: Frame A (CLIMB_QUESTION, reading) stays dimmed, Frame B
+// (CLIMB_REVEAL, the climbers' movement) goes full light. TheatreScene never
+// actually receives CLIMB_REVEAL (AnavasisScene swaps in for the whole climb
+// finale), so this is a no-op for every other mode.
 const LIT_PHASES: ReadonlySet<GamePhase> = new Set([
   'LOBBY',
   'STAGE_ANNOUNCE',
   'SOCRATES',
   'STEAL',
   'GAME_OVER',
+  'CLIMB_REVEAL',
 ]);
 
 export function isSceneLit(phase: GamePhase): boolean {
