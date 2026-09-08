@@ -2299,7 +2299,10 @@ export const CLIMB_QUESTION_TIME_MS = 22000;
 // How many questions the climb draws out of the UNUSED quiz pool when it
 // begins. A bound, not an expectation (Task 187b measured a median of 7-8
 // rounds to a verdict): if the pool runs out first, the highest step wins.
-export const CLIMB_MAX_QUESTIONS = 20;
+// Must stay >= CLIMB_MAX_ROUNDS (188b's invariant: the cap ends the climb,
+// pool exhaustion is only the second guard) - 188c raised both to 24
+// together, since a draw of 20 made a 24-round cap unreachable.
+export const CLIMB_MAX_QUESTIONS = 24;
 
 // Task 188b - the round cap: the climb ends after this many rounds even with
 // questions left (CLIMB_MAX_QUESTIONS stays above it, so pool exhaustion is
@@ -2309,7 +2312,7 @@ export const CLIMB_MAX_QUESTIONS = 20;
 // does - one tie-break everywhere (climb.ts's pickDuelists). The Monte Carlo
 // harness (server/scripts/trial-montecarlo.ts --finale climb) measures p99
 // rounds-to-verdict well under this, so it almost never fires for real.
-export const CLIMB_MAX_ROUNDS = 16;
+export const CLIMB_MAX_ROUNDS = 24;
 
 // ------------------------ Η Μονομαχία, the duel (Task 188b) ------------------------
 // Rock-paper-scissors with the hoplite's kit: xifos (sword) beats dory

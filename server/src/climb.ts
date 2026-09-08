@@ -89,7 +89,8 @@ export function nextAfterClimbRound(results: ClimbRevealResult[]): ClimbNext {
 function pickDuelists(occupants: ClimbRevealResult[], contestedStep: number): Extract<ClimbNext, { kind: 'DUEL' }> {
   const sorted = [...occupants].sort((a, b) => (a.answerRank ?? Infinity) - (b.answerRank ?? Infinity));
   for (const held of sorted.slice(2)) {
-    held.stepAfter = contestedStep - 1;
+    // Floored like every step (188c: a cap-tie at step 0 wrote -1 here).
+    held.stepAfter = Math.max(0, contestedStep - 1);
   }
   return { kind: 'DUEL', playerIds: [sorted[0].playerId, sorted[1].playerId] };
 }
