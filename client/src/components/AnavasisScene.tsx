@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CrowdMood, DuelWeapon, RoomCode } from '@game/shared';
 import { greekUpper } from '../greekUpper';
 import { styles as hostStyles, type CSSVars } from '../screens/host/hostStyles';
+import { buildDuelVerdictLine } from './duelVerdict';
 
 // Task 189 - Η Ανάβασις on the TV: the rock/stair/temple world for the climb
 // finale's four phases (CLIMB_QUESTION/CLIMB_REVEAL/DUEL_PICK/DUEL_REVEAL)
@@ -587,7 +588,9 @@ interface AnavasisDuelProps {
 }
 
 export function AnavasisDuel({ a, b, weaponA = null, weaponB = null, pickedA = false, pickedB = false, revealed, tie = false, tieCount, winnerPlayerId = null }: AnavasisDuelProps) {
-  const verdict = !revealed ? '' : tie ? 'Ίδια όπλα. Ίδιες ιδέες. Ξανά.' : `${WEAPON_NAME[weaponA as DuelWeapon]} περνά ${WEAPON_BEATEN[weaponA as DuelWeapon]}. ${winnerPlayerId === a.playerId ? a.name : b.name}.`;
+  const verdict = !revealed
+    ? ''
+    : buildDuelVerdictLine({ weaponA, weaponB, tie, winnerPlayerId, aPlayerId: a.playerId, aName: a.name, bName: b.name });
   return (
     <div className={revealed ? 'anavasis-duel-root reveal' : 'anavasis-duel-root'} aria-hidden="true" data-testid="anavasis-duel">
       <style>{DUEL_STYLE_TAG}</style>
@@ -601,9 +604,6 @@ export function AnavasisDuel({ a, b, weaponA = null, weaponB = null, pickedA = f
     </div>
   );
 }
-
-const WEAPON_NAME: Record<DuelWeapon, string> = { xifos: 'Το ξίφος', dory: 'Το δόρυ', aspida: 'Η ασπίδα' };
-const WEAPON_BEATEN: Record<DuelWeapon, string> = { xifos: 'την ασπίδα', dory: 'το ξίφος', aspida: 'το δόρυ' };
 
 function Duelist({
   side,
