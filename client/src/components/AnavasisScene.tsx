@@ -458,7 +458,10 @@ const WEAPON_PATHS: Record<DuelWeapon, ReactNode> = {
   ),
 };
 
-function WeaponIcon({ weapon }: { weapon: DuelWeapon }) {
+// Exported for ControllerScreen's DUEL_PICK weapon slabs (Task 190) - same
+// icon, same --carve-on-marble reading, so the phone's picker and the TV's
+// duel tablets never drift into two different weapon glyphs.
+export function WeaponIcon({ weapon }: { weapon: DuelWeapon }) {
   return (
     <svg viewBox="0 0 60 60" width="60%" height="60%" aria-hidden="true">
       {WEAPON_PATHS[weapon]}

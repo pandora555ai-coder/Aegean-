@@ -9,6 +9,7 @@ import {
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
   DRAW_WARNING_MS,
+  DUEL_WEAPONS,
   GAME_LENGTH_OPTIONS,
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
@@ -16,7 +17,11 @@ import {
   ServerEvents,
   isBlitzRevealHostPayload,
   isBlitzShowHostPayload,
+  isClimbQuestionHostPayload,
+  isClimbRevealHostPayload,
   isDrawHostPayload,
+  isDuelPickHostPayload,
+  isDuelRevealHostPayload,
   isGuessHostPayload,
   isNumericQuestionHostPayload,
   isPowerUpHostPayload,
@@ -34,9 +39,18 @@ import {
   type BlitzRevealPlayerPayload,
   type BlitzShowPayload,
   type BlitzShowPlayerPayload,
+  type ClimbQuestionShowPayload,
+  type ClimbQuestionShowPlayerPayload,
+  type ClimbRevealPayload,
+  type ClimbRevealPlayerPayload,
   type DifficultyMix,
   type DrawShowPayload,
   type DrawShowPlayerPayload,
+  type DuelPickShowPayload,
+  type DuelPickShowPlayerPayload,
+  type DuelRevealHostPayload,
+  type DuelRevealPayload,
+  type DuelWeapon,
   type GameLength,
   type GameModeId,
   type GameOverPayload,
@@ -87,6 +101,7 @@ import { greekUpper } from '../greekUpper';
 import { Avatar } from '../components/Avatar';
 import { BlitzSwipeCard } from '../components/BlitzSwipeCard';
 import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
+import { WeaponIcon } from '../components/AnavasisScene';
 import { useAvailableAvatars } from '../hooks/useAvailableAvatars';
 import { fullscreenSupported, useFullscreen } from '../hooks/useFullscreen';
 
@@ -123,6 +138,15 @@ const POWER_UPS_ENABLED_OPTIONS = [false, true] as const;
 const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blurb: string }> = {
   ice: { icon: '🧊', title: 'Πάγος', blurb: 'Παγώνει το κινητό του για λίγα δευτερόλεπτα' },
   ink: { icon: '🖋️', title: 'Μελάνι', blurb: 'Θολώνει τις απαντήσεις του' },
+};
+
+// Η Μονομαχία (Task 190) - weapon slab labels, in DUEL_WEAPONS' own order
+// (the reveal's WEAPON_NAME/WEAPON_BEATEN in AnavasisScene.tsx is the same
+// three, TV-phrased; this is the picker's short form).
+const DUEL_WEAPON_LABELS: Record<DuelWeapon, string> = {
+  xifos: 'Ξίφος',
+  dory: 'Δόρυ',
+  aspida: 'Ασπίδα',
 };
 
 // Task 171 - a control must stay visibly (not just functionally) disabled
@@ -183,6 +207,44 @@ function SegmentedRow<T extends string | number | boolean>({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Η Ανάβασις (Task 190) - the delta glyph CLIMB_REVEAL shows: +2 fastest
+// correct, +1 other correct, -1 wrong, -2 no answer (ClimbRevealResult's own
+// doc comment, shared/src/index.ts). No digits on this phone, same
+// no-score-numbers rule the trial's phone view already follows.
+function climbDeltaGlyph(delta: number): string {
+  if (delta >= 2) {
+    return '↑↑';
+  }
+  if (delta === 1) {
+    return '↑';
+  }
+  if (delta <= -2) {
+    return '↓↓';
+  }
+  return '↓';
+}
+
+// Η Ανάβασις (Task 190) - the compact strip above CLIMB_QUESTION's answer
+// grid and below CLIMB_REVEAL's delta: a static row of `top` notches, this
+// phone's own step filled and nothing else - no digits, no other players
+// (payload rule: ClimbQuestionShowPlayerPayload/ClimbRevealPlayerPayload
+// only ever carry THIS phone's own step).
+function ClimbStrip({ step, top }: { step: number; top: number }) {
+  const notches = Array.from({ length: top }, (_, i) => i + 1);
+  return (
+    <div style={styles.climbStrip} data-testid="climb-step-strip">
+      {notches.map((notch) => (
+        <div
+          key={notch}
+          data-testid="climb-step-notch"
+          data-filled={notch === step}
+          style={notch === step ? styles.climbNotchFilled : styles.climbNotchEmpty}
+        />
+      ))}
     </div>
   );
 }
@@ -504,6 +566,23 @@ export default function ControllerScreen() {
   // clearing `question`) so this view can still look up the text of this
   // phone's own choice out of `trialQuestion.options`.
   const [trialReveal, setTrialReveal] = useState<TrialRevealShowPayload | null>(null);
+  // Η Ανάβασις (Task 190) - same one-tap, no-ack shape as the trial's
+  // CLIMB_SUBMIT above: `climbSentRef` guards the double-tap race, and
+  // CLIMB_REVEAL is public/symmetric like TRIAL_REVEAL (does not clear
+  // `climbQuestion`, same reasoning).
+  const [climbQuestion, setClimbQuestion] = useState<ClimbQuestionShowPlayerPayload | null>(null);
+  const [climbPendingChoice, setClimbPendingChoice] = useState<number | null>(null);
+  const climbSentRef = useRef(false);
+  const [climbReveal, setClimbReveal] = useState<ClimbRevealPlayerPayload | null>(null);
+  // Η Μονομαχία (Task 190) - same shape again: one tap (a weapon), no ack,
+  // `duelSentRef` guards the double-tap race. DUEL_REVEAL is public and
+  // symmetric; a tie re-enters DUEL_PICK, which arrives as a fresh
+  // duel_pick:show (picked: false) and overwrites this through
+  // applyDuelPick - no separate "re-arm" branch needed.
+  const [duelPick, setDuelPick] = useState<DuelPickShowPlayerPayload | null>(null);
+  const [duelPendingWeapon, setDuelPendingWeapon] = useState<DuelWeapon | null>(null);
+  const duelSentRef = useRef(false);
+  const [duelReveal, setDuelReveal] = useState<DuelRevealPayload | null>(null);
 
   // Task 174 - auto-resume. A stored session (written on every successful
   // join/reconnect, see handleJoined) means this playerId belongs to a room
@@ -603,6 +682,23 @@ export default function ControllerScreen() {
       trialSentRef.current = payload?.lockedIn ?? false;
     }
 
+    // Η Ανάβασις (Task 190) - same pairing as applyTrialQuestion: the ladder
+    // strip/answer grid and the send guard can never disagree about whether
+    // this phone already locked in.
+    function applyClimbQuestion(payload: ClimbQuestionShowPlayerPayload | null) {
+      setClimbQuestion(payload);
+      setClimbPendingChoice(null);
+      climbSentRef.current = payload?.lockedIn ?? false;
+    }
+
+    // Η Μονομαχία (Task 190) - same pairing again, `picked` instead of
+    // `lockedIn`.
+    function applyDuelPick(payload: DuelPickShowPlayerPayload | null) {
+      setDuelPick(payload);
+      setDuelPendingWeapon(null);
+      duelSentRef.current = payload?.picked ?? false;
+    }
+
     // Blitz mode (Task 156a) - set together for the same reason applyDraw
     // is: the swipe surface and the next-index can never disagree about how
     // far this phone already got.
@@ -633,6 +729,10 @@ export default function ControllerScreen() {
         setBlitzReveal(null);
         applyTrialQuestion(null);
         setTrialReveal(null);
+        applyClimbQuestion(null);
+        setClimbReveal(null);
+        applyDuelPick(null);
+        setDuelReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -909,6 +1009,70 @@ export default function ControllerScreen() {
       setPausedByName(payload.pausedByName);
     }
 
+    // Η Ανάβασις (Task 190) - the player branch of an asymmetric event, same
+    // pairing as handleTrialQuestionShow above. The host variant (every
+    // climber's step, in aggregate) is not this screen's business. Also
+    // clears trial* defensively - a room can play a trial-finale game and a
+    // climb-finale one back to back (Task 140 corollary: this is the first
+    // event of a fresh climb, and nothing else would clear a stale trial
+    // view left over from an earlier game in the same session).
+    function handleClimbQuestionShow(payload: ClimbQuestionShowPayload) {
+      if (!isClimbQuestionHostPayload(payload)) {
+        setQuestion(null);
+        setPendingChoice(null);
+        setAcceptedChoice(null);
+        setReveal(null);
+        applyPowerUp(null);
+        applySteal(null);
+        applyTrialQuestion(null);
+        setTrialReveal(null);
+        setClimbReveal(null);
+        applyDuelPick(null);
+        setDuelReveal(null);
+        applyClimbQuestion(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like trial_reveal:show. Does NOT clear
+    // `climbQuestion` - same reasoning as handleTrialRevealShow.
+    function handleClimbRevealShow(payload: ClimbRevealPayload) {
+      if (!isClimbRevealHostPayload(payload)) {
+        setClimbReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Η Μονομαχία (Task 190) - the player branch of an asymmetric event; the
+    // host variant (both duelists, who has picked) is not this screen's
+    // business. Fires only after a CLIMB_REVEAL sends two players to the
+    // duel, or after a tied DUEL_REVEAL re-enters DUEL_PICK - either way the
+    // climb race itself is over (or paused), so climbQuestion/climbReveal
+    // clear here too.
+    function handleDuelPickShow(payload: DuelPickShowPayload) {
+      if (!isDuelPickHostPayload(payload)) {
+        applyClimbQuestion(null);
+        setClimbReveal(null);
+        setDuelReveal(null);
+        applyDuelPick(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like duel_reveal:show. Does NOT clear
+    // `duelPick` - a tie's re-arm arrives as a fresh duel_pick:show anyway
+    // (applyDuelPick resets picked to false from that payload alone).
+    function handleDuelRevealShow(payload: DuelRevealPayload | DuelRevealHostPayload) {
+      if (!isDuelRevealHostPayload(payload)) {
+        setDuelReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
@@ -932,6 +1096,10 @@ export default function ControllerScreen() {
       setBlitzReveal(null);
       applyTrialQuestion(null);
       setTrialReveal(null);
+      applyClimbQuestion(null);
+      setClimbReveal(null);
+      applyDuelPick(null);
+      setDuelReveal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -967,6 +1135,10 @@ export default function ControllerScreen() {
       setBlitzReveal(null);
       applyTrialQuestion(null);
       setTrialReveal(null);
+      applyClimbQuestion(null);
+      setClimbReveal(null);
+      applyDuelPick(null);
+      setDuelReveal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -1114,6 +1286,36 @@ export default function ControllerScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Η Ανάβασις / Η Μονομαχία (Task 190) - same reconnect reasoning as
+        // TRIAL_QUESTION/TRIAL_REVEAL above.
+        case 'CLIMB_QUESTION':
+          if (!isClimbQuestionHostPayload(payload)) {
+            applyClimbQuestion(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'CLIMB_REVEAL':
+          if (!isClimbRevealHostPayload(payload)) {
+            setClimbReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'DUEL_PICK':
+          if (!isDuelPickHostPayload(payload)) {
+            applyDuelPick(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'DUEL_REVEAL':
+          if (!isDuelRevealHostPayload(payload)) {
+            setDuelReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
       }
     }
 
@@ -1137,6 +1339,10 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
     socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+    socket.on(ServerEvents.CLIMB_QUESTION_SHOW, handleClimbQuestionShow);
+    socket.on(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
+    socket.on(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
+    socket.on(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -1166,6 +1372,10 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
       socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+      socket.off(ServerEvents.CLIMB_QUESTION_SHOW, handleClimbQuestionShow);
+      socket.off(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
+      socket.off(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
+      socket.off(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -1452,6 +1662,29 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: index });
   }
 
+  // Η Ανάβασις (Task 190). Same one-tap, no-ack, ref-guarded shape as
+  // handleTrialAnswerTap.
+  function handleClimbAnswerTap(index: number) {
+    if (climbSentRef.current || inputsLocked) {
+      return;
+    }
+    climbSentRef.current = true;
+    setClimbPendingChoice(index);
+    socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: index });
+  }
+
+  // Η Μονομαχία (Task 190). Same shape again - one weapon, one send, no
+  // taking it back; the server ignores a repick regardless, this just keeps
+  // the phone's own UI from offering one.
+  function handleDuelWeaponPick(weapon: DuelWeapon) {
+    if (duelSentRef.current || inputsLocked) {
+      return;
+    }
+    duelSentRef.current = true;
+    setDuelPendingWeapon(weapon);
+    socket.emit(ClientEvents.DUEL_PICK, { weapon });
+  }
+
   // Numeric mode (Task 66). Dragging the slider sets numericValue directly -
   // a range input's own min/max already keep it in bounds. Typing goes
   // through a clamp: an out-of-range value is accepted and snapped into
@@ -1561,10 +1794,13 @@ export default function ControllerScreen() {
 
   // Η Δίκη (Task 129) - the spectator view, shared by TRIAL_QUESTION
   // (`onTrial: false`) and TRIAL_REVEAL (no entry in `results`, or an entry
-  // with `eliminated: true`). A static "you are out" statement and nothing
-  // else - no standings, no other player's data (payload rule) - that stays
-  // on screen through every remaining trial round until GAME_OVER.
-  function renderTrialSpectator(testId: string) {
+  // with `eliminated: true`). A static statement and nothing else - no
+  // standings, no other player's data (payload rule) - that stays on screen
+  // through every remaining round until GAME_OVER. Generalized (Task 190)
+  // to take its own title so Η Ανάβασις's non-climbing spectator (never
+  // eliminated - just not connected at finale entry) can reuse the same
+  // shape with different wording instead of a second near-identical block.
+  function renderSpectatorNotice(testId: string, title: string) {
     return (
       <div style={styles.container}>
         {joined && (
@@ -1573,13 +1809,17 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.title} data-testid={testId}>
-          Αποκλείστηκες
+          {title}
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
+  }
+
+  function renderTrialSpectator(testId: string) {
+    return renderSpectatorNotice(testId, 'Αποκλείστηκες');
   }
 
   // Question count is the stage table's, not a setting of its own (Task
@@ -1833,6 +2073,120 @@ export default function ControllerScreen() {
         <div style={styles.trialLife} data-testid="trial-reveal-life">
           Ζωή: {Math.max(0, myTrialResult.lifeAfter)}
         </div>
+        <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Η Ανάβασις (Task 190) - CLIMB_REVEAL. Public and symmetric like
+  // TRIAL_REVEAL above, but there is no elimination here (a spectator stays
+  // a spectator the whole climb, decided once at CLIMB_QUESTION) so this
+  // never branches into renderSpectatorNotice - a non-climber simply never
+  // gets a climb_reveal:show at all (the payload only reaches climbers).
+  if (climbReveal) {
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.revealVerdictRow}>
+          <div
+            style={climbReveal.yourCorrect ? styles.revealCorrect : styles.revealWrong}
+            data-testid="climb-reveal-verdict"
+          >
+            {climbReveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
+          </div>
+        </div>
+        <div style={styles.revealCorrectOption}>Σωστή απάντηση: {climbReveal.correctOption}</div>
+        <div style={styles.climbDelta} data-testid="climb-reveal-delta">
+          {climbDeltaGlyph(climbReveal.yourDelta)}
+        </div>
+        <ClimbStrip step={climbReveal.yourStep} top={climbReveal.top} />
+        <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Η Μονομαχία (Task 190) - DUEL_REVEAL. Public and symmetric; branches on
+  // whether THIS phone was one of the two duelists to decide whether to
+  // emphasize its own side.
+  if (duelReveal) {
+    const myDuelist = duelReveal.duelists.find((duelist) => duelist.playerId === playerId) ?? null;
+    const opponent = duelReveal.duelists.find((duelist) => duelist.playerId !== playerId) ?? null;
+    const iWon = duelReveal.winnerPlayerId === playerId;
+    const iLost = !duelReveal.tie && duelReveal.winnerPlayerId !== null && !iWon && myDuelist !== null;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.title} data-testid="duel-reveal-title">
+          Μονομαχία
+        </div>
+        <div style={styles.duelRevealWeapons} data-testid="duel-reveal-weapons">
+          {duelReveal.duelists.map((duelist) => {
+            const mine = duelist.playerId === playerId;
+            const won = duelist.playerId === duelReveal.winnerPlayerId;
+            return (
+              <div
+                key={duelist.playerId}
+                style={won ? styles.duelRevealSlabWon : styles.duelRevealSlab}
+                data-testid="duel-reveal-slab"
+                data-mine={mine}
+              >
+                <div style={styles.duelWeaponIconWrap}>
+                  <WeaponIcon weapon={duelist.weapon} />
+                </div>
+                <span style={styles.duelRevealName}>{greekUpper(duelist.name)}</span>
+                <span style={styles.duelRevealWeaponName}>{DUEL_WEAPON_LABELS[duelist.weapon]}</span>
+              </div>
+            );
+          })}
+        </div>
+        {duelReveal.tie ? (
+          <div style={styles.duelTieAgain} data-testid="duel-reveal-tie">
+            Ίδια όπλα — Ξανά
+          </div>
+        ) : (
+          <div style={styles.duelVerdict} data-testid="duel-reveal-verdict">
+            {myDuelist ? (iWon ? 'Κέρδισες!' : iLost ? 'Έχασες' : '') : `Νίκησε ο/η ${duelReveal.winnerName}`}
+          </div>
+        )}
+        {opponent && myDuelist && (
+          <div style={styles.lookAtTv}>Αντίπαλος: {greekUpper(opponent.name)}</div>
+        )}
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && (
@@ -2551,6 +2905,163 @@ export default function ControllerScreen() {
         )}
         {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
         </div>
+      </div>
+    );
+  }
+
+  // Η Ανάβασις (Task 190) - CLIMB_QUESTION. Climb questions ARE quiz
+  // questions (scope note in tasks/190-climb-phone.md): the same
+  // 'answer-button' testid and answerGrid/answerButton styling as the plain
+  // QUESTION view above, unchanged - only the compact step strip above it
+  // (ClimbStrip) and the CLIMB_SUBMIT event underneath are new. `climbing:
+  // false` (not connected at finale entry) is the spectator branch.
+  if (climbQuestion) {
+    if (!climbQuestion.climbing) {
+      return renderSpectatorNotice('climb-spectator-title', 'Παρακολουθείς');
+    }
+    const myChoice = climbPendingChoice;
+    const answered = myChoice !== null || climbQuestion.lockedIn;
+    return (
+      <div style={styles.questionContainer}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.questionHeader}>
+          <div style={styles.category}>{greekUpper(climbQuestion.category)}</div>
+          <ClimbStrip step={climbQuestion.yourStep} top={climbQuestion.top} />
+          {answered ? (
+            <div style={styles.lookAtTv} data-testid="waiting-message">
+              Περίμενε τους υπόλοιπους...
+            </div>
+          ) : (
+            <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+          )}
+        </div>
+        <div style={styles.answerGrid}>
+          {climbQuestion.options.map((option, index) => {
+            const isMine = index === myChoice;
+            const dimmed = answered && !isMine;
+            const disabled = answered || inputsLocked;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-testid="answer-button"
+                data-selected={isMine}
+                className={isMine ? 'glow' : undefined}
+                style={
+                  dimmed
+                    ? styles.answerButtonDim
+                    : ({
+                        ...styles.answerButton,
+                        ...(isMine ? styles.answerButtonSelected : undefined),
+                        boxShadow: isMine ? undefined : SURFACE_GLOW,
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--wine-2) 50%, transparent)' } : {}),
+                      } as CSSVars)
+                }
+                onClick={() => handleClimbAnswerTap(index)}
+                disabled={disabled}
+              >
+                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={styles.questionFooter}>
+          <ConnectionBanner visible={!connected && joined !== null} />
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          {isVip && (
+            <VipAudioControls
+              crowdVolume={audioVolume.crowdVolume}
+              voiceVolume={audioVolume.voiceVolume}
+              onChange={handleAudioVolumeChange}
+            />
+          )}
+          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+        </div>
+      </div>
+    );
+  }
+
+  // Η Μονομαχία (Task 190) - DUEL_PICK. A duelist (youDuel) gets three
+  // weapon slabs; a spectator gets the caption and NOTHING else - no weapon
+  // UI in the DOM at all (scope note: "no weapon UI exists in the
+  // spectator DOM"), so this branches before rendering any slab, not after
+  // via a disabled/hidden one.
+  if (duelPick) {
+    if (!duelPick.youDuel) {
+      return (
+        <div style={styles.container}>
+          {joined && (
+            <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+              <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+            </div>
+          )}
+          <div style={styles.title} data-testid="duel-pick-caption">
+            Μονομαχία
+          </div>
+          <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+          <ConnectionBanner visible={!connected && joined !== null} />
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        </div>
+      );
+    }
+    const myWeapon = duelPendingWeapon;
+    const locked = myWeapon !== null || duelPick.picked;
+    return (
+      <div style={styles.container}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        <div style={styles.title} data-testid="duel-pick-caption">
+          Μονομαχία{duelPick.opponentName ? ` — εναντίον ${duelPick.opponentName}` : ''}
+        </div>
+        <div style={styles.powerUpEffectGrid}>
+          {DUEL_WEAPONS.map((weapon) => {
+            const isMine = weapon === myWeapon;
+            const dimmed = locked && !isMine;
+            return (
+              <button
+                key={weapon}
+                type="button"
+                data-testid="duel-weapon-option"
+                data-weapon={weapon}
+                data-selected={isMine}
+                style={
+                  dimmed
+                    ? { ...styles.powerUpEffectButton, opacity: 0.42 }
+                    : ({
+                        ...styles.powerUpEffectButton,
+                        ...(isMine ? styles.duelWeaponSelected : undefined),
+                      } as CSSVars)
+                }
+                onClick={() => handleDuelWeaponPick(weapon)}
+                disabled={locked || inputsLocked}
+              >
+                <div style={styles.duelWeaponIconWrap}>
+                  <WeaponIcon weapon={weapon} />
+                </div>
+                <span style={styles.powerUpEffectTitle}>{DUEL_WEAPON_LABELS[weapon]}</span>
+              </button>
+            );
+          })}
+        </div>
+        {locked && (
+          <div style={styles.lookAtTv} data-testid="waiting-message">
+            Περίμενε τον αντίπαλο...
+          </div>
+        )}
+        <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
   }
@@ -3699,6 +4210,109 @@ const styles: Record<string, CSSProperties> = {
   },
   gameOverLost: {
     fontSize: '1.75rem',
+    fontWeight: 700,
+    textAlign: 'center',
+    color: 'var(--marble-3)',
+  },
+  // Η Ανάβασις (Task 190) - the ladder strip: `top` fixed-size notches,
+  // never more than 10 wide (CLIMB_TOP), so a flat row never overflows
+  // 360px. The filled notch is ember + heavier weight, exactly the same
+  // "weight/opacity, never hue" rule QUESTION's own selected slab follows.
+  climbStrip: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '0.3rem',
+    flexWrap: 'wrap',
+  },
+  climbNotchEmpty: {
+    width: '1.3rem',
+    height: '0.45rem',
+    minWidth: '0',
+    minHeight: '0',
+    borderRadius: '0.25rem',
+    background: 'var(--marble-3)',
+    opacity: 0.4,
+  },
+  climbNotchFilled: {
+    width: '1.3rem',
+    height: '0.45rem',
+    minWidth: '0',
+    minHeight: '0',
+    borderRadius: '0.25rem',
+    background: 'var(--ember)',
+  },
+  climbDelta: {
+    fontSize: '2.25rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: 'var(--ember)',
+  },
+  // Η Μονομαχία (Task 190) - the picker reuses powerUpEffectButton's
+  // stacked-slab shape (see the JSX); this is only the SELECTED override,
+  // the same --wine-2 edge + weight QUESTION's answerButtonSelected uses.
+  duelWeaponSelected: {
+    fontWeight: 800,
+    borderColor: 'var(--wine-2)',
+    background: 'color-mix(in srgb, var(--wine-2) 12%, var(--marble))',
+  },
+  // WeaponIcon's own <svg> sizes itself at 60%/60% of ITS containing block
+  // (AnavasisScene.tsx, sized there via cqh-height ancestors) - percentage
+  // height needs a definite basis to resolve to anything but 0, so this
+  // wrapper gives it one instead of collapsing invisibly inside a
+  // flex-column button with no fixed height of its own.
+  duelWeaponIconWrap: {
+    width: '3rem',
+    height: '3rem',
+  },
+  duelRevealWeapons: {
+    display: 'flex',
+    gap: '0.75rem',
+    justifyContent: 'center',
+  },
+  duelRevealSlab: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    flex: 1,
+    padding: '1rem 0.5rem',
+    borderRadius: '1rem',
+    border: '3px solid var(--marble-3)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
+    opacity: 0.7,
+  },
+  duelRevealSlabWon: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.3rem',
+    flex: 1,
+    padding: '1rem 0.5rem',
+    borderRadius: '1rem',
+    border: '3px solid var(--wine-2)',
+    background: 'var(--marble)',
+    color: 'var(--carve)',
+    fontWeight: 800,
+  },
+  duelRevealName: {
+    fontSize: '1rem',
+    fontWeight: 700,
+    textAlign: 'center',
+  },
+  duelRevealWeaponName: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--carve)',
+  },
+  duelVerdict: {
+    fontSize: '1.5rem',
+    fontWeight: 800,
+    textAlign: 'center',
+    color: 'var(--ember)',
+  },
+  duelTieAgain: {
+    fontSize: '1.3rem',
     fontWeight: 700,
     textAlign: 'center',
     color: 'var(--marble-3)',
