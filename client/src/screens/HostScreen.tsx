@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ClientEvents,
@@ -120,6 +120,19 @@ import {
   type AnavasisClimberData,
 } from '../components/AnavasisScene';
 import { Krater, type TimerState } from '../components/Krater';
+import { SpeechSlab } from '../components/SpeechSlab';
+
+// Task 196 - the Socrates caption's own lifecycle constants (see its state
+// declarations inside HostScreen below).
+const CAPTION_FADE_MS = 800;
+const CAPTION_HARD_CAP_MS = 15000;
+// The transition lives on a plain wrapper around SpeechSlab, never on
+// SpeechSlab's own style prop: SpeechSlab hands its `style` straight to
+// MarbleSlab, which merges it OVER that component's own layout style
+// (position/left/bottom/width) - overriding, not adding, opacity here would
+// clobber that instead.
+const captionWrapVisibleStyle: CSSProperties = { opacity: 1, transition: 'opacity 400ms ease' };
+const captionWrapFadingStyle: CSSProperties = { opacity: 0, transition: 'opacity 400ms ease' };
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -175,6 +188,23 @@ export default function HostScreen() {
   // countdown below can key off the object alone.
   const [socrates, setSocrates] = useState<SocratesShowPayload | null>(null);
   const [socratesSecondsLeft, setSocratesSecondsLeft] = useState(0);
+  // Task 196 - the Socrates CAPTION (the spoken line's text) lives and dies
+  // with the audio, independent of the SOCRATES phase itself: it appears the
+  // instant a line starts playing and fades ~CAPTION_FADE_MS after
+  // playSocratesLine's onEnded fires - which, since Task 195, also fires
+  // immediately on a fetch/decode failure, so a dead clip can never orphan
+  // it. CAPTION_HARD_CAP_MS is a backstop for onEnded never firing at all
+  // (muted playback returns before ever wiring source.onended) - it should
+  // essentially never be the thing that actually clears the caption.
+  const [captionText, setCaptionText] = useState<string | null>(null);
+  const [captionFading, setCaptionFading] = useState(false);
+  // Task 196 - true while AnavasisClimbers is mid-glide (see its
+  // onMovingChange), so the caption can honour the same "no on-screen text
+  // while a body is moving" invariant Task 192 gave the scene itself, even
+  // though the caption renders as chrome, outside the scene's own subtree.
+  const [anavasisMoving, setAnavasisMoving] = useState(false);
+  const captionHideTimerRef = useRef<number | null>(null);
+  const captionCapTimerRef = useRef<number | null>(null);
   // Drawing mode (Task 56b) - the phase payload, set once per phase/reconnect.
   // The submitted/guessed progress tickers went with the counters and avatar
   // strips they fed (Task 115); the server still counts both and still ends
@@ -250,6 +280,62 @@ export default function HostScreen() {
     playSocratesLine,
     prefetchSocratesLines,
   } = useGameAudio();
+
+  // Task 196 - the Socrates caption's own show/hide, independent of any
+  // phase's own state. clearCaptionTimers/showCaption/hideCaptionSoon only
+  // touch refs and setState (both stable), so it is safe for these to be
+  // called from handlers registered once inside the socket effect below
+  // even though they are (harmlessly) redefined every render.
+  function clearCaptionTimers() {
+    if (captionHideTimerRef.current !== null) {
+      window.clearTimeout(captionHideTimerRef.current);
+      captionHideTimerRef.current = null;
+    }
+    if (captionCapTimerRef.current !== null) {
+      window.clearTimeout(captionCapTimerRef.current);
+      captionCapTimerRef.current = null;
+    }
+  }
+
+  // Called the instant a line starts (playing or not - a reconnect catching
+  // up to an already-live SOCRATES beat shows the text too, just with no
+  // audio to tie a fade to, so CAPTION_HARD_CAP_MS is what eventually clears
+  // it there instead of hideCaptionSoon).
+  function showCaption(text: string) {
+    clearCaptionTimers();
+    setCaptionText(text);
+    setCaptionFading(false);
+    captionCapTimerRef.current = window.setTimeout(() => {
+      setCaptionText(null);
+      setCaptionFading(false);
+      captionCapTimerRef.current = null;
+    }, CAPTION_HARD_CAP_MS);
+  }
+
+  // Called from playSocratesLine's onEnded - real completion AND every
+  // failure path both call onEnded (Task 195), so a dead clip fades the
+  // caption exactly like a clip that actually played.
+  function hideCaptionSoon() {
+    if (captionCapTimerRef.current !== null) {
+      window.clearTimeout(captionCapTimerRef.current);
+      captionCapTimerRef.current = null;
+    }
+    setCaptionFading(true);
+    captionHideTimerRef.current = window.setTimeout(() => {
+      setCaptionText(null);
+      setCaptionFading(false);
+      captionHideTimerRef.current = null;
+    }, CAPTION_FADE_MS);
+  }
+
+  function hideCaptionNow() {
+    clearCaptionTimers();
+    setCaptionText(null);
+    setCaptionFading(false);
+  }
+
+  useEffect(() => clearCaptionTimers, []);
+
   const [paused, setPaused] = useState(false);
   const [pausedByName, setPausedByName] = useState<string | null>(null);
   // True from mount only when a stored room code exists - keeps the
@@ -349,6 +435,7 @@ export default function HostScreen() {
         setSteal(null);
         setStageAnnounce(null);
         setSocrates(null);
+        hideCaptionNow();
         setDraw(null);
         setGuess(null);
         setGuessReveal(null);
@@ -363,6 +450,7 @@ export default function HostScreen() {
         setDuelPick(null);
         setDuelReveal(null);
         setIsClimbFinale(false);
+        setAnavasisMoving(false);
         lastClimbClimbersRef.current = [];
         lastClimbTopRef.current = 0;
         // Pause is impossible in LOBBY - reset defensively, in case a
@@ -393,6 +481,7 @@ export default function HostScreen() {
         // so is the commentary beat that followed it.
         setSteal(null);
         setSocrates(null);
+        hideCaptionNow();
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -408,6 +497,7 @@ export default function HostScreen() {
         setReveal(null);
         setPowerUp(payload);
         setSocrates(null);
+        hideCaptionNow();
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -426,10 +516,16 @@ export default function HostScreen() {
       setSocrates(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
+      // Task 196 - the caption text appears the instant the beat is shown,
+      // exactly like the line itself always has. Its own fade timing (below)
+      // is what changed, not this.
+      showCaption(payload.line);
       // Only for a LIVE entrance into the beat - never on a state:sync
       // reconnect catching a host up to a beat already in progress, which
       // would replay the line from its start (and could never legitimately
-      // ack completion of a clip it didn't play).
+      // ack completion of a clip it didn't play). In that reconnect case the
+      // caption still shows (above) but has no audio to fade with, so only
+      // CAPTION_HARD_CAP_MS or the next phase transition will clear it.
       if (!payload.paused) {
         // Task 42c - tells the server the instant this clip genuinely ends,
         // so the phase advances exactly then instead of at a guessed
@@ -437,6 +533,11 @@ export default function HostScreen() {
         // server's own fallback timer covers that case.
         playSocratesLine(payload.lineTemplate, payload.lineTag, () => {
           socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {});
+          // Task 196 - the SAME onEnded ack now also starts the caption's
+          // own fade: real completion and every failure path (Task 195)
+          // both reach here, so a dead clip fades the caption exactly like
+          // one that actually played.
+          hideCaptionSoon();
         });
       }
     }
@@ -713,6 +814,7 @@ export default function HostScreen() {
       setSteal(null);
       setStageAnnounce(null);
       setSocrates(null);
+      hideCaptionNow();
       setDraw(null);
       setGuess(null);
       setGuessReveal(null);
@@ -786,6 +888,11 @@ export default function HostScreen() {
           // beat, so the bar picks up mid-phase instead of restarting.
           if (isSocratesHostPayload(payload)) {
             setSocrates(payload);
+            // Task 196 - reattaching mid-line: the text comes back too, same
+            // as the SOCRATES_SHOW reconnect case in handleSocratesShow (no
+            // audio is replayed here either, so only CAPTION_HARD_CAP_MS or
+            // the next phase transition will eventually clear it).
+            showCaption(payload.line);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -2000,6 +2107,7 @@ export default function HostScreen() {
             hiddenPlayerIds={climbHiddenPlayerIds}
             fadeExcept={climbWinnerId}
             revealKey={climbRevealKey}
+            onMovingChange={setAnavasisMoving}
           />
           {liveDuel && (
             <AnavasisDuel
@@ -2020,6 +2128,16 @@ export default function HostScreen() {
         <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       )}
       <SocratesFigure phase={phase} climbFinale={isClimbFinale} />
+      {/* Task 196 - the Socrates caption: chrome-level, a sibling of the
+          Anavasis scene container above rather than nested inside it (see
+          its state's own comment for why), so it needs its OWN gate against
+          "a body is moving" - anavasisMoving, fed by AnavasisClimbers'
+          onMovingChange - rather than inheriting one from that subtree. */}
+      {captionText && !anavasisMoving && (
+        <div style={captionFading ? captionWrapFadingStyle : captionWrapVisibleStyle}>
+          <SpeechSlab data-testid="socrates-caption">«{captionText}»</SpeechSlab>
+        </div>
+      )}
       {showFullscreenToggle && (
         <button
           type="button"

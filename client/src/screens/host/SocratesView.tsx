@@ -1,5 +1,4 @@
 import { type RoomCode, type SocratesShowPayload } from '@game/shared';
-import { SpeechSlab } from '../../components/SpeechSlab';
 import { GameLayout } from './GameLayout';
 
 interface SocratesViewProps {
@@ -16,12 +15,13 @@ interface SocratesViewProps {
 // it only enters the phase when a line actually fired, so this is never
 // empty.
 // Task 163b - the old top-of-screen card (GameLayout's read column) is gone;
-// the line now sits on design/theatre-reference.html's #speech slab,
-// floating lower-left over the lit scene (TheatreScene stays lit here -
-// SOCRATES was already in LIT_PHASES). GameLayout is still the wrapper
-// (corner room code + pause overlay), but its own read column renders
-// nothing - SpeechSlab is position:fixed and paints over the whole frame
-// regardless of where it's mounted in the tree.
+// the line used to sit here on design/theatre-reference.html's #speech slab.
+// Task 196 moved that slab OUT to HostScreen's own chrome-level Socrates
+// caption (SpeechSlab there, driven by the audio's own onEnded rather than
+// this phase alone) - this view now supplies only the room code + pause
+// overlay GameLayout gives every phase, exactly like SOCRATES had them
+// before Task 163b's relocation. TheatreScene stays lit here (SOCRATES was
+// already in LIT_PHASES).
 // The sophists row drops to 60% for this phase (SophistsRow), unchanged.
 export function SocratesView({ socrates, roomCode, paused, pausedByName }: SocratesViewProps) {
   return (
@@ -32,7 +32,7 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName }: Socra
       standings={socrates.standings}
       contentKey={`socrates-${socrates.questionIndex}`}
     >
-      <SpeechSlab data-testid="socrates-stage">«{socrates.line}»</SpeechSlab>
+      {null}
     </GameLayout>
   );
 }

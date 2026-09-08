@@ -407,6 +407,12 @@ interface AnavasisClimbersProps {
   // starts the beat-then-glide sequence below; every other prop change
   // (a re-render with the same round, or the null state) applies at once.
   revealKey?: string | null;
+  // Task 196 - lets chrome-level UI (the Socrates caption) read the SAME
+  // beat/glide `moving` state this component already computes, instead of
+  // re-deriving "is a body in motion" elsewhere. Fired from an effect (not
+  // read during render), so it never fires while this component's own
+  // render is still in progress.
+  onMovingChange?: (moving: boolean) => void;
 }
 
 // Holds `climbers` positions back by CLIMB_BEAT_MS whenever `revealKey`
@@ -456,8 +462,24 @@ function useClimbMovement(
   return { displayed, moving };
 }
 
-export function AnavasisClimbers({ climbers, top, hiddenPlayerIds = [], fadeExcept = null, revealKey = null }: AnavasisClimbersProps) {
+export function AnavasisClimbers({
+  climbers,
+  top,
+  hiddenPlayerIds = [],
+  fadeExcept = null,
+  revealKey = null,
+  onMovingChange,
+}: AnavasisClimbersProps) {
   const { displayed, moving } = useClimbMovement(climbers, revealKey);
+  useEffect(() => {
+    onMovingChange?.(moving);
+    // Unmounting (the game leaves the climb entirely) must not leave the
+    // caller stuck thinking a body is still moving forever after.
+    return () => onMovingChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onMovingChange
+    // is a setState function from the caller (stable identity in practice);
+    // including it would refire this on every parent render for no reason.
+  }, [moving]);
   const displayedById = new Map(displayed.map((c) => [c.playerId, c]));
   return (
     <div className="anavasis-climbers-root" aria-hidden="true" data-testid="anavasis-climbers" data-moving={moving}>
