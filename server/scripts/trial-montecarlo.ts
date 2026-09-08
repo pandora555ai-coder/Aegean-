@@ -28,14 +28,25 @@
 
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { CLIMB_MAX_ROUNDS, CLIMB_TOP, DEFAULT_ROOM_SETTINGS, TRIAL_MAX_QUESTIONS, climbEntryStep, type Player } from '@game/shared';
+import { CLIMB_MAX_ROUNDS, CLIMB_TOP, DEFAULT_ROOM_SETTINGS, DUEL_WEAPONS, TRIAL_MAX_QUESTIONS, climbEntryStep, duelOutcome, type Player } from '@game/shared';
 import { initRealtime } from '../src/realtime.js';
 import '../src/modes/index.js';
 import { createRoom, deleteRoom, type Room } from '../src/state.js';
 import { installTimerClock, type TimerClock } from '../src/timers.js';
 import { endTrialQuestion, startTrial, submitTrialAnswer } from '../src/phases.js';
 import { computeCompetitionRanks } from '../src/payloads.js';
-import { applyClimbRound, nextAfterClimbRound, resolveClimbAtCap, type ClimbRoundEntry } from '../src/climb.js';
+import {
+  applyClimbDuelResult,
+  applyClimbRound,
+  applyClimbSpearRound,
+  climbSpearRuleActive,
+  nextAfterClimbRound,
+  nextAfterSpearEliminations,
+  nextAfterSpearRound,
+  resolveClimbAtCap,
+  type ClimbRoundEntry,
+  type ClimbSpearCounters,
+} from '../src/climb.js';
 
 // ---------------------------------------------------------------------------
 // Virtual clock - the injected TimerClock. Timers queue up in virtual time and
@@ -132,6 +143,10 @@ interface Config {
   finale: 'trial' | 'climb';
   cap: number;
   json: boolean;
+  // Task 203 - the spear elimination overlay, climb only. 'auto' follows
+  // climbSpearRuleActive(players) (the N >= 4 gate baked into climb.ts
+  // itself); 'on'/'off' forces it either way for controlled comparison runs.
+  spear: 'auto' | 'on' | 'off';
 }
 
 function parseArgs(argv: string[]): Config {
@@ -150,6 +165,7 @@ function parseArgs(argv: string[]): Config {
     finale: 'trial',
     cap: CLIMB_MAX_ROUNDS,
     json: false,
+    spear: 'auto',
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -211,6 +227,13 @@ function parseArgs(argv: string[]): Config {
         break;
       case '--json':
         cfg.json = true;
+        break;
+      case '--spear':
+        if (value !== 'on' && value !== 'off') {
+          throw new Error(`--spear must be 'on' or 'off', got '${value}'`);
+        }
+        cfg.spear = value;
+        i++;
         break;
       default:
         throw new Error(`unknown flag ${flag}`);
@@ -410,20 +433,44 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
 // are compared on like-for-like player behavior; only the entry setup and
 // scoring differ, calling climb.ts's pure functions directly.
 // ---------------------------------------------------------------------------
-interface ClimbRunResult {
-  rounds: number;
-  // Task 188b - 'cap-winner'/'cap-duel' are the round cap's two verdicts
-  // (highest step alone / shared highest step -> duel), resolved by
-  // climb.ts's resolveClimbAtCap exactly as the phase machine does.
-  outcome: 'winner' | 'duel' | 'cap-winner' | 'cap-duel';
-  winnerId: string | null;
-  duelPlayerIds: [string, string] | null;
-  duelWasThreeWayPlus: boolean;
-  entryLeaderId: string;
-  comeback: boolean;
-  anomalies: string[];
+// Task 203 - resolves a duel (top-of-ladder or spear) all the way to a
+// winner, the same weapon rock-paper-scissors mechanic the live game uses
+// (duelOutcome, shared): a random weapon per side, re-drawn on a tie exactly
+// as DUEL_PICK does (phases.ts re-enters DUEL_PICK with tieCount + 1). The
+// pre-203 harness stopped at "reached a duel" without a winner; Task 203
+// needs a real one for every run to compute rounds-to-verdict and the
+// comeback stats below.
+function resolveDuelToWinner(rng: () => number, playerA: string, playerB: string): string {
+  for (let tie = 0; tie < 1000; tie++) {
+    const weaponA = DUEL_WEAPONS[Math.floor(rng() * DUEL_WEAPONS.length)];
+    const weaponB = DUEL_WEAPONS[Math.floor(rng() * DUEL_WEAPONS.length)];
+    const outcome = duelOutcome(weaponA, weaponB);
+    if (outcome !== 'TIE') {
+      return applyClimbDuelResult([playerA, playerB], outcome === 'A' ? playerA : playerB);
+    }
+  }
+  throw new Error(`duel between ${playerA} and ${playerB} never resolved after 1000 ties`);
 }
 
+// Task 203 - a run's final verdict, one of four shapes: reaching CLIMB_TOP
+// alone or via its duel, or the spear thinning the field to one survivor
+// either outright (the last elimination needed no duel) or via a spear duel
+// (the field was down to exactly two struck players, who happened to be the
+// last two standing).
+type ClimbVerdictType = 'top' | 'top-duel' | 'last-survivor' | 'bottom-duel-survivor';
+
+interface ClimbRunResult {
+  rounds: number;
+  verdictType: ClimbVerdictType;
+  winnerId: string;
+  entryLeaderId: string;
+  comeback: boolean; // winner isn't the entry-rank leader (pre-203 definition, kept for continuity)
+  eliminationsCount: number;
+  capHit: boolean; // the round cap resolved this run rather than a natural verdict
+  winnerEverAtStepZero: boolean;
+  winnerEverBehindBy3: boolean; // winner's step was ever >= 3 below the then-current leader's
+  anomalies: string[];
+}
 
 function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
   const anomalies: string[] = [];
@@ -452,17 +499,42 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
     steps.set(p.playerId, climbEntryStep(ranks.get(p.playerId)!, players.length));
   }
 
-  let rounds = 0;
-  let outcome: ClimbRunResult['outcome'] | null = null;
-  let winnerId: string | null = null;
-  let duelPlayerIds: [string, string] | null = null;
-  let duelWasThreeWayPlus = false;
+  const spearActive = cfg.spear === 'auto' ? climbSpearRuleActive(cfg.players) : cfg.spear === 'on';
+  const spearCounters: ClimbSpearCounters = new Map();
+  const alive = new Set(players.map((p) => p.playerId));
+  const eliminatedRound = new Map<string, number>();
+  const everAtStepZero = new Set<string>();
+  const everBehindBy3 = new Set<string>();
 
-  while (outcome === null) {
+  // Records, for every player CURRENTLY alive, whether their step is at 0 or
+  // >= 3 behind the current leader (the max step among the alive) - called
+  // once before round 1 (entry steps) and again after every round.
+  const trackDeficits = (): void => {
+    let max = -Infinity;
+    for (const id of alive) max = Math.max(max, steps.get(id)!);
+    for (const id of alive) {
+      const step = steps.get(id)!;
+      if (step === 0) everAtStepZero.add(id);
+      if (max - step >= 3) everBehindBy3.add(id);
+    }
+  };
+  trackDeficits();
+
+  let rounds = 0;
+  let winnerId: string | null = null;
+  let verdictType: ClimbVerdictType | null = null;
+  let capHit = false;
+
+  while (winnerId === null) {
     rounds += 1;
+    if (rounds > cfg.cap * 3) {
+      anomalies.push(`driver guard: ${rounds} rounds without a verdict (cap ${cfg.cap})`);
+      break;
+    }
     const correctIndex = 0; // arbitrary and fixed - only correctness (via pCorrect) matters, not which option
 
-    const entries: ClimbRoundEntry[] = players.map((p) => {
+    const alivePlayers = players.filter((p) => alive.has(p.playerId));
+    const entries: ClimbRoundEntry[] = alivePlayers.map((p) => {
       const stepBefore = steps.get(p.playerId)!;
       if (rng() < cfg.pNoAnswer) {
         return { playerId: p.playerId, name: p.name, avatarId: p.avatarId, stepBefore, choice: null, elapsedMs: null };
@@ -477,47 +549,106 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
     });
 
     const results = applyClimbRound(entries, correctIndex);
-    // Captured BEFORE nextAfterClimbRound, which clamps any 3+-way arrivals
-    // past the top two back down to CLIMB_TOP - 1 in place.
-    const arrivalCount = results.filter((r) => r.stepAfter >= CLIMB_TOP).length;
-    const next = nextAfterClimbRound(results);
-    for (const result of results) steps.set(result.playerId, result.stepAfter);
+    for (const result of results) {
+      steps.set(result.playerId, result.stepAfter);
+      if (result.stepAfter < 0) anomalies.push(`round ${rounds}: negative step for ${result.playerId}`);
+    }
+    trackDeficits();
 
-    if (next.kind === 'WINNER') {
-      outcome = 'winner';
-      winnerId = next.winnerPlayerId;
+    // 1. Reaching the top always wins outright first, spear or no spear.
+    const topNext = nextAfterClimbRound(results);
+    if (topNext.kind === 'WINNER') {
+      winnerId = topNext.winnerPlayerId;
+      verdictType = 'top';
       break;
     }
-    if (next.kind === 'DUEL') {
-      outcome = 'duel';
-      duelPlayerIds = next.playerIds;
-      duelWasThreeWayPlus = arrivalCount > 2;
+    if (topNext.kind === 'DUEL') {
+      winnerId = resolveDuelToWinner(rng, topNext.playerIds[0], topNext.playerIds[1]);
+      verdictType = 'top-duel';
       break;
     }
-    if (rounds >= cfg.cap) {
-      // Task 188b - the cap: same resolver the phase machine calls.
-      const verdict = resolveClimbAtCap(results);
-      for (const result of results) steps.set(result.playerId, result.stepAfter);
-      if (verdict.kind === 'WINNER') {
-        outcome = 'cap-winner';
-        winnerId = verdict.winnerPlayerId;
-      } else {
-        outcome = 'cap-duel';
-        duelPlayerIds = verdict.playerIds;
+
+    // 2. The spear overlay: a second, independent pass over the SAME round.
+    if (spearActive) {
+      const spearResults = applyClimbSpearRound(results, spearCounters, cfg.players);
+      const struckIds = new Set(spearResults.filter((r) => r.struck).map((r) => r.playerId));
+      for (const r of spearResults) spearCounters.set(r.playerId, r.countAfter);
+
+      if (struckIds.size > 0) {
+        const struckResults = results.filter((r) => struckIds.has(r.playerId));
+        const spearNext = nextAfterSpearRound(struckResults);
+        let bottomDuelFired = false;
+        if (spearNext.kind === 'OUT') {
+          for (const id of spearNext.playerIds) {
+            alive.delete(id);
+            eliminatedRound.set(id, rounds);
+          }
+        } else {
+          for (const id of spearNext.outrightPlayerIds) {
+            alive.delete(id);
+            eliminatedRound.set(id, rounds);
+          }
+          const duelWinner = resolveDuelToWinner(rng, spearNext.playerIds[0], spearNext.playerIds[1]);
+          const duelLoser = duelWinner === spearNext.playerIds[0] ? spearNext.playerIds[1] : spearNext.playerIds[0];
+          alive.delete(duelLoser);
+          eliminatedRound.set(duelLoser, rounds);
+          spearCounters.set(duelWinner, 0);
+          bottomDuelFired = true;
+        }
+
+        const survivorVerdict = nextAfterSpearEliminations([...alive]);
+        if (survivorVerdict) {
+          winnerId = survivorVerdict.winnerPlayerId;
+          verdictType = bottomDuelFired ? 'bottom-duel-survivor' : 'last-survivor';
+          break;
+        }
+        if (alive.size === 0) {
+          anomalies.push(`round ${rounds}: spear eliminated every remaining player`);
+          break;
+        }
       }
+    }
+
+    // 3. The round cap - same resolver the phase machine calls, over
+    // whoever the spear left alive.
+    if (rounds >= cfg.cap) {
+      capHit = true;
+      const stillAlive = results.filter((r) => alive.has(r.playerId));
+      const verdict = resolveClimbAtCap(stillAlive);
+      if (verdict.kind === 'WINNER') {
+        winnerId = verdict.winnerPlayerId;
+        verdictType = 'top';
+      } else {
+        winnerId = resolveDuelToWinner(rng, verdict.playerIds[0], verdict.playerIds[1]);
+        verdictType = 'top-duel';
+      }
+      break;
     }
   }
 
-  const comeback = winnerId !== null ? winnerId !== entryLeader.playerId : !duelPlayerIds!.includes(entryLeader.playerId);
+  if (winnerId === null || verdictType === null) {
+    // The driver guard fired - no real verdict. Fall back to whoever is
+    // alive with the highest step so the batch still gets a row, flagged by
+    // the anomaly already pushed above.
+    const stillAlive = players.filter((p) => alive.has(p.playerId));
+    const fallback = stillAlive.reduce((best, p) => (steps.get(p.playerId)! > steps.get(best.playerId)! ? p : best), stillAlive[0]);
+    winnerId = fallback.playerId;
+    verdictType = 'top';
+  }
+  if (eliminatedRound.has(winnerId)) {
+    anomalies.push(`winner ${winnerId} was previously eliminated in round ${eliminatedRound.get(winnerId)}`);
+  }
 
   return {
     rounds,
-    outcome,
+    verdictType,
     winnerId,
-    duelPlayerIds,
-    duelWasThreeWayPlus,
     entryLeaderId: entryLeader.playerId,
-    comeback,
+    comeback: winnerId !== entryLeader.playerId,
+    eliminationsCount: eliminatedRound.size,
+    capHit,
+    winnerEverAtStepZero: everAtStepZero.has(winnerId),
+    winnerEverBehindBy3: everBehindBy3.has(winnerId),
     anomalies,
   };
 }
@@ -632,28 +763,39 @@ function runClimbBatch(cfg: Config): void {
   }
   const wallMs = performance.now() - started;
 
-  const winners = results.filter((r) => r.outcome === 'winner');
-  const duels = results.filter((r) => r.outcome === 'duel');
-  const threeWayPlus = duels.filter((r) => r.duelWasThreeWayPlus);
-  const capWinners = results.filter((r) => r.outcome === 'cap-winner');
-  const capDuels = results.filter((r) => r.outcome === 'cap-duel');
+  const spearActive = cfg.spear === 'auto' ? climbSpearRuleActive(cfg.players) : cfg.spear === 'on';
+  const byVerdict = (kind: ClimbVerdictType) => results.filter((r) => r.verdictType === kind);
+  const eliminationInvariantViolations = results.filter((r) => r.anomalies.some((a) => a.includes('previously eliminated')));
+  const negativeStepViolations = results.filter((r) => r.anomalies.some((a) => a.includes('negative step')));
   const summary = {
     config: cfg,
+    spearActive,
     runs: results.length,
     roundsMedian: median(results.map((r) => r.rounds)),
     roundsP90: percentile(results.map((r) => r.rounds), 90),
     roundsP95: percentile(results.map((r) => r.rounds), 95),
     roundsP99: percentile(results.map((r) => r.rounds), 99),
     roundsMax: Math.max(...results.map((r) => r.rounds)),
-    winnerCount: winners.length,
-    duelCount: duels.length,
-    twoWayDuelCount: duels.length - threeWayPlus.length,
-    threeWayPlusCount: threeWayPlus.length,
-    capHitCount: capWinners.length + capDuels.length,
-    capWinnerCount: capWinners.length,
-    capDuelCount: capDuels.length,
+    capHitCount: results.filter((r) => r.capHit).length,
+    capRatePct: (100 * results.filter((r) => r.capHit).length) / results.length,
+    verdictCounts: {
+      top: byVerdict('top').length,
+      'top-duel': byVerdict('top-duel').length,
+      'last-survivor': byVerdict('last-survivor').length,
+      'bottom-duel-survivor': byVerdict('bottom-duel-survivor').length,
+    },
+    eliminationsMedian: median(results.map((r) => r.eliminationsCount)),
+    eliminationsMean: results.reduce((sum, r) => sum + r.eliminationsCount, 0) / results.length,
     comebackCount: results.filter((r) => r.comeback).length,
     comebackPct: (100 * results.filter((r) => r.comeback).length) / results.length,
+    winnerEverAtStepZeroCount: results.filter((r) => r.winnerEverAtStepZero).length,
+    winnerEverAtStepZeroPct: (100 * results.filter((r) => r.winnerEverAtStepZero).length) / results.length,
+    // Task 203 acceptance criterion 3: the comeback-preservation figure.
+    winnerEverBehindBy3Count: results.filter((r) => r.winnerEverBehindBy3).length,
+    winnerEverBehindBy3Pct: (100 * results.filter((r) => r.winnerEverBehindBy3).length) / results.length,
+    // Task 203 acceptance criterion 4: must both be 0.
+    eliminationInvariantViolations: eliminationInvariantViolations.length,
+    negativeStepViolations: negativeStepViolations.length,
     anomalies: results.flatMap((r, i) => r.anomalies.map((a) => `run ${i + 1}: ${a}`)),
     wallClockMs: Math.round(wallMs),
   };
@@ -663,15 +805,19 @@ function runClimbBatch(cfg: Config): void {
     return;
   }
   const lines = [
-    `climb monte carlo — ${summary.runs} runs, ${cfg.players} players, entry ${cfg.entryLo}-${cfg.entryHi}, ` +
-      `pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
+    `climb monte carlo — ${summary.runs} runs, ${cfg.players} players, spear ${cfg.spear}${cfg.spear === 'auto' ? ` (active=${spearActive})` : ''}, ` +
+      `entry ${cfg.entryLo}-${cfg.entryHi}, pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
       `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
-    `rounds to resolution: median ${summary.roundsMedian ?? 'n/a'}, p90 ${summary.roundsP90 ?? 'n/a'}, p95 ${summary.roundsP95 ?? 'n/a'}, ` +
-      `p99 ${summary.roundsP99 ?? 'n/a'}, max ${summary.roundsMax}; ` +
-      `cap (${cfg.cap}) hit: ${summary.capHitCount} (highest step ${summary.capWinnerCount}, cap-tie duel ${summary.capDuelCount})`,
-    `outcome: single winner ${summary.winnerCount}, duel ${summary.duelCount} (2-way ${summary.twoWayDuelCount}, ` +
-      `3+-way collapsed to duel ${summary.threeWayPlusCount})`,
-    `comebacks (winner/duel excludes entry leader): ${summary.comebackCount}/${summary.runs} (${summary.comebackPct.toFixed(1)}%)`,
+    `rounds to verdict: median ${summary.roundsMedian ?? 'n/a'}, p90 ${summary.roundsP90 ?? 'n/a'}, p95 ${summary.roundsP95 ?? 'n/a'}, ` +
+      `p99 ${summary.roundsP99 ?? 'n/a'}, max ${summary.roundsMax}; cap (${cfg.cap}) hit: ${summary.capHitCount} (${summary.capRatePct.toFixed(1)}%)`,
+    `verdict type: top ${summary.verdictCounts.top}, top-duel ${summary.verdictCounts['top-duel']}, ` +
+      `last-survivor ${summary.verdictCounts['last-survivor']}, bottom-duel-survivor ${summary.verdictCounts['bottom-duel-survivor']}`,
+    `eliminations per run: median ${summary.eliminationsMedian ?? 'n/a'}, mean ${summary.eliminationsMean.toFixed(2)}`,
+    `comebacks (winner ≠ entry-rank leader): ${summary.comebackCount}/${summary.runs} (${summary.comebackPct.toFixed(1)}%); ` +
+      `winner was ever at step 0: ${summary.winnerEverAtStepZeroCount}/${summary.runs} (${summary.winnerEverAtStepZeroPct.toFixed(1)}%)`,
+    `comeback preservation: winner was ever >= 3 steps behind the leader: ${summary.winnerEverBehindBy3Count}/${summary.runs} ` +
+      `(${summary.winnerEverBehindBy3Pct.toFixed(1)}%)`,
+    `invariant violations: elimination-then-won-or-moved ${summary.eliminationInvariantViolations}, negative step ${summary.negativeStepViolations}`,
     `anomalies: ${summary.anomalies.length}${summary.anomalies.length ? '\n  ' + summary.anomalies.join('\n  ') : ''}`,
     `wall clock ${summary.wallClockMs}ms`,
   ];

@@ -115,9 +115,109 @@ export function resolveClimbAtCap(finalRoundResults: ClimbRevealResult[]): Exclu
 // Validates the winner really was one of the two duelists; returns their id
 // for the caller to record as the game's winner. The duel's own mechanic
 // (one weapon each, duelOutcome in shared) lives in the phase shell.
+// Generic enough to also settle a spear duel below - "was the winner one of
+// the two named duelists" doesn't care which duel it was.
 export function applyClimbDuelResult(duelPlayerIds: readonly [string, string], winnerPlayerId: string): string {
   if (winnerPlayerId !== duelPlayerIds[0] && winnerPlayerId !== duelPlayerIds[1]) {
     throw new Error(`climb duel winner ${winnerPlayerId} was not one of the duelists ${duelPlayerIds.join(', ')}`);
   }
   return winnerPlayerId;
+}
+
+// ------------------------ Η Λόγχη, the spear (Task 203) ------------------------
+// An elimination overlay on the bottom step, independent of everything above:
+// applyClimbRound/nextAfterClimbRound/resolveClimbAtCap are UNCHANGED and
+// still the only thing phases.ts calls - this is a second, optional pass a
+// caller runs over the SAME scored round. Design-approved rule:
+//   - sitting at step 0 through a negative round (wrong OR no lock-in)
+//     increments a per-player counter; a correct lock-in (which always means
+//     LEAVING step 0 - the smallest positive delta is +1) resets it to zero,
+//     and so does already being off step 0 when the round starts.
+//   - at counter === CLIMB_SPEAR_LIMIT the player is speared out.
+//   - two or more struck in the SAME round: the two fastest-reacting (by
+//     lock-in time, a non-answer sorting last - "reacting" is about speed,
+//     not correctness, so this is NOT answerRank) duel it out with the same
+//     weapon mechanic as the top (duelOutcome, shared); anyone struck beyond
+//     those two is out outright, no duel.
+//   - eliminations leaving exactly one player standing win immediately - a
+//     second victory path beside reaching CLIMB_TOP.
+// Auto-gated to N >= CLIMB_SPEAR_MIN_PLAYERS, baked into
+// applyClimbSpearRound itself (not left to the caller to remember) - for
+// N = 2-3 the climb plays exactly as it did before this task.
+
+export const CLIMB_SPEAR_MIN_PLAYERS = 4;
+export const CLIMB_SPEAR_LIMIT = 2;
+
+export function climbSpearRuleActive(playerCount: number): boolean {
+  return playerCount >= CLIMB_SPEAR_MIN_PLAYERS;
+}
+
+// The caller's state (a Monte Carlo run today; eventually a Room), keyed by
+// playerId - a player with no entry is implicitly at 0. Never mutated here;
+// applyClimbSpearRound returns what each entry becomes and the caller writes
+// it back.
+export type ClimbSpearCounters = Map<string, number>;
+
+export interface ClimbSpearRoundResult {
+  playerId: string;
+  countBefore: number;
+  countAfter: number;
+  struck: boolean; // this round pushed countAfter to CLIMB_SPEAR_LIMIT
+}
+
+export function applyClimbSpearRound(
+  results: readonly ClimbRevealResult[],
+  countersBefore: ClimbSpearCounters,
+  playerCount: number,
+): ClimbSpearRoundResult[] {
+  const active = climbSpearRuleActive(playerCount);
+  return results.map((result) => {
+    const countBefore = countersBefore.get(result.playerId) ?? 0;
+    if (!active) {
+      return { playerId: result.playerId, countBefore, countAfter: 0, struck: false };
+    }
+    const countAfter = result.stepBefore !== 0 || result.correct ? 0 : countBefore + 1;
+    return { playerId: result.playerId, countBefore, countAfter, struck: countAfter >= CLIMB_SPEAR_LIMIT };
+  });
+}
+
+// What the spear does with one round's struck players (the subset of
+// applyClimbSpearRound's output flagged `struck`, joined back to that same
+// round's ClimbRevealResult rows for their lock-in time). Exhaustive by
+// construction, mirroring ClimbNext's shape.
+export type ClimbSpearNext =
+  | { kind: 'NONE' } // nobody struck this round
+  | { kind: 'OUT'; playerIds: string[] } // one or more struck, none need a duel
+  | { kind: 'DUEL'; playerIds: [string, string]; outrightPlayerIds: string[] }; // 2+ struck: the two fastest-reacting duel; the rest are out outright
+
+export function nextAfterSpearRound(struckResults: readonly ClimbRevealResult[]): ClimbSpearNext {
+  if (struckResults.length === 0) {
+    return { kind: 'NONE' };
+  }
+  if (struckResults.length === 1) {
+    return { kind: 'OUT', playerIds: [struckResults[0].playerId] };
+  }
+  // Fastest-REACTING, not fastest-correct: a non-answer (timeMs null) is the
+  // slowest possible reaction, sorted last. Ties (equal timeMs) keep the
+  // given order, same convention as pickDuelists' null-answerRank tie.
+  const sorted = [...struckResults].sort((a, b) => (a.timeMs ?? Infinity) - (b.timeMs ?? Infinity));
+  return {
+    kind: 'DUEL',
+    playerIds: [sorted[0].playerId, sorted[1].playerId],
+    outrightPlayerIds: sorted.slice(2).map((result) => result.playerId),
+  };
+}
+
+// The second victory path (Task 203): call once a round's eliminations (any
+// outright spear-outs plus a resolved spear duel, if one fired) are fully
+// applied. Callers check this AFTER nextAfterClimbRound/resolveClimbAtCap and
+// only when that call did not already declare a top-of-ladder winner -
+// reaching the temple always wins outright first.
+export function nextAfterSpearEliminations(
+  remainingPlayerIds: readonly string[],
+): { kind: 'WINNER'; winnerPlayerId: string } | null {
+  if (remainingPlayerIds.length === 1) {
+    return { kind: 'WINNER', winnerPlayerId: remainingPlayerIds[0] };
+  }
+  return null;
 }
