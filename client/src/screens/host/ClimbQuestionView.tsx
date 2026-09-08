@@ -31,7 +31,30 @@ interface ClimbQuestionViewProps {
 // every scene actor regardless of DOM order - the rule for Frame A (CLAUDE.md/
 // task 198: "the slab is the topmost readable element, nothing overlaps its
 // text, ever").
-const SLAB_WRAP_STYLE = { position: 'fixed', left: '16%', top: '9%', width: '52%', zIndex: 3 } as const;
+// Task 199 - `height: '42vh'` (new) is the determinate ceiling `useFitFontSize`
+// needs: without it, this wrapper (and MarbleSlab/questionBlock inside it)
+// simply grew to fit content - useFitFontSize compares text.scrollHeight
+// against container.clientHeight, and an auto-height container's
+// clientHeight always equals the text's own height, so the shrink loop
+// never triggered and the longest question in the bank (100 chars) pushed
+// the slab's bottom edge to 1148px, well past the 720px canvas
+// (client/src/screens/host/ClimbQuestionView.tsx pre-199). 42vh keeps the
+// bottom edge at top(9%) + 42vh = ~51% of the viewport - comfortably above
+// where AnavasisClimbers render at climb entry (~55%, measured) and nowhere
+// near the 720px canvas edge - the same "give the slab a real height so its
+// flex children have something to shrink against" fix TrialQuestionView
+// already uses via GameLayout's READ_AREA_HEIGHT + MarbleSlab's own
+// `flex: '1 1 0'`.
+const SLAB_WRAP_STYLE = {
+  position: 'fixed',
+  left: '16%',
+  top: '9%',
+  width: '52%',
+  height: '42vh',
+  zIndex: 3,
+  display: 'flex',
+  flexDirection: 'column',
+} as const;
 
 export function ClimbQuestionView({ climbQuestion }: ClimbQuestionViewProps) {
   const questionBlockRef = useRef<HTMLDivElement | null>(null);
@@ -45,8 +68,8 @@ export function ClimbQuestionView({ climbQuestion }: ClimbQuestionViewProps) {
       <div className="enter-pop" style={styles.category}>
         {greekUpper(climbQuestion.category)}
       </div>
-      <MarbleSlab className="enter-pop" data-testid="climb-question-slab">
-        <div style={{ ...styles.questionBlock, minHeight: '10rem' }} ref={questionBlockRef}>
+      <MarbleSlab className="enter-pop" style={{ flex: '1 1 0' }} data-testid="climb-question-slab">
+        <div style={styles.questionBlock} ref={questionBlockRef}>
           <div style={{ ...styles.questionTextTv, fontSize: '3.5rem', color: 'var(--carve)' }} data-testid="question-text" ref={questionTextRef}>
             {climbQuestion.question}
           </div>
