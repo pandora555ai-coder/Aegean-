@@ -2375,6 +2375,12 @@ export interface DuelPickShowPlayerPayload {
 
 export type DuelPickShowPayload = DuelPickShowHostPayload | DuelPickShowPlayerPayload;
 
+// Task 189 - same discriminator shape as isClimbQuestionHostPayload: the host
+// shape alone carries `duelists`.
+export function isDuelPickHostPayload(payload: DuelPickShowPayload): payload is DuelPickShowHostPayload {
+  return 'duelists' in payload;
+}
+
 // HOST ONLY - the "who has picked" ticker (the answer:progress contract).
 export interface DuelProgressPayload {
   pickedPlayerIds: string[];
@@ -2410,6 +2416,12 @@ export interface DuelRevealPayload {
 
 export interface DuelRevealHostPayload extends DuelRevealPayload {
   standings: PlayerStanding[];
+}
+
+// Task 189 - same discriminator shape as isClimbRevealHostPayload: the host
+// shape alone carries `standings`.
+export function isDuelRevealHostPayload(payload: DuelRevealPayload | DuelRevealHostPayload): payload is DuelRevealHostPayload {
+  return 'standings' in payload;
 }
 
 // The stage card for the climb - the same held STAGE_ANNOUNCE beat the trial

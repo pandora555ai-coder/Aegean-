@@ -8,7 +8,11 @@ import {
   ServerEvents,
   isBlitzRevealHostPayload,
   isBlitzShowHostPayload,
+  isClimbQuestionHostPayload,
+  isClimbRevealHostPayload,
   isDrawHostPayload,
+  isDuelPickHostPayload,
+  isDuelRevealHostPayload,
   isGuessHostPayload,
   isNumericQuestionHostPayload,
   isPowerUpHostPayload,
@@ -23,11 +27,20 @@ import {
   type BlitzRevealPayload,
   type BlitzShowHostPayload,
   type BlitzShowPayload,
+  type ClimbQuestionShowHostPayload,
+  type ClimbQuestionShowPayload,
+  type ClimbRevealHostPayload,
+  type ClimbRevealPayload,
   type CrowdIntensityPayload,
   type CrowdMood,
   type CrowdMoodPayload,
   type DrawShowHostPayload,
   type DrawShowPayload,
+  type DuelLockedPayload,
+  type DuelPickShowHostPayload,
+  type DuelPickShowPayload,
+  type DuelRevealHostPayload,
+  type DuelRevealPayload,
   type GameOverPayload,
   type GamePhase,
   type GuessRevealShowPayload,
@@ -88,10 +101,23 @@ import { TrialQuestionView } from './host/TrialQuestionView';
 import { TrialRevealView } from './host/TrialRevealView';
 import { BlitzView } from './host/BlitzView';
 import { BlitzRevealView } from './host/BlitzRevealView';
+import { ClimbQuestionView } from './host/ClimbQuestionView';
+import { ClimbRevealView } from './host/ClimbRevealView';
+import { DuelPickView } from './host/DuelPickView';
+import { DuelRevealView } from './host/DuelRevealView';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { SocratesFigure } from '../components/SocratesFigure';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
 import { SophistsRow, STEAL_TOKEN_FLIGHT_MS, type SophistStanding } from '../components/SophistsRow';
+import {
+  AnavasisScene,
+  AnavasisClimbers,
+  AnavasisDuel,
+  AnavasisCrowning,
+  laneLeftPct,
+  visualStepFor,
+  type AnavasisClimberData,
+} from '../components/AnavasisScene';
 import { Krater, type TimerState } from '../components/Krater';
 
 export default function HostScreen() {
@@ -180,6 +206,32 @@ export default function HostScreen() {
   const [trialQuestionSecondsLeft, setTrialQuestionSecondsLeft] = useState(0);
   const [trialReveal, setTrialReveal] = useState<TrialRevealShowPayload | null>(null);
   const [trialRevealSecondsLeft, setTrialRevealSecondsLeft] = useState(0);
+  // Η Ανάβασις (Task 188a-c server side, 189 here) - the trial's alternative
+  // finale, same one-payload-per-phase pattern. isClimbFinale is the ONE flag
+  // that tells the composed render below to swap TheatreScene+SophistsRow
+  // for the whole AnavasisScene world (background, climbers on the stair,
+  // the duel, the crowning) - set true the instant any climb/duel payload
+  // arrives (fresh OR a state:sync reconnect) and never false again until
+  // the next LOBBY, so it stays true straight through DUEL_PICK/DUEL_REVEAL
+  // (where climbQuestion/climbReveal are both null) and the climb's own
+  // GAME_OVER (`phase` alone can't tell a climb verdict from a trial one).
+  const [isClimbFinale, setIsClimbFinale] = useState(false);
+  const [climbQuestion, setClimbQuestion] = useState<ClimbQuestionShowHostPayload | null>(null);
+  const [climbQuestionSecondsLeft, setClimbQuestionSecondsLeft] = useState(0);
+  const [climbReveal, setClimbReveal] = useState<ClimbRevealHostPayload | null>(null);
+  const [climbRevealSecondsLeft, setClimbRevealSecondsLeft] = useState(0);
+  // Η Μονομαχία (Task 188b server side) - the climb's own duel.
+  const [duelPick, setDuelPick] = useState<DuelPickShowHostPayload | null>(null);
+  const [duelPickSecondsLeft, setDuelPickSecondsLeft] = useState(0);
+  const [duelReveal, setDuelReveal] = useState<DuelRevealHostPayload | null>(null);
+  // The last-known climber positions (playerId -> step/delta), read off
+  // whichever of climbQuestion/climbReveal most recently carried them and
+  // held past that (mirrors lastStandingsRef below, same reasoning): DUEL_
+  // PICK/DUEL_REVEAL and the climb's GAME_OVER all clear climbQuestion/
+  // climbReveal to null, but the climbers on the stair must keep standing
+  // exactly where the last reveal left them, not vanish.
+  const lastClimbClimbersRef = useRef<AnavasisClimberData[]>([]);
+  const lastClimbTopRef = useRef(0);
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -306,6 +358,13 @@ export default function HostScreen() {
         setTrialReveal(null);
         setBlitz(null);
         setBlitzReveal(null);
+        setClimbQuestion(null);
+        setClimbReveal(null);
+        setDuelPick(null);
+        setDuelReveal(null);
+        setIsClimbFinale(false);
+        lastClimbClimbersRef.current = [];
+        lastClimbTopRef.current = 0;
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -432,6 +491,74 @@ export default function HostScreen() {
       setTrialReveal(payload);
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
+    }
+
+    // Η Ανάβασις (Task 189). The host branch of an asymmetric event, same
+    // pattern as trial's own question - a phone's own step is never sent
+    // here (see isClimbQuestionHostPayload).
+    function handleClimbQuestionShow(payload: ClimbQuestionShowPayload) {
+      if (isClimbQuestionHostPayload(payload)) {
+        setClimbReveal(null);
+        setClimbQuestion(payload);
+        setClimbQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
+        setTimerTotalSeconds(Math.ceil(payload.questionTimeMs / 1000));
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+        setIsClimbFinale(true);
+      }
+    }
+
+    // Public and symmetric, like trial_reveal:show - the round is over, so
+    // the correct answer and every climber's step are both safe to show now.
+    function handleClimbRevealShow(payload: ClimbRevealPayload) {
+      if (isClimbRevealHostPayload(payload)) {
+        setClimbQuestion(null);
+        setClimbReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+        setIsClimbFinale(true);
+      }
+    }
+
+    // Η Μονομαχία (Task 189). The host branch of an asymmetric event - WHO
+    // has picked, never what (see isDuelPickHostPayload); the weapons stay
+    // server-side until duel_reveal:show.
+    function handleDuelPickShow(payload: DuelPickShowPayload) {
+      if (isDuelPickHostPayload(payload)) {
+        setClimbReveal(null);
+        setDuelReveal(null);
+        setDuelPick(payload);
+        setDuelPickSecondsLeft(Math.ceil(payload.durationMs / 1000));
+        setTimerTotalSeconds(Math.ceil(payload.durationMs / 1000));
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+        setIsClimbFinale(true);
+      }
+    }
+
+    // Public and symmetric - the duel is over, so both weapons and the
+    // winner are safe to show now (the first moment either weapon leaves
+    // the server).
+    function handleDuelRevealShow(payload: DuelRevealPayload | DuelRevealHostPayload) {
+      if (isDuelRevealHostPayload(payload)) {
+        setDuelPick(null);
+        setDuelReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+        setIsClimbFinale(true);
+      }
+    }
+
+    // The duel's early-lock beat (Task 188b) - host-only, no phase change.
+    // socratesLine is null while DUEL_LINES.DUEL_LOCKED ships empty (D1), so
+    // this never actually plays a clip today; wired anyway so a future line
+    // plays through the same ack the SOCRATES phase already uses.
+    function handleDuelLocked(payload: DuelLockedPayload) {
+      if (payload.socratesLineTemplate) {
+        playSocratesLine(payload.socratesLineTemplate, payload.socratesLineTag, () => {
+          socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {});
+        });
+      }
     }
 
     // Drawing mode (Task 56b). The host branch of an asymmetric event -
@@ -721,6 +848,44 @@ export default function HostScreen() {
           setPaused(payload.paused);
           setPausedByName(payload.pausedByName);
           break;
+        // Η Ανάβασις (Task 189) - same live-broadcast builders as the fresh
+        // phase entry, so a reconnect mid-beat restores exactly the same
+        // screen (criterion 1), and sets isClimbFinale so the world swap
+        // isn't lost on a reload mid-climb.
+        case 'CLIMB_QUESTION':
+          if (isClimbQuestionHostPayload(payload)) {
+            setClimbQuestion(payload);
+            setClimbQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+            setIsClimbFinale(true);
+          }
+          break;
+        case 'CLIMB_REVEAL':
+          if (isClimbRevealHostPayload(payload)) {
+            setClimbReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+            setIsClimbFinale(true);
+          }
+          break;
+        case 'DUEL_PICK':
+          if (isDuelPickHostPayload(payload)) {
+            setDuelPick(payload);
+            setDuelPickSecondsLeft(Math.ceil(payload.durationMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+            setIsClimbFinale(true);
+          }
+          break;
+        case 'DUEL_REVEAL':
+          if (isDuelRevealHostPayload(payload)) {
+            setDuelReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+            setIsClimbFinale(true);
+          }
+          break;
         // Task 156a - the blitz mode, same live-broadcast builders as the
         // fresh phase entry.
         case 'BLITZ':
@@ -766,6 +931,11 @@ export default function HostScreen() {
     socket.on(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
     socket.on(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
     socket.on(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+    socket.on(ServerEvents.CLIMB_QUESTION_SHOW, handleClimbQuestionShow);
+    socket.on(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
+    socket.on(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
+    socket.on(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
+    socket.on(ServerEvents.DUEL_LOCKED, handleDuelLocked);
     socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
     socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
@@ -798,6 +968,11 @@ export default function HostScreen() {
       socket.off(ServerEvents.NUMERIC_REVEAL_SHOW, handleNumericRevealShow);
       socket.off(ServerEvents.TRIAL_QUESTION_SHOW, handleTrialQuestionShow);
       socket.off(ServerEvents.TRIAL_REVEAL_SHOW, handleTrialRevealShow);
+      socket.off(ServerEvents.CLIMB_QUESTION_SHOW, handleClimbQuestionShow);
+      socket.off(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
+      socket.off(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
+      socket.off(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
+      socket.off(ServerEvents.DUEL_LOCKED, handleDuelLocked);
       socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
       socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
@@ -1090,6 +1265,47 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [trialReveal, paused]);
 
+  // Η Ανάβασις (Task 189) - CLIMB_QUESTION's own countdown, same pattern as
+  // QUESTION's/TRIAL_QUESTION's above.
+  useEffect(() => {
+    if (!climbQuestion || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setClimbQuestionSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [climbQuestion, paused]);
+
+  // Η Μονομαχία (Task 189) - DUEL_PICK's own countdown, same pattern.
+  useEffect(() => {
+    if (!duelPick || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setDuelPickSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [duelPick, paused]);
+
+  // CLIMB_REVEAL's progress bar - same pattern as TRIAL_REVEAL's above.
+  useEffect(() => {
+    if (!climbReveal) {
+      return;
+    }
+    setClimbRevealSecondsLeft(Math.ceil(climbReveal.autoAdvanceMs / 1000));
+  }, [climbReveal]);
+
+  useEffect(() => {
+    if (!climbReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setClimbRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [climbReveal, paused]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -1378,6 +1594,17 @@ export default function HostScreen() {
     }
 
     if (phase === 'GAME_OVER' && gameOver) {
+      // Η Ανάβασις's own verdict (Task 189) - the winner crowned at the
+      // temple threshold, not the theatre's overlay. `isClimbFinale` is what
+      // tells the two apart (a trial's own GAME_OVER carries the same
+      // isTrialResult flag, so that alone can't distinguish them).
+      if (isClimbFinale) {
+        const winner = lastClimbClimbersRef.current.find((c) => c.playerId === gameOver.standings[0]?.playerId);
+        const winnerLeft = winner
+          ? laneLeftPct(winner.joinIndex, lastClimbClimbersRef.current.length, visualStepFor(winner.step, lastClimbTopRef.current))
+          : 50;
+        return <AnavasisCrowning winnerName={gameOver.winnerName} winnerLeft={winnerLeft} />;
+      }
       return <GameOverView gameOver={gameOver} />;
     }
 
@@ -1499,6 +1726,35 @@ export default function HostScreen() {
       );
     }
 
+    // Η Ανάβασις / Η Μονομαχία (Task 189). All four bypass GameLayout - the
+    // whole scene IS the layout - so each view renders its own room-code/
+    // pause chrome (AnavasisChrome) instead of GameLayout's.
+    if (phase === 'CLIMB_QUESTION' && climbQuestion) {
+      return (
+        <ClimbQuestionView climbQuestion={climbQuestion} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
+      );
+    }
+
+    if (phase === 'CLIMB_REVEAL' && climbReveal) {
+      return (
+        <ClimbRevealView
+          climbReveal={climbReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          revealSecondsLeft={climbRevealSecondsLeft}
+        />
+      );
+    }
+
+    if (phase === 'DUEL_PICK' && duelPick) {
+      return <DuelPickView duelPick={duelPick} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+    }
+
+    if (phase === 'DUEL_REVEAL' && duelReveal) {
+      return <DuelRevealView duelReveal={duelReveal} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
+    }
+
     // Blitz mode (Task 156a, stub views - 156b builds the real screen).
     if (phase === 'BLITZ' && blitz) {
       return <BlitzView blitz={blitz} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />;
@@ -1585,12 +1841,16 @@ export default function HostScreen() {
         return ring(numericQuestionSecondsLeft, 5);
       case 'TRIAL_QUESTION':
         return ring(trialQuestionSecondsLeft, 5);
+      case 'CLIMB_QUESTION':
+        return ring(climbQuestionSecondsLeft, 5);
+      case 'DUEL_PICK':
+        return ring(duelPickSecondsLeft, 5);
       case 'BLITZ':
         return ring(blitzSecondsLeft, 5);
       default:
-        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL show their
-        // remaining time as the progress bar at the foot of their own
-        // panel, not as a ring.
+        // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL/CLIMB_REVEAL/
+        // DUEL_REVEAL show their remaining time as the progress bar at the
+        // foot of their own panel (or not at all, DUEL_REVEAL), not as a ring.
         return null;
     }
   }
@@ -1643,9 +1903,63 @@ export default function HostScreen() {
 
   const phaseStandings = standingsForPhase();
   const inGamePhase = phase !== 'LOBBY' && phase !== 'STAGE_ANNOUNCE' && phase !== 'GAME_OVER';
+  const isAnavasisPhase =
+    phase === 'CLIMB_QUESTION' || phase === 'CLIMB_REVEAL' || phase === 'DUEL_PICK' || phase === 'DUEL_REVEAL';
   if (phaseStandings) {
     lastStandingsRef.current = phaseStandings;
   }
+
+  // Η Ανάβασις (Task 189) - the climbers currently on the stair, read off
+  // whichever of climbQuestion/climbReveal is live and held past that
+  // (lastClimbClimbersRef) exactly like lastStandingsRef above, so DUEL_
+  // PICK/DUEL_REVEAL and the climb's GAME_OVER (where both are null) keep
+  // showing everyone at their last real position.
+  const liveClimbClimbers: AnavasisClimberData[] = climbQuestion
+    ? climbQuestion.steps.map((s, i) => ({ playerId: s.playerId, name: s.name, joinIndex: i, step: s.step, delta: null }))
+    : climbReveal
+      ? climbReveal.results.map((r, i) => ({ playerId: r.playerId, name: r.name, joinIndex: i, step: r.stepAfter, delta: r.delta }))
+      : [];
+  const liveClimbTop = climbQuestion?.top ?? climbReveal?.top ?? 0;
+  if (liveClimbClimbers.length > 0) {
+    lastClimbClimbersRef.current = liveClimbClimbers;
+    lastClimbTopRef.current = liveClimbTop;
+  }
+  const climbClimbers = isClimbFinale ? lastClimbClimbersRef.current : [];
+  const climbTop = lastClimbTopRef.current;
+  const joinIndexForClimber = (playerId: string): number =>
+    climbClimbers.find((c) => c.playerId === playerId)?.joinIndex ?? 0;
+  // The live duel, from whichever of duelPick/duelReveal is set (never
+  // both - see the handlers). Its two duelists are hidden from the stair
+  // row below while AnavasisDuel shows them in the foreground instead.
+  const liveDuel = duelReveal
+    ? {
+        a: { playerId: duelReveal.duelists[0].playerId, name: duelReveal.duelists[0].name, joinIndex: joinIndexForClimber(duelReveal.duelists[0].playerId) },
+        b: { playerId: duelReveal.duelists[1].playerId, name: duelReveal.duelists[1].name, joinIndex: joinIndexForClimber(duelReveal.duelists[1].playerId) },
+        weaponA: duelReveal.duelists[0].weapon,
+        weaponB: duelReveal.duelists[1].weapon,
+        pickedA: true,
+        pickedB: true,
+        revealed: true,
+        tie: duelReveal.tie,
+        tieCount: duelReveal.tieCount,
+        winnerPlayerId: duelReveal.winnerPlayerId,
+      }
+    : duelPick
+      ? {
+          a: { playerId: duelPick.duelists[0].playerId, name: duelPick.duelists[0].name, joinIndex: joinIndexForClimber(duelPick.duelists[0].playerId) },
+          b: { playerId: duelPick.duelists[1].playerId, name: duelPick.duelists[1].name, joinIndex: joinIndexForClimber(duelPick.duelists[1].playerId) },
+          weaponA: null,
+          weaponB: null,
+          pickedA: duelPick.pickedPlayerIds.includes(duelPick.duelists[0].playerId),
+          pickedB: duelPick.pickedPlayerIds.includes(duelPick.duelists[1].playerId),
+          revealed: false,
+          tie: false,
+          tieCount: duelPick.tieCount,
+          winnerPlayerId: null,
+        }
+      : null;
+  const climbHiddenPlayerIds = liveDuel ? [liveDuel.a.playerId, liveDuel.b.playerId] : [];
+  const climbWinnerId = phase === 'GAME_OVER' && isClimbFinale ? (gameOver?.standings[0]?.playerId ?? null) : null;
   const stealFlightHolding =
     phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;
   const rowStandings = stealFlightHolding
@@ -1656,8 +1970,11 @@ export default function HostScreen() {
       ? { thiefPlayerId: steal.resolved.thiefPlayerId, victimPlayerId: steal.resolved.victimPlayerId }
       : null;
   // The read column - every in-game phase renders inside it (SOCRATES too);
-  // LOBBY, STAGE_ANNOUNCE and GAME_OVER render their own full-bleed root.
-  const showShell = inGamePhase;
+  // LOBBY, STAGE_ANNOUNCE and GAME_OVER render their own full-bleed root -
+  // and so, since Task 189, do the four climb/duel phases: the AnavasisScene
+  // world IS their layout, positioned like the reference rather than
+  // GameLayout's two-column read area.
+  const showShell = inGamePhase && !isAnavasisPhase;
 
   const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
@@ -1674,15 +1991,24 @@ export default function HostScreen() {
           Object.entries(blitz.progressByPlayerId).map(([id, count]) => [id, `${count}/${blitz.total}`]),
         )
       : null;
-  const timer = showShell ? timerForPhase() : null;
+  // inGamePhase, not showShell: the climb/duel phases still show the krater
+  // even though they skip GameLayout's two-column shell (see showShell above).
+  const timer = inGamePhase ? timerForPhase() : null;
 
   const phaseView = renderPhaseView();
+  // True from the first climb/duel payload straight through this game's own
+  // GAME_OVER - see isClimbFinale's declaration.
+  const showAnavasisWorld = isClimbFinale && (isAnavasisPhase || phase === 'GAME_OVER');
 
   return (
     <>
       <MarbleFilterDefs />
-      <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
-      <SocratesFigure phase={phase} />
+      {showAnavasisWorld ? (
+        <AnavasisScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
+      ) : (
+        <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
+      )}
+      <SocratesFigure phase={phase} climbFinale={isClimbFinale} />
       {showFullscreenToggle && (
         <button
           type="button"
@@ -1700,20 +2026,40 @@ export default function HostScreen() {
           <Krater timer={timer} playerCount={rowStandings.length} />
         </div>
       )}
-      <SophistsRow
-        standings={rowStandings}
-        phase={phase}
-        deltas={deltasThisRound()}
-        eliminatedPlayerIds={eliminatedPlayerIds}
-        confirmedOutPlayerIds={confirmedOutPlayerIds}
-        lockedInPlayerIds={lockedInPlayerIds}
-        thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
-        victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
-        hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
-        stealFlight={stealFlightTargets}
-        sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
-        counterByPlayerId={counterByPlayerId}
-      />
+      {showAnavasisWorld ? (
+        <>
+          <AnavasisClimbers climbers={climbClimbers} top={climbTop} hiddenPlayerIds={climbHiddenPlayerIds} fadeExcept={climbWinnerId} />
+          {liveDuel && (
+            <AnavasisDuel
+              a={liveDuel.a}
+              b={liveDuel.b}
+              weaponA={liveDuel.weaponA}
+              weaponB={liveDuel.weaponB}
+              pickedA={liveDuel.pickedA}
+              pickedB={liveDuel.pickedB}
+              revealed={liveDuel.revealed}
+              tie={liveDuel.tie}
+              tieCount={liveDuel.tieCount}
+              winnerPlayerId={liveDuel.winnerPlayerId}
+            />
+          )}
+        </>
+      ) : (
+        <SophistsRow
+          standings={rowStandings}
+          phase={phase}
+          deltas={deltasThisRound()}
+          eliminatedPlayerIds={eliminatedPlayerIds}
+          confirmedOutPlayerIds={confirmedOutPlayerIds}
+          lockedInPlayerIds={lockedInPlayerIds}
+          thiefPlayerId={phase === 'STEAL' ? (steal?.thiefPlayerId ?? null) : null}
+          victimPlayerId={phase === 'STEAL' ? (steal?.resolved?.victimPlayerId ?? null) : null}
+          hideScores={phase === 'GAME_OVER' && (gameOver?.isTrialResult ?? false)}
+          stealFlight={stealFlightTargets}
+          sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
+          counterByPlayerId={counterByPlayerId}
+        />
+      )}
     </>
   );
 }

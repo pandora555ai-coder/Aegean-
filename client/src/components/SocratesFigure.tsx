@@ -1,4 +1,5 @@
 import type { GamePhase } from '@game/shared';
+import { ANAVASIS_TEMPLE_BOTTOM_CQH } from './AnavasisScene';
 
 // Task 164 - Socrates himself, standing on the orchestra. A separate layer
 // between TheatreScene (the backdrop) and the read column/speech slab, so a
@@ -13,8 +14,14 @@ import type { GamePhase } from '@game/shared';
 const SPEAKING_PHASES: ReadonlySet<GamePhase> = new Set(['SOCRATES', 'STEAL']);
 const RAISED_LEFT_PHASES: ReadonlySet<GamePhase> = new Set(['SOCRATES', 'STEAL']);
 const CENTRE_STAGE_PHASES: ReadonlySet<GamePhase> = new Set(['LOBBY', 'STAGE_ANNOUNCE']);
+// Task 189 - the climb finale: Socrates stands at the temple threshold, on
+// the terrace at the head of the stair, for every one of its phases
+// (including its own GAME_OVER crowning - the AnavasisScene world replaces
+// the theatre for all of these, so this pose is never seen mixed with the
+// theatre backdrop).
+const ANAVASIS_PHASES: ReadonlySet<GamePhase> = new Set(['CLIMB_QUESTION', 'CLIMB_REVEAL', 'DUEL_PICK', 'DUEL_REVEAL']);
 
-function poseFor(phase: GamePhase): { left: string; scale: number } {
+function poseFor(phase: GamePhase, climbFinale: boolean): { left: string; scale: number; bottom?: string } {
   // The reference's own SOCRATES/STEAL position is left:12% - measured here
   // (Task 164) to overlap the speech slab by ~6286px^2 at 1280x720, because
   // SpeechSlab was widened left:24%/w:52% -> left:14%/w:72% in Task 163b,
@@ -22,6 +29,12 @@ function poseFor(phase: GamePhase): { left: string; scale: number } {
   // slab's left edge (179px at 1280x720) with ~14px margin.
   if (RAISED_LEFT_PHASES.has(phase)) return { left: '5%', scale: 1.35 };
   if (CENTRE_STAGE_PHASES.has(phase)) return { left: '44%', scale: 1.15 };
+  // climbFinale also covers this climb's own GAME_OVER (the crowning) -
+  // `phase` alone can't tell a climb verdict from a trial one, so HostScreen
+  // passes its own isClimbFinale flag through.
+  if (ANAVASIS_PHASES.has(phase) || (phase === 'GAME_OVER' && climbFinale)) {
+    return { left: '57%', bottom: `${ANAVASIS_TEMPLE_BOTTOM_CQH}cqh`, scale: 1 };
+  }
   if (phase === 'GAME_OVER') return { left: '40%', scale: 1.3 };
   return { left: '7%', scale: 1 };
 }
@@ -42,10 +55,14 @@ const STYLE_TAG = `
 
 interface SocratesFigureProps {
   phase: GamePhase;
+  // Task 189 - true once this game's climb finale has begun and through its
+  // own GAME_OVER (see HostScreen's isClimbFinale). false everywhere else,
+  // including a trial's GAME_OVER.
+  climbFinale?: boolean;
 }
 
-export function SocratesFigure({ phase }: SocratesFigureProps) {
-  const { left, scale } = poseFor(phase);
+export function SocratesFigure({ phase, climbFinale = false }: SocratesFigureProps) {
+  const { left, scale, bottom } = poseFor(phase, climbFinale);
   const handClassName = SPEAKING_PHASES.has(phase)
     ? 'socrates-figure-hand socrates-figure-hand--speaking'
     : 'socrates-figure-hand';
@@ -53,7 +70,7 @@ export function SocratesFigure({ phase }: SocratesFigureProps) {
   return (
     <div
       className="socrates-figure-root"
-      style={{ left, transform: `scale(${scale})` }}
+      style={bottom ? { left, bottom, transform: `scale(${scale})` } : { left, transform: `scale(${scale})` }}
       aria-hidden="true"
       data-testid="socrates-figure"
       data-phase={phase}

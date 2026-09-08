@@ -87,6 +87,10 @@ client/src/screens/HostScreen.tsx        TV shell + phase switch; owns the sophi
 client/src/components/SophistsRow.tsx    The players (Task 161): figure + plaque per player on the
                          orchestra at the foot of the TV. Replaced the score column.
 client/src/screens/host/                 One file per TV phase, plus GameLayout.tsx
+client/src/components/AnavasisScene.tsx  Η Ανάβασις (Task 189): TheatreScene's sibling for the
+                         climb finale — background art, AnavasisClimbers (the stair
+                         figures), AnavasisDuel, AnavasisCrowning, AnavasisChrome, all
+                         off one shared geometry (visualStepFor/laneLeftPct).
 client/src/components/MarbleSlab.tsx     The read column's slab — renamed off PapyrusPanel
                          when Task 159 swapped the palette Ελαιογραφία → Θέατρο
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
@@ -250,8 +254,17 @@ table, and ends at GAME_OVER with `isTrialResult: true` (steps are not
 scores; no digits). Steps live in room.climb.steps, NEVER player.score; the
 mechanic is climb.ts (Task 187). CLIMB_REVEAL is ASYMMETRIC (host gets every
 row, a phone only its own `your*` fields) — unlike TRIAL_REVEAL. Two
-arrivals in one reveal go to the duel below. No client view exists yet
-(189/190) — the TV/phone render nothing for CLIMB_* or DUEL_* today.
+arrivals in one reveal go to the duel below. **The TV view is built
+(Task 189)** — AnavasisScene (client/src/components/AnavasisScene.tsx),
+a sibling to TheatreScene, swaps in for TheatreScene+SophistsRow for all
+four climb/duel phases plus the climb's own GAME_OVER (HostScreen's
+`isClimbFinale`, set by any climb/duel payload, cleared only at LOBBY —
+`phase` alone can't tell a climb GAME_OVER from a trial one). Climbers
+render on lane fractions of the narrowing stair (AnavasisClimbers, no
+SophistsRow reuse, no digits, ↑/↑↑/↓/↓↓ deltas); the duel gets its own
+scrim+tablets+verdict (AnavasisDuel); the winner is crowned at the temple
+(AnavasisCrowning). The phone still renders nothing for CLIMB_*/DUEL_*
+(Task 190).
 **Η Μονομαχία (Task 188b) is the climb's duel**, two more quiz phases
 DUEL_PICK -> DUEL_REVEAL. Trigger: two arrivals at CLIMB_TOP in one reveal
 (3+: the two fastest duel, the rest are held at TOP−1), OR a shared highest
@@ -273,7 +286,7 @@ the host payload. Bots pick at random after 400–1500ms. The Monte Carlo
 harness (seed 187, 0.7/0.5 skill) puts rounds-to-verdict at median 8, p99
 21, so the cap at 24 fires in 2 of 400 runs; at 16 it fired in ~5% (188b's
 finding, which is why 188c raised it). `--cap N` shows the uncapped tail.
-No client view yet.
+The TV view is built (Task 189, see above) — no phone view yet (190).
 A trial GAME_OVER shows NO digits — no rank, no score — gated on
 `gameOver.isTrialResult` (SophistsRow's hideScores; GameOverView has no
 list at all since 161); standings are SURVIVAL order (winner, then reverse
