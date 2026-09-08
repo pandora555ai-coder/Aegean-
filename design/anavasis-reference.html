@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aegean — Η Ανάβασις v3: ο ιερός βράχος</title>
+<style>
+:root{
+  --night-0:#070C18; --night-1:#13213D; --dusk:#5A3350; --ember:#E8A14A;
+  --marble:#EDE6D6; --marble-2:#CFC5B0; --marble-3:#8F8672; --carve:#2B2418;
+  --wine:#5B1424; --wine-2:#8E2440; --olive:#9AA860; --ice:#BFE6FF;
+  --font:"Inter","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  --serif:"Gentium Book Plus",Georgia,"Times New Roman",serif;
+  --slab:polygon(1.5% 0,98.5% .6%,100% 3%,99.4% 97%,98% 100%,2% 99.4%,0 96%,.6% 3%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;color:var(--marble);font-family:var(--font)}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px}
+.tv-wrap{width:min(100vw - 24px,calc((100vh - 110px) * 16 / 9));aspect-ratio:16/9;position:relative}
+.tv{position:absolute;inset:0;overflow:hidden;container-type:size;background:var(--night-0)}
+
+.world{position:absolute;inset:0;transition:filter 500ms ease}
+.tv.dimmed .world{filter:brightness(.5) saturate(.8)}
+.tv.cheer .world{filter:brightness(1.18) saturate(1.1)}
+.tv.boo .world{filter:brightness(.6) saturate(.6)}
+.world > svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+@media (prefers-reduced-motion:no-preference){
+  .flame{animation:flick .17s steps(2) infinite alternate;transform-origin:50% 100%}
+  @keyframes flick{to{transform:scale(1.12,.92);opacity:.85}}
+  .glow{animation:glow 1.3s ease-in-out infinite alternate}
+  @keyframes glow{to{opacity:.5}}
+  .star{animation:tw 3s ease-in-out infinite alternate}
+  @keyframes tw{to{opacity:.25}}
+  .temple-heart{animation:heart 4s ease-in-out infinite alternate}
+  @keyframes heart{to{opacity:.9}}
+  .mist{animation:mist 26s ease-in-out infinite alternate}
+  @keyframes mist{to{transform:translateX(3.5%)}}
+  .tv.speaking .socr-hand,.tv.duel .socr-hand{animation:speak 2.6s ease-in-out infinite;transform-origin:15% 90%}
+  @keyframes speak{40%{transform:rotate(-14deg)}70%{transform:rotate(5deg)}}
+  .fall-leaf{animation:fall linear forwards}
+  @keyframes fall{to{transform:translate(var(--dx),110cqh) rotate(540deg);opacity:.9}}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---- sophists ---- */
+.soph{position:absolute;width:8cqh;text-align:center;transform:translateX(-50%);
+  transition:left 900ms cubic-bezier(.4,0,.2,1),bottom 900ms cubic-bezier(.35,0,.25,1.12),opacity 600ms;z-index:2}
+.soph svg.fig{width:100%;height:9.2cqh;display:block;overflow:visible;filter:drop-shadow(-.45cqh .25cqh .4cqh rgba(0,0,0,.55))}
+.soph .nm{display:inline-block;background:var(--marble);color:var(--carve);font-size:1.6cqh;font-weight:700;
+  letter-spacing:.05em;padding:.35cqh .7cqh .25cqh;margin-top:.2cqh;
+  clip-path:polygon(3% 0,97% 0,100% 12%,100% 88%,97% 100%,3% 100%,0 88%,0 12%);box-shadow:0 .4cqh .9cqh rgba(0,0,0,.5)}
+.soph .dl{position:absolute;left:0;right:0;top:-2.8cqh;font-size:2.6cqh;font-weight:800;color:var(--ember);
+  opacity:0;transition:opacity 300ms;text-shadow:0 2px 8px rgba(0,0,0,.85)}
+.soph .dl.on{opacity:1}
+.soph.win .nm{background:linear-gradient(180deg,#F5EFE0,var(--marble));color:var(--wine)}
+.soph.faded{opacity:.45}
+
+/* ---- socrates ---- */
+.socrates{position:absolute;width:7.6cqh;height:18.5cqh;transform-origin:50% 100%;z-index:2;
+  transition:left 700ms,bottom 700ms;filter:drop-shadow(-.6cqh .3cqh .55cqh rgba(0,0,0,.55))}
+.socrates svg{width:100%;height:100%;display:block;overflow:visible}
+
+/* ---- slabs ---- */
+.slab{position:absolute;color:var(--carve);padding:3.2cqh 4.2cqh;transition:opacity 350ms,transform 350ms;
+  filter:drop-shadow(0 3cqh 4cqh rgba(0,0,0,.65));opacity:0;transform:translateY(1.5cqh);pointer-events:none;z-index:3}
+.slab.on{opacity:1;transform:none}
+.slab::before{content:"";position:absolute;inset:0;background:var(--marble);clip-path:var(--slab);z-index:-2}
+.slab .lit{position:absolute;inset:0;z-index:-1;pointer-events:none;clip-path:var(--slab);
+  background:linear-gradient(120deg,rgba(255,255,255,.35),transparent 40%,transparent 70%,rgba(60,50,30,.28))}
+#qslab{left:16%;top:9%;width:52%}
+#speech{left:2.5%;top:25%;width:33%;font-family:var(--serif);font-size:3.7cqh;line-height:1.28;font-weight:700}
+.cat{font-size:2.3cqh;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--marble-3)}
+.q{font-family:var(--serif);font-size:5cqh;line-height:1.2;font-weight:700;margin-top:1cqh;max-width:26ch;text-shadow:0 1px 0 rgba(255,255,255,.55)}
+.opts{margin-top:2.2cqh;display:grid;grid-template-columns:1fr 1fr;gap:1cqh 3cqh;font-size:3.4cqh;font-weight:700}
+.opt{opacity:.42}.opt.ok{opacity:1;position:relative;padding-left:2.5cqh}
+.opt.ok::before{content:"";position:absolute;left:0;top:.55cqh;width:1.2cqh;height:2.3cqh;
+  border-right:.5cqh solid var(--wine-2);border-bottom:.5cqh solid var(--wine-2);transform:rotate(45deg)}
+
+/* ---- krater ---- */
+.krater{position:absolute;right:4.5%;top:11%;width:11cqh;height:20cqh;transition:opacity 350ms;opacity:0;z-index:3}
+.krater.on{opacity:1}
+.krater svg{width:100%;height:100%;display:block;overflow:visible}
+.wine-fill{transform-origin:50% 100%;transition:transform 1s linear}
+.krater b{position:absolute;left:0;right:0;bottom:-4.2cqh;text-align:center;font-size:3.6cqh;font-weight:800;font-variant-numeric:tabular-nums}
+
+/* ---- duel ---- */
+.duel-layer{position:absolute;inset:0;z-index:4;opacity:0;transition:opacity 450ms;pointer-events:none}
+.duel-layer.on{opacity:1}
+.duel-scrim{position:absolute;inset:0;background:radial-gradient(ellipse 70% 80% at 50% 62%,rgba(7,12,24,.2),rgba(7,12,24,.8))}
+.duelist{position:absolute;bottom:9cqh;width:17cqh;text-align:center}
+#dA{left:29%;transform:translateX(-50%)}
+#dB{left:71%;transform:translateX(-50%)}
+.duelist svg.fig{width:100%;height:27cqh;overflow:visible;filter:drop-shadow(-.8cqh .4cqh .7cqh rgba(0,0,0,.6))}
+#dB svg.fig{transform:scaleX(-1)}
+.duelist .nm{display:inline-block;background:var(--marble);color:var(--carve);font-size:2.5cqh;font-weight:800;
+  letter-spacing:.06em;padding:.7cqh 1.4cqh .5cqh;margin-top:.5cqh;
+  clip-path:polygon(3% 0,97% 0,100% 12%,100% 88%,97% 100%,3% 100%,0 88%,0 12%)}
+.tablet{position:absolute;top:-12.5cqh;left:50%;transform:translateX(-50%);width:10.5cqh;height:10.5cqh;perspective:600px}
+.tablet .card{position:absolute;inset:0;transform-style:preserve-3d;transition:transform 700ms cubic-bezier(.3,0,.2,1.1)}
+.tablet.open .card{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;display:grid;place-items:center;
+  clip-path:var(--slab);box-shadow:0 1.4cqh 2.4cqh rgba(0,0,0,.6)}
+.face.back{background:linear-gradient(160deg,#3A3140,#241E2C)}
+.face.back::after{content:"?";font-family:var(--serif);font-size:6cqh;font-weight:700;color:var(--marble-3)}
+.face.front{background:var(--marble);transform:rotateY(180deg)}
+.face.front svg{width:7.6cqh;height:7.6cqh}
+.duelist.won .face.front{background:linear-gradient(180deg,#F5EFE0,var(--marble));outline:.45cqh solid var(--olive)}
+.duelist.lost{opacity:.4;transition:opacity 500ms 900ms}
+.verdict{position:absolute;left:0;right:0;top:4cqh;text-align:center;font-family:var(--serif);
+  font-size:4.6cqh;font-weight:700;text-shadow:0 .5cqh 2.5cqh rgba(0,0,0,.9);opacity:0;transition:opacity 400ms 1s}
+.duel-layer.reveal .verdict{opacity:1}
+
+/* ---- overlays ---- */
+.overlay{position:absolute;inset:0;opacity:0;transition:opacity 400ms;z-index:5;pointer-events:none}
+.overlay.on{opacity:1}
+#announce{display:grid;place-items:center;text-align:center;background:rgba(7,12,24,.35)}
+.overlay .n{font-size:2.8cqh;letter-spacing:.35em;text-transform:uppercase;color:var(--ember);font-weight:700}
+.overlay .t{font-family:var(--serif);font-size:14cqh;font-weight:700;line-height:1;color:var(--marble);margin-top:.6cqh;text-shadow:0 .6cqh 3cqh rgba(0,0,0,.8)}
+.overlay .r{font-size:3.1cqh;color:var(--marble-2);margin-top:2cqh;max-width:44ch;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+#crown{padding:13cqh 0 0 4.5cqh}
+#crown .t{font-size:10.5cqh}
+#crown .r{max-width:22ch}
+#crown > div{text-align:left;width:36cqw}
+.wreath-big{position:absolute;width:10cqh;height:4.6cqh;z-index:6;opacity:0;
+  transform:translateX(-50%);transition:opacity 500ms 300ms,bottom 900ms 300ms cubic-bezier(.3,0,.2,1.2);pointer-events:none}
+.leaves{position:absolute;inset:0;pointer-events:none;z-index:6;overflow:hidden}
+.leaves i{position:absolute;top:-6cqh;width:2.6cqh;height:1cqh;background:var(--olive);border-radius:50%;opacity:0}
+
+.bar{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.bar button{background:var(--night-1);color:var(--marble);border:1px solid rgba(237,230,214,.25);padding:8px 12px;border-radius:4px;font:inherit;font-size:13px;font-weight:600;min-height:44px;cursor:pointer}
+.bar button[aria-pressed=true]{background:var(--wine-2);border-color:var(--wine-2)}
+.bar button.auto[aria-pressed=true]{background:var(--olive);color:var(--night-0);border-color:var(--olive)}
+.bar button:focus-visible{outline:2px solid var(--marble);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="tv-wrap">
+<div class="tv" id="tv">
+
+<div class="world" id="world">
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#04070F"/><stop offset=".45" stop-color="#0B1428"/><stop offset=".8" stop-color="#22284A"/><stop offset="1" stop-color="#3A2C4E"/></linearGradient>
+  <radialGradient id="torch"><stop offset="0" stop-color="#FFD98A" stop-opacity=".95"/><stop offset=".35" stop-color="#E8A14A" stop-opacity=".35"/><stop offset="1" stop-color="#E8A14A" stop-opacity="0"/></radialGradient>
+  <radialGradient id="moon"><stop offset="0" stop-color="#F6F0DC"/><stop offset=".5" stop-color="#F6F0DC"/><stop offset=".55" stop-color="#F6F0DC" stop-opacity=".25"/><stop offset="1" stop-color="#F6F0DC" stop-opacity="0"/></radialGradient>
+  <radialGradient id="templeGlow"><stop offset="0" stop-color="#FFD98A" stop-opacity=".55"/><stop offset=".5" stop-color="#E8A14A" stop-opacity=".2"/><stop offset="1" stop-color="#E8A14A" stop-opacity="0"/></radialGradient>
+  <linearGradient id="rockL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0A101F"/><stop offset="1" stop-color="#1C2438"/></linearGradient>
+  <linearGradient id="rockR" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#0A101F"/><stop offset="1" stop-color="#1C2438"/></linearGradient>
+  <linearGradient id="rockFace" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#242E48"/><stop offset="1" stop-color="#121A2C"/></linearGradient>
+  <linearGradient id="tread" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D8CFBA"/><stop offset="1" stop-color="#948B76"/></linearGradient>
+  <linearGradient id="col" x1="0" x2="1"><stop offset="0" stop-color="#F0E9D8"/><stop offset=".5" stop-color="#C9BFA8"/><stop offset="1" stop-color="#7E7560"/></linearGradient>
+  <radialGradient id="vig" cx=".5" cy=".55" r=".78"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".72"/></radialGradient>
+</defs>
+<rect width="1280" height="720" fill="url(#sky)"/>
+<g id="stars" fill="#EDE6D6"></g>
+<circle cx="200" cy="105" r="58" fill="url(#moon)"/>
+
+
+<!-- the sacred rock: a face behind the stair, two dark shoulders framing it -->
+<path id="rockface" d="" fill="url(#rockFace)"/>
+<path id="rockl" d="" fill="url(#rockL)"/>
+<path id="rockr" d="" fill="url(#rockR)"/>
+<!-- the sleeping city, far below: warm windows + the theatre we came from -->
+<g id="city"></g>
+<g id="theatre-far" opacity=".95" transform="translate(30 -18) scale(1.15)">
+  <path d="M118 700 A72 26 0 0 1 262 700 Z" fill="none" stroke="#CFC5B0" stroke-width="3.5" opacity=".8"/>
+  <path d="M132 700 A58 20 0 0 1 248 700 Z" fill="none" stroke="#CFC5B0" stroke-width="2.5" opacity=".65"/>
+  <path d="M146 700 A44 15 0 0 1 234 700 Z" fill="none" stroke="#CFC5B0" stroke-width="2" opacity=".5"/>
+  <circle cx="190" cy="694" r="2.6" fill="#FFD98A"/><circle cx="152" cy="698" r="1.8" fill="#FFD98A" opacity=".8"/><circle cx="228" cy="698" r="1.8" fill="#FFD98A" opacity=".8"/>
+</g>
+
+<!-- the temple, above the last step -->
+<g id="temple"></g>
+
+<!-- the stair carved into the rock -->
+<g id="stair"></g>
+<g id="torches"></g>
+
+<!-- drifting mist across the rock -->
+<g class="mist" opacity=".1"><ellipse cx="380" cy="430" rx="330" ry="26" fill="#EDE6D6"/><ellipse cx="900" cy="470" rx="300" ry="22" fill="#EDE6D6"/></g>
+<g class="mist" opacity=".07" style="animation-delay:-13s"><ellipse cx="700" cy="330" rx="360" ry="24" fill="#EDE6D6"/></g>
+
+<rect width="1280" height="720" fill="url(#vig)"/>
+</svg>
+
+<div id="sophs"></div>
+
+<div class="socrates" id="socr"><svg viewBox="0 0 120 300">
+  <defs><linearGradient id="him" x1="0" x2="1"><stop offset="0" stop-color="#F5EFE0"/><stop offset=".45" stop-color="#B8AD95"/><stop offset="1" stop-color="#5A5242"/></linearGradient>
+  <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#E8C49A"/><stop offset=".5" stop-color="#A07A54"/><stop offset="1" stop-color="#4A3524"/></linearGradient></defs>
+  <ellipse cx="60" cy="296" rx="40" ry="6" fill="#000" opacity=".4"/>
+  <path d="M60 300 L18 300 C14 230 24 160 36 128 L50 118 L70 118 L84 128 C96 160 106 230 102 300 Z" fill="url(#him)"/>
+  <path d="M42 130 C34 180 44 240 34 300 L52 300 C50 240 58 180 54 130 Z" fill="#5A5242" opacity=".35"/>
+  <path d="M84 126 L110 100 L116 106 L92 136 Z" fill="url(#sk)"/>
+  <g class="socr-hand"><path d="M20 180 C4 166 4 148 16 142 L30 156 Z" fill="url(#sk)"/></g>
+  <circle cx="60" cy="86" r="30" fill="url(#sk)"/>
+  <path d="M32 94 C36 130 84 130 88 94 C80 116 40 116 32 94 Z" fill="#EDE6D6"/>
+  <path d="M30 80 C34 60 86 60 90 80 C82 70 38 70 30 80 Z" fill="#EDE6D6" opacity=".7"/>
+</svg></div>
+</div><!-- /world -->
+
+<div class="slab" id="qslab"><div class="lit"></div><div id="qc"></div></div>
+<div class="slab" id="speech"><div class="lit"></div><div id="sc"></div></div>
+
+<div class="krater" id="krater"><svg viewBox="0 0 100 180">
+  <path d="M14 8 H86 L80 40 Q50 60 20 40 Z" fill="none" stroke="#EDE6D6" stroke-width="3"/>
+  <path d="M20 40 Q50 60 80 40 L74 120 Q50 132 26 120 Z" fill="none" stroke="#EDE6D6" stroke-width="3"/>
+  <clipPath id="bowl"><path d="M21 41 Q50 60 79 41 L73 119 Q50 130 27 119 Z"/></clipPath>
+  <g clip-path="url(#bowl)"><rect class="wine-fill" id="wine" x="0" y="0" width="100" height="132" fill="#5B1424"/><rect x="0" y="0" width="100" height="132" fill="#8E2440" opacity=".25"/></g>
+  <path d="M42 120 L58 120 L60 150 L40 150 Z" fill="#EDE6D6"/><rect x="28" y="150" width="44" height="8" fill="#EDE6D6"/>
+  <path d="M8 26 Q0 44 14 50 M92 26 Q100 44 86 50" fill="none" stroke="#EDE6D6" stroke-width="3"/>
+</svg><b id="tval"></b></div>
+
+<div class="duel-layer" id="duel">
+  <div class="duel-scrim"></div>
+  <div class="duelist" id="dA">
+    <div class="tablet" id="tA"><div class="card"><div class="face back"></div><div class="face front" id="fA"></div></div></div>
+    <div id="figA"></div><div class="nm">ΕΛΕΝΗ</div>
+  </div>
+  <div class="duelist" id="dB">
+    <div class="tablet" id="tB"><div class="card"><div class="face back"></div><div class="face front" id="fB"></div></div></div>
+    <div id="figB"></div><div class="nm">ΝΙΚΟΣ</div>
+  </div>
+  <div class="verdict" id="verdict"></div>
+</div>
+
+<div class="overlay" id="announce"><div><div class="n">Πέμπτο στάδιο</div><div class="t">Η Ανάβασις</div><div class="r">Το θέατρο μένει πίσω. Οι πόντοι σας έγιναν σκαλιά στον ιερό βράχο. Πρώτος στον ναό, μαθητής.</div></div></div>
+<div class="overlay" id="crown"><div><div class="n">Ο μαθητής</div><div class="t" id="wname">Ελένη</div><div class="r">Ανέβηκε ως τον ναό. Η πόλη, από κάτω, το είδε.</div></div></div>
+
+<div class="wreath-big" id="wreath"><svg viewBox="0 0 90 40"><path d="M45 34 Q10 30 6 8 Q30 6 45 34 Q60 6 84 8 Q80 30 45 34" fill="none" stroke="#9AA860" stroke-width="3"/><g fill="#9AA860"><ellipse cx="18" cy="18" rx="7" ry="3" transform="rotate(-40 18 18)"/><ellipse cx="30" cy="26" rx="7" ry="3" transform="rotate(-30 30 26)"/><ellipse cx="72" cy="18" rx="7" ry="3" transform="rotate(40 72 18)"/><ellipse cx="60" cy="26" rx="7" ry="3" transform="rotate(30 60 26)"/></g></svg></div>
+<div class="leaves" id="leaves"></div>
+
+</div>
+</div>
+
+<div class="bar" role="group" aria-label="Φάση demo">
+  <button data-p="announce">Είσοδος</button>
+  <button data-p="positions">Θέσεις</button>
+  <button data-p="question">Ερώτηση</button>
+  <button data-p="climb">Ανάβαση</button>
+  <button data-p="tietop">Κορυφή ×2</button>
+  <button data-p="duelpick">Όπλα</button>
+  <button data-p="duelreveal">Σύγκρουση</button>
+  <button data-p="dueltie">Ισοπαλία</button>
+  <button data-p="crowning">Στέψη</button>
+  <button class="auto" id="auto" aria-pressed="false">▶ Auto</button>
+</div>
+
+<script>
+const S=id=>document.getElementById(id);
+let seed=29;const rnd=()=>(seed=(seed*9301+49297)%233280)/233280;
+{let s='';for(let i=0;i<80;i++)s+=`<circle class="star" cx="${rnd()*1280}" cy="${rnd()*260}" r="${.6+rnd()*1.3}" opacity="${.3+rnd()*.6}" style="animation-delay:${-rnd()*3}s"/>`;S('stars').innerHTML=s;}
+/* the sleeping city: clusters of warm windows along the bottom */
+{let c='';for(let k=0;k<9;k++){const bx=330+rnd()*880,by=676+rnd()*20;
+  for(let j=0;j<5+rnd()*6;j++)c+=`<rect x="${bx+(rnd()-.5)*70}" y="${by+(rnd()-.5)*14}" width="4" height="5" fill="#FFD98A" opacity="${.5+rnd()*.5}"/>`;}
+ S('city').innerHTML=c;}
+
+/* ---------- geometry: 12 steps up the rock, narrowing ---------- */
+const STEPS=12;                      // playable 1..12; 12 = the temple terrace
+const stepBottomCqh=i=>10+i*4.7;     // feet height in cqh (10 → 66.4)
+const stepWidthPct=i=>72-i*2.6;      // 72% at the base → 40.8% at the terrace
+const CQH=7.2;
+const yOf=i=>720-stepBottomCqh(i)*CQH;
+const wOf=i=>stepWidthPct(i)*12.8;
+const xOf=i=>(1280-wOf(i))/2;
+{ /* rock face behind the stair + shoulders each side */
+  const y0=yOf(0),yT=yOf(12);
+  S('rockface').setAttribute('d',
+    `M${xOf(0)-40} ${y0+30} L${xOf(12)-60} ${yT-56} L${xOf(12)+wOf(12)+60} ${yT-56} L${xOf(0)+wOf(0)+40} ${y0+30} L1280 720 L0 720 Z`);
+  S('rockl').setAttribute('d',
+    `M0 720 L0 400 L120 360 L200 392 L290 350 L${xOf(12)-40} ${yT-30} L${xOf(6)-20} ${yOf(6)} L${xOf(1)-8} ${yOf(1)} L${xOf(0)} ${y0+34} Z`);
+  S('rockr').setAttribute('d',
+    `M1280 720 L1280 380 L1170 350 L1080 388 L1000 344 L${xOf(12)+wOf(12)+40} ${yT-30} L${xOf(6)+wOf(6)+20} ${yOf(6)} L${xOf(1)+wOf(1)+8} ${yOf(1)} L${xOf(0)+wOf(0)} ${y0+34} Z`);
+}
+{ /* the stair: marble mass + step lines */
+  let g=`<path d="M${xOf(0)} ${yOf(0)} L${xOf(12)} ${yOf(12)} L${xOf(12)+wOf(12)} ${yOf(12)} L${xOf(0)+wOf(0)} ${yOf(0)} Z" fill="url(#tread)"/>`;
+  for(let i=1;i<=12;i++){
+    g+=`<rect x="${xOf(i)}" y="${yOf(i)}" width="${wOf(i)}" height="${i===12?4.5:3}" fill="#2B2418" opacity=".5"/>`;
+    g+=`<rect x="${xOf(i)}" y="${yOf(i)-2.2}" width="${wOf(i)}" height="2.2" fill="#F6F0DE" opacity=".75"/>`;
+  }
+  g+=`<path d="M${xOf(0)} ${yOf(0)} L${xOf(12)} ${yOf(12)} L${xOf(12)+18} ${yOf(12)} L${xOf(0)+40} ${yOf(0)} Z" fill="#000" opacity=".2"/>`;
+  g+=`<path d="M${xOf(0)+wOf(0)} ${yOf(0)} L${xOf(12)+wOf(12)} ${yOf(12)} L${xOf(12)+wOf(12)-18} ${yOf(12)} L${xOf(0)+wOf(0)-40} ${yOf(0)} Z" fill="#000" opacity=".13"/>`;
+  S('stair').innerHTML=g;
+}
+{ /* the temple on the terrace: 8 columns, pediment, a warm heart */
+  const yT=yOf(12), cx=640, W=470, H=86, colH=58;
+  const x=cx-W/2;
+  let t=`<circle class="temple-heart" cx="${cx}" cy="${yT-H*.45}" r="150" fill="url(#templeGlow)" opacity=".65"/>`;
+  t+=`<rect x="${x-16}" y="${yT-10}" width="${W+32}" height="10" fill="#B6AC94"/>`;
+  t+=`<rect x="${x-8}" y="${yT-18}" width="${W+16}" height="8" fill="#CFC5B0"/>`;
+  for(let i=0;i<8;i++){const colX=x+14+i*((W-28-16)/7);
+    t+=`<rect x="${colX}" y="${yT-18-colH}" width="16" height="${colH}" fill="url(#col)"/>`;
+    t+=`<rect x="${colX-2}" y="${yT-18-colH-5}" width="20" height="5" fill="#D8CFBA"/>`;}
+  t+=`<rect x="${x-6}" y="${yT-18-colH-12}" width="${W+12}" height="8" fill="#CFC5B0"/>`;
+  t+=`<path d="M${x-14} ${yT-18-colH-12} L${cx} ${yT-18-colH-12-40} L${x+W+14} ${yT-18-colH-12} Z" fill="#DAD1BC"/>`;
+  t+=`<path d="M${x-14} ${yT-18-colH-12} L${cx} ${yT-18-colH-12-40} L${x+W+14} ${yT-18-colH-12} Z" fill="none" stroke="#8F8672" stroke-width="2" opacity=".6"/>`;
+  /* warm light between the columns */
+  for(let i=0;i<7;i++){const gx=x+14+16+i*((W-28-16)/7);
+    t+=`<rect x="${gx}" y="${yT-18-colH}" width="${(W-28-16)/7-16}" height="${colH}" fill="#E8A14A" opacity=".16"/>`;}
+  S('temple').innerHTML=t;
+}
+{ /* torch pairs beside the stair at steps 3, 6, 9 */
+  let t='';
+  for(const i of [3,6,9]){const y=yOf(i);
+    for(const sx of [xOf(i)-34,xOf(i)+wOf(i)+34]){
+      t+=`<circle class="glow" cx="${sx}" cy="${y-46}" r="80" fill="url(#torch)" opacity=".7"/>
+      <rect x="${sx-2.5}" y="${y-42}" width="5" height="42" fill="#2A2218"/>
+      <ellipse class="flame" cx="${sx}" cy="${y-47}" rx="7" ry="12" fill="#FFD98A"/>`;}}
+  S('torches').innerHTML=t;
+}
+
+/* ---------- players: lane FRACTIONS of the narrowing stair ---------- */
+const LANE_F=[-.36,-.18,0,.18,.36];  // a player keeps his fraction all the way up
+const hues=['#C9B7A0','#9FB2C2','#C2A08F','#A8B29A','#B7A6C4'];
+const gu=t=>t.normalize('NFD').replace(/[́͂ͅ]/g,'').normalize('NFC').toUpperCase();
+function figSVG(i,mirror){const f=(mirror??i%2)?-1:1;return `<svg class="fig" viewBox="0 0 120 200"><g transform="translate(60 0) scale(${f} 1) translate(-60 0)">
+ <ellipse cx="60" cy="196" rx="30" ry="5" fill="#000" opacity=".4"/><path d="M60 200 L24 200 C22 150 30 110 40 88 L52 80 L68 80 L80 88 C90 110 98 150 96 200 Z" fill="${hues[i]}"/>
+ <path d="M44 90 C38 130 44 170 40 200 L54 200 C52 170 58 130 54 90 Z" fill="#000" opacity=".22"/><path d="M80 88 L100 66 L106 72 L86 96 Z" fill="#A07A54"/>
+ <circle cx="60" cy="58" r="22" fill="#B58C63"/><path d="M40 52 C44 34 76 34 80 52 C74 44 46 44 40 52Z" fill="#2A2218"/></g></svg>`;}
+/* entry scores → entry steps: 1450→7, 1200→5, 980→4, 760→2, 410→1 (terrace = 12) */
+const P=[{n:'Ελένη',entry:7},{n:'Νίκος',entry:5},{n:'Μαρία',entry:4},{n:'Γιώργος',entry:2},{n:'Κώστας',entry:1}];
+S('sophs').innerHTML=P.map((p,i)=>`<div class="soph" id="s${i}"><div class="dl"></div>${figSVG(i)}<div class="nm">${gu(p.n)}</div></div>`).join('');
+const sops=P.map((_,i)=>S('s'+i));
+function laneLeft(i,st){return 50+LANE_F[i]*stepWidthPct(st);}
+function place(steps){const atTop=steps.filter(s=>s===12).length;
+  steps.forEach((st,i)=>{P[i].step=st;
+    sops[i].style.bottom=stepBottomCqh(st)+'cqh';
+    let lx=laneLeft(i,st);
+    if(st===12){lx=atTop===1?43:(atTop===2?(steps.indexOf(12)===i?40:48.5):lx);}
+    sops[i].style.left=lx+'%';});}
+function delta(i,label){const d=sops[i].querySelector('.dl');d.textContent=label;d.classList.add('on');
+  setTimeout(()=>d.classList.remove('on'),2200);}
+
+function socrHome(){const el=S('socr');el.style.left='57%';el.style.bottom=stepBottomCqh(12)+'cqh';el.style.transform='translateX(-50%)';}
+socrHome();
+
+/* ---------- weapons ---------- */
+const WEAPONS={
+ xifos:`<svg viewBox="0 0 60 60"><g stroke="#2B2418" stroke-linecap="round" fill="#2B2418"><path d="M20 8 L34 22 L44 44 L40 48 L18 38 L8 20 Z" stroke-width="2" opacity=".92"/><path d="M38 42 L48 52" stroke-width="5" fill="none"/><path d="M42 54 L54 46" stroke-width="4" fill="none"/><circle cx="55" cy="53" r="3.4"/></g></svg>`,
+ dory:`<svg viewBox="0 0 60 60"><g stroke="#2B2418" stroke-linecap="round"><path d="M14 46 L46 14" stroke-width="4"/><path d="M46 14 L54 2 L58 10 L50 18 Z" fill="#2B2418" stroke-width="1.5"/><path d="M14 46 L8 56" stroke-width="3"/></g></svg>`,
+ aspida:`<svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="23" fill="none" stroke="#2B2418" stroke-width="4.5"/><circle cx="30" cy="30" r="15" fill="none" stroke="#2B2418" stroke-width="1.8" opacity=".55"/><circle cx="30" cy="30" r="6.5" fill="#2B2418"/></svg>`};
+S('figA').outerHTML=figSVG(0,false);S('figB').outerHTML=figSVG(1,false);
+
+/* ---------- krater ---------- */
+let timer=null;
+function startTimer(from){clearInterval(timer);let secs=from;S('tval').textContent=secs;
+  const w=S('wine');w.style.transition='none';w.style.transform=`scaleY(${secs/from})`;
+  requestAnimationFrame(()=>{w.style.transition='transform 1s linear';});
+  timer=setInterval(()=>{secs--;if(secs<0){clearInterval(timer);return;}
+    S('tval').textContent=secs;w.style.transform=`scaleY(${secs/from})`;},1000);}
+function stopTimer(){clearInterval(timer);S('tval').textContent='';}
+
+/* ---------- phases ---------- */
+const tv=S('tv');
+const question=`<div class="cat">Η Ανάβασις · σκαλί προς σκαλί</div><div class="q">Ποιος στρατηγός νίκησε στον Μαραθώνα;</div><div class="opts" id="opts" style="display:none"><div class="opt ok">Μιλτιάδης</div><div class="opt">Θεμιστοκλής</div><div class="opt">Περικλής</div><div class="opt">Κίμων</div></div>`;
+function reset(){tv.className='tv';['qslab','speech','krater','announce','crown','duel'].forEach(id=>S(id).classList.remove('on'));
+  S('duel').classList.remove('reveal');S('tA').classList.remove('open');S('tB').classList.remove('open');
+  S('dA').classList.remove('won','lost');S('dB').classList.remove('won','lost');
+  S('wreath').style.opacity=0;S('leaves').innerHTML='';
+  sops.forEach(el=>{el.classList.remove('win','faded');el.style.opacity=1;el.querySelector('.dl').classList.remove('on');});
+  stopTimer();socrHome();}
+function say(t){S('sc').textContent=t;S('speech').classList.add('on');tv.classList.add('speaking');}
+
+const phases={
+ announce(){place([7,5,4,2,1]);tv.classList.add('dimmed');S('announce').classList.add('on');},
+ positions(){place([7,5,4,2,1]);say('Το θέατρο έμεινε κάτω. Οι πόντοι σας έγιναν σκαλιά. Ανεβείτε.');},
+ question(){place([7,5,4,2,1]);tv.classList.add('dimmed');S('qc').innerHTML=question;
+   S('qslab').classList.add('on');S('krater').classList.add('on');startTimer(14);},
+ climb(){place([7,5,4,2,1]);S('qc').innerHTML=question;S('qc').querySelector('#opts').style.display='grid';
+   S('qslab').classList.add('on');tv.classList.add('dimmed');
+   setTimeout(()=>{S('qslab').classList.remove('on');tv.classList.remove('dimmed');
+     place([9,6,3,0,2]);
+     delta(0,'↑↑');delta(1,'↑');delta(2,'↓');delta(3,'↓↓');delta(4,'↑');
+     tv.classList.add('cheer');setTimeout(()=>tv.classList.remove('cheer'),1500);},1600);},
+ tietop(){place([12,12,5,1,3]);delta(0,'↑');delta(1,'↑');
+   setTimeout(()=>say('Δύο φτάσατε μαζί στον ναό. Η γνώση δεν σας χώρισε. Τα όπλα θα το κάνουν.'),900);},
+ duelpick(){place([12,12,5,1,3]);tv.classList.add('duel','dimmed');sops[0].style.opacity=0;sops[1].style.opacity=0;
+   S('duel').classList.add('on');S('verdict').textContent='';S('krater').classList.add('on');startTimer(20);
+   say('Διαλέξτε κρυφά. Η πόλη βλέπει μόνο το αποτέλεσμα.');},
+ duelreveal(){place([12,12,5,1,3]);tv.classList.add('duel','dimmed');sops[0].style.opacity=0;sops[1].style.opacity=0;
+   S('duel').classList.add('on');
+   S('fA').innerHTML=WEAPONS.dory;S('fB').innerHTML=WEAPONS.aspida;
+   setTimeout(()=>{S('tA').classList.add('open');S('tB').classList.add('open');},400);
+   setTimeout(()=>{S('duel').classList.add('reveal');S('verdict').textContent='Το δόρυ περνά την ασπίδα. Η Ελένη.';
+     S('dA').classList.add('won');S('dB').classList.add('lost');
+     tv.classList.add('cheer');setTimeout(()=>tv.classList.remove('cheer'),1600);},1300);},
+ dueltie(){place([12,12,5,1,3]);tv.classList.add('duel','dimmed');sops[0].style.opacity=0;sops[1].style.opacity=0;
+   S('duel').classList.add('on');
+   S('fA').innerHTML=WEAPONS.xifos;S('fB').innerHTML=WEAPONS.xifos;
+   setTimeout(()=>{S('tA').classList.add('open');S('tB').classList.add('open');},400);
+   setTimeout(()=>{S('duel').classList.add('reveal');S('verdict').textContent='Ίδια όπλα. Ίδιες ιδέες. Ξανά.';
+     tv.classList.add('boo');setTimeout(()=>tv.classList.remove('boo'),1400);},1300);},
+ crowning(){place([12,8,5,1,3]);sops[0].classList.add('win');
+   sops.forEach((el,i)=>{if(i!==0)el.classList.add('faded');});
+   const w=S('wreath');w.style.left='43%';
+   w.style.bottom=(stepBottomCqh(12)+13.5)+'cqh';w.style.opacity=1;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{w.style.bottom=(stepBottomCqh(12)+9.4)+'cqh';}));
+   S('crown').classList.add('on');
+   const L=S('leaves');
+   for(let i=0;i<50;i++){const l=document.createElement('i');l.style.left=(rnd()*100)+'%';
+     l.style.setProperty('--dx',((rnd()-.5)*20)+'cqh');l.className='fall-leaf';
+     l.style.animationDuration=(4+rnd()*4)+'s';l.style.animationDelay=(rnd()*2.5)+'s';L.appendChild(l);}
+   setTimeout(()=>tv.classList.add('cheer'),400);}
+};
+function setPhase(p){reset();phases[p]();
+  document.querySelectorAll('[data-p]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===p));}
+document.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>{stopAuto();setPhase(b.dataset.p);}));
+
+const script=[['announce',3500],['positions',4500],['question',5000],['climb',5500],
+  ['question',4000],['tietop',5500],['duelpick',6000],['dueltie',5500],['duelpick',4500],['duelreveal',6000],['crowning',8000]];
+let auto=null,idx=0;
+function runAuto(){const [p,ms]=script[idx%script.length];setPhase(p);idx++;auto=setTimeout(runAuto,ms);S('auto').setAttribute('aria-pressed','true');}
+function stopAuto(){clearTimeout(auto);auto=null;S('auto').setAttribute('aria-pressed','false');}
+S('auto').addEventListener('click',()=>{if(auto)stopAuto();else{idx=0;runAuto();}});
+setPhase('positions');
+</script>
+</body>
+</html>
