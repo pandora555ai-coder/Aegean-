@@ -60,6 +60,14 @@ function requireBlitzState(room: Room): BlitzState {
   return state;
 }
 
+// Task 221 - bots.ts's own per-bot accuracy needs a given statement's truth
+// by index (the same index a bot's own BLITZ_SWIPE carries). Read-only,
+// in-process, never reaches a client before BLITZ_REVEAL as usual.
+export function getBlitzStatementIsTrue(room: Room, index: number): boolean | null {
+  const statement = blitzStateByRoom.get(room)?.statements[index];
+  return statement ? statement.isTrue : null;
+}
+
 const BLITZ_PHASES: readonly GamePhase[] = ['LOBBY', 'BLITZ', 'BLITZ_REVEAL', 'GAME_OVER'];
 
 export type BlitzTimerKind = 'BLITZ' | 'BLITZ_REVEAL';

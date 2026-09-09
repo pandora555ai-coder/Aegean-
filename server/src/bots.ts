@@ -8,11 +8,18 @@
 // (VIP, disconnects, state:sync) applies to a bot for free, with zero
 // changes to index.ts's socket handlers themselves.
 //
-// Deliberately does NOT read any question's correct answer - even though
-// this code runs server-side and technically could. A bot's choice is
-// always a random pick among the options it was legitimately shown, same
-// as sortAndRankResults sees for any player; the only lever that spreads
-// scores is answer SPEED, via each bot's fixed 'fast'/'slow' profile.
+// Task 221 - a bot's choice is no longer blind. Each bot draws its OWN
+// accuracy once per game (BOT_ACCURACY_LO..HI, 50-70%) and answers correctly
+// with that probability, otherwise picks a random WRONG option - never a
+// coin-flip-fair pick among all options, which is what a uniform-random
+// choice among 4 quietly was. This still reads server state a real player's
+// socket payload never carries (the correct index / true value for the
+// room's CURRENT question), but that read stays entirely in-process and
+// never leaves via any socket emit - the wire-level guarantee ("the correct
+// answer never leaves the server before REVEAL") is unchanged. The lever
+// that spreads scores is now BOTH accuracy and speed (via each bot's fixed
+// 'fast'/'slow' profile), where before it was speed alone against a uniform
+// 25%-on-4-options baseline.
 import { randomUUID } from 'node:crypto';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import {
@@ -30,11 +37,56 @@ import {
   type NumericQuestionShowPayload,
   type PowerUpShowPlayerPayload,
   type QuestionShowPlayerPayload,
+  type RoomCode,
+  type SocratesShowPayload,
   type StealShowPlayerPayload,
   type TrialQuestionShowPayload,
 } from '@game/shared';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
-import { removePlayer } from './state.js';
+import { getRoom, removePlayer } from './state.js';
+import { getAgoraCorrectIndex } from './modes/agora.js';
+import { getDrawCorrectIndex } from './modes/draw.js';
+import { getBlitzStatementIsTrue } from './modes/blitz.js';
+import { getNumericTrueAnswer } from './modes/numeric.js';
+
+// Drawn once per bot per game (spawnBots), never re-rolled mid-game -
+// score divergence across bots needs a FIXED per-bot skill, not noise that
+// averages back out over the course of one game.
+const BOT_ACCURACY_LO = 0.5;
+const BOT_ACCURACY_HI = 0.7;
+
+function randomAccuracy(): number {
+  return BOT_ACCURACY_LO + Math.random() * (BOT_ACCURACY_HI - BOT_ACCURACY_LO);
+}
+
+// Correct with probability `accuracy`, otherwise a uniform-random WRONG
+// option (never re-picks the correct one by chance) - the "quiz / steal /
+// blitz / agora / climb" family from Task 221. `correctIndex === null`
+// (state not ready yet, e.g. a race on an in-flight phase transition) falls
+// back to the old blind uniform pick rather than guessing.
+function accurateChoice(numOptions: number, correctIndex: number | null, accuracy: number): number {
+  if (correctIndex === null || correctIndex < 0 || correctIndex >= numOptions) {
+    return randomChoice(numOptions);
+  }
+  if (numOptions <= 1 || Math.random() < accuracy) {
+    return correctIndex;
+  }
+  const wrongPick = randomChoice(numOptions - 1);
+  return wrongPick >= correctIndex ? wrongPick + 1 : wrongPick;
+}
+
+// Numeric (Εκτίμηση) has no "correct" - instead sample around the true
+// value with spread INVERSELY related to accuracy:
+//   value = clamp(round(trueValue + U(-1,1) * (1 - accuracy) * max), 0, max)
+// A 0.7-accuracy bot's noise amplitude is at most 30% of the question's own
+// range; a 0.5-accuracy bot's is at most 50%. `max` is the question's own
+// derived range (maxForAnswer), so the spread scales with the question, not
+// a fixed absolute number.
+function sampleNumericValue(trueValue: number, max: number, accuracy: number): number {
+  const noiseScale = (1 - accuracy) * max;
+  const offset = (Math.random() * 2 - 1) * noiseScale;
+  return Math.min(max, Math.max(0, Math.round(trueValue + offset)));
+}
 
 // Distinct Greek names, cycled if a room somehow asks for more than this
 // list has (never happens today - MAX_BOTS is well under it).
@@ -89,12 +141,14 @@ function profileDelayMs(profile: BotProfile): number {
 const PLACEHOLDER_DRAWING =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
-function wireBotGameplay(socket: Socket, profile: BotProfile): void {
+function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, accuracy: number): void {
   socket.on(ServerEvents.QUESTION_SHOW, (payload: QuestionShowPlayerPayload) => {
     if (!('options' in payload)) {
       return; // host-shaped payload, not sent to this socket anyway
     }
-    const choice = randomChoice(payload.options.length);
+    const room = getRoom(code);
+    const correctIndex = room ? (room.questions[room.currentQuestionIndex]?.correctIndex ?? null) : null;
+    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
     setTimeout(() => socket.emit(ClientEvents.SUBMIT_ANSWER, { choice }), profileDelayMs(profile));
   });
 
@@ -133,7 +187,9 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     if (!('isDrawer' in payload) || payload.isDrawer) {
       return; // host payload, or this bot is the round's drawer
     }
-    const choice = randomChoice(payload.options.length);
+    const room = getRoom(code);
+    const correctIndex = room ? getDrawCorrectIndex(room) : null;
+    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
     setTimeout(() => socket.emit(ClientEvents.DRAW_GUESS, { choice }), profileDelayMs(profile));
   });
 
@@ -141,7 +197,9 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     if ('submittedCount' in payload) {
       return; // host-shaped payload, not sent to this socket anyway
     }
-    const value = randomChoice(payload.max + 1);
+    const room = getRoom(code);
+    const trueValue = room ? getNumericTrueAnswer(room) : null;
+    const value = trueValue === null ? randomChoice(payload.max + 1) : sampleNumericValue(trueValue, payload.max, accuracy);
     setTimeout(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value }), profileDelayMs(profile));
   });
 
@@ -151,28 +209,34 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     if (!('options' in payload) || ('onTrial' in payload && !payload.onTrial)) {
       return; // host-shaped payload, or an eliminated/spectating bot
     }
-    const choice = randomChoice(payload.options.length);
+    const room = getRoom(code);
+    const correctIndex = room?.trial ? (room.trial.questions[room.trial.questionIndex]?.correctIndex ?? null) : null;
+    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
     setTimeout(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice }), profileDelayMs(profile));
   });
 
-  // Task 188a - the climb finale, answered exactly as a trial question: a
-  // random pick over player:climb_submit after the profile's delay.
+  // Task 188a - the climb finale, answered exactly as a trial question:
+  // accuracy-weighted over player:climb_submit after the profile's delay.
   socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (payload: ClimbQuestionShowPayload) => {
     if (!('options' in payload) || ('climbing' in payload && !payload.climbing) || ('eliminated' in payload && payload.eliminated)) {
       return; // host-shaped payload, a spectating bot, or one the spear speared out (Task 205)
     }
-    const choice = randomChoice(payload.options.length);
+    const room = getRoom(code);
+    const correctIndex = room?.climb ? (room.climb.questions[room.climb.questionIndex]?.correctIndex ?? null) : null;
+    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
     setTimeout(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice }), profileDelayMs(profile));
   });
 
   // Task 207 - the agora's question, answered exactly as a trial question:
-  // a random pick over player:agora_submit after the profile's delay. The
-  // exposure needs nothing from a bot (it "looks at the TV").
+  // accuracy-weighted over player:agora_submit after the profile's delay.
+  // The exposure needs nothing from a bot (it "looks at the TV").
   socket.on(ServerEvents.AGORA_QUESTION_SHOW, (payload: AgoraQuestionShowPayload) => {
     if (!('options' in payload) || ('answered' in payload && payload.answered)) {
       return; // host-shaped payload, or a catch-up that says it already answered
     }
-    const choice = randomChoice(payload.options.length);
+    const room = getRoom(code);
+    const correctIndex = room ? getAgoraCorrectIndex(room) : null;
+    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
     setTimeout(() => socket.emit(ClientEvents.AGORA_SUBMIT, { choice }), profileDelayMs(profile));
   });
 
@@ -199,11 +263,35 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
       if (nextIndex >= payload.total) {
         return;
       }
-      socket.emit(ClientEvents.BLITZ_SWIPE, { index: nextIndex, answeredTrue: Math.random() < 0.5 });
+      const room = getRoom(code);
+      const isTrue = room ? getBlitzStatementIsTrue(room, nextIndex) : null;
+      const answeredTrue = isTrue === null ? Math.random() < 0.5 : Math.random() < accuracy ? isTrue : !isTrue;
+      socket.emit(ClientEvents.BLITZ_SWIPE, { index: nextIndex, answeredTrue });
       nextIndex += 1;
       setTimeout(swipeNext, profileDelayMs(profile));
     };
     setTimeout(swipeNext, profileDelayMs(profile));
+  });
+}
+
+// Task 221 - the harness-side half of the Socrates audio fix. Only the
+// socket registered as room.hostSocketId may emit SOCRATES_AUDIO_ENDED (see
+// index.ts's getHostRoomForSocket) - a bot is always a PLAYER socket, so it
+// structurally cannot ack this itself. Production is unaffected: a real
+// ?bot=N room is always fronted by a real browser at /host, which already
+// acks the instant its own audio finishes playing. The gap is a socket-only
+// harness that opens a bare socket.io-client as the host role (no browser,
+// no audio) and never acks anything - every Socrates beat there rode the
+// full SOCRATES_MAX_DURATION_MS backstop. A harness's host socket should
+// call this once, right after it connects, to behave like that real
+// browser: `totalDurationMs` is the SAME estimate resolveSocratesDurationMs
+// computes for the real mp3 (byte-size based) when the line's pre-generated
+// file exists on disk, falling back to the flat SOCRATES_DURATION_MS
+// otherwise - exactly what HostScreen's real playback would take, without
+// this harness needing to decode any audio itself.
+export function wireHostSocratesAck(hostSocket: Socket): void {
+  hostSocket.on(ServerEvents.SOCRATES_SHOW, (payload: SocratesShowPayload) => {
+    setTimeout(() => hostSocket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {}), payload.totalDurationMs);
   });
 }
 
@@ -227,6 +315,8 @@ export function spawnBots(code: string, count: number): void {
     // Alternating fast/slow - with an odd bot count the extra one is fast,
     // matching the harness's own "bot 0 is always fast" convention.
     const profile: BotProfile = i % 2 === 0 ? 'fast' : 'slow';
+    // Task 221 - this bot's own accuracy, drawn once for the whole game.
+    const accuracy = randomAccuracy();
 
     const socket: Socket = ioClient(serverOrigin(), { reconnection: false });
     records.push({ playerId, socket });
@@ -240,7 +330,10 @@ export function spawnBots(code: string, count: number): void {
     socket.on('connect_error', (err) => {
       console.warn(`bot ${name} (${playerId}) failed to connect for room ${code}: ${String(err)}`);
     });
-    wireBotGameplay(socket, profile);
+    wireBotGameplay(socket, profile, code, accuracy);
+    // Logged (not just held in closure) so a harness driving this room over
+    // stdout can read back what each bot was actually assigned, per playerId.
+    console.log(`room ${code}: bot ${name} (${playerId}) accuracy=${accuracy.toFixed(3)} profile=${profile}`);
   }
 
   console.log(`room ${code}: spawned ${n} bot(s) (${records.map((r) => r.playerId).join(', ')})`);

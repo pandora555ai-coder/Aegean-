@@ -17,6 +17,10 @@
 //   --p-correct P       per-player, per-round chance of a correct lock-in (0.6)
 //   --p-correct-leader P  overrides pCorrect for the entry leader only (Task 185c)
 //   --p-correct-others P  overrides pCorrect for every other player (Task 185c)
+//   --p-correct-range LO-HI  each simulated player draws its OWN pCorrect once
+//                       per run, uniform in [LO,HI] - overrides pCorrect/
+//                       -leader/-others (Task 221, matches bots.ts's real
+//                       per-bot accuracy draw)
 //   --p-noanswer P      chance a player never locks in that round (0.05)
 //   --t-mean MS         mean lock-in time in ms (8000)
 //   --t-sd MS           lock-in time spread, ms (4000); clamped to [500, timer]
@@ -133,6 +137,12 @@ interface Config {
   // earlier. null means "everyone uses pCorrect", the original behavior.
   pCorrectLeader: number | null;
   pCorrectOthers: number | null;
+  // Task 221 - each simulated player draws its OWN pCorrect once per run,
+  // uniformly from [lo, hi], matching bots.ts's real per-bot accuracy (drawn
+  // once per game, 50-70%) instead of the flat/leader-vs-others buckets
+  // above. null means "use pCorrect/pCorrectLeader/pCorrectOthers instead",
+  // the original behavior; when set, it overrides both.
+  pCorrectRange: [number, number] | null;
   pNoAnswer: number;
   tMeanMs: number;
   tSdMs: number;
@@ -158,6 +168,7 @@ function parseArgs(argv: string[]): Config {
     pCorrect: 0.6,
     pCorrectLeader: null,
     pCorrectOthers: null,
+    pCorrectRange: null,
     pNoAnswer: 0.05,
     tMeanMs: 8000,
     tSdMs: 4000,
@@ -198,6 +209,12 @@ function parseArgs(argv: string[]): Config {
         cfg.pCorrectOthers = Number(value);
         i++;
         break;
+      case '--p-correct-range': {
+        const [lo, hi] = value.split('-').map(Number);
+        cfg.pCorrectRange = [lo, hi ?? lo];
+        i++;
+        break;
+      }
       case '--p-noanswer':
         cfg.pNoAnswer = Number(value);
         i++;
@@ -294,6 +311,12 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
   for (const p of players) if (p.score > entryLeader.score) entryLeader = p;
   for (const p of players) room.players.set(p.playerId, p);
 
+  const pByPlayer = new Map<string, number>();
+  if (cfg.pCorrectRange) {
+    const [lo, hi] = cfg.pCorrectRange;
+    for (const p of players) pByPlayer.set(p.playerId, lo + rng() * (hi - lo));
+  }
+
   const anomalies: string[] = [];
   let suddenDeathFired = 0;
   let leaderMissStreak = 0;
@@ -372,7 +395,7 @@ function simulateOne(cfg: Config, rng: () => number, clock: VirtualClock): RunRe
       const raw = cfg.tMeanMs + gaussian(rng) * cfg.tSdMs;
       const atMs = Math.round(Math.min(questionTimeMs - 1, Math.max(500, raw)));
       const isLeader = playerId === entryLeader.playerId;
-      const pCorrect = (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
+      const pCorrect = pByPlayer.get(playerId) ?? (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
       const correct = rng() < pCorrect;
       const choice = correct ? correctIndex : (correctIndex + 1 + Math.floor(rng() * 3)) % 4;
       lockIns.push({ playerId, atMs, choice });
@@ -489,6 +512,12 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
   let entryLeader = players[0];
   for (const p of players) if (p.score > entryLeader.score) entryLeader = p;
 
+  const pByPlayer = new Map<string, number>();
+  if (cfg.pCorrectRange) {
+    const [lo, hi] = cfg.pCorrectRange;
+    for (const p of players) pByPlayer.set(p.playerId, lo + rng() * (hi - lo));
+  }
+
   const ranks = computeCompetitionRanks(
     players,
     (p) => p.score,
@@ -542,7 +571,7 @@ function simulateOneClimb(cfg: Config, rng: () => number): ClimbRunResult {
       const raw = cfg.tMeanMs + gaussian(rng) * cfg.tSdMs;
       const elapsedMs = Math.round(Math.min(questionTimeMs - 1, Math.max(500, raw)));
       const isLeader = p.playerId === entryLeader.playerId;
-      const pCorrect = (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
+      const pCorrect = pByPlayer.get(p.playerId) ?? (isLeader ? cfg.pCorrectLeader : cfg.pCorrectOthers) ?? cfg.pCorrect;
       const correct = rng() < pCorrect;
       const choice = correct ? correctIndex : (correctIndex + 1 + Math.floor(rng() * 3)) % 4;
       return { playerId: p.playerId, name: p.name, avatarId: p.avatarId, stepBefore, choice, elapsedMs };
@@ -734,7 +763,7 @@ function runTrialBatch(cfg: Config): void {
   }
   const lines = [
     `trial monte carlo — ${summary.runs} runs, ${cfg.players} players, entry ${cfg.entryLo}-${cfg.entryHi}, ` +
-      `pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
+      `pCorrect ${cfg.pCorrectRange ? `range ${cfg.pCorrectRange[0]}-${cfg.pCorrectRange[1]} per-player` : `leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}`}, ` +
       `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
     `verdict reached: ${summary.verdictCount}/${summary.runs} (${summary.verdictPct.toFixed(1)}%), ` +
       `pool exhausted (${TRIAL_MAX_QUESTIONS}-round cap): ${summary.poolExhaustedCount}`,
@@ -806,7 +835,7 @@ function runClimbBatch(cfg: Config): void {
   }
   const lines = [
     `climb monte carlo — ${summary.runs} runs, ${cfg.players} players, spear ${cfg.spear}${cfg.spear === 'auto' ? ` (active=${spearActive})` : ''}, ` +
-      `entry ${cfg.entryLo}-${cfg.entryHi}, pCorrect leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}, ` +
+      `entry ${cfg.entryLo}-${cfg.entryHi}, pCorrect ${cfg.pCorrectRange ? `range ${cfg.pCorrectRange[0]}-${cfg.pCorrectRange[1]} per-player` : `leader=${cfg.pCorrectLeader ?? cfg.pCorrect} others=${cfg.pCorrectOthers ?? cfg.pCorrect}`}, ` +
       `pNoAnswer ${cfg.pNoAnswer}, t ${cfg.tMeanMs}±${cfg.tSdMs}ms, seed ${cfg.seed}`,
     `rounds to verdict: median ${summary.roundsMedian ?? 'n/a'}, p90 ${summary.roundsP90 ?? 'n/a'}, p95 ${summary.roundsP95 ?? 'n/a'}, ` +
       `p99 ${summary.roundsP99 ?? 'n/a'}, max ${summary.roundsMax}; cap (${cfg.cap}) hit: ${summary.capHitCount} (${summary.capRatePct.toFixed(1)}%)`,

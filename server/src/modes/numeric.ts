@@ -68,6 +68,17 @@ function requireNumericState(room: Room): NumericState {
   return state;
 }
 
+// Task 221 - bots.ts's own per-bot accuracy samples around the CURRENT
+// question's true value. Read-only, in-process, never reaches a client
+// before NUMERIC_REVEAL as usual.
+export function getNumericTrueAnswer(room: Room): number | null {
+  const state = numericStateByRoom.get(room);
+  if (!state || state.questionIndex < 0 || state.questionIndex >= state.questions.length) {
+    return null;
+  }
+  return state.questions[state.questionIndex].answer;
+}
+
 const NUMERIC_PHASES: readonly GamePhase[] = ['LOBBY', 'NUMERIC_QUESTION', 'NUMERIC_REVEAL', 'SOCRATES', 'GAME_OVER'];
 
 // 'NUMERIC_SOCRATES' (Task 138), not the literal 'SOCRATES' - same reasoning

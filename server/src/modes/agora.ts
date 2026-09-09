@@ -80,6 +80,18 @@ function requireAgoraState(room: Room): AgoraState {
   return state;
 }
 
+// Task 221 - bots.ts's own per-bot accuracy needs the CURRENT question's
+// correct index. Read-only, in-process, never reaches a client (the render
+// spec discipline above is untouched) - the same "server already knows it"
+// shortcut room.questions[...].correctIndex gives a quiz bot for free.
+export function getAgoraCorrectIndex(room: Room): number | null {
+  const state = agoraStateByRoom.get(room);
+  if (!state || state.questionIndex < 0 || state.questionIndex >= state.questions.length) {
+    return null;
+  }
+  return state.questions[state.questionIndex].correctIndex;
+}
+
 const AGORA_PHASES: readonly GamePhase[] = ['LOBBY', 'AGORA_EXPOSE', 'AGORA_QUESTION', 'AGORA_REVEAL', 'SOCRATES', 'GAME_OVER'];
 
 // 'AGORA_SOCRATES', not the literal 'SOCRATES' - the mode-local timer kind

@@ -130,6 +130,13 @@ function requireDrawState(room: Room): DrawState {
   return state;
 }
 
+// Task 221 - bots.ts's own per-bot accuracy needs the CURRENT round's
+// correct index. Read-only, in-process, never reaches a client before
+// GUESS_REVEAL as usual.
+export function getDrawCorrectIndex(room: Room): number | null {
+  return drawStateByRoom.get(room)?.currentCorrectIndex ?? null;
+}
+
 const DRAW_PHASES: readonly GamePhase[] = ['LOBBY', 'DRAW', 'GUESS', 'GUESS_REVEAL', 'SOCRATES', 'GAME_OVER'];
 
 // The drawing mode's own phase-advance timer kinds, exhaustively covered by
