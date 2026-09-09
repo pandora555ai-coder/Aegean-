@@ -557,6 +557,14 @@ export default function HostScreen() {
     function handleClimbQuestionShow(payload: ClimbQuestionShowPayload) {
       if (isClimbQuestionHostPayload(payload)) {
         setClimbReveal(null);
+        // Task 219 - a spear-cause duel resolves straight back into the next
+        // CLIMB_QUESTION rather than GAME_OVER (see endDuelReveal, phases.ts),
+        // so this handler - not just handleDuelPickShow - must also clear a
+        // settled duel. Without it, AnavasisDuel (keyed off duelReveal below)
+        // stayed mounted for the rest of the game, covering every later
+        // question and the winner ceremony.
+        setDuelPick(null);
+        setDuelReveal(null);
         setClimbQuestion(payload);
         setClimbQuestionSecondsLeft(Math.ceil(payload.durationMs / 1000));
         setTimerTotalSeconds(Math.ceil(payload.questionTimeMs / 1000));

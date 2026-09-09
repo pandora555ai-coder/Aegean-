@@ -38,18 +38,13 @@ export function QuestionView({ question, roomCode, paused, pausedByName }: Quest
       standings={question.standings}
       contentKey={question.questionIndex}
     >
-      {/* Socrates (Task 24, renamed Task 37a) - HOST ONLY, briefly shown
-          then fades on its own via CSS (socrates-intro-fade, in
-          palette-theatro.css) - no JS timer, so it can never delay
-          anything else on this screen. The player side's answer buttons are unaffected
-          regardless, since socratesIntro is never even sent in the player
-          payload. Conditionally rendered, same reasoning as socratesLine
-          on REVEAL - no gap when null. */}
-      {question.socratesIntro && (
-        <div className="socrates-intro-fade" style={styles.socratesIntroBanner} data-testid="socrates-intro">
-          {question.socratesIntro}
-        </div>
-      )}
+      {/* Task 219 - the QUESTION-START caption (socrates-intro) removed:
+          low-contrast text on the night sky, unreadable from a couch, and
+          it lingered in the DOM at opacity:0 after its CSS fade (task 201
+          removed the separate REVEAL-beat caption; this was a distinct,
+          earlier-added element that task missed). Audio (server/src/
+          socrates.ts's socratesIntro) stays the only carrier of this line -
+          question.socratesIntro itself is untouched. */}
       <div className="enter-pop" style={styles.category}>
         {greekUpper(question.category)}
       </div>
