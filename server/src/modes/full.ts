@@ -1,4 +1,5 @@
 import {
+  BLITZ_STATEMENT_COUNT,
   FULL_DRAW_ROUNDS_BY_LENGTH,
   FULL_GUESS_SCORE_SCALE,
   FULL_NUMERIC_QUESTION_COUNT,
@@ -15,31 +16,42 @@ import { enterQuestionOrPowerUp, enterStageAnnounce } from '../phases.js';
 import { QUIZ_CONTINUATIONS } from './quiz.js';
 import { DRAW_CONTINUATIONS, clearDrawState, startDrawSegment } from './draw.js';
 import { NUMERIC_CONTINUATIONS, prepareNumericGame, startNumericSegment } from './numeric.js';
+import { BLITZ_CONTINUATIONS, prepareBlitzGame, startBlitzSegment } from './blitz.js';
+import { AGORA_CONTINUATIONS, prepareAgoraRound, startAgoraSegment } from './agora.js';
 import { registerGameMode } from './registry.js';
 import type { GameMode } from './types.js';
 
-// THE game (Task 134): one show that runs all three mechanics and the trial
-// back to back -
+// THE game (Task 134, relined by Task 214): one show that runs every
+// mechanic back to back - the LOCKED lineup -
 //
-//   1  Η Αγορά       quiz questions (a POWER_UP before each, per the table)
-//   2  Ζωγραφική     drawing round(s) (1, or 3 on gameLength 'long' - see
-//                    FULL_DRAW_ROUNDS_BY_LENGTH): everyone draws, then every
-//                    drawing is guessed in turn
-//   3  Εκτίμηση      three numeric questions
-//   4  Η Συκοφαντία  quiz questions, each followed by a STEAL
-//   5  Η Δίκη        the trial finale (Task 127), entered with the scores
-//                    everyone accumulated across stages 1-4 as LIFE
+//   1  Η Αγορά             quiz questions (a POWER_UP before each, per the table)
+//   2  Η Παλαίστρα         one blitz swipe window (BLITZ_STATEMENT_COUNT
+//                          statements, BLITZ_DURATION_MS) then its reveal
+//   3  Ζωγραφική           drawing round(s) (1, or 3 on gameLength 'long' - see
+//                          FULL_DRAW_ROUNDS_BY_LENGTH): everyone draws, then every
+//                          drawing is guessed in turn, each round advancing the
+//                          moment every connected participant has submitted
+//   4  Εκτίμηση            three numeric questions
+//   5  Η Μνήμη της Αγοράς  one agora round: the exposure, then its three questions
+//   6  Η Συκοφαντία        quiz questions, each followed by a STEAL
+//   7  Η Ανάβασις          the climb finale (Task 188a), entered with the scores
+//                          everyone accumulated across stages 1-6 as the ladder's
+//                          entry order - or Η Δίκη (Task 127), which uses those
+//                          same scores as LIFE, when the VIP sets finaleMode
+//                          back to 'trial'
 //
 // - and then GAME_OVER, the only one in the mode.
 //
 // This file COMPOSES: it holds no mechanic of its own. Every phase, timer,
 // payload and scoring rule is the existing mode's, called through the entry
-// points those modules already expose (or, for the two that were private,
-// through the split-outs Task 134 made of them - startDrawSegment,
-// startNumericSegment). The three standalone modes stay registered and
-// VIP-selectable as the dev harness for their own mechanics, and nothing here
-// changes what they do: the two GameMode hooks below (beginStage,
-// advanceAfterSegment) are the whole coupling, and they are undefined there.
+// points those modules already expose (or, for the ones that were private,
+// through the split-outs Tasks 134/207 made of them - startDrawSegment,
+// startNumericSegment, prepareBlitzGame/startBlitzSegment,
+// prepareAgoraRound/startAgoraSegment). Every standalone mode stays
+// registered and VIP-selectable as the dev harness for its own mechanic, and
+// nothing here changes what they do: the two GameMode hooks below
+// (beginStage, advanceAfterSegment) are the whole coupling, and they are
+// undefined there.
 //
 // There is no per-room state for this mode. WHERE the show is up to is
 // room.stage, which the phase machine already keeps, and everything else lives
@@ -47,33 +59,40 @@ import type { GameMode } from './types.js';
 
 const FULL_PHASES: readonly GamePhase[] = [
   'LOBBY',
-  // Stages 1 and 4 - the quiz's own machine (phases.ts), unchanged.
+  // Stages 1 and 6 - the quiz's own machine (phases.ts), unchanged.
   'STAGE_ANNOUNCE',
   'POWER_UP',
   'QUESTION',
   'REVEAL',
   'STEAL',
   'SOCRATES',
-  // Stage 2 - modes/draw.ts.
+  // Stage 2 - modes/blitz.ts.
+  'BLITZ',
+  'BLITZ_REVEAL',
+  // Stage 3 - modes/draw.ts.
   'DRAW',
   'GUESS',
   'GUESS_REVEAL',
-  // Stage 3 - modes/numeric.ts.
+  // Stage 4 - modes/numeric.ts.
   'NUMERIC_QUESTION',
   'NUMERIC_REVEAL',
-  // Stage 5 - the trial, which is part of the quiz's own machine.
-  'TRIAL_QUESTION',
-  'TRIAL_REVEAL',
-  // Task 188a - or the climb, when finaleMode is 'climb'.
+  // Stage 5 - modes/agora.ts (its SOCRATES beat is the shared phase above).
+  'AGORA_EXPOSE',
+  'AGORA_QUESTION',
+  'AGORA_REVEAL',
+  // Stage 7 - the climb, the default finale since Task 214.
   'CLIMB_QUESTION',
   'CLIMB_REVEAL',
   // Task 188b - the climb's duel.
   'DUEL_PICK',
   'DUEL_REVEAL',
+  // ...or the trial, when finaleMode is 'trial'. Part of the quiz's own machine.
+  'TRIAL_QUESTION',
+  'TRIAL_REVEAL',
   'GAME_OVER',
 ];
 
-// The three modes' tables, merged. Not restated: a timer kind's continuation
+// The composed modes' tables, merged. Not restated: a timer kind's continuation
 // is whatever the mode that ARMS it already says it is, so pause/resume in the
 // middle of any segment of this show behaves exactly as it does in that
 // segment's own mode.
@@ -95,7 +114,13 @@ function mergeContinuations(
   return merged;
 }
 
-const FULL_CONTINUATIONS = mergeContinuations([QUIZ_CONTINUATIONS, DRAW_CONTINUATIONS, NUMERIC_CONTINUATIONS]);
+const FULL_CONTINUATIONS = mergeContinuations([
+  QUIZ_CONTINUATIONS,
+  BLITZ_CONTINUATIONS,
+  DRAW_CONTINUATIONS,
+  NUMERIC_CONTINUATIONS,
+  AGORA_CONTINUATIONS,
+]);
 
 function stagesFor(room: Room): readonly StageDefinition[] {
   return fullStagesForLength(room.settings.gameLength);
@@ -107,7 +132,7 @@ function stageDefinition(room: Room, stage: number): StageDefinition | undefined
 
 // How many quiz questions the WHOLE show asks - both quiz stages' counts,
 // which is what room.questions holds end to end. Stage 1 answers indices
-// 0..n-1 and stage 4 answers n..2n-1; the drawing and numeric stages have a
+// 0..n-1 and stage 6 answers n..2n-1; every non-quiz stage has a
 // questionCount of 0, so a quiz question index maps straight past them.
 function quizQuestionCount(room: Room): number {
   return stagesFor(room).reduce((total, definition) => total + definition.questionCount, 0);
@@ -117,17 +142,21 @@ function drawRoundCount(room: Room): number {
   return FULL_DRAW_ROUNDS_BY_LENGTH[room.settings.gameLength];
 }
 
-// Everything one game needs, drawn up front. The two sub-mode states are
-// CLEARED here as well as dealt later: "play again" reuses the same Room
-// object, so a second show must never be able to see the first one's drawings
-// (see clearDrawState) or its numeric questions.
+// Everything one game needs, drawn up front. Every sub-mode state is CLEARED
+// here as well as dealt: "play again" reuses the same Room object, so a second
+// show must never be able to see the first one's swipes, drawings (see
+// clearDrawState), numeric questions or agora scene. Each of these four calls
+// is the standalone mode's own prepare, deleting its state first.
 function prepareGame(room: Room): void {
   room.questions = getQuestionSet(room.settings.difficultyMix, quizQuestionCount(room));
+  prepareBlitzGame(room, BLITZ_STATEMENT_COUNT);
   clearDrawState(room);
   prepareNumericGame(room, FULL_NUMERIC_QUESTION_COUNT);
+  prepareAgoraRound(room);
   console.log(
     `room ${room.code} full show: ${quizQuestionCount(room)} quiz question(s) over 2 stages, ` +
-      `${drawRoundCount(room)} drawing round(s), ${FULL_NUMERIC_QUESTION_COUNT} numeric question(s)`,
+      `${BLITZ_STATEMENT_COUNT} blitz statement(s), ${drawRoundCount(room)} drawing round(s), ` +
+      `${FULL_NUMERIC_QUESTION_COUNT} numeric question(s), 1 agora round`,
   );
 }
 
@@ -165,6 +194,12 @@ function beginStage(room: Room): boolean {
     return false;
   }
   switch (stageSegment(definition)) {
+    case 'blitz':
+      startBlitzSegment(room);
+      return true;
+    case 'agora':
+      startAgoraSegment(room);
+      return true;
     case 'draw':
       if (startDrawSegment(room, drawRoundCount(room), FULL_GUESS_SCORE_SCALE)) {
         return true;
@@ -182,12 +217,13 @@ function beginStage(room: Room): boolean {
   }
 }
 
-// Called wherever a segment ENDS - the drawing round's and the numeric run's
-// own finishGame, and the last question of a quiz stage. Moves the show to the
-// next card. Returns false only when the next card is Η Δίκη, which hands the
-// decision back to the caller: for the quiz machine that means its existing
-// "last question -> startTrial -> WINNER -> GAME_OVER" tail, the one path this
-// mode ends on.
+// Called wherever a segment ENDS - the blitz reveal's, the drawing round's,
+// the numeric run's and the agora round's own finishGame/finishRound, and the
+// last question of a quiz stage. Moves the show to the next card. Returns
+// false only when the next card is the FINALE row, which hands the decision
+// back to the caller: for the quiz machine that means its existing "last
+// question -> startClimb/startTrial -> WINNER -> GAME_OVER" tail, the one path
+// this mode ends on.
 function advanceAfterSegment(room: Room): boolean {
   return enterStage(room, room.stage + 1);
 }

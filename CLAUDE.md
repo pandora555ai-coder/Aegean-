@@ -328,15 +328,28 @@ Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       Verified with `npx tsx dev/agora-sophists-check.ts`
       (agora-scene-check.ts's own spawn/cleanup shape, its own throwaway
       ports 3903/5904).
-Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
-      1 Η Αγορά (quiz + POWER_UP) -> 2 Ζωγραφική (one draw round)
-      -> 3 Εκτίμηση (3 numeric) -> 4 Η Συκοφαντία (quiz + STEAL)
-      -> 5 Η Δίκη (the trial, entered with accumulated scores as life).
-      It COMPOSES the other three modes (which stay VIP-selectable as the
-      dev harness) through three optional GameMode hooks — stagesFor,
-      beginStage, advanceAfterSegment. See modes/README.md.
+Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
+      each announced, then the ONE GAME_OVER:
+      1 Η Αγορά (quiz + POWER_UP) -> 2 Η Παλαίστρα (one blitz window,
+      BLITZ_STATEMENT_COUNT = 12 statements) -> 3 Ζωγραφική (draw)
+      -> 4 Εκτίμηση (3 numeric) -> 5 Η Μνήμη της Αγοράς (one agora round)
+      -> 6 Η Συκοφαντία (quiz + STEAL) -> 7 Η Ανάβασις (the climb, entered
+      with accumulated scores as the ladder's entry order) — or Η Δίκη in
+      that same row when the VIP sets finaleMode back to 'trial'.
+      It COMPOSES the five standalone mechanic modes (which stay
+      VIP-selectable as the dev harness) through three optional GameMode
+      hooks — stagesFor, beginStage, advanceAfterSegment. See
+      modes/README.md. StageSegment (shared) is
+      'quiz'|'draw'|'numeric'|'blitz'|'agora'|'trial'; the finale is the
+      'trial' ROW in every table regardless of which finale actually runs
+      (buildStageAnnounce swaps the card's words off room.climb/room.trial).
+      Task 214 added no mechanic and retuned nothing: blitz uses its own
+      BLITZ_* constants and scoring verbatim, and the agora segment still
+      scores at calculatePoints scale 1 (i.e. the standalone quiz's up-to-1500
+      band, NOT full's ~400 one) — a known imbalance left deliberately
+      untouched, not an oversight.
       FULL_QUIZ_QUESTION_COUNTS (shared) gives EACH quiz stage's count by
-      gameLength: short 2, medium 3, long 5 (so stages 1+4 total 2+2/3+3/5+5).
+      gameLength: short 2, medium 3, long 5 (so stages 1+6 total 2+2/3+3/5+5).
       Draw round count is gameLength-dependent since Task 150
       (FULL_DRAW_ROUNDS_BY_LENGTH: short 1, medium 1, long 3 — standalone
       draw's own room.settings.drawRounds setting is untouched); numeric
@@ -388,9 +401,10 @@ COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
-**The climb (Task 188a) is the trial's ALTERNATIVE finale**, gated by
-`room.settings.finaleMode` ('trial' | 'climb', default 'trial' — the 177
-pattern; type + default at shared/src/index.ts:1253/1265). It is a VIP
+**The climb (Task 188a) is the DEFAULT finale since Task 214**, with Η Δίκη
+as the alternative — both gated by `room.settings.finaleMode`
+('trial' | 'climb', **default 'climb'** since 214 flipped it; type + default
+in shared/src/index.ts, search `FinaleMode`/`DEFAULT_ROOM_SETTINGS`). It is a VIP
 lobby setting (ControllerScreen.tsx:3216-3218's finale-mode selector,
 same `vip:update_settings` path as every other room setting), so — like
 every other room.settings field — it lives on the Room object and survives

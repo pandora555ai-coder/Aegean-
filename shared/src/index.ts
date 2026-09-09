@@ -713,7 +713,11 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
 // trial. questionCount is 0 for all three - they draw no quiz questions - and
 // that is exactly what makes stageForQuestionIndex skip straight over them
 // when it maps a quiz question index onto the table.
-export type StageSegment = 'quiz' | 'draw' | 'numeric' | 'trial';
+// Task 214 - 'blitz' and 'agora' join the list as the full show's stages 2
+// and 5. Same contract as 'draw'/'numeric': questionCount 0, the mechanic is
+// started by the composing mode's beginStage and ends through its own
+// finishGame -> advanceAfterSegment hook.
+export type StageSegment = 'quiz' | 'draw' | 'numeric' | 'blitz' | 'agora' | 'trial';
 
 export interface StageDefinition {
   stage: number; // 1-based - matches Room.stage server-side
@@ -906,7 +910,8 @@ export const FULL_QUIZ_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 // same target, kept as its own constant since it scales a different call site.
 export const FULL_GUESS_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 
-// The show, in order. questionCount on the two quiz rows is the MEDIUM figure;
+// The show, in order (Task 214 - the LOCKED lineup: six stages plus the
+// finale). questionCount on the two quiz rows is the MEDIUM figure;
 // fullStagesForLength substitutes the real one, which is why every consumer
 // must go through that function rather than reading this table directly.
 export const FULL_STAGES: readonly StageDefinition[] = [
@@ -923,33 +928,53 @@ export const FULL_STAGES: readonly StageDefinition[] = [
   {
     stage: 2,
     questionCount: 0,
-    segment: 'draw',
+    segment: 'blitz',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: false,
-    title: 'Γύρος 2 — Ζωγραφική',
-    tagline: 'Σχεδιάζετε όλοι μαζί. Μετά κρίνεται ένα ένα το έργο σας.',
+    title: 'Γύρος 2 — Η Παλαίστρα',
+    tagline: 'Σωστό ή λάθος, όσο πιο γρήγορα μπορείτε. Το λάθος κοστίζει.',
   },
   {
     stage: 3,
     questionCount: 0,
-    segment: 'numeric',
+    segment: 'draw',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: false,
-    title: 'Γύρος 3 — Εκτίμηση',
-    tagline: 'Κανείς δεν ξέρει τον αριθμό. Πλησιάστε τον περισσότερο από τους άλλους.',
+    title: 'Γύρος 3 — Ζωγραφική',
+    tagline: 'Σχεδιάζετε όλοι μαζί. Μετά κρίνεται ένα ένα το έργο σας.',
   },
   {
     stage: 4,
+    questionCount: 0,
+    segment: 'numeric',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
+    title: 'Γύρος 4 — Εκτίμηση',
+    tagline: 'Κανείς δεν ξέρει τον αριθμό. Πλησιάστε τον περισσότερο από τους άλλους.',
+  },
+  {
+    stage: 5,
+    questionCount: 0,
+    segment: 'agora',
+    powerUpBeforeEveryQuestion: false,
+    stealAfterEveryQuestion: false,
+    title: 'Γύρος 5 — Η Μνήμη της Αγοράς',
+    tagline: 'Κοιτάξτε καλά την αγορά. Μετά κλείνει, και μένει μόνο η μνήμη σας.',
+  },
+  {
+    stage: 6,
     questionCount: FULL_QUIZ_QUESTION_COUNTS.medium,
     segment: 'quiz',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: true,
     scoreScale: FULL_QUIZ_SCORE_SCALE,
-    title: 'Γύρος 4 — Η Συκοφαντία',
+    title: 'Γύρος 6 — Η Συκοφαντία',
     tagline: 'Ο πιο γρήγορος σωστός κλέβει πόντους από όποιον κρίνει ένοχο.',
   },
-  // Stage 5 is the trial row, built by fullStagesForLength - one definition of
-  // that card, shared with the quiz mode.
+  // Stage 7 is the finale row, built by fullStagesForLength - one definition
+  // of that card, shared with the quiz mode. Which finale actually runs is
+  // room.settings.finaleMode (Η Ανάβασις by default since Task 214, Η Δίκη
+  // when the VIP picks it); buildStageAnnounce swaps the card's words.
 ] as const;
 
 // The full mode's table for a given length: every stage, always, with the two
@@ -1297,7 +1322,8 @@ export type RoomSettings = {
   // Task 188a - which finale follows the last quiz question (see
   // advanceToNextQuestionOrGameOver in server/src/phases.ts, the ONE site
   // that branches on it): Η Δίκη's life drain, or the climb's step race.
-  // The 177 pattern - machinery on, default off ('trial').
+  // Task 214 flipped the default to 'climb' - Η Ανάβασις is the locked
+  // lineup's finale; Η Δίκη is still selectable and unchanged.
   finaleMode: FinaleMode;
 };
 
@@ -1311,9 +1337,9 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
-  // Task 188a - the climb is a prototype; the trial stays the finale unless
-  // the VIP opts in.
-  finaleMode: 'trial',
+  // Task 214 - the locked lineup ends on Η Ανάβασις, so the climb is now the
+  // DEFAULT finale. Η Δίκη stays fully implemented and one VIP toggle away.
+  finaleMode: 'climb',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,

@@ -35,12 +35,19 @@ Everything a new mode has to define, and nothing else:
 3. **`server/src/modes/index.ts`** — one `import './<mode>.js';` line.
 4. **`client/`** — host/controller views for its new phases.
 
-## Composing modes (Task 134, `full.ts`)
+## Composing modes (Task 134, `full.ts`; relined by Task 214)
 
-`full` is a mode that runs OTHER modes' mechanics as its own stages (quiz →
-drawing → numeric → quiz-with-steal → the trial → GAME_OVER). It copies
-nothing: it calls each mode's own entry points, and the three standalone modes
-stay registered and VIP-selectable as the dev harness for their mechanics.
+`full` is a mode that runs OTHER modes' mechanics as its own stages — the
+LOCKED lineup: quiz → blitz → drawing → numeric → agora → quiz-with-steal →
+the climb (or the trial, per `finaleMode`) → GAME_OVER. It copies nothing: it
+calls each mode's own entry points, and every standalone mode stays registered
+and VIP-selectable as the dev harness for its mechanic.
+
+Adding a mechanic to the show is therefore three edits and no new machinery,
+which is all Task 214 did for blitz and agora: a `StageSegment` name in
+shared, a row in `FULL_STAGES`, and a `beginStage` case calling the mode's own
+`prepare*` (from `prepareGame`) and `start*Segment`. The mode's own
+`finishGame` already routes back through `advanceAfterSegment`.
 
 Three optional `GameMode` fields make that possible. All three are absent on
 `quiz`/`draw`/`numeric`, so those behave exactly as they did:
@@ -54,15 +61,16 @@ Three optional `GameMode` fields make that possible. All three are absent on
   had its beat. Return true if the mode started that stage itself (the drawing
   round, the numeric segment); false leaves the quiz's normal path.
 - **`advanceAfterSegment(room)`** — called wherever a sub-game would otherwise
-  END: `draw`/`numeric`'s own `finishGame`, and the last question of a quiz
-  stage. Return true if the mode routed to the next stage's STAGE_ANNOUNCE
-  instead. `full` returns false only when the next card is the trial, which is
-  what leaves the quiz machine's existing trial → WINNER → GAME_OVER tail as
-  the one way the show ends.
+  END: `blitz`/`draw`/`numeric`/`agora`'s own `finishGame`/`finishRound`, and
+  the last question of a quiz stage. Return true if the mode routed to the
+  next stage's STAGE_ANNOUNCE instead. `full` returns false only when the next
+  card is the FINALE row, which is what leaves the quiz machine's existing
+  climb-or-trial → WINNER → GAME_OVER tail as the one way the show ends.
 
-A stage row says WHICH mechanic it runs (`segment`, default `'quiz'`). Rows
-that aren't quiz rows have `questionCount: 0`, so `stageForQuestionIndex` maps
-a quiz question index straight past them.
+A stage row says WHICH mechanic it runs (`segment`, default `'quiz'` —
+`'draw' | 'numeric' | 'blitz' | 'agora' | 'trial'` otherwise). Rows that
+aren't quiz rows have `questionCount: 0`, so `stageForQuestionIndex` maps a
+quiz question index straight past them.
 
 The composed continuations tables are MERGED, and `full.ts` throws at startup
 if two of them claim the same timer kind - a collision would mean a pause in
