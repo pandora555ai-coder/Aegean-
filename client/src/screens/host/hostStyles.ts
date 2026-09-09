@@ -137,6 +137,30 @@ export const styles: Record<string, CSSProperties> = {
     cursor: 'pointer',
     zIndex: 50,
   },
+  // Task 213 - the "touch to unlock audio" chip. Chrome-level (rendered
+  // once for every phase, like fullscreenToggle/kraterCorner), top-LEFT so
+  // it never competes with fullscreenToggle/cornerRoomCode (top-right) or
+  // kraterCorner (right). Stacked BELOW muteToggle's own spot (LobbyView
+  // only, LOBBY-scoped) rather than sharing it, since both can be on
+  // screen together during LOBBY. During the three agora scene phases this
+  // sits well above the market frame's vertical band (~39%-88% of the
+  // scene height, AgoraScene.tsx's renderStall) and left of its leftmost
+  // stall slot (~5.5%-31.5% width) - a top corner chip never reaches it.
+  audioSuspendedChip: {
+    position: 'fixed',
+    top: 'calc(var(--tv-safe-top) + 3.5rem)',
+    left: '1rem',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: 'var(--carve)',
+    background: 'var(--marble)',
+    border: '1px solid var(--marble-3)',
+    borderRadius: '999px',
+    padding: '0.4rem 0.85rem',
+    boxShadow: SURFACE_GLOW,
+    pointerEvents: 'none',
+    zIndex: 50,
+  },
   fullscreenToggle: {
     position: 'fixed',
     // Below the TV overscan crop (Task 112) - it is fixed to the viewport,

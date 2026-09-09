@@ -119,6 +119,24 @@ export function useGameAudio() {
     mutedRef.current = muted;
   }, [muted]);
 
+  // Task 213 - true whenever a constructed AudioContext is NOT 'running'
+  // (a real restrictive browser hands one back 'suspended' with zero user
+  // gesture, e.g. via HOST_REJOIN on a bare page load/reload - see Task 212).
+  // Drives the TV's "touch to unlock audio" chip. Starts false: there is
+  // nothing to unlock before any AudioContext exists.
+  const [audioSuspended, setAudioSuspended] = useState(false);
+  // Mirrors `audioSuspended`, same reasoning as mutedRef - read inside the
+  // page-level gesture listener below, which is registered once.
+  const audioSuspendedRef = useRef(false);
+
+  function setAudioSuspendedState(next: boolean): void {
+    if (audioSuspendedRef.current === next) {
+      return;
+    }
+    audioSuspendedRef.current = next;
+    setAudioSuspended(next);
+  }
+
   // Silent Web Audio keep-alive - best effort suppression of the TV's own
   // screensaver/idle detection, which (unlike the Wake Lock API) many smart
   // TV browsers respect for "still doing something" heuristics. Deliberately
@@ -135,7 +153,7 @@ export function useGameAudio() {
   useEffect(() => {
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
-        audioCtxRef.current?.resume().catch(() => {});
+        void attemptResumeAudio();
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -159,8 +177,60 @@ export function useGameAudio() {
     // function already gates on mutedRef itself, so leaving the context
     // suspended here whenever muted would just permanently silence
     // everything (including a later un-mute) after one pause/resume cycle.
-    audioCtxRef.current?.resume().catch(() => {});
+    void attemptResumeAudio();
   }
+
+  // Task 213 - the ONE place that actually calls ctx.resume(), everywhere
+  // it's legal to try: a page gesture, every HOST_REJOIN/'connect', and
+  // right before any scheduled playback. Always awaited and its outcome
+  // checked (never a bare `.resume().catch(() => {})`) so audioSuspended -
+  // and the chip it drives - reflects reality instead of optimism. A no-op,
+  // resolving false, before any AudioContext exists yet.
+  async function attemptResumeAudio(): Promise<boolean> {
+    const ctx = audioCtxRef.current;
+    if (!ctx) {
+      return false;
+    }
+    const stateBefore: AudioContextState = ctx.state;
+    if (stateBefore === 'running') {
+      setAudioSuspendedState(false);
+      return true;
+    }
+    try {
+      await ctx.resume();
+    } catch {
+      // Best effort - state is re-checked below regardless of the reason.
+    }
+    const stateAfter: AudioContextState = ctx.state;
+    const running = stateAfter === 'running';
+    setAudioSuspendedState(!running);
+    return running;
+  }
+
+  // Task 213 - a real restrictive browser can hand back a freshly
+  // constructed AudioContext already 'suspended' with zero gesture (the
+  // HOST_REJOIN path Task 212 found), and Web Audio never throws or emits
+  // an event for that - so the only way to ever unlock it is to retry the
+  // resume on ANY subsequent interaction. Capture phase (fires before any
+  // app-level handler could stopPropagation), and self-removes once the
+  // context is actually running so it costs nothing for the rest of the
+  // night.
+  useEffect(() => {
+    function handlePageGesture() {
+      void attemptResumeAudio().then((running) => {
+        if (running) {
+          document.removeEventListener('pointerdown', handlePageGesture, true);
+          document.removeEventListener('keydown', handlePageGesture, true);
+        }
+      });
+    }
+    document.addEventListener('pointerdown', handlePageGesture, true);
+    document.addEventListener('keydown', handlePageGesture, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePageGesture, true);
+      document.removeEventListener('keydown', handlePageGesture, true);
+    };
+  }, []);
 
   // Task 36c - the crowd bed keeps humming through a pause in every OTHER
   // phase (suspendAudio above stays SOCRATES-scoped), so pausing it means
@@ -267,6 +337,12 @@ export function useGameAudio() {
       voiceGain.gain.value = voiceVolumeRef.current;
       voiceGain.connect(output);
       voiceGainRef.current = voiceGain;
+      // Task 213 - a context can be born 'suspended' with zero gesture
+      // (see attemptResumeAudio's comment); reflect that in the chip right
+      // away rather than waiting for the next scheduled playback to notice.
+      if (ctx.state !== 'running') {
+        setAudioSuspendedState(true);
+      }
     } catch {
       return null; // AudioContext unavailable or blocked. Continue without it.
     }
@@ -276,7 +352,15 @@ export function useGameAudio() {
   function startKeepAliveAudio() {
     const alreadyRunning = !!audioCtxRef.current;
     const ctx = getAudioCtx();
-    if (!ctx || alreadyRunning) {
+    if (!ctx) {
+      return;
+    }
+    // Task 213 - called from ROOM_CREATED, which fires for a real "Create
+    // Room" click AND for every HOST_REJOIN ack (any reconnect, including a
+    // bare page reload) - so this is exactly the "on connect/HOST_REJOIN"
+    // resume opportunity, whether or not the context itself is new.
+    void attemptResumeAudio();
+    if (alreadyRunning) {
       return;
     }
     try {
@@ -339,6 +423,9 @@ export function useGameAudio() {
       return;
     }
     crowdLoopsStartedRef.current = true;
+    // Task 213 - the loops are meant to run all game; if the context is
+    // still suspended when they're first scheduled, keep trying.
+    void attemptResumeAudio();
 
     const bedGain = ctx.createGain();
     // Task 178 - the VIP's crowd-volume fraction multiplies the fixed mix
@@ -486,6 +573,8 @@ export function useGameAudio() {
     if (!ctx || !output || mutedRef.current) {
       return;
     }
+    // Task 213 - one more resume opportunity right before scheduling.
+    void attemptResumeAudio();
     const intensity = crowdIntensityRef.current;
     const size = intensity < 0.5 ? 'small' : 'big';
     const name = `${mood}-${size}` as CrowdOneShotName;
@@ -537,6 +626,10 @@ export function useGameAudio() {
     if (!ctx || mutedRef.current) {
       return;
     }
+    // Task 213 - awaited (not fire-and-forget) so a resume that completes
+    // during the fetch/decode below is already reflected in audioSuspended
+    // by the time this line actually schedules.
+    await attemptResumeAudio();
     try {
       const hash = lineHash(template, tag);
       let buffer = socratesBufferCacheRef.current.get(hash);
@@ -610,6 +703,8 @@ export function useGameAudio() {
   return {
     muted,
     toggleMuted,
+    audioSuspended,
+    attemptResumeAudio,
     setCrowdVolume,
     setVoiceVolume,
     startKeepAliveAudio,

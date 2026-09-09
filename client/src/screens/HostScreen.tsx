@@ -279,6 +279,7 @@ export default function HostScreen() {
   const {
     muted,
     toggleMuted,
+    audioSuspended,
     setCrowdVolume,
     setVoiceVolume,
     startKeepAliveAudio,
@@ -2333,6 +2334,11 @@ export default function HostScreen() {
         >
           {isFullscreen ? '⤡' : '⤢'}
         </button>
+      )}
+      {audioSuspended && (
+        <div data-testid="audio-suspended-chip" style={hostStyles.audioSuspendedChip}>
+          🔇 Άγγιξε την οθόνη για ήχο
+        </div>
       )}
       {/* Task 192 - the climb/duel phases' own chrome, rendered ONCE here
           instead of by each of the four views (was AnavasisChrome duplicated
