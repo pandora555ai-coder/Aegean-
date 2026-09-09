@@ -61,6 +61,14 @@ the climb finale never exercises SophistsRow's own `.out` elimination
 sink (that visual is TRIAL_REVEAL-only; climb's elimination look lives on
 `AnavasisClimbers` instead).
 
+Kept as a dev tool but NOT documented in CLAUDE.md (one-off verification,
+not a standing harness like `agora:wire-check`). Its build-time debug
+instrumentation is stripped: the per-socket `[debug] ... disconnected:`
+reason logs before the commit, and the catch-all
+`unhandledRejection`/`uncaughtException` console handlers afterwards —
+node's own default crash trace is better for a keeper script. `killGroup`'s
+`process.kill(-child.pid, 'SIGTERM')` is real cleanup, not debug, and stays.
+
 Bug found and fixed while building the harness: all six scripted players
 originally shared `avatarId: 'sphinx'`, silently hanging every join after
 the first on the server's `AVATAR_TAKEN` rejection (harness wasn't

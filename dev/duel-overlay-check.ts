@@ -23,9 +23,6 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
 import { ClientEvents, DUEL_WEAPONS, ServerEvents, type GameModeId, type RoomSettings } from '@game/shared';
 
-process.on('unhandledRejection', (err) => console.log('  unhandledRejection:', err));
-process.on('uncaughtException', (err) => console.log('  uncaughtException:', err));
-
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SERVER_DIR = path.join(ROOT, 'server');
 const CLIENT_DIR = path.join(ROOT, 'client');
