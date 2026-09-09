@@ -1,3 +1,9 @@
+// Task 206 - Η Μνήμη της Αγοράς, a pure scene-generation module. Not wired
+// into any phase/payload/client code yet; re-exported here only so the
+// validation harness (server/scripts/agora-validate.ts) can reach it via
+// '@game/shared' like everything else in this package.
+export * from './agora.js';
+
 export const ClientEvents = {
   PING: 'client:ping',
   CREATE_ROOM: 'host:create_room',
