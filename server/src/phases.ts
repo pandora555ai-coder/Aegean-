@@ -1323,7 +1323,12 @@ function startClimbQuestion(room: Room): void {
     // draw is full-size): same verdict as the cap, from the last round's
     // rows. With no reveal left to announce a duel from, a shared highest
     // step goes straight to DUEL_PICK.
-    const verdict = resolveClimbAtCap(climb.lastResults ?? []);
+    // Task 205b - survivors only, same reason as the cap branch in
+    // endClimbQuestion: a spear duel resolved just before this (endDuelReveal
+    // -> here) leaves its loser in lastResults, and a same-round outright
+    // strike is in there too.
+    const eliminated = new Set(climb.eliminationOrder);
+    const verdict = resolveClimbAtCap((climb.lastResults ?? []).filter((result) => !eliminated.has(result.playerId)));
     for (const result of climb.lastResults ?? []) {
       climb.steps.set(result.playerId, result.stepAfter);
     }
@@ -1507,7 +1512,13 @@ export function endClimbQuestion(code: RoomCode): void {
   } else {
     next = nextAfterClimbRound(scored);
     if (next.kind === 'CONTINUE' && climb.roundsPlayed >= CLIMB_MAX_ROUNDS) {
-      next = resolveClimbAtCap(scored);
+      // Task 205b - over the SURVIVORS only (the same filter the Monte Carlo
+      // harness applies before this call): a row struck out this very round
+      // sits at step 0, so with everyone at 0 at the cap it would otherwise
+      // be a tie occupant - and pickDuelists could seat an eliminated player
+      // in the top duel, or crown them. The rows are the same objects, so the
+      // resolver's in-place held-occupant rewrite still lands in `scored`.
+      next = resolveClimbAtCap(scored.filter((result) => !eliminatedThisRound.has(result.playerId)));
       console.log(`room ${room.code} climb round cap (${CLIMB_MAX_ROUNDS}) reached — ${next.kind} at the highest step`);
     }
   }

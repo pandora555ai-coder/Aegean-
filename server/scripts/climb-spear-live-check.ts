@@ -13,7 +13,7 @@
 //
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { CLIMB_TOP, type Player } from '@game/shared';
+import { CLIMB_MAX_ROUNDS, CLIMB_TOP, type Player } from '@game/shared';
 import { initRealtime } from '../src/realtime.js';
 import '../src/modes/index.js';
 import { createRoom, deleteRoom, type Room } from '../src/state.js';
@@ -21,9 +21,10 @@ import { installTimerClock, pauseActiveTimer, remainingActiveTimerMs, resumeActi
 import {
   buildClimbQuestionHostPayload,
   buildClimbQuestionPlayerPayload,
+  buildClimbRevealPlayerPayload,
   buildGameOver,
 } from '../src/payloads.js';
-import { endClimbQuestion, startClimb, submitClimbAnswer } from '../src/phases.js';
+import { endClimbQuestion, startClimb, submitClimbAnswer, submitDuelPick } from '../src/phases.js';
 import { climbSpearRuleActive } from '../src/climb.js';
 
 // ---------------------------------------------------------------------------
@@ -408,6 +409,128 @@ function scenarioPauseMidStreak(): { streakBefore: number; streakAfterResume: nu
 }
 
 // ---------------------------------------------------------------------------
+// Task 205b review fixes - each scenario is the exact failure the fix kills.
+// ---------------------------------------------------------------------------
+
+// 205b item 1 (endClimbQuestion's cap branch): the round that hits
+// CLIMB_MAX_ROUNDS with everyone at step 0 and one player struck out that
+// same round. Before the fix, resolveClimbAtCap saw the struck row as a tie
+// occupant and (X being the fastest wrong answerer, hence first in the
+// scored order that pickDuelists' all-null answerRank tie keeps) seated the
+// ELIMINATED player in the top duel - and, on a lucky pick, crowned them,
+// with GAME_OVER then listing them twice (winner AND eliminated).
+function scenarioCapWithSameRoundStrike(): { duelExcludesEliminated: boolean; winnerNotEliminated: boolean; standingsUnique: boolean } {
+  const { room, clock, players } = setup(['X', 'B', 'C', 'D']);
+  const [x, b, c, d] = players;
+  check('scenario5: startClimb succeeds', startClimb(room));
+  driveUntil(clock, () => room.phase === 'CLIMB_QUESTION');
+  const climb = room.climb!;
+  for (const p of players) climb.steps.set(p.playerId, 0);
+  climb.spearCounters.set(x.playerId, 1); // X's second bad round at 0 is this one
+  climb.roundsPlayed = CLIMB_MAX_ROUNDS - 1; // this round IS the cap
+
+  const correctIndex = climb.questions[climb.questionIndex].correctIndex;
+  const wrongChoice = (correctIndex + 1) % 4;
+  submitAt(room, clock, x.playerId, wrongChoice, 100); // fastest wrong - first in scored order
+  submitAt(room, clock, b.playerId, wrongChoice, 200);
+  submitAt(room, clock, c.playerId, wrongChoice, 300);
+  submitAt(room, clock, d.playerId, wrongChoice, 400);
+
+  check('scenario5: reached CLIMB_REVEAL at the cap', room.phase === 'CLIMB_REVEAL');
+  check('scenario5: X struck out this round', climb.eliminationOrder.includes(x.playerId));
+  const duel = climb.duel;
+  check('scenario5: the cap tie went to a duel (three survivors all at 0)', duel !== null && duel.cause === 'top');
+  const duelExcludesEliminated = duel !== null && !duel.duelistIds.includes(x.playerId);
+  check('scenario5: the eliminated player is NOT a cap duelist', duelExcludesEliminated);
+  check('scenario5: the cap duel is the two fastest SURVIVORS (B, C)', duel !== null && duel.duelistIds[0] === b.playerId && duel.duelistIds[1] === c.playerId);
+
+  driveUntil(clock, () => room.phase === 'DUEL_PICK');
+  if (duel) {
+    submitDuelPick(room, duel.duelistIds[0], 'xifos');
+    submitDuelPick(room, duel.duelistIds[1], 'dory'); // xifos beats dory - duelist 0 wins, deterministic
+  }
+  driveUntil(clock, () => room.phase === 'GAME_OVER');
+  const gameOver = buildGameOver(room, climb.winnerPlayerId);
+  const winnerNotEliminated = climb.winnerPlayerId !== null && !climb.eliminationOrder.includes(climb.winnerPlayerId);
+  const standingsUnique = new Set(gameOver.standings.map((s) => s.playerId)).size === gameOver.standings.length && gameOver.standings.length === 4;
+  check('scenario5: the winner is not an eliminated player', winnerNotEliminated);
+  check('scenario5: GAME_OVER lists each player exactly once', standingsUnique);
+  check('scenario5: X ranked last', gameOver.standings[3]?.playerId === x.playerId);
+
+  deleteRoom(room.code);
+  return { duelExcludesEliminated, winnerNotEliminated, standingsUnique };
+}
+
+// 205b item 1 (startClimbQuestion's pool-exhaustion branch): a spear duel
+// whose loser is still in lastResults when the NEXT question start finds the
+// pool empty and resolves the cap from those rows. Before the fix the loser
+// (first in scored order) was seated in the top duel a second time.
+function scenarioPoolExhaustionAfterSpearDuel(): { capDuelExcludesLoser: boolean } {
+  const { room, clock, players } = setup(['A', 'B', 'C', 'D']);
+  const [a, b, c, d] = players;
+  check('scenario6: startClimb succeeds', startClimb(room));
+  driveUntil(clock, () => room.phase === 'CLIMB_QUESTION');
+  const climb = room.climb!;
+  for (const p of players) climb.steps.set(p.playerId, 0);
+  climb.spearCounters.set(a.playerId, 1);
+  climb.spearCounters.set(b.playerId, 1); // A and B both struck this round -> spear duel
+  climb.questions = climb.questions.slice(0, climb.questionIndex + 1); // this is the LAST question in the pool
+
+  const correctIndex = climb.questions[climb.questionIndex].correctIndex;
+  const wrongChoice = (correctIndex + 1) % 4;
+  submitAt(room, clock, a.playerId, wrongChoice, 100);
+  submitAt(room, clock, b.playerId, wrongChoice, 200);
+  submitAt(room, clock, c.playerId, wrongChoice, 300);
+  submitAt(room, clock, d.playerId, wrongChoice, 400);
+
+  check('scenario6: a spear duel between A and B is pending', climb.duel?.cause === 'spear' && climb.duel.duelistIds[0] === a.playerId && climb.duel.duelistIds[1] === b.playerId);
+  driveUntil(clock, () => room.phase === 'DUEL_PICK');
+  submitDuelPick(room, a.playerId, 'xifos');
+  submitDuelPick(room, b.playerId, 'dory'); // A wins, B is eliminated
+  // endDuelReveal eliminates B and, synchronously, startClimbQuestion finds
+  // the pool empty and opens the cap duel - so the instant B is out, the
+  // room is already in the NEXT duel's DUEL_PICK.
+  driveUntil(clock, () => climb.eliminationOrder.includes(b.playerId));
+  check('scenario6: B eliminated by the spear duel', climb.eliminationOrder.includes(b.playerId));
+  check('scenario6: pool exhausted -> straight into the cap duel', room.phase === 'DUEL_PICK' && climb.duel?.cause === 'top');
+  const capDuelExcludesLoser = climb.duel !== null && !climb.duel.duelistIds.includes(b.playerId);
+  check('scenario6: the spear-duel loser is NOT a cap duelist', capDuelExcludesLoser);
+  check('scenario6: the cap duel is A vs C (the two fastest survivors)', climb.duel?.duelistIds[0] === a.playerId && climb.duel?.duelistIds[1] === c.playerId);
+  void d;
+
+  deleteRoom(room.code);
+  return { capDuelExcludesLoser };
+}
+
+// 205b item 6 (payload boundary): a fastest-correct arrival from CLIMB_TOP-1
+// scores stepAfter = CLIMB_TOP+1 in the mechanic (kept on the host row); the
+// phone's yourStep must be clamped to the board, or ClimbStrip fills no
+// notch at all for the winner.
+function scenarioTopOverflowPhoneStep(): { hostStepAfter: number; phoneYourStep: number } {
+  const { room, clock, players } = setup(['W', 'B', 'C', 'D']);
+  const [w, b, c, d] = players;
+  check('scenario7: startClimb succeeds', startClimb(room));
+  driveUntil(clock, () => room.phase === 'CLIMB_QUESTION');
+  const climb = room.climb!;
+  climb.steps.set(w.playerId, CLIMB_TOP - 1);
+  for (const p of [b, c, d]) climb.steps.set(p.playerId, 3);
+  const correctIndex = climb.questions[climb.questionIndex].correctIndex;
+  submitAt(room, clock, w.playerId, correctIndex, 50);
+  submitAt(room, clock, b.playerId, correctIndex, 500);
+  submitAt(room, clock, c.playerId, correctIndex, 600);
+  submitAt(room, clock, d.playerId, correctIndex, 700);
+
+  const hostStepAfter = climb.lastResults!.find((r) => r.playerId === w.playerId)!.stepAfter;
+  const phone = buildClimbRevealPlayerPayload(room, w.playerId)!;
+  check('scenario7: the host row keeps the unclamped mechanic value (CLIMB_TOP+1)', hostStepAfter === CLIMB_TOP + 1);
+  check('scenario7: the phone yourStep is clamped to top', phone.yourStep === CLIMB_TOP && phone.yourStep <= phone.top);
+  check('scenario7: W is the winner', climb.winnerPlayerId === w.playerId);
+
+  deleteRoom(room.code);
+  return { hostStepAfter, phoneYourStep: phone.yourStep };
+}
+
+// ---------------------------------------------------------------------------
 function main(): void {
   initRealtime(express(), { origin: true });
   const realLog = console.log;
@@ -420,6 +543,9 @@ function main(): void {
   const r2b = scenarioTopWinWithSimultaneousElimination();
   const r3 = scenarioGateAtThree();
   const r4 = scenarioPauseMidStreak();
+  const r5 = scenarioCapWithSameRoundStrike();
+  const r6 = scenarioPoolExhaustionAfterSpearDuel();
+  const r7 = scenarioTopOverflowPhoneStep();
 
   console.log = realLog;
   console.warn = realWarn;
@@ -436,6 +562,10 @@ function main(): void {
     `spectator payloads checked = ${spectatorPayloadsChecked}, violations = ${spectatorFieldViolations}`);
   console.log(`criterion 4 (pause mid-streak): streak before=${r4.streakBefore} afterResume=${r4.streakAfterResume} afterRound=${r4.streakAfterRound}; ` +
     `remaining before=${r4.remainingBefore}ms afterResume=${r4.remainingAfterResume}ms (drift=${r4.remainingAfterResume - r4.remainingBefore}ms)`);
+
+  console.log(`205b cap + same-round strike: duel excludes eliminated=${r5.duelExcludesEliminated}; winner not eliminated=${r5.winnerNotEliminated}; standings unique=${r5.standingsUnique}`);
+  console.log(`205b pool exhaustion after spear duel: cap duel excludes loser=${r6.capDuelExcludesLoser}`);
+  console.log(`205b top overflow: host stepAfter=${r7.hostStepAfter}, phone yourStep=${r7.phoneYourStep}`);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) {

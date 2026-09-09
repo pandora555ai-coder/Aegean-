@@ -650,6 +650,17 @@ export function buildTrialRevealPayload(room: Room): TrialRevealShowPayload | nu
 // this is what makes their figure disappear from the TV board from the
 // round after the one that struck them out (the reveal that struck them
 // still shows them, fading, via ClimbRevealHostResult.eliminated instead).
+// Task 205b - the phone's own step, clamped to the board. The mechanic's
+// stepAfter is UNclamped above the top (a +2 from CLIMB_TOP-1 is 11, and the
+// host row keeps that: it is the true value GAME_OVER's step order reads and
+// the TV clamps at render via visualStepFor), but the phone's ClimbStrip
+// fills the ONE notch equal to yourStep, so 11 painted the winner's strip
+// exactly like step 0 - empty. Clamped here, at the payload boundary, never
+// in climb.ts.
+function phoneStep(step: number): number {
+  return Math.min(CLIMB_TOP, step);
+}
+
 function climbSteps(room: Room): ClimbStanding[] {
   const climb = room.climb;
   if (!climb) {
@@ -708,7 +719,7 @@ export function buildClimbQuestionPlayerPayload(room: Room, playerId: string): C
     top: CLIMB_TOP,
     climbing: climb.climberIds.includes(playerId),
     eliminated: climb.eliminationOrder.includes(playerId),
-    yourStep: climb.steps.get(playerId) ?? 0,
+    yourStep: phoneStep(climb.steps.get(playerId) ?? 0),
     lockedIn: climb.lockIns.has(playerId),
     paused: room.paused,
     pausedByName: room.pausedByName,
@@ -772,7 +783,7 @@ export function buildClimbRevealPlayerPayload(room: Room, playerId: string): Cli
     yourCorrect: own?.correct ?? false,
     yourStepBefore: own?.stepBefore ?? step,
     yourDelta: own?.delta ?? 0,
-    yourStep: own?.stepAfter ?? step,
+    yourStep: phoneStep(own?.stepAfter ?? step),
     winnerPlayerId: climb.winnerPlayerId,
     winnerName: climb.winnerPlayerId ? (room.players.get(climb.winnerPlayerId)?.name ?? null) : null,
     duelPending: pendingDuelistIds(room) !== null,

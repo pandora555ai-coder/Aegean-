@@ -2536,7 +2536,7 @@ export interface ClimbRevealPlayerPayload {
   yourCorrect: boolean;
   yourStepBefore: number;
   yourDelta: number;
-  yourStep: number; // after this round
+  yourStep: number; // after this round - clamped to `top` (Task 205b; the host row's stepAfter is not)
   winnerPlayerId: string | null;
   winnerName: string | null;
   // Task 188b - a duel follows this reveal, and whether THIS phone is in it.
