@@ -50,6 +50,7 @@ import {
   refreshRoomTtl,
   removePlayer,
   resetRoomForNewGame,
+  roomHasOnlyBots,
   updateAudioVolume,
   updateRoomSettings,
   type Room,
@@ -642,6 +643,41 @@ function getHostRoomForSocket(
   return room;
 }
 
+// The one place LOBBY -> the first question happens - vip:start_game and
+// Task 217's auto-start both call only this, so a bot-room's unaided start
+// runs the exact same path a human's Έναρξη does.
+function startGame(room: Room): void {
+  buildRoomQuestions(room);
+  room.currentQuestionIndex = 0;
+  // Task 52 - through the MODE, so this never has to know which phase a
+  // game opens on. For 'quiz' this is still enterQuestionOrPowerUp.
+  modeForRoom(room).start(room);
+}
+
+// Task 217 - a room made of NOTHING but the bots it was created with can
+// start itself the moment they've ALL joined: no VIP exists to press
+// Έναρξη (a bot never claims VIP - see claimVipIfVacant's callers), so
+// nobody ever could. Called after every player:join; a no-op unless the
+// room is still in LOBBY, actually asked for bots, holds ONLY bots right
+// now (roomHasOnlyBots - a single human anywhere in the roster keeps this
+// false permanently, by design), and the FULL requested count - not just
+// canStartRoom's mode minimum, which a partial roster (e.g. 2 of 3 bots,
+// already >= quiz's MIN_PLAYERS) would satisfy early - is connected.
+// canStartRoom is still checked too: belt-and-suspenders against a
+// requestedBotCount somehow under the mode's own floor.
+function maybeAutoStartBotRoom(room: Room): void {
+  if (
+    room.phase === 'LOBBY' &&
+    room.requestedBotCount > 0 &&
+    roomHasOnlyBots(room) &&
+    getConnectedPlayers(room).length >= room.requestedBotCount &&
+    canStartRoom(room)
+  ) {
+    console.log(`room ${room.code} auto-starting - ${room.players.size} bot(s), no human ever joined`);
+    startGame(room);
+  }
+}
+
 io.on('connection', (socket) => {
   console.log(`client connected: ${socket.id}`);
 
@@ -663,6 +699,9 @@ io.on('connection', (socket) => {
 
     // Task 176 - ?bot=N: never trust the client's number, clamp to MAX_BOTS.
     const botCount = Math.max(0, Math.min(MAX_BOTS, Math.floor(payload?.botCount ?? 0)));
+    // Task 217 - persisted so vip:play_again/vip:reset_to_lobby know how
+    // many bots to re-spawn once cleanupRoomBots has emptied the roster.
+    room.requestedBotCount = botCount;
     if (botCount > 0) {
       spawnBots(room.code, botCount);
     }
@@ -824,6 +863,12 @@ io.on('connection', (socket) => {
     socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code, avatarId, isPresetName, phase: room.phase });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code} as ${avatarId}`);
     broadcastLobbyUpdate(code);
+    // Task 217 - checked AFTER the lobby update above (so the roster that
+    // completed the roster is visible first) and BEFORE the state:sync
+    // check below (so this join's own STATE_SYNC, if it triggered the
+    // start, already reflects the game that just began rather than a
+    // LOBBY it's no longer in).
+    maybeAutoStartBotRoom(room);
     if (room.phase !== 'LOBBY') {
       const syncPayload = buildStateSyncForPlayer(room, playerId);
       if (syncPayload) {
@@ -867,15 +912,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    buildRoomQuestions(room);
-    room.currentQuestionIndex = 0;
     // Sets the stage, the phase and emits phase:changed itself - stage 1
     // happens not to use power-ups today, but routing even the first question
     // through the one gate keeps that a property of the stage table rather
     // than an assumption spread across callers.
-    // Task 52 - through the MODE, so this handler never has to know which
-    // phase a game opens on. For 'quiz' this is still enterQuestionOrPowerUp.
-    modeForRoom(room).start(room);
+    startGame(room);
   });
 
   socket.on(ClientEvents.VIP_UPDATE_SETTINGS, (payload) => {
@@ -1458,6 +1499,14 @@ io.on('connection', (socket) => {
     }
 
     resetRoomForNewGame(room);
+    // Task 217 - finishGame already ran cleanupRoomBots on the way to this
+    // GAME_OVER (the only phase this fires from), so the roster is bot-less
+    // right now; re-spawn whatever count this room was created with, same
+    // as host:create_room, so a bot-only room survives play_again instead
+    // of coming back with canStart permanently false.
+    if (room.requestedBotCount > 0) {
+      spawnBots(room.code, room.requestedBotCount);
+    }
     armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     emitCrowdIntensity(room);
@@ -1488,6 +1537,12 @@ io.on('connection', (socket) => {
     // fresh LOBBY this produces.
     cleanupRoomBots(room.code);
     resetRoomForNewGame(room);
+    // Task 217 - same re-spawn as vip:play_again above, so an abandoned
+    // bot game comes back to a lobby that can actually start again rather
+    // than a canStart:false dead end.
+    if (room.requestedBotCount > 0) {
+      spawnBots(room.code, room.requestedBotCount);
+    }
     armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     emitCrowdIntensity(room);

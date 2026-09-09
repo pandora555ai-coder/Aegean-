@@ -273,6 +273,13 @@ export interface Room {
   activeTimer: ActiveTimer | null;
   lastReveal: RevealSnapshot | null;
   settings: RoomSettings;
+  // Task 217 - the `?bot=N` the room was CREATED with (host:create_room's
+  // botCount, already clamped to MAX_BOTS). 0 for a room nobody asked bots
+  // for. PERSISTS across resetRoomForNewGame (a room preference, same as
+  // `settings`/`audioVolume` - never reset there) so vip:play_again and
+  // vip:reset_to_lobby know how many bots to re-spawn once cleanupRoomBots
+  // has already emptied the roster of them.
+  requestedBotCount: number;
   vipPlayerId: string | null;
   // A boolean flag, not a GamePhase - the phase itself stays QUESTION/
   // REVEAL/STEAL throughout a pause, so no existing phase guard needs
@@ -407,6 +414,7 @@ export function createRoom(hostSocketId: string): Room {
     activeTimer: null,
     lastReveal: null,
     settings: { ...DEFAULT_ROOM_SETTINGS },
+    requestedBotCount: 0,
     vipPlayerId: null,
     paused: false,
     pausedByName: null,
@@ -686,6 +694,19 @@ export function clearLobbyDisconnectGrace(room: Room, playerId: string): void {
 // which is exactly the "second count" this task exists to remove.
 export function canStartRoom(room: Room): boolean {
   return getConnectedPlayers(room).length >= modeForRoom(room).minPlayers;
+}
+
+// Task 217 - "the room contains ONLY bots", the auto-start gate's other
+// half (alongside canStartRoom). `false` on an EMPTY roster too (size 0
+// vacuously satisfies `.every`, which would wrongly read as "only bots"
+// the instant a room is created and before its first bot has even
+// connected) - a room must have at least one player, and every one of them
+// must be a bot, for this to hold. A single human anywhere in the roster -
+// connected or not, since a disconnected human's seat is still theirs -
+// makes this false, which is exactly what keeps auto-start from ever
+// firing once a human has joined.
+export function roomHasOnlyBots(room: Room): boolean {
+  return room.players.size > 0 && [...room.players.values()].every((player) => player.isBot);
 }
 
 export function isVip(room: Room, playerId: string): boolean {
