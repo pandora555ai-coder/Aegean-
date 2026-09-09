@@ -1,5 +1,6 @@
 import {
   BLITZ_STATEMENT_COUNT,
+  FULL_AGORA_SCORE_SCALE,
   FULL_DRAW_ROUNDS_BY_LENGTH,
   FULL_GUESS_SCORE_SCALE,
   FULL_NUMERIC_QUESTION_COUNT,
@@ -198,7 +199,7 @@ function beginStage(room: Room): boolean {
       startBlitzSegment(room);
       return true;
     case 'agora':
-      startAgoraSegment(room);
+      startAgoraSegment(room, FULL_AGORA_SCORE_SCALE);
       return true;
     case 'draw':
       if (startDrawSegment(room, drawRoundCount(room), FULL_GUESS_SCORE_SCALE)) {

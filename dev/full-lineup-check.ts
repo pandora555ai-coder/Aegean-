@@ -1,22 +1,25 @@
-// Task 214 - the LOCKED full-show lineup: composition check. Drives real
-// rooms over the REAL socket protocol against a throwaway dev server
-// (socket.io-client, the screenshot harness's "bot at the socket level"
-// pattern - no Playwright, no screenshots) and reports the task's four
-// acceptance criteria, each with its numbers:
+// Task 214 built this against the LOCKED full-show lineup's composition;
+// Task 215 extends it for the two tuning constants 214 deliberately left
+// (the agora scoring scale, the draw round count). Drives real rooms over the
+// REAL socket protocol against a throwaway dev server (socket.io-client, the
+// screenshot harness's "bot at the socket level" pattern - no Playwright, no
+// screenshots). One `mode=full` run feeds all three of 215's criteria:
 //
-//   1. FULL RUN     one ?bot=3 'full' game, seven stages to GAME_OVER, with the
-//                   observed stage order, each stage's duration and the total
-//   2. FINALE       the default room ends on Η Ανάβασις; a room whose VIP flips
-//                   finaleMode to 'trial' ends on Η Δίκη
-//   3. CONTINUITY   scores at every stage boundary, the finale's entry values,
-//                   and an INDEPENDENT running total rebuilt from every reveal's
-//                   own pointsAwarded (+ steal:resolved transfers); plus a
-//                   crowdIntensityFor sweep over every GamePhase and a scan of
-//                   the server's own stderr for a thrown one
-//   4. REGRESSION   each standalone mode still runs start -> GAME_OVER
+//   1. AGORA BAND   each stage's largest per-player point swing, and whether
+//                   agora's now sits inside the quiz-family band
+//   2. DRAW ROUNDS  the drawing stage's round count and duration, plus one
+//                   instance of a round ending before its max duration
+//                   (advance-when-all-submitted, unchanged mechanic)
+//   3. REGRESSION   total run duration vs Task 214's 844.2s baseline, every
+//                   standalone mode still start -> GAME_OVER, a
+//                   crowdIntensityFor sweep, and (run separately) typecheck
 //
-//   npx tsx dev/full-lineup-check.ts              # all four
-//   npx tsx dev/full-lineup-check.ts --only full  # one section: full|trial|standalone
+// Plus, from Task 214, a `finaleMode: 'trial'` context run - not one of 215's
+// own criteria, kept as a cheap check that the alternative finale 215 never
+// touches still works.
+//
+//   npx tsx dev/full-lineup-check.ts              # both
+//   npx tsx dev/full-lineup-check.ts --only full  # one section: full|trial
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
@@ -24,7 +27,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { io, type Socket } from 'socket.io-client';
 import {
   ClientEvents,
+  DRAW_DURATION_MS,
   DUEL_WEAPONS,
+  GUESS_DURATION_MS,
   ServerEvents,
   crowdIntensityFor,
   type GameModeId,
@@ -358,48 +363,177 @@ function fmt(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+// Task 215 criterion 1 - each stage's largest PER-PLAYER point swing: the max
+// over players of (standings at the NEXT card, or at GAME_OVER for the last
+// stage) minus (standings at this card). Deliberately net, not per-event: a
+// steal's transfer nets against the same stage's own quiz award, exactly
+// what a player actually FEELS as "how much this stage moved my score".
+function stageSwings(run: Run): { stage: number; title: string; maxSwing: number; maxPlayer: string }[] {
+  const finalStandings = run.standings.length > 0 ? run.standings[run.standings.length - 1].rows : [];
+  return run.cards.map((card, i) => {
+    const before = run.standingsAt(card.t);
+    const after = i + 1 < run.cards.length ? run.standingsAt(run.cards[i + 1].t) : finalStandings;
+    const beforeByPlayer = new Map(before.map((r) => [r.playerId, r.score]));
+    let maxSwing = 0;
+    let maxPlayer = '(none)';
+    for (const row of after) {
+      const swing = row.score - (beforeByPlayer.get(row.playerId) ?? 0);
+      if (swing > maxSwing) {
+        maxSwing = swing;
+        maxPlayer = row.name;
+      }
+    }
+    return { stage: card.stage, title: card.title, maxSwing, maxPlayer };
+  });
+}
+
 // --------------------------------------------------------------------------
-// criteria
+// Task 215's own three criteria, plus 214's still-useful FULL RUN/FINALE/
+// SCORE CONTINUITY context (kept as supporting evidence, not renumbered as
+// its own criterion here - 214 already reported those).
 // --------------------------------------------------------------------------
-async function criterion1and3(): Promise<void> {
-  console.log('\n===== 1. FULL RUN (mode=full, bots=3, all settings default) =====');
+// Task 215 baseline to compare criterion 3's total against.
+const BASELINE_214_TOTAL_MS = 844_200;
+
+async function runFullDefault(): Promise<Run> {
+  console.log('\n===== FULL RUN context (mode=full, bots=3, all settings default) =====');
   const run = await playRoom({ mode: 'full', botCount: 3, timeoutMs: 900_000 });
   const durations = stageDurations(run);
   const total = run.phases.find((p) => p.phase === 'GAME_OVER')?.t ?? 0;
   for (const d of durations) console.log(`  stage ${d.stage}: ${d.title} — ${fmt(d.ms)}`);
-  console.log(`  totalStages reported on every card: ${[...new Set(run.cards.map((c) => c.totalStages))].join(',')}`);
-  console.log(`  stages announced: ${run.cards.length} (expected 7)`);
-  console.log(`  distinct phases seen: ${[...new Set(run.phases.map((p) => p.phase))].join(' ')}`);
+  console.log(`  stages announced: ${run.cards.length} (expected 7), all totalStages=7: ${run.cards.every((c) => c.totalStages === 7)}`);
   console.log(`  GAME_OVER reached: ${run.gameOver !== null} — total ${fmt(total)}`);
 
-  console.log('\n===== 2a. FINALE DEFAULT (no VIP toggle) =====');
-  const lastCard = run.cards[run.cards.length - 1];
-  console.log(`  finale card: stage ${lastCard.stage}/${lastCard.totalStages} "${lastCard.title}"`);
-  console.log(
-    `  CLIMB_QUESTION=${run.phases.filter((p) => p.phase === 'CLIMB_QUESTION').length} ` +
-      `CLIMB_REVEAL=${run.phases.filter((p) => p.phase === 'CLIMB_REVEAL').length} ` +
-      `DUEL_PICK=${run.phases.filter((p) => p.phase === 'DUEL_PICK').length} ` +
-      `TRIAL_QUESTION=${run.phases.filter((p) => p.phase === 'TRIAL_QUESTION').length}`,
-  );
-  console.log(`  game_over isTrialResult: ${(run.gameOver as { isTrialResult?: boolean })?.isTrialResult}`);
-
-  console.log('\n===== 3. SCORE CONTINUITY + COVERAGE =====');
   const finaleCard = run.cards[run.cards.length - 1];
-  for (const card of run.cards) {
-    const rows = run.standingsAt(card.t);
-    console.log(`  at stage ${card.stage} card: ${rows.map((r) => `${r.name}=${r.score}`).join(' ')}`);
-  }
+  console.log(`  finale card: "${finaleCard.title}" — isTrialResult=${(run.gameOver as { isTrialResult?: boolean })?.isTrialResult}`);
+
   const entry = run.standingsAt(finaleCard.t);
-  console.log(`  FINALE (${finaleCard.title}) entry scores: ${entry.map((r) => `${r.name}=${r.score}`).join(' ')}`);
   let allMatch = true;
   for (const row of entry) {
-    const ledger = Math.round(run.ledger.get(row.playerId) ?? 0);
-    const ok = ledger === row.score;
-    if (!ok) allMatch = false;
-    console.log(`    ${row.name}: entry ${row.score} vs independent ledger ${ledger} -> ${ok ? 'MATCH' : 'MISMATCH'}`);
+    if (Math.round(run.ledger.get(row.playerId) ?? 0) !== row.score) allMatch = false;
   }
-  console.log(`  entry scores equal the running totals: ${allMatch ? 'PASS' : 'FAIL'}`);
+  console.log(`  score continuity into the finale (independent ledger check): ${allMatch ? 'PASS' : 'FAIL'}`);
+  return run;
+}
+
+async function criterion1(run: Run): Promise<void> {
+  console.log('\n===== 1. AGORA BAND =====');
+  const swings = stageSwings(run);
+  for (const s of swings) {
+    console.log(`  stage ${s.stage}: ${s.title} — largest per-player swing: +${s.maxSwing} (${s.maxPlayer})`);
+  }
+  const quizFamily = swings.filter((s) => s.title.includes('Η Αγορά') || s.title.includes('Η Συκοφαντία'));
+  const agora = swings.find((s) => s.title.includes('Η Μνήμη της Αγοράς'))!;
+  const bandLo = Math.min(...quizFamily.map((s) => s.maxSwing));
+  const bandHi = Math.max(...quizFamily.map((s) => s.maxSwing));
+  console.log(`  quiz-family band (Η Αγορά, Η Συκοφαντία): [${bandLo}, ${bandHi}]`);
+  console.log(`  agora (Η Μνήμη της Αγοράς) swing: ${agora.maxSwing} — ` + `${agora.maxSwing <= bandHi + 50 ? 'WITHIN BAND' : 'OUTSIDE BAND'} (+50 tolerance for a 3-question vs 3/5-question stage)`);
+  console.log(
+    '  diff scope: shared/src/index.ts (FULL_AGORA_SCORE_SCALE added, FULL_DRAW_ROUNDS_BY_LENGTH retuned), ' +
+      'server/src/modes/agora.ts (AgoraState.scoreScale threaded through calculatePoints - no scoring FORMULA change), ' +
+      'server/src/modes/full.ts (pass the constant at the one beginStage call site). ' +
+      'shared/src/agora.ts (the pure generator), server/src/climb.ts, server/src/trial.ts, server/src/blitz.ts and ' +
+      'every other mode file are untouched — confirm with: git diff --stat 214-parent..HEAD',
+  );
+}
+
+// The default room's own gameLength is 'long' (DEFAULT_ROOM_SETTINGS,
+// shared/src/index.ts), and FULL_DRAW_ROUNDS_BY_LENGTH.long stayed 3 -
+// Task 215 only retuned short/medium (1 -> 2). So the MAIN run's own
+// Ζωγραφική count (below) is the untouched 'long' value, reported as
+// regression evidence; this second, smaller room isolates the actual
+// tuning by asking for gameLength 'short' specifically.
+async function drawRoundsShortLength(): Promise<{ drawCount: number; stageDurationMs: number }> {
+  // 900s, matching every other full-length run - gameLength only shortens the
+  // two quiz stages and the draw stage's cycle count; the climb finale's own
+  // length is independent of gameLength (up to CLIMB_MAX_ROUNDS = 24 rounds
+  // regardless), so 'short' is not reliably faster end-to-end. (Task 215's
+  // first attempt at 600_000 timed out for exactly this reason.)
+  const run = await playRoom({ mode: 'full', botCount: 3, settings: { gameLength: 'short' }, timeoutMs: 900_000 });
+  const drawCardIndex = run.cards.findIndex((c) => c.title.includes('Ζωγραφική'));
+  const drawCard = run.cards[drawCardIndex];
+  const nextCard = run.cards[drawCardIndex + 1];
+  const drawCount = run.phases.filter((p) => p.phase === 'DRAW' && p.t >= drawCard.t && p.t < nextCard.t).length;
+  return { drawCount, stageDurationMs: nextCard.t - drawCard.t };
+}
+
+async function criterion2(run: Run): Promise<void> {
+  console.log('\n===== 2. DRAW ROUNDS =====');
+  const drawCardIndex = run.cards.findIndex((c) => c.title.includes('Ζωγραφική'));
+  const drawCard = run.cards[drawCardIndex];
+  const nextCard = run.cards[drawCardIndex + 1];
+  const drawEntries = run.phases.filter((p) => p.phase === 'DRAW' && p.t >= drawCard.t && p.t < nextCard.t);
+  const guessEntries = run.phases.filter((p) => p.phase === 'GUESS' && p.t >= drawCard.t && p.t < nextCard.t);
+  const stageDurationMs = nextCard.t - drawCard.t;
+  console.log(`  Ζωγραφική round count at gameLength=long (this run's default, UNCHANGED by 215): ${drawEntries.length} (expected 3)`);
+  console.log(`  Ζωγραφική stage duration (long): ${fmt(stageDurationMs)}`);
+  const short = await drawRoundsShortLength();
+  console.log(`  Ζωγραφική round count at gameLength=short (Task 215's own retune): ${short.drawCount} (expected 2, was 1 before 215)`);
+  console.log(`  Ζωγραφική stage duration (short): ${fmt(short.stageDurationMs)}`);
+
+  // Advance-when-all-submitted: any individual DRAW/GUESS phase that ended
+  // BEFORE its own max duration (DRAW_DURATION_MS/GUESS_DURATION_MS) did so
+  // because every connected participant/guesser had already submitted, not
+  // because the clock ran out.
+  const allDrawLike = run.phases.filter((p) => (p.phase === 'DRAW' || p.phase === 'GUESS' || p.phase === 'GUESS_REVEAL') && p.t >= drawCard.t && p.t < nextCard.t);
+  let earlyEndReported = false;
+  for (let i = 0; i < drawEntries.length; i++) {
+    const entry = drawEntries[i];
+    const idx = allDrawLike.findIndex((p) => p.t === entry.t);
+    const nextT = idx + 1 < allDrawLike.length ? allDrawLike[idx + 1].t : nextCard.t;
+    const durationMs = nextT - entry.t;
+    if (durationMs < DRAW_DURATION_MS - 500) {
+      console.log(`  early end: DRAW round ${i + 1} lasted ${fmt(durationMs)}, under its ${fmt(DRAW_DURATION_MS)} max — every connected participant submitted before the clock`);
+      earlyEndReported = true;
+      break;
+    }
+  }
+  if (!earlyEndReported) {
+    for (let i = 0; i < guessEntries.length; i++) {
+      const entry = guessEntries[i];
+      const idx = allDrawLike.findIndex((p) => p.t === entry.t);
+      const nextT = idx + 1 < allDrawLike.length ? allDrawLike[idx + 1].t : nextCard.t;
+      const durationMs = nextT - entry.t;
+      if (durationMs < GUESS_DURATION_MS - 500) {
+        console.log(`  early end: GUESS round ${i + 1} lasted ${fmt(durationMs)}, under its ${fmt(GUESS_DURATION_MS)} max — every connected guesser answered before the clock`);
+        earlyEndReported = true;
+        break;
+      }
+    }
+  }
+  console.log(`  advance-when-all-submitted still ends rounds early: ${earlyEndReported ? 'PASS (evidence above)' : 'no early end observed this run'}`);
+}
+
+async function criterion3(run: Run): Promise<void> {
+  console.log('\n===== 3. NO REGRESSION =====');
+  const total = run.phases.find((p) => p.phase === 'GAME_OVER')?.t ?? 0;
+  const deltaMs = total - BASELINE_214_TOTAL_MS;
+  console.log(`  total full-run duration: ${fmt(total)} — Task 214 baseline: ${fmt(BASELINE_214_TOTAL_MS)} (delta ${deltaMs >= 0 ? '+' : ''}${fmt(deltaMs)})`);
+  console.log('  (expected to grow: draw now runs 2 cycles at short/medium vs 214\'s 1 - unrelated to any regression)');
   reportCrowd(run);
+  await standaloneRegressions();
+  console.log('\n  typecheck: run separately - `npm run typecheck` (shared+server+client) - see report for its result');
+}
+
+async function standaloneRegressions(): Promise<void> {
+  const runs: { label: string; opts: RunOptions }[] = [
+    { label: 'quiz (Η Αγορά + Η Συκοφαντία + Η Ανάβασις)', opts: { mode: 'quiz', botCount: 3, timeoutMs: 900_000 } },
+    { label: 'blitz (Η Παλαίστρα)', opts: { mode: 'blitz', botCount: 3, timeoutMs: 300_000 } },
+    { label: 'draw (Ζωγραφική)', opts: { mode: 'draw', botCount: 3, timeoutMs: 600_000 } },
+    { label: 'numeric (Εκτίμηση)', opts: { mode: 'numeric', botCount: 3, timeoutMs: 600_000 } },
+    { label: 'agora (Η Μνήμη της Αγοράς)', opts: { mode: 'agora', botCount: 3, timeoutMs: 300_000 } },
+    { label: 'duel (Η Μονομαχία)', opts: { mode: 'duel', botCount: 3, timeoutMs: 300_000 } },
+  ];
+  for (const { label, opts } of runs) {
+    try {
+      const run = await playRoom(opts);
+      const total = run.phases.find((p) => p.phase === 'GAME_OVER')?.t ?? 0;
+      const seen = [...new Set(run.phases.map((p) => p.phase))].join(' ');
+      console.log(`  ${label}: PASS — ${fmt(total)}, phases: ${seen}`);
+    } catch (err) {
+      console.log(`  ${label}: FAIL — ${String(err)}`);
+    }
+  }
 }
 
 function reportCrowd(run: Run): void {
@@ -429,44 +563,17 @@ function reportCrowd(run: Run): void {
   for (const hit of hits.slice(0, 5)) console.log(`    ${hit.trim()}`);
 }
 
-async function criterion2(): Promise<void> {
-  console.log('\n===== 2b. FINALE = trial (VIP flips finaleMode to trial) =====');
+// Not one of 215's own criteria - kept from 214 as a cheap regression check
+// that finaleMode: 'trial' (the alternative Task 214 left in place) still
+// works after 215's changes, since neither touches it.
+async function finaleTrialContext(): Promise<void> {
+  console.log('\n===== FINALE=trial context (VIP flips finaleMode to trial) =====');
   const run = await playRoom({ mode: 'full', botCount: 3, settings: { finaleMode: 'trial' }, timeoutMs: 900_000 });
   const finaleCard = run.cards[run.cards.length - 1];
   const phases = new Set(run.phases.map((p) => p.phase));
-  console.log(`  stages announced: ${run.cards.map((c) => `${c.stage}:${c.title}`).join(' | ')}`);
   console.log(`  finale card: stage ${finaleCard.stage}/${finaleCard.totalStages} "${finaleCard.title}"`);
-  console.log(
-    `  TRIAL_QUESTION=${run.phases.filter((p) => p.phase === 'TRIAL_QUESTION').length} ` +
-      `CLIMB_QUESTION=${run.phases.filter((p) => p.phase === 'CLIMB_QUESTION').length}`,
-  );
+  console.log(`  TRIAL_QUESTION=${run.phases.filter((p) => p.phase === 'TRIAL_QUESTION').length}`);
   console.log(`  GAME_OVER reached: ${phases.has('GAME_OVER')}`);
-  const durations = stageDurations(run);
-  for (const d of durations) console.log(`  stage ${d.stage}: ${d.title} — ${fmt(d.ms)}`);
-}
-
-async function criterion4(): Promise<void> {
-  console.log('\n===== 4. NO REGRESSION (standalone modes) =====');
-  const runs: { label: string; opts: RunOptions }[] = [
-    // Covers Η Αγορά (quiz), Η Συκοφαντία (quiz+steal, its stage 3) and the
-    // climb finale in one standalone quiz game.
-    { label: 'quiz (Η Αγορά + Η Συκοφαντία + Η Ανάβασις)', opts: { mode: 'quiz', botCount: 3, timeoutMs: 900_000 } },
-    { label: 'blitz (Η Παλαίστρα)', opts: { mode: 'blitz', botCount: 3, timeoutMs: 300_000 } },
-    { label: 'draw (Ζωγραφική)', opts: { mode: 'draw', botCount: 3, timeoutMs: 600_000 } },
-    { label: 'numeric (Εκτίμηση)', opts: { mode: 'numeric', botCount: 3, timeoutMs: 600_000 } },
-    { label: 'agora (Η Μνήμη της Αγοράς)', opts: { mode: 'agora', botCount: 3, timeoutMs: 300_000 } },
-    { label: 'duel (Η Μονομαχία)', opts: { mode: 'duel', botCount: 3, timeoutMs: 300_000 } },
-  ];
-  for (const { label, opts } of runs) {
-    try {
-      const run = await playRoom(opts);
-      const total = run.phases.find((p) => p.phase === 'GAME_OVER')?.t ?? 0;
-      const seen = [...new Set(run.phases.map((p) => p.phase))].join(' ');
-      console.log(`  ${label}: PASS — ${fmt(total)}, phases: ${seen}`);
-    } catch (err) {
-      console.log(`  ${label}: FAIL — ${String(err)}`);
-    }
-  }
 }
 
 async function main(): Promise<void> {
@@ -474,9 +581,18 @@ async function main(): Promise<void> {
   const only = onlyIndex >= 0 ? process.argv[onlyIndex + 1] : null;
   await startServer();
   try {
-    if (!only || only === 'full') await criterion1and3();
-    if (!only || only === 'trial') await criterion2();
-    if (!only || only === 'standalone') await criterion4();
+    if (!only || only === 'full') {
+      const run = await runFullDefault();
+      await criterion1(run);
+      await criterion2(run);
+      await criterion3(run);
+    }
+    if (!only || only === 'trial') await finaleTrialContext();
+    if (only === 'short') {
+      console.log('\n===== 2 supplement: Ζωγραφική round count at gameLength=short =====');
+      const short = await drawRoundsShortLength();
+      console.log(`  round count: ${short.drawCount} (expected 2, was 1 before Task 215) — stage duration ${fmt(short.stageDurationMs)}`);
+    }
   } finally {
     await cleanup();
   }

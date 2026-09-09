@@ -63,6 +63,11 @@ interface AgoraState {
   // detection (recordRoundAndPickLine) happens to fire, consumed the
   // instant AGORA_REVEAL's timer ends, exactly numeric's pendingSocratesLine.
   pendingSocratesLine: PickedLine | null;
+  // Task 215 - multiplies calculatePoints' raw total (endAgoraQuestion),
+  // same `scale` arg draw's endGuessRound already takes. Set once at
+  // startAgoraSegment, the call-site parameter (draw's guessScale pattern):
+  // standalone agora never passes one, so this stays 1 there.
+  scoreScale: number;
 }
 
 const agoraStateByRoom = new WeakMap<Room, AgoraState>();
@@ -107,6 +112,7 @@ export function prepareAgoraRound(room: Room): void {
     answers: new Map(),
     lastReveal: null,
     pendingSocratesLine: null,
+    scoreScale: 1,
   });
 }
 
@@ -116,9 +122,14 @@ function start(room: Room): void {
 }
 
 // The round as ONE STAGE of a longer show - identical to what `start` does
-// standalone, which is the point (numeric's startNumericSegment pattern).
-export function startAgoraSegment(room: Room): void {
-  startAgoraExpose(room, requireAgoraState(room));
+// standalone (scale defaulting to 1), which is the point (numeric's
+// startNumericSegment pattern). `scale` is a call-site parameter exactly like
+// draw's startDrawSegment(room, totalCycles, guessScale) - full.ts passes its
+// own FULL_AGORA_SCORE_SCALE (Task 215), standalone agora passes nothing.
+export function startAgoraSegment(room: Room, scale = 1): void {
+  const state = requireAgoraState(room);
+  state.scoreScale = scale;
+  startAgoraExpose(room, state);
 }
 
 function currentQuestion(state: AgoraState): AgoraQuestion {
@@ -321,9 +332,10 @@ export function recheckAgoraPhaseOnDisconnect(room: Room): void {
 // ---------------------------------------------------------------------------
 
 // Ends AGORA_QUESTION exactly once (phase-guarded). The scoring is the quiz's
-// own path verbatim: calculatePoints at scale 1 against
-// room.settings.questionTimeMs, then sortAndRankResults for the reveal's
-// correct-by-speed order and answerRank.
+// own path verbatim: calculatePoints against room.settings.questionTimeMs
+// (Task 215 - at state.scoreScale, 1 unless startAgoraSegment was given
+// one), then sortAndRankResults for the reveal's correct-by-speed order and
+// answerRank.
 export function endAgoraQuestion(code: RoomCode): void {
   const room = getRoom(code);
   if (!room || room.phase !== 'AGORA_QUESTION') {
@@ -341,7 +353,7 @@ export function endAgoraQuestion(code: RoomCode): void {
     const recorded = state.answers.get(player.playerId);
     const choice = recorded ? recorded.choice : null;
     const correct = choice === question.correctIndex;
-    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs);
+    const pointsAwarded = calculatePoints(correct, recorded?.timeMs ?? questionTimeMs, questionTimeMs, state.scoreScale);
     const scoreBefore = player.score;
     player.score += pointsAwarded;
     socratesInputs.push({

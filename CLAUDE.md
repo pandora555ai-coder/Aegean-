@@ -231,16 +231,19 @@ Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
 Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       the TV) -> 3 x (AGORA_QUESTION -> AGORA_REVEAL [-> SOCRATES]) -> GAME_OVER.
-      STANDALONE ONLY (VIP-selectable, `agora` in GameModeId) — the full-show
-      slot is a future decision; startAgoraSegment/prepareAgoraRound are the
+      VIP-selectable standalone (`agora` in GameModeId) AND, since Task 214,
+      full's stage 5 — startAgoraSegment/prepareAgoraRound are the
       composition entry points, numeric's pattern. Seed + AgoraScene +
       correctIndex are SERVER-ONLY (modes/agora.ts's AgoraState); the render
       spec leaves the server ONLY in agora_expose:show and inside each
       agora_reveal:show's HOST-ONLY `proof` (spec + subject) — an
       AGORA_QUESTION payload, fresh OR a reconnect's state:sync, never carries
       it (the market is closed). Question timer = room.settings.questionTimeMs,
-      reveal = REVEAL_DURATION_MS, scoring = calculatePoints at scale 1 +
-      sortAndRankResults (the quiz's path verbatim), answers over
+      reveal = REVEAL_DURATION_MS, scoring = calculatePoints +
+      sortAndRankResults (the quiz's path verbatim) at `scale` — 1 standalone,
+      `FULL_AGORA_SCORE_SCALE` in full (its own AgoraState.scoreScale field,
+      set once by startAgoraSegment's own `scale` parameter, draw's
+      guessScale pattern — Task 215, see Full below), answers over
       player:agora_submit (elapsed = questionTimeMs − remainingActiveTimerMs,
       pause-aware like the trial). Socrates: NO lines of its own (D1) — the
       quiz's generic recordRoundAndPickLine runs with difficulty 'medium' and
@@ -344,28 +347,41 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       'trial' ROW in every table regardless of which finale actually runs
       (buildStageAnnounce swaps the card's words off room.climb/room.trial).
       Task 214 added no mechanic and retuned nothing: blitz uses its own
-      BLITZ_* constants and scoring verbatim, and the agora segment still
-      scores at calculatePoints scale 1 (i.e. the standalone quiz's up-to-1500
-      band, NOT full's ~400 one) — a known imbalance left deliberately
-      untouched, not an oversight.
+      BLITZ_* constants and scoring verbatim (still true after 215 — blitz
+      was untouched). Task 214 left the agora segment scoring at scale 1 and
+      the draw stage at 1/1/3 rounds as KNOWN, deliberately-untouched gaps;
+      **Task 215 closed both** (see FULL_AGORA_SCORE_SCALE and
+      FULL_DRAW_ROUNDS_BY_LENGTH below) — tasks/215-report.md has the
+      before/after numbers.
       FULL_QUIZ_QUESTION_COUNTS (shared) gives EACH quiz stage's count by
       gameLength: short 2, medium 3, long 5 (so stages 1+6 total 2+2/3+3/5+5).
       Draw round count is gameLength-dependent since Task 150
-      (FULL_DRAW_ROUNDS_BY_LENGTH: short 1, medium 1, long 3 — standalone
-      draw's own room.settings.drawRounds setting is untouched); numeric
-      count (3) stays fixed regardless of length. Every segment count is
-      a CALL-SITE parameter (startDrawSegment(room, totalCycles, guessScale),
+      (FULL_DRAW_ROUNDS_BY_LENGTH: short 2, medium 2, long 3 — Task 215
+      retuned short/medium up from 1 to match the locked lineup's own
+      "Ζωγραφική x2 rounds"; standalone draw's own room.settings.drawRounds
+      setting is untouched); numeric count (3) stays fixed regardless of
+      length. Every segment count is a CALL-SITE parameter
+      (startDrawSegment(room, totalCycles, guessScale),
       prepareNumericGame(room, questionCount)) — standalone modes pass their
       own constants (standalone numeric still asks NUMERIC_QUESTION_COUNT =
       5), full.ts passes its own (FULL_NUMERIC_QUESTION_COUNT = 3); neither
       mode's shell branches on who's calling it.
-      FULL_QUIZ_SCORE_SCALE / FULL_GUESS_SCORE_SCALE (both
-      400/(BASE_POINTS+SPEED_BONUS_MAX)) put a max-speed quiz answer and a
-      max-speed guess at ~400 in FULL ONLY, matching DRAWER_MAX_POINTS —
-      passed as calculatePoints' existing `scale` arg (default 1, standalone
-      quiz/draw unaffected), never a mode check inside the scoring function.
+      FULL_QUIZ_SCORE_SCALE / FULL_GUESS_SCORE_SCALE / FULL_AGORA_SCORE_SCALE
+      (all three 400/(BASE_POINTS+SPEED_BONUS_MAX), kept as three separate
+      constants since each scales a different call site) put a max-speed
+      quiz answer, guess and agora answer at ~400 in FULL ONLY, matching
+      DRAWER_MAX_POINTS — passed as calculatePoints' existing `scale` arg
+      (default 1, standalone quiz/draw/agora unaffected), never a mode check
+      inside the scoring function. Agora's own scale (Task 215) is NOT a
+      stage-table field like quiz's `scoreScale` — it's a call-site parameter
+      on startAgoraSegment(room, scale), stored once per round on
+      AgoraState.scoreScale (modes/agora.ts), the same "call-site parameter,
+      not a mode check" shape startDrawSegment's guessScale already used.
       STEAL's transfer and the drawer's round(400*correct/eligible)
-      proportion stay INTENTIONALLY unscaled.
+      proportion stay INTENTIONALLY unscaled. Blitz's flat
+      BLITZ_CORRECT_POINTS/BLITZ_WRONG_POINTS are ALSO still unscaled in full
+      — Task 215 only closed the two gaps its own task named (agora scale,
+      draw rounds), not blitz's.
 
 `paused` is a boolean flag, NOT a phase.
 **There is no mid-game SCOREBOARD** — scores live in the TV's right-hand

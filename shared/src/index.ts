@@ -885,12 +885,14 @@ export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
 
 // Task 150 - how many draw-then-guess-everything cycles the full show's
 // drawing stage runs, by the VIP's gameLength. Same shape as
-// FULL_QUIZ_QUESTION_COUNTS: short/medium keep the original single round,
-// long gets three. Not a setting - the VIP never picks this directly, only
-// gameLength.
+// FULL_QUIZ_QUESTION_COUNTS: long gets three. Not a setting - the VIP never
+// picks this directly, only gameLength.
+// Task 215 - short/medium retuned 1 -> 2, matching the locked lineup's own
+// "Ζωγραφική x2 rounds" (Task 214's tasks/214-compose-locked-lineup.md).
+// Standalone draw's own room.settings.drawRounds setting is untouched.
 export const FULL_DRAW_ROUNDS_BY_LENGTH: Record<GameLength, number> = {
-  short: 1,
-  medium: 1,
+  short: 2,
+  medium: 2,
   long: 3,
 };
 
@@ -909,6 +911,19 @@ export const FULL_QUIZ_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 // drawer's own reward is capped at DRAWER_MAX_POINTS (400). Same derivation,
 // same target, kept as its own constant since it scales a different call site.
 export const FULL_GUESS_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
+
+// Task 215 - the full show's agora stage (Task 214) was paying on the
+// standalone agora's own scale (1, i.e. up to 1500 - calculatePoints' default),
+// while every other quiz-family stage in the show pays on the ~400 band above.
+// Measured: a 1487-point single-stage swing against the rest of the show's
+// ~400 band (tasks/214-report.md). Same derivation as FULL_QUIZ_SCORE_SCALE/
+// FULL_GUESS_SCORE_SCALE, kept as its OWN constant (not a reuse of either)
+// since it scales a third call site (server/src/modes/agora.ts's
+// endAgoraQuestion) and Task 214's own note flagged it as independently
+// tunable. Standalone agora is UNCHANGED - it still scores at scale 1;
+// startAgoraSegment's scale parameter defaults to 1 and only full.ts passes
+// this.
+export const FULL_AGORA_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 
 // The show, in order (Task 214 - the LOCKED lineup: six stages plus the
 // finale). questionCount on the two quiz rows is the MEDIUM figure;
