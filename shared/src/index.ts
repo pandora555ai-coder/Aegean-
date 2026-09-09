@@ -1,8 +1,18 @@
-// Task 206 - Η Μνήμη της Αγοράς, a pure scene-generation module. Not wired
-// into any phase/payload/client code yet; re-exported here only so the
-// validation harness (server/scripts/agora-validate.ts) can reach it via
-// '@game/shared' like everything else in this package.
+// Task 206 - Η Μνήμη της Αγοράς, a pure scene-generation module (seeded
+// scene + the 3 questions asked about it). Task 207 wired it into the phase
+// machine as its own standalone mode - see the AGORA_* events/phases/payload
+// types below and server/src/modes/agora.ts; agora.ts itself stays pure.
 export * from './agora.js';
+// The re-export above makes these public; this import is for THIS file's own
+// AGORA_* payload types below (Task 207), the one place index.ts reaches
+// into a sibling module.
+import {
+  AGORA_EXPOSURE_MS,
+  type AgoraAnimals,
+  type AgoraQuestionKind,
+  type AgoraStall,
+  type AgoraStallType,
+} from './agora.js';
 
 export const ClientEvents = {
   PING: 'client:ping',
@@ -71,6 +81,11 @@ export const ClientEvents = {
   // it, checks it is the NEXT expected index (no going back, no skipping)
   // and never acks - the phone advances on its own, the truth stays here.
   BLITZ_SWIPE: 'player:blitz_swipe',
+  // Task 207 - Η Μνήμη της Αγοράς. Its own event for the same reason
+  // TRIAL_SUBMIT/CLIMB_SUBMIT are: the phase guard is AGORA_QUESTION, there is
+  // no sabotage and no per-phone option shuffle, and the elapsed figure the
+  // server records comes off the pause-aware shared timer.
+  AGORA_SUBMIT: 'player:agora_submit',
 } as const;
 
 export const ServerEvents = {
@@ -158,6 +173,17 @@ export const ServerEvents = {
   BLITZ_SHOW: 'blitz:show',
   BLITZ_PROGRESS: 'blitz:progress',
   BLITZ_REVEAL_SHOW: 'blitz_reveal:show',
+  // Task 207 - Η Μνήμη της Αγοράς. AGORA_EXPOSE_SHOW is symmetric and is
+  // the ONE place the scene's render spec travels before the reveal (the
+  // market is open; everyone is meant to be looking). AGORA_QUESTION_SHOW is
+  // asymmetric like question:show (the TV gets the question text, a phone
+  // only the options) and carries NO scene fields and no correct index.
+  // AGORA_REVEAL_SHOW is asymmetric like reveal:show (the TV gets every
+  // player's result plus the PROOF - the scene again and the subject the
+  // question was about; a phone only its own result).
+  AGORA_EXPOSE_SHOW: 'agora_expose:show',
+  AGORA_QUESTION_SHOW: 'agora_question:show',
+  AGORA_REVEAL_SHOW: 'agora_reveal:show',
 } as const;
 
 export type RoomCode = string;
@@ -420,8 +446,8 @@ export interface LobbyUpdatePayload {
 // mode (DUEL_PICK -> DUEL_REVEAL, ties re-entering DUEL_PICK), the same
 // "stays VIP-selectable" reasoning as the other three; not composed into
 // 'full' (the climb finale already runs the duel mechanic on its own terms).
-export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel';
-export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full', 'blitz', 'duel'];
+export type GameModeId = 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel' | 'agora';
+export const GAME_MODE_IDS: readonly GameModeId[] = ['quiz', 'draw', 'numeric', 'full', 'blitz', 'duel', 'agora'];
 export const DEFAULT_GAME_MODE: GameModeId = 'quiz';
 
 // Task 57 - one mode as the LOBBY needs to know it: its own display label
@@ -490,6 +516,13 @@ export type GamePhase =
   // same K true/false statements at their own pace, then one reveal.
   | 'BLITZ'
   | 'BLITZ_REVEAL'
+  // Task 207 - the 'agora' mode's own phases (Task 206's mechanic): one
+  // timed look at the scene (AGORA_EXPOSE, AGORA_EXPOSURE_MS), then 3 x
+  // (AGORA_QUESTION -> AGORA_REVEAL) on the quiz's question timer and
+  // scoring. Standalone only for now; the full-show slot is a later call.
+  | 'AGORA_EXPOSE'
+  | 'AGORA_QUESTION'
+  | 'AGORA_REVEAL'
   | 'GAME_OVER';
 
 // Crowd mood (Task 35, extended to draw/numeric in Task 151) - server-derived,
@@ -627,6 +660,18 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
       result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? BLITZ_DURATION_MS };
       break;
     case 'BLITZ_REVEAL':
+      result = { value: 0.3, rampMs: 800 };
+      break;
+    // Task 207 - the agora: a QUESTION-style ramp across the exposure (the
+    // market bustles while everyone stares), the quiz's own ramp for each
+    // question, the quiz's step-down for each reveal.
+    case 'AGORA_EXPOSE':
+      result = { value: 0.6, from: 0.25, rampMs: ctx.timerDurationMs ?? AGORA_EXPOSURE_MS };
+      break;
+    case 'AGORA_QUESTION':
+      result = { value: 0.7, from: 0.25, rampMs: ctx.timerDurationMs ?? DEFAULT_ROOM_SETTINGS.questionTimeMs };
+      break;
+    case 'AGORA_REVEAL':
       result = { value: 0.3, rampMs: 800 };
       break;
     case 'GAME_OVER':
@@ -1784,6 +1829,11 @@ export type StateSyncPayload =
   | StateSyncBlitzPlayerPayload
   | StateSyncBlitzRevealHostPayload
   | StateSyncBlitzRevealPlayerPayload
+  | StateSyncAgoraExposePayload
+  | StateSyncAgoraQuestionHostPayload
+  | StateSyncAgoraQuestionPlayerPayload
+  | StateSyncAgoraRevealHostPayload
+  | StateSyncAgoraRevealPlayerPayload
   | StateSyncGameOverPayload;
 
 // Both SOCRATES state:sync shapes carry `phase: 'SOCRATES'`, so the usual
@@ -3128,6 +3178,142 @@ export function advanceBlitzFeed(
   return { current, buffer, seen };
 }
 
+// ----------------------- Η Μνήμη της Αγοράς (Task 207) -------------------
+// The wire shapes for Task 206's mechanic. The SEED, the full AgoraScene and
+// the built questions' correctIndex are SERVER-ONLY - what travels is:
+//  - AGORA_EXPOSE: the RENDER SPEC (what's on stage - everyone sees it
+//    anyway), symmetric to TV and phones;
+//  - AGORA_QUESTION: question text (TV) / options (everyone) - no scene
+//    fields, no correct index, and a reconnect mid-question gets exactly
+//    this and nothing more (the market is closed);
+//  - AGORA_REVEAL: the quiz reveal shape, plus - TV only - the PROOF (the
+//    spec again and the subject the question was about, so the TV can
+//    restore the scene and highlight it).
+
+export const AGORA_MIN_PLAYERS = 2;
+// One agora round is one scene and the 3 questions buildAgoraQuestions builds
+// about it - the tuple length, spelled out so the phase shell never has to
+// know it by counting.
+export const AGORA_QUESTIONS_PER_ROUND = 3;
+
+// The scene minus everything the truth table needs and the stage does not:
+// absentStalls stays server-side (it is the answer to an existence question
+// phrased the ΔΕΝ way). Stall/animal fields are the AgoraScene ones verbatim.
+export interface AgoraRenderSpec {
+  stalls: AgoraStall[];
+  animals: AgoraAnimals;
+}
+
+export interface AgoraExposeShowPayload {
+  exposureMs: number; // AGORA_EXPOSURE_MS, echoed
+  durationMs: number; // time STILL LEFT of the exposure, frozen while paused
+  spec: AgoraRenderSpec;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export interface AgoraQuestionShowHostPayload {
+  questionIndex: number; // 0-based within the round (0..AGORA_QUESTIONS_PER_ROUND-1)
+  totalQuestions: number; // AGORA_QUESTIONS_PER_ROUND
+  kind: AgoraQuestionKind;
+  question: string;
+  options: string[];
+  questionTimeMs: number; // room.settings.questionTimeMs - the quiz's own timer
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+  answeredPlayerIds: string[]; // WHO has answered, never what - the answer:progress contract
+}
+
+export interface AgoraQuestionShowPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  kind: AgoraQuestionKind;
+  options: string[];
+  questionTimeMs: number;
+  answered: boolean; // true on a state:sync catch-up after already answering
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type AgoraQuestionShowPayload = AgoraQuestionShowHostPayload | AgoraQuestionShowPlayerPayload;
+
+export function isAgoraQuestionHostPayload(payload: AgoraQuestionShowPayload): payload is AgoraQuestionShowHostPayload {
+  return 'question' in payload;
+}
+
+export interface AgoraSubmitPayload {
+  choice: number; // 0-3, validated server-side
+}
+
+// What the question was ABOUT, resolved server-side from the truth so the
+// TV can point at it in the restored scene. `present` is false only for
+// an existence question phrased "ΔΕΝ υπήρχε" (the subject is what was NOT
+// there - nothing to highlight, the TV says so instead).
+export type AgoraSubject =
+  | { kind: 'stall'; type: AgoraStallType; present: boolean }
+  | { kind: 'animal'; animal: 'dog' | 'goat' | 'cat' | 'geese'; present: boolean };
+
+export interface AgoraProof {
+  spec: AgoraRenderSpec;
+  subject: AgoraSubject;
+}
+
+// The quiz's reveal shapes plus the round's own indices; the host's also
+// carries the proof. `results` is RevealPlayerResult verbatim - same scoring
+// path, same fields, same correct-by-speed order (sortAndRankResults).
+export interface AgoraRevealHostPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  kind: AgoraQuestionKind;
+  question: string;
+  options: string[];
+  correctIndex: number; // safe now - the question has ended
+  correctOption: string;
+  results: RevealPlayerResult[];
+  answerCounts: number[];
+  proof: AgoraProof;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+  standings: PlayerStanding[];
+}
+
+export interface AgoraRevealPlayerPayload {
+  questionIndex: number;
+  totalQuestions: number;
+  correctIndex: number;
+  correctOption: string;
+  yourChoice: number | null;
+  yourCorrect: boolean;
+  pointsAwarded: number;
+  totalScore: number;
+  rank: number;
+  yourTimeMs: number | null;
+  yourAnswerRank: number | null;
+  autoAdvanceMs: number;
+  paused: boolean;
+  pausedByName: string | null;
+}
+
+export type AgoraRevealShowPayload = AgoraRevealHostPayload | AgoraRevealPlayerPayload;
+
+export function isAgoraRevealHostPayload(payload: AgoraRevealShowPayload): payload is AgoraRevealHostPayload {
+  return 'results' in payload;
+}
+
+export type StateSyncAgoraExposePayload = AgoraExposeShowPayload & { phase: 'AGORA_EXPOSE'; remainingMs: number };
+export type StateSyncAgoraQuestionHostPayload = AgoraQuestionShowHostPayload & {
+  phase: 'AGORA_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncAgoraQuestionPlayerPayload = AgoraQuestionShowPlayerPayload & {
+  phase: 'AGORA_QUESTION';
+  remainingMs: number;
+};
+export type StateSyncAgoraRevealHostPayload = AgoraRevealHostPayload & { phase: 'AGORA_REVEAL' };
+export type StateSyncAgoraRevealPlayerPayload = AgoraRevealPlayerPayload & { phase: 'AGORA_REVEAL' };
+
 export type ClientToServerEvents = {
   [ClientEvents.PING]: (payload: ClientPingPayload) => void;
   [ClientEvents.CREATE_ROOM]: (payload: HostCreateRoomPayload) => void;
@@ -3157,6 +3343,7 @@ export type ClientToServerEvents = {
   [ClientEvents.CLIMB_SUBMIT]: (payload: ClimbSubmitPayload) => void;
   [ClientEvents.DUEL_PICK]: (payload: DuelPickPayload) => void;
   [ClientEvents.BLITZ_SWIPE]: (payload: BlitzSwipePayload) => void;
+  [ClientEvents.AGORA_SUBMIT]: (payload: AgoraSubmitPayload) => void;
 };
 
 export type ServerToClientEvents = {
@@ -3206,4 +3393,7 @@ export type ServerToClientEvents = {
   [ServerEvents.BLITZ_SHOW]: (payload: BlitzShowPayload) => void;
   [ServerEvents.BLITZ_PROGRESS]: (payload: BlitzProgressPayload) => void;
   [ServerEvents.BLITZ_REVEAL_SHOW]: (payload: BlitzRevealPayload) => void;
+  [ServerEvents.AGORA_EXPOSE_SHOW]: (payload: AgoraExposeShowPayload) => void;
+  [ServerEvents.AGORA_QUESTION_SHOW]: (payload: AgoraQuestionShowPayload) => void;
+  [ServerEvents.AGORA_REVEAL_SHOW]: (payload: AgoraRevealShowPayload) => void;
 };

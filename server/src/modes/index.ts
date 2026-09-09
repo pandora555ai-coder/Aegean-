@@ -6,6 +6,7 @@ import './draw.js';
 import './numeric.js';
 import './blitz.js';
 import './duel.js';
+import './agora.js';
 // Last, deliberately: 'full' composes the three above, and this is also the
 // order the lobby's mode picker lists them in (registration order).
 import './full.js';
@@ -15,6 +16,7 @@ export { drawMode } from './draw.js';
 export { numericMode } from './numeric.js';
 export { blitzMode } from './blitz.js';
 export { duelMode } from './duel.js';
+export { agoraMode } from './agora.js';
 export { fullMode } from './full.js';
 export {
   continuationForActiveTimer,

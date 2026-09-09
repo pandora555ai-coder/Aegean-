@@ -19,6 +19,7 @@ import {
   ClientEvents,
   MAX_BOTS,
   ServerEvents,
+  type AgoraQuestionShowPayload,
   type BlitzShowPayload,
   type ClimbQuestionShowPayload,
   DUEL_WEAPONS,
@@ -162,6 +163,17 @@ function wireBotGameplay(socket: Socket, profile: BotProfile): void {
     }
     const choice = randomChoice(payload.options.length);
     setTimeout(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice }), profileDelayMs(profile));
+  });
+
+  // Task 207 - the agora's question, answered exactly as a trial question:
+  // a random pick over player:agora_submit after the profile's delay. The
+  // exposure needs nothing from a bot (it "looks at the TV").
+  socket.on(ServerEvents.AGORA_QUESTION_SHOW, (payload: AgoraQuestionShowPayload) => {
+    if (!('options' in payload) || ('answered' in payload && payload.answered)) {
+      return; // host-shaped payload, or a catch-up that says it already answered
+    }
+    const choice = randomChoice(payload.options.length);
+    setTimeout(() => socket.emit(ClientEvents.AGORA_SUBMIT, { choice }), profileDelayMs(profile));
   });
 
   // Task 188b - the climb's duel: a duelist bot picks uniformly at random

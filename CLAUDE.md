@@ -77,6 +77,11 @@ server/src/climb.ts      Η Ανάβαση (the trial's ALTERNATIVE finale, Task
                          scoring, the top-of-ladder WINNER/DUEL decision, and (Task 203) the
                          spear elimination overlay. The spear half is NOT wired into the live
                          game yet — see Phases below.
+server/src/agora.ts      Η Μνήμη της Αγοράς server-side PURE helpers (Task 207): seed
+                         draw, render spec (scene minus absentStalls), the reveal's
+                         subject resolver. No Room/io/timers. shared/src/agora.ts (Task
+                         206) is the generator itself and stays untouched.
+server/src/modes/agora.ts  The agora mode SHELL (Task 207) — standalone only; see Phases.
 server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY.
                          Playback IS built (Task 36a-d — see Crowd mood below). Wired into
                          every mode: quiz via phases.ts since Task 35, draw/numeric got
@@ -186,8 +191,9 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
 
 Phases belong to a MODE (room.mode), not to the room. The mode owns its
 phase list, its continuations table and its STAGES table.
-GamePhase has 21 values (shared/src/index.ts:443-487); GameModeId has 6 —
-'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel' (index.ts:417-419).
+GamePhase has 24 values (shared/src/index.ts, `export type GamePhase`);
+GameModeId has 7 — 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel' |
+'agora' (`export type GameModeId`).
 
 Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
       -> [STEAL] -> [SOCRATES] -> (after the LAST question: STAGE_ANNOUNCE
@@ -195,6 +201,29 @@ Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
       everyone left falls in the same reveal) -> [SOCRATES] -> GAME_OVER
 Draw: LOBBY -> DRAW -> (GUESS -> GUESS_REVEAL) x N -> GAME_OVER
 Numeric: LOBBY -> NUMERIC_QUESTION -> NUMERIC_REVEAL -> GAME_OVER
+Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
+      the TV) -> 3 x (AGORA_QUESTION -> AGORA_REVEAL [-> SOCRATES]) -> GAME_OVER.
+      STANDALONE ONLY (VIP-selectable, `agora` in GameModeId) — the full-show
+      slot is a future decision; startAgoraSegment/prepareAgoraRound are the
+      composition entry points, numeric's pattern. Seed + AgoraScene +
+      correctIndex are SERVER-ONLY (modes/agora.ts's AgoraState); the render
+      spec leaves the server ONLY in agora_expose:show and inside each
+      agora_reveal:show's HOST-ONLY `proof` (spec + subject) — an
+      AGORA_QUESTION payload, fresh OR a reconnect's state:sync, never carries
+      it (the market is closed). Question timer = room.settings.questionTimeMs,
+      reveal = REVEAL_DURATION_MS, scoring = calculatePoints at scale 1 +
+      sortAndRankResults (the quiz's path verbatim), answers over
+      player:agora_submit (elapsed = questionTimeMs − remainingActiveTimerMs,
+      pause-aware like the trial). Socrates: NO lines of its own (D1) — the
+      quiz's generic recordRoundAndPickLine runs with difficulty 'medium' and
+      whatever fires plays via enterSocratesBeat as 'AGORA_MOMENT' on timer
+      kind AGORA_SOCRATES. The seed is logged at expose start
+      (`agora expose started - seed=N`); generateAgora(N) +
+      buildAgoraQuestions(scene, N) rebuilds the round. TV/phone views are
+      Tasks 208/209 — both clients render a phase-only placeholder today.
+      Check: `npm run agora:wire-check` (dev/agora-wire-check.ts, socket-level
+      against a dev server on 4001: flow, leaks, reconnect, pause, plus a pure
+      `--subjects` sweep of the subject resolver against the truth).
 Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
       1 Η Αγορά (quiz + POWER_UP) -> 2 Ζωγραφική (one draw round)
       -> 3 Εκτίμηση (3 numeric) -> 4 Η Συκοφαντία (quiz + STEAL)
@@ -496,8 +525,9 @@ player count. A non-submitter is flat 0, ranked past every real rank.
 ## Blitz — a real mode now (Task 156), plus its own dev prototype
 
 GameModeId (shared/src/index.ts) is `'quiz' | 'draw' | 'numeric' | 'full' |
-'blitz' | 'duel'` (GAME_MODE_IDS, 6 values — 'duel' is Task 191's
-standalone dev-harness mode for Η Μονομαχία, see Phases above), and
+'blitz' | 'duel' | 'agora'` (GAME_MODE_IDS, 7 values — 'duel' is Task 191's
+standalone dev-harness mode for Η Μονομαχία, 'agora' Task 207's standalone
+Η Μνήμη της Αγοράς, see Phases above), and
 server/src/modes/blitz.ts calls
 registerGameMode — it IS in the registry, with its own phases (LOBBY,
 BLITZ, BLITZ_REVEAL, GAME_OVER). A room can play blitz as a real
@@ -612,8 +642,9 @@ via HOST_REJOIN.
 - Suspect the screenshot harness first — it has twice accused the game wrongly.
 - computeCompetitionRanks does standard 1,2,2,4 ranking. Duplicate rank
   numbers are genuine ties. Reported as a bug twice; it is not one.
-- **PHASE_CHANGED is emitted BEFORE the phase's own payload at all 18 emit
-  sites** — the house pattern, every mode. The host therefore renders once
+- **PHASE_CHANGED is emitted BEFORE the phase's own payload at every emit
+  site** (18 before Task 207, which added the agora's four) — the house
+  pattern, every mode. The host therefore renders once
   with no payload for the new phase; HostScreen holds the last standings to
   cover that render. Any new phase view must tolerate a first render with
   no payload of its own.

@@ -1747,6 +1747,19 @@ export default function HostScreen() {
       );
     }
 
+    // Task 207 - Η Μνήμη της Αγοράς: phase-machine wiring only. The TV view
+    // (scene, question slab, proof highlight) is Task 208; until then a bare
+    // phase marker off `phase` alone, so the read column is never silently
+    // empty for the three new phases. Tolerates the no-payload first render
+    // by construction - it reads no payload at all.
+    if (phase === 'AGORA_EXPOSE' || phase === 'AGORA_QUESTION' || phase === 'AGORA_REVEAL') {
+      return (
+        <div data-testid="agora-placeholder" style={{ color: 'var(--marble)', textAlign: 'center', paddingTop: '4vh' }}>
+          Η Μνήμη της Αγοράς — {phase}
+        </div>
+      );
+    }
+
     // An in-game phase whose own payload is still in flight (phase:changed
     // always lands before it) renders NOTHING for that one beat - the row
     // and the scene are still there. Falling through to the lobby here put

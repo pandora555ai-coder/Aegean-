@@ -107,6 +107,16 @@ import {
   submitNumericAnswer,
 } from './modes/numeric.js';
 import { NUMERIC_QUESTIONS } from './numeric.js';
+// Task 207 - the agora mode's own socket-facing functions, same shape.
+import {
+  buildAgoraExposeShow,
+  buildAgoraQuestionHostShow,
+  buildAgoraQuestionPlayerShow,
+  buildAgoraRevealHostShow,
+  buildAgoraRevealPlayerShow,
+  recheckAgoraPhaseOnDisconnect,
+  submitAgoraAnswer,
+} from './modes/agora.js';
 // Task 156 - the blitz mode's own socket-facing functions, same shape.
 import {
   buildBlitzHostShow,
@@ -397,6 +407,23 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildBlitzRevealPlayerShow(room, playerId);
       return payload ? { ...payload, phase: 'BLITZ_REVEAL' } : null;
     }
+    // Task 207 - the agora. Mid-exposure the market is open: the spec plus
+    // what is left of the look. Mid-question it is CLOSED: the options and
+    // whether this phone already answered, never the scene (fairness - a
+    // reconnect must not buy a second look). The reveal is this phone's own
+    // row, exactly the live broadcast.
+    case 'AGORA_EXPOSE': {
+      const payload = buildAgoraExposeShow(room);
+      return payload ? { ...payload, phase: 'AGORA_EXPOSE', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'AGORA_QUESTION': {
+      const payload = buildAgoraQuestionPlayerShow(room, playerId);
+      return payload ? { ...payload, phase: 'AGORA_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'AGORA_REVEAL': {
+      const payload = buildAgoraRevealPlayerShow(room, playerId);
+      return payload ? { ...payload, phase: 'AGORA_REVEAL' } : null;
+    }
     default:
       return null; // LOBBY - callers never ask for this
   }
@@ -522,6 +549,21 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
     case 'BLITZ_REVEAL': {
       const payload = buildBlitzRevealHostShow(room);
       return payload ? { ...payload, phase: 'BLITZ_REVEAL' } : null;
+    }
+    // Task 207 - the agora, same builder-plus-remainingMs shape; the same
+    // open/closed-market rule as the player branches above (the TV's
+    // AGORA_QUESTION catch-up has the question text and options, no scene).
+    case 'AGORA_EXPOSE': {
+      const payload = buildAgoraExposeShow(room);
+      return payload ? { ...payload, phase: 'AGORA_EXPOSE', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'AGORA_QUESTION': {
+      const payload = buildAgoraQuestionHostShow(room);
+      return payload ? { ...payload, phase: 'AGORA_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
+    }
+    case 'AGORA_REVEAL': {
+      const payload = buildAgoraRevealHostShow(room);
+      return payload ? { ...payload, phase: 'AGORA_REVEAL' } : null;
     }
   }
 }
@@ -1338,6 +1380,24 @@ io.on('connection', (socket) => {
     socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
   });
 
+  // Task 207 - the agora's answer, the TRIAL_SUBMIT/CLIMB_SUBMIT shape: every
+  // rule lives in submitAgoraAnswer (phase, pause, valid choice, one per
+  // question), which also ends the question early once everyone has
+  // answered. The ack is the quiz's: the phone marks what it pressed and
+  // learns nothing else until AGORA_REVEAL.
+  socket.on(ClientEvents.AGORA_SUBMIT, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.AGORA_SUBMIT);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+    if (!submitAgoraAnswer(room, playerId, payload?.choice)) {
+      console.log(`rejected ${ClientEvents.AGORA_SUBMIT} from player ${playerId} in room ${room.code}`);
+      return;
+    }
+    socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
+  });
+
   // Task 188b - a duelist's weapon pick. Every rule lives in submitDuelPick,
   // which also locks the duel once both picks are in. The ack carries no
   // weapon: the phone already knows what it pressed, and the wire stays
@@ -1649,6 +1709,11 @@ io.on('connection', (socket) => {
       // Task 156 - same reasoning, for the blitz. A no-op outside BLITZ.
       if (room) {
         recheckBlitzPhaseOnDisconnect(room);
+      }
+
+      // Task 207 - same reasoning, for the agora. A no-op outside AGORA_QUESTION.
+      if (room) {
+        recheckAgoraPhaseOnDisconnect(room);
       }
     }
   });

@@ -229,7 +229,7 @@ export interface ClimbDuelState {
 // lives on RevealSnapshot.socratesLine* - draw/numeric have no equivalent
 // snapshot type, so their round moment reuses this same slot instead).
 export interface PendingSocratesBeat {
-  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT';
+  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT' | 'AGORA_MOMENT';
   line: string;
   lineTemplate: string;
   lineTag: string | null;

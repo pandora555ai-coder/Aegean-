@@ -3098,6 +3098,22 @@ export default function ControllerScreen() {
     );
   }
 
+  // Task 207 - Η Μνήμη της Αγοράς: phase-machine wiring only. The phone's
+  // real views (the answer grid for AGORA_QUESTION, the own-result card for
+  // AGORA_REVEAL) are Task 209; until then placeholder text off `phase`
+  // alone. The exposure's line is the one the spec asks for verbatim.
+  if (joined && (phase === 'AGORA_EXPOSE' || phase === 'AGORA_QUESTION' || phase === 'AGORA_REVEAL')) {
+    return (
+      <div style={styles.container}>
+        <ConnectionBanner visible={!connected} />
+        <div style={styles.lookAtTv} data-testid="agora-placeholder">
+          {phase === 'AGORA_EXPOSE' ? 'Κοίτα την τηλεόραση' : `Η Μνήμη της Αγοράς — ${phase}`}
+        </div>
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+      </div>
+    );
+  }
+
   if (joined) {
     const connectedCount = lobby?.players.filter((player) => player.connected).length ?? 1;
     // Task 57 - the registry-driven list (never a hardcoded array here): a
