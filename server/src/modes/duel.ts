@@ -56,6 +56,8 @@ function start(room: Room): void {
     lastResults: null,
     lastCorrectIndex: null,
     duel: null,
+    spearCounters: new Map(),
+    eliminationOrder: [],
   };
   room.climb = climb;
   startDuel(room, duelistIds);

@@ -48,7 +48,18 @@ import {
   scoreTrialRound,
   type TrialRoundEntry,
 } from './trial.js';
-import { applyClimbDuelResult, applyClimbRound, nextAfterClimbRound, resolveClimbAtCap, type ClimbRoundEntry } from './climb.js';
+import {
+  applyClimbDuelResult,
+  applyClimbRound,
+  applyClimbSpearRound,
+  climbSpearRuleActive,
+  nextAfterClimbRound,
+  nextAfterSpearEliminations,
+  nextAfterSpearRound,
+  resolveClimbAtCap,
+  type ClimbNext,
+  type ClimbRoundEntry,
+} from './climb.js';
 import {
   LINES,
   logMomentFireSummary,
@@ -1264,6 +1275,8 @@ export function startClimb(room: Room): boolean {
     lastResults: null,
     lastCorrectIndex: null,
     duel: null,
+    spearCounters: new Map(),
+    eliminationOrder: [],
   };
   room.climb = climb;
   // The finale row of the room's table, same card beat as the trial;
@@ -1282,6 +1295,19 @@ export function startClimb(room: Room): boolean {
 // shared timer says is NOT left, so a pause never counts as thinking time.
 function climbElapsedMs(room: Room): number {
   return Math.min(CLIMB_QUESTION_TIME_MS, Math.max(0, CLIMB_QUESTION_TIME_MS - remainingActiveTimerMs(room)));
+}
+
+// Task 205 - who's still actually climbing: climberIds never shrinks (see
+// its own comment in state.ts), so this is the one place that subtracts
+// eliminationOrder from it. Every round-entry build, the early-advance
+// check and the last-survivor win check all go through this, never
+// climberIds directly.
+function climbAliveIds(climb: ClimbState): string[] {
+  if (climb.eliminationOrder.length === 0) {
+    return climb.climberIds;
+  }
+  const eliminated = new Set(climb.eliminationOrder);
+  return climb.climberIds.filter((id) => !eliminated.has(id));
 }
 
 // Starts the next climb question, or ends the climb when the drawn pool runs
@@ -1343,17 +1369,20 @@ function broadcastClimbQuestion(room: Room): void {
   }
 }
 
-// Every climber who is still CONNECTED has locked in - identity-based, same
-// as allConnectedParticipantsLockedIn.
+// Every climber who is still CONNECTED and still ALIVE has locked in -
+// identity-based, same as allConnectedParticipantsLockedIn. An eliminated
+// player can never lock in (submitClimbAnswer rejects them below), so
+// waiting on them would hold the question until the timer's backstop for
+// no reason.
 function allConnectedClimbersLockedIn(room: Room, climb: ClimbState): boolean {
   const connected = new Set(getConnectedPlayers(room).map((player) => player.playerId));
-  const waitingOn = climb.climberIds.filter((id) => connected.has(id));
+  const waitingOn = climbAliveIds(climb).filter((id) => connected.has(id));
   return waitingOn.length > 0 && waitingOn.every((id) => climb.lockIns.has(id));
 }
 
 // Records one lock-in; returns whether it was accepted. Every rule lives
-// here: the phase, the pause, a valid choice, being in the race, one lock-in
-// per player per question.
+// here: the phase, the pause, a valid choice, being in the race, being
+// still alive (Task 205), one lock-in per player per question.
 export function submitClimbAnswer(room: Room, playerId: string, choice: number): boolean {
   if (room.phase !== 'CLIMB_QUESTION' || room.paused) {
     return false;
@@ -1365,7 +1394,7 @@ export function submitClimbAnswer(room: Room, playerId: string, choice: number):
   if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
     return false;
   }
-  if (!climb.climberIds.includes(playerId) || climb.lockIns.has(playerId)) {
+  if (!climb.climberIds.includes(playerId) || climb.lockIns.has(playerId) || climb.eliminationOrder.includes(playerId)) {
     return false;
   }
 
@@ -1406,7 +1435,9 @@ export function endClimbQuestion(code: RoomCode): void {
   }
   const question = climb.questions[climb.questionIndex];
 
-  const entries: ClimbRoundEntry[] = climb.climberIds.flatMap((playerId) => {
+  // Task 205 - an eliminated player is dropped from the round entirely, not
+  // scored at 0: only someone the spear hasn't already speared out plays.
+  const entries: ClimbRoundEntry[] = climbAliveIds(climb).flatMap((playerId) => {
     const player = room.players.get(playerId);
     if (!player) {
       return [];
@@ -1426,17 +1457,79 @@ export function endClimbQuestion(code: RoomCode): void {
 
   const scored = applyClimbRound(entries, question.correctIndex);
   climb.roundsPlayed += 1;
-  // May hold 3+-way arrivals one step below the top - and, Task 188b, at the
-  // round cap (CLIMB_MAX_ROUNDS) a round nobody won is settled from the same
-  // rows: highest step alone wins, a shared highest step duels. Both paths
-  // rewrite held occupants' stepAfter IN PLACE, so steps are copied after.
-  let next = nextAfterClimbRound(scored);
-  if (next.kind === 'CONTINUE' && climb.roundsPlayed >= CLIMB_MAX_ROUNDS) {
-    next = resolveClimbAtCap(scored);
-    console.log(`room ${room.code} climb round cap (${CLIMB_MAX_ROUNDS}) reached — ${next.kind} at the highest step`);
-  }
   for (const result of scored) {
     climb.steps.set(result.playerId, result.stepAfter);
+  }
+
+  // Task 205 (Η Λόγχη) - a second, independent pass over this SAME scored
+  // round (server/src/climb.ts, unchanged by this task). Eliminations from
+  // it are applied BEFORE any win check, per the wiring spec's resolution
+  // order: step movement, then spear strikes, then win conditions.
+  const eliminatedThisRound = new Set<string>();
+  let spearDuelPending: [string, string] | null = null;
+  if (climbSpearRuleActive(climb.climberIds.length)) {
+    const spearResults = applyClimbSpearRound(scored, climb.spearCounters, climb.climberIds.length);
+    for (const result of spearResults) {
+      climb.spearCounters.set(result.playerId, result.countAfter);
+    }
+    const struckIds = new Set(spearResults.filter((result) => result.struck).map((result) => result.playerId));
+    if (struckIds.size > 0) {
+      const struckResults = scored.filter((result) => struckIds.has(result.playerId));
+      const spearNext = nextAfterSpearRound(struckResults);
+      if (spearNext.kind === 'OUT') {
+        climb.eliminationOrder.push(spearNext.playerIds[0]);
+        eliminatedThisRound.add(spearNext.playerIds[0]);
+      } else if (spearNext.kind === 'DUEL') {
+        for (const playerId of spearNext.outrightPlayerIds) {
+          climb.eliminationOrder.push(playerId);
+          eliminatedThisRound.add(playerId);
+        }
+        spearDuelPending = spearNext.playerIds;
+      }
+    }
+  }
+
+  // Priority (1): a field whittled down to one survivor wins immediately,
+  // even with nobody at CLIMB_TOP. A struck player can never also be a
+  // CLIMB_TOP arriver this same round (a strike requires a non-positive
+  // delta; reaching the top requires a positive one), so this can only ever
+  // crown someone who wasn't just eliminated.
+  const survivorWin = nextAfterSpearEliminations(climbAliveIds(climb));
+
+  // Priority (2)/(3): reaching the top, its duel, or the round cap - the
+  // exact resolver calls from before this task, entirely unaware of the
+  // spear. May hold 3+-way arrivals one step below the top; both this and
+  // the cap resolver rewrite held occupants' stepAfter IN PLACE, which is
+  // why steps were already copied above.
+  let next: ClimbNext;
+  if (survivorWin) {
+    next = { kind: 'WINNER', winnerPlayerId: survivorWin.winnerPlayerId };
+  } else {
+    next = nextAfterClimbRound(scored);
+    if (next.kind === 'CONTINUE' && climb.roundsPlayed >= CLIMB_MAX_ROUNDS) {
+      next = resolveClimbAtCap(scored);
+      console.log(`room ${room.code} climb round cap (${CLIMB_MAX_ROUNDS}) reached — ${next.kind} at the highest step`);
+    }
+  }
+
+  // Extremely rare: a top-arrival duel and a spear duel both want the
+  // room's ONE duel slot in the same round (needs 4 distinct players at
+  // once - two arriving together, two others struck together). The top
+  // duel keeps the slot; the spear pair is settled the way the duel would
+  // have decided it anyway - the faster reactor (already sorted first by
+  // nextAfterSpearRound) survives with their counter reset, the other is
+  // eliminated outright, with no weapon pick since there is no second duel
+  // phase to run it in.
+  if (spearDuelPending && next.kind === 'DUEL') {
+    const [survivor, loser] = spearDuelPending;
+    climb.eliminationOrder.push(loser);
+    eliminatedThisRound.add(loser);
+    climb.spearCounters.set(survivor, 0);
+    spearDuelPending = null;
+    console.log(
+      `room ${room.code} climb: top duel and spear duel collided in the same round — ` +
+        `${loser} eliminated outright, ${survivor}'s streak reset`,
+    );
   }
 
   if (next.kind === 'WINNER') {
@@ -1445,10 +1538,19 @@ export function endClimbQuestion(code: RoomCode): void {
     // Task 188b - the duel opens after this reveal (endClimbReveal); the
     // reveal itself only announces who. Picks stay server-side until
     // DUEL_REVEAL.
-    climb.duel = { duelistIds: next.playerIds, picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
+    climb.duel = { duelistIds: next.playerIds, cause: 'top', picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
+  } else if (spearDuelPending) {
+    // Task 205 - nobody reached the top and there's no round-cap duel
+    // either: the climb otherwise CONTINUEs, but the spear's own duel still
+    // needs settling before the next question can start.
+    climb.duel = { duelistIds: spearDuelPending, cause: 'spear', picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
   }
 
-  const results: ClimbRevealHostResult[] = scored.map((result) => ({ ...result, fastest: result.answerRank === 1 }));
+  const results: ClimbRevealHostResult[] = scored.map((result) => ({
+    ...result,
+    fastest: result.answerRank === 1,
+    eliminated: eliminatedThisRound.has(result.playerId),
+  }));
   climb.lastResults = results;
   climb.lastCorrectIndex = question.correctIndex;
 
@@ -1474,7 +1576,8 @@ export function endClimbQuestion(code: RoomCode): void {
 
   console.log(
     `room ${room.code} climb round ${climb.roundsPlayed} revealed — correctIndex=${question.correctIndex}, ` +
-      `next=${next.kind}, results: ${JSON.stringify(results)}`,
+      `next=${next.kind}${eliminatedThisRound.size > 0 ? `, eliminated=${JSON.stringify([...eliminatedThisRound])}` : ''}, ` +
+      `results: ${JSON.stringify(results)}`,
   );
 }
 
@@ -1515,12 +1618,18 @@ export function endClimbReveal(code: RoomCode): void {
 // Exported since Task 191 - the standalone duel mode (modes/duel.ts) is
 // what enters this mechanic from a bare room.climb built just to hold it,
 // rather than from the climb finale reaching CLIMB_TOP.
+// `climb.duel` is normally ALREADY set by the caller (endClimbQuestion's
+// top-arrival or spear branch, each choosing their own `cause`) before this
+// runs; the fallback here only fires for a duel entered with no round
+// behind it at all - the standalone mode above, and the round-cap tie in
+// startClimbQuestion's pool-exhaustion branch - both of which end the whole
+// climb outright on a winner, exactly like a top-arrival duel.
 export function startDuel(room: Room, duelistIds: [string, string]): void {
   const climb = room.climb;
   if (!climb) {
     return;
   }
-  const duel = climb.duel ?? { duelistIds, picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
+  const duel = climb.duel ?? { duelistIds, cause: 'top', picks: new Map(), tieCount: 0, lock: null, lastReveal: null };
   climb.duel = duel;
   duel.picks.clear();
   duel.lock = null;
@@ -1726,7 +1835,10 @@ function revealDuel(room: Room): void {
 }
 
 // Ends the reveal beat exactly once: a tie re-opens the pick window (no
-// cap), a winner takes the temple and the climb ends as for a lone arrival.
+// cap). What a winner means depends on `duel.cause` (Task 205) - a 'top'
+// duel takes the temple and the climb ends as for a lone arrival; a
+// 'spear' duel eliminates the loser and the climb CONTINUES, unless that
+// elimination is the one that leaves exactly one player standing.
 export function endDuelReveal(code: RoomCode): void {
   const room = getRoom(code);
   const climb = room?.climb;
@@ -1739,7 +1851,22 @@ export function endDuelReveal(code: RoomCode): void {
     startDuel(room, duel.duelistIds);
     return;
   }
-  climb.winnerPlayerId = applyClimbDuelResult(duel.duelistIds, duel.lastReveal.winnerPlayerId);
+  const winnerPlayerId = applyClimbDuelResult(duel.duelistIds, duel.lastReveal.winnerPlayerId);
+  if (duel.cause === 'spear') {
+    const loserPlayerId = duel.duelistIds[0] === winnerPlayerId ? duel.duelistIds[1] : duel.duelistIds[0];
+    climb.eliminationOrder.push(loserPlayerId);
+    climb.spearCounters.set(winnerPlayerId, 0);
+    climb.duel = null;
+    const survivorWin = nextAfterSpearEliminations(climbAliveIds(climb));
+    if (survivorWin) {
+      climb.winnerPlayerId = survivorWin.winnerPlayerId;
+      endClimb(room);
+      return;
+    }
+    startClimbQuestion(room);
+    return;
+  }
+  climb.winnerPlayerId = winnerPlayerId;
   endClimb(room);
 }
 

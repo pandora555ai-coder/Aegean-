@@ -2472,6 +2472,11 @@ export interface ClimbQuestionShowPlayerPayload {
   durationMs: number;
   top: number;
   climbing: boolean; // false for a spectator - the server rejects their submit regardless
+  // Task 205 - the spear speared this player out in an earlier round; the
+  // server rejects their submit regardless, same as a non-climbing
+  // spectator, but the client shows a distinct "eliminated" notice rather
+  // than the entry "you're watching" one.
+  eliminated: boolean;
   yourStep: number;
   lockedIn: boolean; // true on a state:sync catch-up after already locking in
   paused: boolean;
@@ -2490,6 +2495,13 @@ export function isClimbQuestionHostPayload(
 // `fastest` flag spelled out (answerRank === 1 - the +2 lock-in).
 export interface ClimbRevealHostResult extends ClimbRevealResult {
   fastest: boolean;
+  // Task 205 - true exactly on the round the spear struck this player out
+  // (whether outright, or as the loser of the spear's own duel resolved
+  // before this reveal was built). Never true again in a LATER reveal - an
+  // eliminated player is dropped from every payload from the next round on
+  // (see server/src/payloads.ts's climbSteps), so this flag only ever
+  // exists to drive that one round's exit fade on the TV.
+  eliminated: boolean;
 }
 
 // HOST ONLY - every player's step, delta and fastest flag.

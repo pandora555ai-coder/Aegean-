@@ -392,6 +392,12 @@ export interface AnavasisClimberData {
   step: number;
   delta?: number | null;
   isLeader?: boolean;
+  // Task 205 - true from the reveal that struck this climber out onward.
+  // HostScreen feeds it into hiddenPlayerIds (the same fade the live duel
+  // already uses) and, since climbSteps drops an eliminated player from
+  // every payload one round later, this flag - and the climber itself -
+  // simply stop being fed to this component's `climbers` prop after that.
+  eliminated?: boolean;
 }
 
 interface AnavasisClimbersProps {

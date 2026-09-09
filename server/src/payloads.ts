@@ -430,19 +430,29 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
   const players = [...room.players.values()];
   const declaredWinner = winnerPlayerId !== null ? room.players.get(winnerPlayerId) : undefined;
 
-  // Task 188a - the climb's verdict: standings are FINAL STEP order (ties by
-  // the last round's answerRank, then join order), the winner first. Steps
-  // are not scores, so this reuses the trial's no-digits gating
-  // (isTrialResult) - the TV prints nothing for either finale.
+  // Task 188a - the climb's verdict: the winner first, then (Task 205)
+  // SURVIVAL order before final-step order - anyone the spear speared out
+  // ranks below every survivor, most-recently-eliminated highest among
+  // them (climb.eliminationOrder reversed - the exact trial.eliminationOrder
+  // pattern below). Only among whoever's left standing does the original
+  // final-step tiebreak (ties by the last round's answerRank, then join
+  // order) apply. Steps are not scores, so this reuses the trial's
+  // no-digits gating (isTrialResult) - the TV prints nothing for either
+  // finale.
   if (declaredWinner && room.climb) {
     const climb = room.climb;
     const lastRank = new Map(climb.lastResults?.map((result) => [result.playerId, result.answerRank]) ?? []);
     const stepOf = (player: { playerId: string }): number => climb.steps.get(player.playerId) ?? -1;
     const rankOf = (player: { playerId: string }): number => lastRank.get(player.playerId) ?? Infinity;
-    const others = players
-      .filter((player) => player.playerId !== declaredWinner.playerId)
+    const eliminatedIds = new Set(climb.eliminationOrder);
+    const survivors = players
+      .filter((player) => player.playerId !== declaredWinner.playerId && !eliminatedIds.has(player.playerId))
       .sort((a, b) => stepOf(b) - stepOf(a) || rankOf(a) - rankOf(b));
-    const standings: GameOverStanding[] = [declaredWinner, ...others].map((player, index) => ({
+    const eliminatedRanked = [...climb.eliminationOrder].reverse().flatMap((id) => {
+      const player = room.players.get(id);
+      return player ? [player] : [];
+    });
+    const standings: GameOverStanding[] = [declaredWinner, ...survivors, ...eliminatedRanked].map((player, index) => ({
       playerId: player.playerId,
       name: player.name,
       avatarId: player.avatarId,
@@ -636,19 +646,26 @@ export function buildTrialRevealPayload(room: Room): TrialRevealShowPayload | nu
 // Every player's step - the trial's `lives` table, for the ladder. Host-only
 // in aggregate (a phone gets its own `yourStep` and nothing else), built
 // fresh on every send so a broadcast and a state:sync can never disagree.
+// Task 205 - an eliminated player is dropped ENTIRELY, not just flagged:
+// this is what makes their figure disappear from the TV board from the
+// round after the one that struck them out (the reveal that struck them
+// still shows them, fading, via ClimbRevealHostResult.eliminated instead).
 function climbSteps(room: Room): ClimbStanding[] {
   const climb = room.climb;
   if (!climb) {
     return [];
   }
   const climbing = new Set(climb.climberIds);
-  return [...room.players.values()].map((player) => ({
-    playerId: player.playerId,
-    name: player.name,
-    avatarId: player.avatarId,
-    step: climb.steps.get(player.playerId) ?? 0,
-    climbing: climbing.has(player.playerId),
-  }));
+  const eliminated = new Set(climb.eliminationOrder);
+  return [...room.players.values()]
+    .filter((player) => !eliminated.has(player.playerId))
+    .map((player) => ({
+      playerId: player.playerId,
+      name: player.name,
+      avatarId: player.avatarId,
+      step: climb.steps.get(player.playerId) ?? 0,
+      climbing: climbing.has(player.playerId),
+    }));
 }
 
 export function buildClimbQuestionHostPayload(room: Room): ClimbQuestionShowHostPayload | null {
@@ -690,6 +707,7 @@ export function buildClimbQuestionPlayerPayload(room: Room, playerId: string): C
     durationMs: remainingActiveTimerMs(room),
     top: CLIMB_TOP,
     climbing: climb.climberIds.includes(playerId),
+    eliminated: climb.eliminationOrder.includes(playerId),
     yourStep: climb.steps.get(playerId) ?? 0,
     lockedIn: climb.lockIns.has(playerId),
     paused: room.paused,

@@ -1891,10 +1891,14 @@ export default function HostScreen() {
   // (lastClimbClimbersRef) exactly like lastStandingsRef above, so DUEL_
   // PICK/DUEL_REVEAL and the climb's GAME_OVER (where both are null) keep
   // showing everyone at their last real position.
+  // Task 205 - a climbQuestion row is never eliminated (climbSteps drops
+  // them from the payload entirely, one round after their reveal); a
+  // climbReveal row carries the real flag, true only on the exact round
+  // that struck them out.
   const liveClimbClimbers: AnavasisClimberData[] = climbQuestion
-    ? climbQuestion.steps.map((s, i) => ({ playerId: s.playerId, name: s.name, joinIndex: i, step: s.step, delta: null }))
+    ? climbQuestion.steps.map((s, i) => ({ playerId: s.playerId, name: s.name, joinIndex: i, step: s.step, delta: null, eliminated: false }))
     : climbReveal
-      ? climbReveal.results.map((r, i) => ({ playerId: r.playerId, name: r.name, joinIndex: i, step: r.stepAfter, delta: r.delta }))
+      ? climbReveal.results.map((r, i) => ({ playerId: r.playerId, name: r.name, joinIndex: i, step: r.stepAfter, delta: r.delta, eliminated: r.eliminated }))
       : [];
   const liveClimbTop = climbQuestion?.top ?? climbReveal?.top ?? 0;
   if (liveClimbClimbers.length > 0) {
@@ -1940,7 +1944,17 @@ export default function HostScreen() {
           winnerPlayerId: null,
         }
       : null;
-  const climbHiddenPlayerIds = liveDuel ? [liveDuel.a.playerId, liveDuel.b.playerId] : [];
+  // Task 205 - reuses the SAME hide-and-fade a live duel already gets:
+  // climbClimbers still carries an eliminated climber's row (with the
+  // `eliminated` flag persisted, per liveClimbClimbers above) for exactly
+  // the reveal that struck them out, since lastClimbClimbersRef only
+  // updates on a real climbQuestion/climbReveal payload and DUEL_PICK/
+  // DUEL_REVEAL send neither - so this keeps them faded through a
+  // following duel too, not just their own reveal.
+  const climbHiddenPlayerIds = [
+    ...(liveDuel ? [liveDuel.a.playerId, liveDuel.b.playerId] : []),
+    ...climbClimbers.filter((climber) => climber.eliminated).map((climber) => climber.playerId),
+  ];
   const climbWinnerId = phase === 'GAME_OVER' && isClimbFinale ? (gameOver?.standings[0]?.playerId ?? null) : null;
   const stealFlightHolding =
     phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;

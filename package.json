@@ -15,6 +15,7 @@
     "screenshot:phases": "tsx dev/screenshot-phases.ts",
     "trial:montecarlo": "tsx server/scripts/trial-montecarlo.ts",
     "climb:spear-check": "tsx server/scripts/climb-spear-check.ts",
+    "climb:spear-live-check": "tsx server/scripts/climb-spear-live-check.ts",
     "voice:generate": "tsx dev/generate-voice-lines.ts",
     "voice:index": "tsx dev/generate-voice-index.ts",
     "blitz:generate": "tsx dev/generate-blitz-statements.ts",

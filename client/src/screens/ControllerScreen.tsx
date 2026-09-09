@@ -2940,8 +2940,14 @@ export default function ControllerScreen() {
   // 'answer-button' testid and answerGrid/answerButton styling as the plain
   // QUESTION view above, unchanged - only the compact step strip above it
   // (ClimbStrip) and the CLIMB_SUBMIT event underneath are new. `climbing:
-  // false` (not connected at finale entry) is the spectator branch.
+  // false` (not connected at finale entry) is the entry spectator branch;
+  // `eliminated` (Task 205, the spear) is a DIFFERENT reason to spectate -
+  // same shared notice, reused trial wording ('Αποκλείστηκες'), since it's
+  // the exact same fact about the player either way.
   if (climbQuestion) {
+    if (climbQuestion.eliminated) {
+      return renderTrialSpectator('climb-eliminated-title');
+    }
     if (!climbQuestion.climbing) {
       return renderSpectatorNotice('climb-spectator-title', 'Παρακολουθείς');
     }

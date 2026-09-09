@@ -155,38 +155,59 @@ export interface TrialState {
 }
 
 // The climb finale in flight (Task 188a) - the TrialState shape, minus what
-// the climb has no need of (no life, no elimination, no sudden death: nobody
-// exits the ladder, falling behind IS the punishment). Null until the finale
+// the climb has no need of (no life, no sudden death). Null until the finale
 // begins, then set through GAME_OVER, since it holds the verdict. Steps live
 // HERE, never in player.score: a step is not a score, and GAME_OVER shows no
 // digits for this finale.
 export interface ClimbState {
   questions: Question[];
   questionIndex: number; // -1 until the first climb question starts
-  // Everyone in the race (connected at finale entry), in join order. Never
-  // shrinks - the climb has no elimination.
+  // Everyone who STARTED the race (connected at finale entry), in join
+  // order. Never shrinks, even after Task 205's spear elimination - use
+  // eliminationOrder below to tell who's still actually climbing.
   climberIds: string[];
-  steps: Map<string, number>; // current step per climber, entry steps at start
+  steps: Map<string, number>; // current step per climber, entry steps at start; frozen forever once eliminated
   lockIns: Map<string, TrialLockIn>; // THIS question only, cleared each round
   roundsPlayed: number;
   // Set once, by the reveal that ends the climb (one arrival at CLIMB_TOP,
-  // the highest step at the round cap, or the duel's winner - Task 188b).
+  // the highest step at the round cap, the duel's winner - Task 188b - or
+  // the last player left standing - Task 205).
   winnerPlayerId: string | null;
   // The last reveal's scored rounds, frozen the instant the round resolved
   // (state:sync replays it) - and the tie-break GAME_OVER's step order
-  // reads answerRank from.
+  // reads answerRank from. Only ever holds ALIVE climbers (see
+  // endClimbQuestion) - an eliminated player's row simply stops appearing,
+  // one round after the reveal that struck them out.
   lastResults: ClimbRevealHostResult[] | null;
   lastCorrectIndex: number | null;
   // Task 188b - Η Μονομαχία in flight, null until a reveal sends two
   // players to it; stays set through GAME_OVER (the reveal snapshot is what
   // a state:sync mid-DUEL_REVEAL replays).
   duel: ClimbDuelState | null;
+  // Task 205 (Η Λόγχη) - per-player consecutive-bad-round streak at step 0
+  // (server/src/climb.ts's applyClimbSpearRound owns the counting rule
+  // itself; this Map is just its state, one entry per climberId, implicitly
+  // 0 for anyone never yet written). Never touched outside endClimbQuestion/
+  // endDuelReveal, so pause can never catch it mid-update.
+  spearCounters: Map<string, number>;
+  // Task 205 - who the spear has speared out, in the order it happened
+  // (first eliminated at index 0) - the exact trial.eliminationOrder
+  // pattern, read the same way by buildGameOver's climb branch: winner,
+  // then survivors, then this list REVERSED.
+  eliminationOrder: string[];
 }
 
 // Task 188b - the duel. Picks live HERE and nowhere else until DUEL_REVEAL:
 // no payload builder reads `picks` before `lastReveal` is frozen.
 export interface ClimbDuelState {
   duelistIds: [string, string];
+  // Task 205 - why this duel exists, decided once at creation and read only
+  // by endDuelReveal: 'top' (two arrivals, a round-cap tie, or the
+  // standalone duel mode - modes/duel.ts) ends the WHOLE climb the instant
+  // it resolves, exactly as before this task; 'spear' eliminates the loser
+  // and lets the climb continue (checking last-survivor again before the
+  // next question).
+  cause: 'top' | 'spear';
   picks: Map<string, { weapon: DuelWeapon; assigned: boolean }>; // THIS pick round only
   tieCount: number; // same-weapon rounds so far
   // The early-lock beat (second pick landed): the reveal waits for BOTH the
