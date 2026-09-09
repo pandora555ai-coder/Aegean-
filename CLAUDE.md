@@ -44,8 +44,11 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
   (default 4) and captures the TV context at a hardcoded 1280x720 (the
   separate phone context is 360x640 — see below); no throwaway script is
   needed for either resolution.
-- The harness writes its PNGs to client/public/dev/shots (17 TV + 9 phone,
-  360x640) — served under the protected /dev basic-auth prefix and linked
+- The harness writes its PNGs to client/public/dev/shots (21 TV + 12 phone,
+  360x640 — dev/screenshot-phases.ts:1116-1117 computes both counts from
+  ALL_PHASES_IN_ORDER/PHONE_CAPTURE_ORDER; grew from 17/9 as CLIMB_QUESTION/
+  CLIMB_REVEAL/DUEL_PICK/DUEL_REVEAL and their phone captures were added) —
+  served under the protected /dev basic-auth prefix and linked
   from ΔΟΚΙΜΕΣ (Task 180). Anything new for testing/review goes UNDER
   /dev, never a public sibling path. These are the LIVE shots on the
   running site; they only refresh when a harness run is followed by a
@@ -69,6 +72,11 @@ server/src/steal.ts      STEAL thief selection + the clamped point transfer
 server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
                          what the next round must be. No Room, no io, no timers; the phase
                          shell around it is in phases.ts.
+server/src/climb.ts      Η Ανάβαση (the trial's ALTERNATIVE finale, Task 187/188a) — pure
+                         mechanic only, same no-Room/io/timers discipline as trial.ts: round
+                         scoring, the top-of-ladder WINNER/DUEL decision, and (Task 203) the
+                         spear elimination overlay. The spear half is NOT wired into the live
+                         game yet — see Phases below.
 server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY.
                          Playback IS built (Task 36a-d — see Crowd mood below). Wired into
                          every mode: quiz via phases.ts since Task 35, draw/numeric got
@@ -90,7 +98,9 @@ client/src/screens/host/                 One file per TV phase, plus GameLayout.
 client/src/components/AnavasisScene.tsx  Η Ανάβασις (Task 189): TheatreScene's sibling for the
                          climb finale — background art, AnavasisClimbers (the stair
                          figures), AnavasisDuel, AnavasisCrowning, AnavasisChrome, all
-                         off one shared geometry (visualStepFor/laneLeftPct).
+                         off one shared geometry (visualStepFor/laneLeftPct). Built from
+                         design/anavasis-reference.html, the TV visual reference for this
+                         scene (same role theatre-reference.html plays for TheatreScene).
 client/src/components/MarbleSlab.tsx     The read column's slab — renamed off PapyrusPanel
                          when Task 159 swapped the palette Ελαιογραφία → Θέατρο
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
@@ -176,6 +186,8 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
 
 Phases belong to a MODE (room.mode), not to the room. The mode owns its
 phase list, its continuations table and its STAGES table.
+GamePhase has 21 values (shared/src/index.ts:443-487); GameModeId has 6 —
+'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel' (index.ts:417-419).
 
 Quiz: LOBBY -> STAGE_ANNOUNCE -> [POWER_UP] -> QUESTION -> REVEAL
       -> [STEAL] -> [SOCRATES] -> (after the LAST question: STAGE_ANNOUNCE
@@ -245,11 +257,23 @@ always shows the server's real standings, no local math. buildStageAnnounce
 its card reads e.g. "4/4", never "3/4".
 **The climb (Task 188a) is the trial's ALTERNATIVE finale**, gated by
 `room.settings.finaleMode` ('trial' | 'climb', default 'trial' — the 177
-pattern). advanceToNextQuestionOrGameOver is the ONE site that branches on
+pattern; type + default at shared/src/index.ts:1253/1265). It is a VIP
+lobby setting (ControllerScreen.tsx:3216-3218's finale-mode selector,
+same `vip:update_settings` path as every other room setting), so — like
+every other room.settings field — it lives on the Room object and survives
+a host reload via HOST_REJOIN with no setting-specific code of its own.
+advanceToNextQuestionOrGameOver is the ONE site that branches on
 it (startClimb vs startTrial); quiz and full both honour it since they share
-that site. startClimb takes the same finale row (card title Η Ανάβαση),
-draws from the unused pool, runs CLIMB_QUESTION (CLIMB_QUESTION_TIME_MS =
-22000, fixed, not questionTimeMs) -> CLIMB_REVEAL on the quiz's continuations
+that site. CLIMB_* constants (all shared/src/index.ts): `CLIMB_TOP` = 10
+(the top step, a win); `CLIMB_ENTRY_GAP` = 3 / `CLIMB_ENTRY_BASE` = 1 (entry
+step spread by competition rank, climbEntryStep); `CLIMB_QUESTION_TIME_MS`
+= 22000 (fixed, not questionTimeMs); `CLIMB_MAX_QUESTIONS` = 24 (question
+pool drawn at climb start); `CLIMB_MAX_ROUNDS` = 24 (the round cap that
+actually ends it — MAX_QUESTIONS must stay >= this so pool exhaustion is
+only ever a second guard); `CLIMB_STAGE_TITLE`/`CLIMB_STAGE_TAGLINE` = the
+"Η Ανάβαση" stage-announce card text. startClimb takes the same finale row
+(card title CLIMB_STAGE_TITLE), draws from the unused pool, runs
+CLIMB_QUESTION -> CLIMB_REVEAL on the quiz's continuations
 table, and ends at GAME_OVER with `isTrialResult: true` (steps are not
 scores; no digits). Steps live in room.climb.steps, NEVER player.score; the
 mechanic is climb.ts (Task 187). CLIMB_REVEAL is ASYMMETRIC (host gets every
@@ -263,8 +287,12 @@ four climb/duel phases plus the climb's own GAME_OVER (HostScreen's
 render on lane fractions of the narrowing stair (AnavasisClimbers, no
 SophistsRow reuse, no digits, ↑/↑↑/↓/↓↓ deltas); the duel gets its own
 scrim+tablets+verdict (AnavasisDuel); the winner is crowned at the temple
-(AnavasisCrowning). The phone still renders nothing for CLIMB_*/DUEL_*
-(Task 190).
+(AnavasisCrowning). **The phone view is also built (Task 190)** —
+ControllerScreen.tsx: CLIMB_QUESTION reuses the plain QUESTION answer grid
+verbatim plus a compact step strip (ClimbStrip); a non-climbing spectator
+gets a spectator notice instead. DUEL_PICK gives a duelist three weapon
+slabs, a spectator only a "look at the TV" caption with NO weapon UI in
+its DOM at all (a render branch, not a hidden/disabled one).
 **Η Μονομαχία (Task 188b) is the climb's duel**, two more quiz phases
 DUEL_PICK -> DUEL_REVEAL. Trigger: two arrivals at CLIMB_TOP in one reveal
 (3+: the two fastest duel, the rest are held at TOP−1), OR a shared highest
@@ -286,7 +314,44 @@ the host payload. Bots pick at random after 400–1500ms. The Monte Carlo
 harness (seed 187, 0.7/0.5 skill) puts rounds-to-verdict at median 8, p99
 21, so the cap at 24 fires in 2 of 400 runs; at 16 it fired in ~5% (188b's
 finding, which is why 188c raised it). `--cap N` shows the uncapped tail.
-The TV view is built (Task 189, see above) — no phone view yet (190).
+The TV view is built (Task 189, see above); the phone view is built too
+(Task 190, see above) — DUEL_REVEAL is public/symmetric on the phone like
+TRIAL_REVEAL, both duelists and spectators see the same reveal.
+The reveal's spoken VERDICT line is built client-side, not server-sent:
+`buildDuelVerdictLine` (client/src/components/duelVerdict.ts, Task 197) —
+a pure function taking the DUEL_REVEAL payload's actual `weaponA`/
+`weaponB`/`winnerPlayerId` and narrating whichever weapon actually WON
+beating whichever actually lost, never assuming a fixed side. Fixes a bug
+where the old inline version always narrated from `weaponA` regardless of
+the real winner, and had `WEAPON_BEATEN` keyed backwards from
+`DUEL_BEATS`'s real cycle — wrong pair on nearly every reveal. `DUEL_LINES.
+DUEL_LOCKED` (socrates.ts:543) is still an empty array by design (the 138
+pattern) — silent until content is written for it, not a bug.
+**Η Μονομαχία is ALSO its own standalone GameModeId** since Task 191
+(server/src/modes/duel.ts) — the same dev-harness pattern draw/numeric
+follow: zero mechanic of its own, `phases` = LOBBY -> DUEL_PICK ->
+DUEL_REVEAL -> GAME_OVER, `minPlayers: 2`. `start()` picks the duelists as
+the first two CONNECTED players by join order and hands off to the exact
+same `startDuel`/`submitDuelPick`/`endDuelPick`/`endDuelReveal` code the
+climb finale runs — no second implementation. Since a bot is never VIP
+(Core rules above) and only the VIP can call `vip:start_game`, a
+bots-only standalone-duel room can never start itself: a real human has
+to be present and press Έναρξη.
+**Η Λόγχη, the spear elimination rule (Task 203), is a PURE MECHANIC
+ONLY — NOT wired into the live climb.** Lives entirely in server/src/
+climb.ts (`applyClimbSpearRound`/`nextAfterSpearRound`/
+`nextAfterSpearEliminations`) plus its own Monte Carlo extension
+(`server/scripts/trial-montecarlo.ts --spear on|off|auto`) and unit check
+(`npm run climb:spear-check`, 17/17 checks) — no phases.ts/payloads.ts/
+client change exists for it yet. The rule as designed: auto-gated to
+`CLIMB_SPEAR_MIN_PLAYERS` = 4 (inert below that); sitting at step 0
+through a negative round (wrong OR no lock-in) increments a per-player
+counter, a correct lock-in (always a move OFF step 0) resets it to zero;
+at `CLIMB_SPEAR_LIMIT` = 2 the player is speared out. Two or more struck
+in the SAME round: the two fastest-REACTING (lock-in time, not
+answerRank) duel it out with the top's own weapon mechanic, anyone else
+struck that round is out outright; eliminations leaving exactly one
+player standing win immediately — a second victory path beside CLIMB_TOP.
 A trial GAME_OVER shows NO digits — no rank, no score — gated on
 `gameOver.isTrialResult` (SophistsRow's hideScores; GameOverView has no
 list at all since 161); standings are SURVIVAL order (winner, then reverse
@@ -296,6 +361,39 @@ row, an eliminated figure sinks+fades (.out) and is removed outright
 REORDER_DELAY_MS + GLIDE_MS (2200ms, see TV layout) after its reveal — the
 same tween the reorder plays, so removal lands as the sink+fade finishes
 (SophistsRow.tsx's useRemovedIds); the survivors re-space via `left`.
+
+**Anavasis TV invariant (Task 192): no on-screen text while any body is
+moving**, enforced as a strict per-round FRAME alternation — Frame A
+(CLIMB_QUESTION, a motionless read) then Frame B (CLIMB_REVEAL, movement).
+CLIMB_REVEAL renders no slab at all (ClimbRevealView.tsx is a 1x1px hidden
+marker only — the read content is UNMOUNTED, not merely hidden); it opens
+with a still `CLIMB_BEAT_MS` = 800ms beat showing each climber's up/down
+arrow, then glides everyone to their new step over `CLIMB_GLIDE_MS` =
+1500ms (both AnavasisScene.tsx, exported). TheatreScene's `LIT_PHASES`
+includes CLIMB_REVEAL for the same alternation (dimmed read / lit
+movement), though TheatreScene itself never actually renders during the
+climb (AnavasisScene swaps in). Task 198: Socrates must never occlude the
+CLIMB_QUESTION slab — `ClimbQuestionView`'s `SLAB_WRAP_STYLE` sits at
+`zIndex: 3`, above SocratesFigure (1) and AnavasisClimbers (2), so the
+slab paints on top of every scene actor regardless of DOM order. Task 199:
+that same wrapper has a determinate `height: '42vh'` (was auto-height, so
+`useFitFontSize`'s shrink never triggered and the bank's longest question
+pushed the slab to 1148px, past the 720px canvas) with `MarbleSlab` at
+`flex: '1 1 0'` inside it — the same "give the slab real height so its
+flex children have something to shrink against" shape `TrialQuestionView`
+already used via GameLayout.
+
+The VIP's crowd/voice sliders (Task 178) are collapsed behind one toggle
+button by default (`VipAudioControls`, ControllerScreen.tsx:361, ten call
+sites, `expanded` is the component's own mount state — Task 192). Task 195
+traced every `voiceGain`/`bedGain` write and confirmed empirically
+(`voiceGain.gain.value` = 1 at construction and at the first live SOCRATES
+beat with the panel never opened) that this collapse does NOT affect
+playback — it is pure UI, not a "must expand the slider to unmute" trap.
+An unrelated real bug existed alongside it (playSocratesLine's fetch/
+decode/start failures failed completely silently, Task 154's design) —
+195's actual fix was adding the two `console.warn` calls the Core rules'
+audio bullet already covers, not anything about the collapse.
 
 "Phase" = the state machine. The progression of the show is a STAGE.
 Never write "phase 1" when you mean a stage.
@@ -312,7 +410,7 @@ announces each stage once.
 off, stage 2's POWER_UP phase is skipped entirely even though the stage
 still calls for one; the POWER_UP machinery itself must never be deleted.
 The screenshot harness opts in (`powerUpsEnabled: true`) specifically to
-keep its 17/17 TV-phase coverage.
+keep its 21/21 TV-phase coverage.
 Landed effects STACK per target: ice in duration (10s cap), ink in
 intensity (cap 3), both via addAppliedSabotage().
 
@@ -398,7 +496,9 @@ player count. A non-submitter is flat 0, ranked past every real rank.
 ## Blitz — a real mode now (Task 156), plus its own dev prototype
 
 GameModeId (shared/src/index.ts) is `'quiz' | 'draw' | 'numeric' | 'full' |
-'blitz'` (GAME_MODE_IDS), and server/src/modes/blitz.ts calls
+'blitz' | 'duel'` (GAME_MODE_IDS, 6 values — 'duel' is Task 191's
+standalone dev-harness mode for Η Μονομαχία, see Phases above), and
+server/src/modes/blitz.ts calls
 registerGameMode — it IS in the registry, with its own phases (LOBBY,
 BLITZ, BLITZ_REVEAL, GAME_OVER). A room can play blitz as a real
 multiplayer game: the TV has host/BlitzView.tsx and
