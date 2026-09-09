@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  AGORA_COLOURS,
   AVATAR_CATALOGUE,
   ClientEvents,
   DEFAULT_AUDIO_VOLUME,
@@ -16,6 +17,8 @@ import {
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   ServerEvents,
+  isAgoraQuestionHostPayload,
+  isAgoraRevealHostPayload,
   isBlitzRevealHostPayload,
   isBlitzShowHostPayload,
   isClimbQuestionHostPayload,
@@ -35,6 +38,11 @@ import {
   stagesForLength,
   totalQuestionsForLength,
   type ActiveSabotage,
+  type AgoraExposeShowPayload,
+  type AgoraQuestionShowPayload,
+  type AgoraQuestionShowPlayerPayload,
+  type AgoraRevealPlayerPayload,
+  type AgoraRevealShowPayload,
   type AnswerAcceptedPayload,
   type BlitzRevealPayload,
   type BlitzRevealPlayerPayload,
@@ -232,6 +240,17 @@ function climbDeltaGlyph(delta: number): string {
     return '↓↓';
   }
   return '↓';
+}
+
+// Η Μνήμη της Αγοράς (Task 209) - a `kind: 'colour'` question's options are
+// plain Greek colour names (buildColourQuestion, shared/src/agora.ts's
+// colourNameGr) - the wire payload deliberately carries no hex of its own
+// (AgoraQuestionShowPlayerPayload). Matching an option's own text back
+// against the shared AGORA_COLOURS table is what lets the swatch avoid
+// hardcoding a hex here; a name with no match (should never happen - every
+// colour option comes from this same table) renders no swatch at all.
+function agoraSwatchHex(optionLabel: string): string | undefined {
+  return AGORA_COLOURS.find((colour) => colour.nameGr === optionLabel)?.hex;
 }
 
 // Η Ανάβασις (Task 190) - the compact strip above CLIMB_QUESTION's answer
@@ -609,6 +628,20 @@ export default function ControllerScreen() {
   const [duelPendingWeapon, setDuelPendingWeapon] = useState<DuelWeapon | null>(null);
   const duelSentRef = useRef(false);
   const [duelReveal, setDuelReveal] = useState<DuelRevealPayload | null>(null);
+  // Η Μνήμη της Αγοράς (Task 209). AGORA_EXPOSE carries the full scene
+  // (symmetric to TV/phone alike) but this phone never reads any of it, so
+  // it gets no state of its own - only `phase` gates its hold view.
+  // AGORA_QUESTION follows the trial/climb/duel one-tap-no-reconciling-ack
+  // idiom: AGORA_SUBMIT's ack happens to reuse the shared ANSWER_ACCEPTED
+  // event, but the tap is already optimistically final here regardless, so
+  // the ack is ignored. AGORA_REVEAL is public/symmetric and, like
+  // trialReveal/climbReveal, deliberately does NOT clear `agoraQuestion` on
+  // arrival - this view looks up the text of this phone's own choice out of
+  // `agoraQuestion.options`.
+  const [agoraQuestion, setAgoraQuestion] = useState<AgoraQuestionShowPlayerPayload | null>(null);
+  const [agoraPendingChoice, setAgoraPendingChoice] = useState<number | null>(null);
+  const agoraSentRef = useRef(false);
+  const [agoraReveal, setAgoraReveal] = useState<AgoraRevealPlayerPayload | null>(null);
 
   // Task 174 - auto-resume. A stored session (written on every successful
   // join/reconnect, see handleJoined) means this playerId belongs to a room
@@ -725,6 +758,14 @@ export default function ControllerScreen() {
       duelSentRef.current = payload?.picked ?? false;
     }
 
+    // Η Μνήμη της Αγοράς (Task 209) - same pairing again, `answered` instead
+    // of `lockedIn`/`picked`.
+    function applyAgoraQuestion(payload: AgoraQuestionShowPlayerPayload | null) {
+      setAgoraQuestion(payload);
+      setAgoraPendingChoice(null);
+      agoraSentRef.current = payload?.answered ?? false;
+    }
+
     // Blitz mode (Task 156a) - set together for the same reason applyDraw
     // is: the swipe surface and the next-index can never disagree about how
     // far this phone already got.
@@ -759,6 +800,8 @@ export default function ControllerScreen() {
         setClimbReveal(null);
         applyDuelPick(null);
         setDuelReveal(null);
+        applyAgoraQuestion(null);
+        setAgoraReveal(null);
         // Pause is impossible in LOBBY - reset defensively.
         setPaused(false);
         setPausedByName(null);
@@ -1099,6 +1142,63 @@ export default function ControllerScreen() {
       }
     }
 
+    // Η Μνήμη της Αγοράς (Task 209) - symmetric like agora_expose:show
+    // itself: every phone gets the identical payload the TV does. The scene
+    // it carries is deliberately never touched here - only phase/pause
+    // matter to this screen's plain hold view. Clears every OTHER mode's
+    // state defensively, the same "first event of a fresh game" reasoning
+    // handleClimbQuestionShow documents above - agora is reachable
+    // standalone from the lobby mode-picker just like climb/trial/duel are.
+    function handleAgoraExposeShow(payload: AgoraExposeShowPayload) {
+      setQuestion(null);
+      setPendingChoice(null);
+      setAcceptedChoice(null);
+      setReveal(null);
+      applyPowerUp(null);
+      applySteal(null);
+      applyDraw(null);
+      applyGuess(null);
+      setGuessReveal(null);
+      applyNumericQuestion(null);
+      setNumericReveal(null);
+      applyBlitz(null);
+      setBlitzReveal(null);
+      applyTrialQuestion(null);
+      setTrialReveal(null);
+      applyClimbQuestion(null);
+      setClimbReveal(null);
+      applyDuelPick(null);
+      setDuelReveal(null);
+      applyAgoraQuestion(null);
+      setAgoraReveal(null);
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
+    // The player branch of an asymmetric event - the host variant (question
+    // text, standings, who has answered) is not this screen's business.
+    // Clears `agoraReveal` from the previous round - the round's own
+    // AGORA_EXPOSE already cleared everything else once at round start.
+    function handleAgoraQuestionShow(payload: AgoraQuestionShowPayload) {
+      if (!isAgoraQuestionHostPayload(payload)) {
+        setAgoraReveal(null);
+        applyAgoraQuestion(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // Public and symmetric, like trial_reveal:show/climb_reveal:show. Does
+    // NOT clear `agoraQuestion` - same reasoning: this view looks up the
+    // text of this phone's own choice out of `agoraQuestion.options`.
+    function handleAgoraRevealShow(payload: AgoraRevealShowPayload) {
+      if (!isAgoraRevealHostPayload(payload)) {
+        setAgoraReveal(payload);
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
     function handleRevealShow(payload: RevealShowPayload) {
       if (!isRevealHostPayload(payload)) {
         setReveal(payload);
@@ -1126,6 +1226,8 @@ export default function ControllerScreen() {
       setClimbReveal(null);
       applyDuelPick(null);
       setDuelReveal(null);
+      applyAgoraQuestion(null);
+      setAgoraReveal(null);
     }
 
     function handleGamePaused(payload: PausedPayload) {
@@ -1165,6 +1267,8 @@ export default function ControllerScreen() {
       setClimbReveal(null);
       applyDuelPick(null);
       setDuelReveal(null);
+      applyAgoraQuestion(null);
+      setAgoraReveal(null);
 
       switch (payload.phase) {
         case 'LOBBY':
@@ -1342,6 +1446,28 @@ export default function ControllerScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
+        // Η Μνήμη της Αγοράς (Task 209) - AGORA_EXPOSE is symmetric (no
+        // host/player split), so no isXHostPayload guard is needed; the
+        // scene it carries stays untouched here regardless.
+        case 'AGORA_EXPOSE':
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
+        // Same reconnect reasoning as CLIMB_QUESTION/CLIMB_REVEAL above.
+        case 'AGORA_QUESTION':
+          if (!isAgoraQuestionHostPayload(payload)) {
+            applyAgoraQuestion(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'AGORA_REVEAL':
+          if (!isAgoraRevealHostPayload(payload)) {
+            setAgoraReveal(payload);
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
       }
     }
 
@@ -1369,6 +1495,9 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
     socket.on(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
     socket.on(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
+    socket.on(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
+    socket.on(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);
+    socket.on(ServerEvents.AGORA_REVEAL_SHOW, handleAgoraRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -1402,6 +1531,9 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.CLIMB_REVEAL_SHOW, handleClimbRevealShow);
       socket.off(ServerEvents.DUEL_PICK_SHOW, handleDuelPickShow);
       socket.off(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
+      socket.off(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
+      socket.off(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);
+      socket.off(ServerEvents.AGORA_REVEAL_SHOW, handleAgoraRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
@@ -1709,6 +1841,20 @@ export default function ControllerScreen() {
     duelSentRef.current = true;
     setDuelPendingWeapon(weapon);
     socket.emit(ClientEvents.DUEL_PICK, { weapon });
+  }
+
+  // Η Μνήμη της Αγοράς (Task 209). Same one-tap, no-ack, ref-guarded shape
+  // as handleTrialAnswerTap/handleClimbAnswerTap - AGORA_SUBMIT's ack
+  // happens to reuse the shared ANSWER_ACCEPTED event, but the tap is
+  // optimistically final here regardless, like every other non-plain-quiz
+  // mode.
+  function handleAgoraAnswerTap(index: number) {
+    if (agoraSentRef.current || inputsLocked) {
+      return;
+    }
+    agoraSentRef.current = true;
+    setAgoraPendingChoice(index);
+    socket.emit(ClientEvents.AGORA_SUBMIT, { choice: index });
   }
 
   // Numeric mode (Task 66). Dragging the slider sets numericValue directly -
@@ -3098,17 +3244,173 @@ export default function ControllerScreen() {
     );
   }
 
-  // Task 207 - Η Μνήμη της Αγοράς: phase-machine wiring only. The phone's
-  // real views (the answer grid for AGORA_QUESTION, the own-result card for
-  // AGORA_REVEAL) are Task 209; until then placeholder text off `phase`
-  // alone. The exposure's line is the one the spec asks for verbatim.
-  if (joined && (phase === 'AGORA_EXPOSE' || phase === 'AGORA_QUESTION' || phase === 'AGORA_REVEAL')) {
+  // Η Μνήμη της Αγοράς (Task 209) - AGORA_REVEAL. Public/symmetric like
+  // trial/climb's reveal above, and for the same reason does NOT clear
+  // `agoraQuestion` on arrival: the "your choice was X" line below reads
+  // its text out of `agoraQuestion.options`. No proof/scene rendered here
+  // at all (asymmetric by design - the payload carries none) and no VIP
+  // skip button, matching trial/climb/duel's reveal cards rather than
+  // plain quiz's.
+  if (agoraReveal) {
     return (
       <div style={styles.container}>
-        <ConnectionBanner visible={!connected} />
-        <div style={styles.lookAtTv} data-testid="agora-placeholder">
-          {phase === 'AGORA_EXPOSE' ? 'Κοίτα την τηλεόραση' : `Η Μνήμη της Αγοράς — ${phase}`}
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.revealVerdictRow}>
+          <div
+            style={agoraReveal.yourCorrect ? styles.revealCorrect : styles.revealWrong}
+            data-testid="agora-reveal-verdict"
+          >
+            {agoraReveal.yourCorrect ? 'Σωστά!' : 'Λάθος'}
+          </div>
         </div>
+        <div style={styles.revealCorrectOption}>Σωστή απάντηση: {agoraReveal.correctOption}</div>
+        {!agoraReveal.yourCorrect && agoraReveal.yourChoice !== null && agoraQuestion && (
+          <div style={styles.revealYourChoice} data-testid="agora-reveal-your-choice">
+            Η επιλογή σου: {agoraQuestion.options[agoraReveal.yourChoice]}
+          </div>
+        )}
+        <div style={styles.revealPoints} data-testid="agora-reveal-points">
+          +{agoraReveal.pointsAwarded} πόντοι
+        </div>
+        <div style={styles.revealTotal} data-testid="agora-reveal-total">
+          Σύνολο: {agoraReveal.totalScore}
+        </div>
+        <div style={styles.revealRank} data-testid="agora-reveal-rank">
+          Θέση #{agoraReveal.rank}
+        </div>
+        {agoraReveal.yourCorrect && agoraReveal.yourAnswerRank !== null && (
+          <div style={styles.revealSpeedRank} data-testid="agora-reveal-answer-rank">
+            Ταχύτητα: #{agoraReveal.yourAnswerRank}
+            {agoraReveal.yourTimeMs !== null && ` — ${(agoraReveal.yourTimeMs / 1000).toFixed(1)}΄΄`}
+          </div>
+        )}
+        <ConnectionBanner visible={!connected && joined !== null} />
+        <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+        {isVip && (
+          <VipAudioControls
+            crowdVolume={audioVolume.crowdVolume}
+            voiceVolume={audioVolume.voiceVolume}
+            onChange={handleAudioVolumeChange}
+          />
+        )}
+        {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+      </div>
+    );
+  }
+
+  // Η Μνήμη της Αγοράς (Task 209) - AGORA_QUESTION. No category/question
+  // text travels to a player at all (AgoraQuestionShowPlayerPayload) - only
+  // a question-progress readout fills the header slot that plain QUESTION/
+  // CLIMB_QUESTION give to `category`. Same answer grid/testid/tap-lock
+  // discipline as every other quiz-shaped question view. A `kind ===
+  // 'colour'` question's options are plain Greek colour names
+  // (buildColourQuestion, shared/src/agora.ts) - agoraSwatchHex matches
+  // each option's own text back against the shared AGORA_COLOURS table
+  // (never a literal hex of its own) to render a swatch chip; every other
+  // kind renders zero swatch nodes.
+  if (agoraQuestion) {
+    const myChoice = agoraPendingChoice;
+    const answered = myChoice !== null || agoraQuestion.answered;
+    return (
+      <div style={styles.questionContainer}>
+        {joined && (
+          <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+            <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+          </div>
+        )}
+        {isVip && (
+          <div style={styles.vipBadge} data-testid="vip-badge">
+            👑 VIP
+          </div>
+        )}
+        <div style={styles.questionHeader}>
+          <div style={styles.category} data-testid="agora-question-progress">
+            Ερώτηση {agoraQuestion.questionIndex + 1}/{agoraQuestion.totalQuestions}
+          </div>
+          {answered ? (
+            <div style={styles.lookAtTv} data-testid="waiting-message">
+              Περίμενε τους υπόλοιπους...
+            </div>
+          ) : (
+            <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+          )}
+        </div>
+        <div style={styles.answerGrid}>
+          {agoraQuestion.options.map((option, index) => {
+            const isMine = index === myChoice;
+            const dimmed = answered && !isMine;
+            const disabled = answered || inputsLocked;
+            const swatchHex = agoraQuestion.kind === 'colour' ? agoraSwatchHex(option) : undefined;
+            return (
+              <button
+                key={index}
+                type="button"
+                data-testid="answer-button"
+                data-selected={isMine}
+                className={isMine ? 'glow' : undefined}
+                style={
+                  dimmed
+                    ? styles.answerButtonDim
+                    : ({
+                        ...styles.answerButton,
+                        ...(isMine ? styles.answerButtonSelected : undefined),
+                        boxShadow: isMine ? undefined : SURFACE_GLOW,
+                        ...(isMine ? { '--glow-color': 'color-mix(in srgb, var(--wine-2) 50%, transparent)' } : {}),
+                      } as CSSVars)
+                }
+                onClick={() => handleAgoraAnswerTap(index)}
+                disabled={disabled}
+              >
+                {swatchHex && <span style={{ ...styles.agoraSwatch, background: swatchHex }} data-testid="agora-swatch" />}
+                <span style={dimmed ? styles.answerTextDim : styles.answerText}>{option}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={styles.questionFooter}>
+          <ConnectionBanner visible={!connected && joined !== null} />
+          <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
+          {isVip && (
+            <VipAudioControls
+              crowdVolume={audioVolume.crowdVolume}
+              voiceVolume={audioVolume.voiceVolume}
+              onChange={handleAudioVolumeChange}
+            />
+          )}
+          {isVip && <ResetToLobbyControl onConfirm={handleResetToLobby} />}
+        </div>
+      </div>
+    );
+  }
+
+  // Η Μνήμη της Αγοράς (Task 209) - AGORA_EXPOSE. The payload carries the
+  // full scene (buildAgoraExposeShow, symmetric to TV and phone alike - see
+  // shared/src/index.ts's own design note) precisely because everyone is
+  // meant to be looking at the TV anyway; this phone deliberately never
+  // reads any of it - a plain hold screen, matching every other "look at
+  // the TV" wait screen in this file. None of those render a per-phase
+  // countdown of their own even though several of their payloads carry
+  // timing fields (this one's `durationMs` included - the phone never
+  // renders a countdown, only the TV does), so this doesn't either.
+  if (joined && phase === 'AGORA_EXPOSE') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.avatarCorner} data-testid="my-avatar-corner">
+          <Avatar avatarId={joined.avatarId} sizeRem={2.2} />
+        </div>
+        <div style={styles.lookAtTv} data-testid="agora-expose-hold">
+          Κοίτα την τηλεόραση
+        </div>
+        <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
       </div>
     );
@@ -4062,6 +4364,20 @@ const styles: Record<string, CSSProperties> = {
   },
   answerTextDim: {
     color: 'var(--carve)',
+  },
+  // Η Μνήμη της Αγοράς (Task 209) - the colour-question swatch chip. Sits
+  // beside the option text as a second flex child of the same button
+  // (answerButton/answerButtonDim are already display:flex row-centered),
+  // never encoding correctness - dimming still happens via the button's
+  // own opacity, not this chip's colour.
+  agoraSwatch: {
+    display: 'inline-block',
+    width: '1rem',
+    height: '1rem',
+    borderRadius: '50%',
+    marginRight: '0.4rem',
+    border: '1px solid var(--marble-3)',
+    flexShrink: 0,
   },
   revealVerdictRow: {
     display: 'flex',
