@@ -6,6 +6,8 @@ import {
   DEFAULT_ROOM_SETTINGS,
   MAX_BOTS,
   ServerEvents,
+  isAgoraQuestionHostPayload,
+  isAgoraRevealHostPayload,
   isBlitzRevealHostPayload,
   isBlitzShowHostPayload,
   isClimbQuestionHostPayload,
@@ -21,6 +23,13 @@ import {
   isSocratesHostPayload,
   isStealHostPayload,
   isTrialQuestionHostPayload,
+  type AgoraExposeShowPayload,
+  type AgoraQuestionShowHostPayload,
+  type AgoraQuestionShowPayload,
+  type AgoraRevealHostPayload,
+  type AgoraRevealShowPayload,
+  type AgoraSubject,
+  type AgoraRenderSpec,
   type AnswerProgressPayload,
   type AudioVolumePayload,
   type BlitzRevealHostPayload,
@@ -105,6 +114,10 @@ import { ClimbQuestionView } from './host/ClimbQuestionView';
 import { ClimbRevealView } from './host/ClimbRevealView';
 import { DuelPickView } from './host/DuelPickView';
 import { DuelRevealView } from './host/DuelRevealView';
+import { AgoraExposeView } from './host/AgoraExposeView';
+import { AgoraQuestionView } from './host/AgoraQuestionView';
+import { AgoraRevealView } from './host/AgoraRevealView';
+import { AgoraScene } from '../components/AgoraScene';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { SocratesFigure } from '../components/SocratesFigure';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
@@ -120,6 +133,13 @@ import {
   type AnavasisClimberData,
 } from '../components/AnavasisScene';
 import { Krater, type TimerState } from '../components/Krater';
+
+// Task 208 - how long AGORA_REVEAL's own options slab (AgoraRevealView's
+// 'grid' stage) stays up before the market is restored with its highlight
+// (the 'proof' stage takes it from there, unmounting the slab entirely).
+// Purely a client-side cosmetic beat, never sent by the server - well inside
+// REVEAL_DURATION_MS (6000ms) so the proof beat always gets a real window.
+const AGORA_REVEAL_GRID_MS = 1800;
 
 export default function HostScreen() {
   const { connected } = useSocketConnection();
@@ -224,6 +244,24 @@ export default function HostScreen() {
   const [duelPick, setDuelPick] = useState<DuelPickShowHostPayload | null>(null);
   const [duelPickSecondsLeft, setDuelPickSecondsLeft] = useState(0);
   const [duelReveal, setDuelReveal] = useState<DuelRevealHostPayload | null>(null);
+  // Η Μνήμη της Αγοράς (Task 207 server side, 208 here). No sticky "which
+  // world" flag like isClimbFinale - AGORA_EXPOSE/AGORA_QUESTION/AGORA_REVEAL
+  // identify themselves directly (unlike CLIMB_*, an agora GAME_OVER is the
+  // ordinary GameOverView with real scores, so nothing has to disambiguate it
+  // from any other mode's).
+  const [agoraExpose, setAgoraExpose] = useState<AgoraExposeShowPayload | null>(null);
+  const [agoraExposeSecondsLeft, setAgoraExposeSecondsLeft] = useState(0);
+  const [agoraQuestion, setAgoraQuestion] = useState<AgoraQuestionShowHostPayload | null>(null);
+  const [agoraQuestionSecondsLeft, setAgoraQuestionSecondsLeft] = useState(0);
+  const [agoraReveal, setAgoraReveal] = useState<AgoraRevealHostPayload | null>(null);
+  const [agoraRevealSecondsLeft, setAgoraRevealSecondsLeft] = useState(0);
+  // The reveal's own frame alternation (Task 208, the Anavasis 192 pattern
+  // applied inside GameLayout rather than by bypassing it): 'grid' shows
+  // AgoraRevealView's options slab with the market still closed; 'proof'
+  // hides that slab entirely and restores the market with its highlight.
+  // Lives here (not inside AgoraRevealView) because the scene and the slab
+  // are SIBLINGS in the render tree below, both driven off this one value.
+  const [agoraRevealStage, setAgoraRevealStage] = useState<'grid' | 'proof'>('grid');
   // The last-known climber positions (playerId -> step/delta), read off
   // whichever of climbQuestion/climbReveal most recently carried them and
   // held past that (mirrors lastStandingsRef below, same reasoning): DUEL_
@@ -364,6 +402,10 @@ export default function HostScreen() {
         setDuelPick(null);
         setDuelReveal(null);
         setIsClimbFinale(false);
+        setAgoraExpose(null);
+        setAgoraQuestion(null);
+        setAgoraReveal(null);
+        setAgoraRevealStage('grid');
         lastClimbClimbersRef.current = [];
         lastClimbTopRef.current = 0;
         // Pause is impossible in LOBBY - reset defensively, in case a
@@ -639,6 +681,54 @@ export default function HostScreen() {
       }
     }
 
+    // Η Μνήμη της Αγοράς (Task 208). Symmetric, unlike every phase above -
+    // AgoraExposeShowPayload is the one shape both the TV and every phone
+    // get, since the render spec is meant to be seen by everyone the moment
+    // the market opens. Its own durationMs is already "time STILL LEFT"
+    // (computed the same way at live-broadcast time and at reconnect), so
+    // reading it directly here is correct in both cases - no separate
+    // "just started, use the full nominal duration" branch the way plain
+    // QUESTION needs.
+    function handleAgoraExposeShow(payload: AgoraExposeShowPayload) {
+      setAgoraQuestion(null);
+      setAgoraReveal(null);
+      setAgoraExpose(payload);
+      setAgoraExposeSecondsLeft(Math.ceil(payload.durationMs / 1000));
+      setPaused(payload.paused);
+      setPausedByName(payload.pausedByName);
+    }
+
+    // The host branch of an asymmetric event, same pattern as question:show -
+    // the phone's own `answered` flag is never sent here (see
+    // isAgoraQuestionHostPayload). A fresh entry has just begun, so the full
+    // questionTimeMs is the correct starting countdown (this payload carries
+    // no live "time left" field of its own, unlike the expose's).
+    function handleAgoraQuestionShow(payload: AgoraQuestionShowPayload) {
+      if (isAgoraQuestionHostPayload(payload)) {
+        setAgoraExpose(null);
+        setAgoraReveal(null);
+        setAgoraQuestion(payload);
+        setAgoraQuestionSecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
+    // The host branch of an asymmetric event, same pattern as reveal:show -
+    // a phone's own row is never sent here (see isAgoraRevealHostPayload).
+    // agoraRevealStage's own effect (below) resets to 'grid' and schedules
+    // the flip to 'proof' whenever this object's identity changes, which a
+    // fresh event always does.
+    function handleAgoraRevealShow(payload: AgoraRevealShowPayload) {
+      if (isAgoraRevealHostPayload(payload)) {
+        setAgoraQuestion(null);
+        setAgoraReveal(payload);
+        setAgoraRevealSecondsLeft(Math.ceil(payload.autoAdvanceMs / 1000));
+        setPaused(payload.paused);
+        setPausedByName(payload.pausedByName);
+      }
+    }
+
     function handleGamePaused(payload: PausedPayload) {
       setPaused(true);
       setPausedByName(payload.byName);
@@ -690,6 +780,12 @@ export default function HostScreen() {
         setTrialQuestionSecondsLeft(seconds);
       } else if (phaseRef.current === 'TRIAL_REVEAL') {
         setTrialRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'AGORA_EXPOSE') {
+        setAgoraExposeSecondsLeft(seconds);
+      } else if (phaseRef.current === 'AGORA_QUESTION') {
+        setAgoraQuestionSecondsLeft(seconds);
+      } else if (phaseRef.current === 'AGORA_REVEAL') {
+        setAgoraRevealSecondsLeft(seconds);
       }
     }
 
@@ -723,6 +819,10 @@ export default function HostScreen() {
       setTrialReveal(null);
       setBlitz(null);
       setBlitzReveal(null);
+      setAgoraExpose(null);
+      setAgoraQuestion(null);
+      setAgoraReveal(null);
+      setAgoraRevealStage('grid');
 
       switch (payload.phase) {
         case 'STAGE_ANNOUNCE':
@@ -903,6 +1003,36 @@ export default function HostScreen() {
             setPausedByName(payload.pausedByName);
           }
           break;
+        // Task 208 - the agora, same reasoning as every phase above: a
+        // reconnect restores exactly the screen a fresh entry would have
+        // shown. AGORA_EXPOSE's own durationMs is already "time still left"
+        // (see handleAgoraExposeShow); AGORA_QUESTION has no such field of
+        // its own, so this reads the state-sync wrapper's bolted-on
+        // remainingMs instead - the same distinction plain QUESTION/
+        // TRIAL_QUESTION already draw between their own live-broadcast and
+        // reconnect countdown sources.
+        case 'AGORA_EXPOSE':
+          setAgoraExpose(payload);
+          setAgoraExposeSecondsLeft(Math.ceil(payload.durationMs / 1000));
+          setPaused(payload.paused);
+          setPausedByName(payload.pausedByName);
+          break;
+        case 'AGORA_QUESTION':
+          if (isAgoraQuestionHostPayload(payload)) {
+            setAgoraQuestion(payload);
+            setAgoraQuestionSecondsLeft(Math.ceil(payload.remainingMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
+        case 'AGORA_REVEAL':
+          if (isAgoraRevealHostPayload(payload)) {
+            setAgoraReveal(payload);
+            setAgoraRevealSecondsLeft(Math.ceil(payload.autoAdvanceMs / 1000));
+            setPaused(payload.paused);
+            setPausedByName(payload.pausedByName);
+          }
+          break;
       }
     }
 
@@ -939,6 +1069,9 @@ export default function HostScreen() {
     socket.on(ServerEvents.DUEL_LOCKED, handleDuelLocked);
     socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
     socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
+    socket.on(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
+    socket.on(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);
+    socket.on(ServerEvents.AGORA_REVEAL_SHOW, handleAgoraRevealShow);
     socket.on(ServerEvents.GAME_OVER, handleGameOver);
     socket.on(ServerEvents.STATE_SYNC, handleStateSync);
     socket.on(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -976,6 +1109,9 @@ export default function HostScreen() {
       socket.off(ServerEvents.DUEL_LOCKED, handleDuelLocked);
       socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
       socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
+      socket.off(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
+      socket.off(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);
+      socket.off(ServerEvents.AGORA_REVEAL_SHOW, handleAgoraRevealShow);
       socket.off(ServerEvents.GAME_OVER, handleGameOver);
       socket.off(ServerEvents.STATE_SYNC, handleStateSync);
       socket.off(ServerEvents.SETTINGS_UPDATED, handleSettingsUpdated);
@@ -1289,6 +1425,64 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [duelPick, paused]);
 
+  // Η Μνήμη της Αγοράς (Task 208) - AGORA_EXPOSE's own countdown, same
+  // pattern as every other timed phase's above.
+  useEffect(() => {
+    if (!agoraExpose || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setAgoraExposeSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [agoraExpose, paused]);
+
+  // AGORA_QUESTION's own countdown, same pattern.
+  useEffect(() => {
+    if (!agoraQuestion || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setAgoraQuestionSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [agoraQuestion, paused]);
+
+  // AGORA_REVEAL's progress bar, same pattern as REVEAL's own - only ever
+  // seen during the 'grid' stage (see agoraRevealStage's own effect below;
+  // AgoraRevealView renders nothing but a hidden marker once 'proof' begins).
+  useEffect(() => {
+    if (!agoraReveal || paused) {
+      return;
+    }
+    const interval = setInterval(() => {
+      setAgoraRevealSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [agoraReveal, paused]);
+
+  // The reveal's own two-beat frame alternation (Task 208, the Anavasis 192
+  // pattern): a brief 'grid' beat (this component's slab, market still
+  // closed) then 'proof' (the slab gone, the market restored with its
+  // highlight) for the rest of the phase. Keyed on `agoraReveal`'s identity,
+  // which changes on every fresh event AND on a reconnect's own state:sync -
+  // both restart the beat from 'grid', which is an acceptable simplification
+  // (this is cosmetic timing, not a server-authoritative countdown). Frozen
+  // entirely while paused, same as every other client-only timer here - a
+  // pause mid-beat resumes into a fresh 'grid' beat rather than the exact
+  // remaining slice, again acceptable for a purely cosmetic sequence.
+  useEffect(() => {
+    if (!agoraReveal) {
+      return;
+    }
+    setAgoraRevealStage('grid');
+    if (paused) {
+      return;
+    }
+    const timer = setTimeout(() => setAgoraRevealStage('proof'), AGORA_REVEAL_GRID_MS);
+    return () => clearTimeout(timer);
+  }, [agoraReveal, paused]);
+
   // Auto-recovery: on EVERY successful connection - the very first one on
   // mount, and every automatic reconnect socket.io performs after the TV
   // wakes back up - reattach as this room's host display if we have a
@@ -1524,6 +1718,14 @@ export default function HostScreen() {
         return blitz?.standings ?? null;
       case 'BLITZ_REVEAL':
         return blitzReveal?.standings ?? null;
+      // AGORA_EXPOSE carries no standings of its own (only the scene) -
+      // null here falls through to lastStandingsRef.current below, the same
+      // "payload not carrying it" fallback every other transitional moment
+      // already uses.
+      case 'AGORA_QUESTION':
+        return agoraQuestion?.standings ?? null;
+      case 'AGORA_REVEAL':
+        return agoraReveal?.standings ?? null;
       default:
         return null;
     }
@@ -1564,6 +1766,9 @@ export default function HostScreen() {
     }
     if (phase === 'BLITZ_REVEAL' && blitzReveal) {
       return Object.fromEntries(blitzReveal.results.map((result) => [result.playerId, result.pointsAwarded]));
+    }
+    if (phase === 'AGORA_REVEAL' && agoraReveal) {
+      return Object.fromEntries(agoraReveal.results.map((result) => [result.playerId, result.pointsAwarded]));
     }
     return null;
   }
@@ -1747,16 +1952,37 @@ export default function HostScreen() {
       );
     }
 
-    // Task 207 - Η Μνήμη της Αγοράς: phase-machine wiring only. The TV view
-    // (scene, question slab, proof highlight) is Task 208; until then a bare
-    // phase marker off `phase` alone, so the read column is never silently
-    // empty for the three new phases. Tolerates the no-payload first render
-    // by construction - it reads no payload at all.
-    if (phase === 'AGORA_EXPOSE' || phase === 'AGORA_QUESTION' || phase === 'AGORA_REVEAL') {
+    // Η Μνήμη της Αγοράς (Task 208). The market itself (AgoraScene) is
+    // rendered by HostScreen's own backdrop swap below, not here - these
+    // three views are only ever the read column's content, exactly like
+    // QUESTION/REVEAL.
+    if (phase === 'AGORA_EXPOSE' && agoraExpose) {
       return (
-        <div data-testid="agora-placeholder" style={{ color: 'var(--marble)', textAlign: 'center', paddingTop: '4vh' }}>
-          Η Μνήμη της Αγοράς — {phase}
-        </div>
+        <AgoraExposeView agoraExpose={agoraExpose} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
+      );
+    }
+
+    if (phase === 'AGORA_QUESTION' && agoraQuestion) {
+      return (
+        <AgoraQuestionView
+          agoraQuestion={agoraQuestion}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+        />
+      );
+    }
+
+    if (phase === 'AGORA_REVEAL' && agoraReveal) {
+      return (
+        <AgoraRevealView
+          agoraReveal={agoraReveal}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          revealSecondsLeft={agoraRevealSecondsLeft}
+          stage={agoraRevealStage}
+        />
       );
     }
 
@@ -1835,12 +2061,21 @@ export default function HostScreen() {
         return ring(duelPickSecondsLeft, 5);
       case 'BLITZ':
         return ring(blitzSecondsLeft, 5);
+      // Η Μνήμη της Αγοράς (Task 208) - the exposure's own krater treatment,
+      // the same existing ring mechanism every other timed phase uses.
+      case 'AGORA_EXPOSE':
+        return ring(agoraExposeSecondsLeft, 3);
+      case 'AGORA_QUESTION':
+        return ring(agoraQuestionSecondsLeft, 5);
       default:
         // REVEAL/GUESS_REVEAL/NUMERIC_REVEAL/TRIAL_REVEAL show their
         // remaining time as the progress bar at the foot of their own
         // panel, not as a ring. CLIMB_REVEAL/DUEL_REVEAL show no timer at
         // all - Task 192 dropped CLIMB_REVEAL's own progress bar along with
         // the rest of its slab (no on-screen text while the climbers move).
+        // AGORA_REVEAL falls here too: its own progress bar lives inside
+        // AgoraRevealView's 'grid' stage, and shows nothing at all once
+        // 'proof' begins - same reasoning as CLIMB_REVEAL.
         return null;
     }
   }
@@ -2008,6 +2243,18 @@ export default function HostScreen() {
   // True from the first climb/duel payload straight through this game's own
   // GAME_OVER - see isClimbFinale's declaration.
   const showAnavasisWorld = isClimbFinale && (isAnavasisPhase || phase === 'GAME_OVER');
+  // Η Μνήμη της Αγοράς (Task 208) - a lighter-weight backdrop swap than
+  // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row,
+  // Socrates and the krater all stay exactly as they are for every other
+  // in-game phase). `spec`/`highlight` are null whenever there is nothing to
+  // draw - AGORA_QUESTION always (the fairness rule), AGORA_REVEAL until its
+  // own 'proof' stage begins (see agoraRevealStage) - which is precisely
+  // when AgoraScene renders no market group at all (see its own doc comment).
+  const isAgoraScenePhase = phase === 'AGORA_EXPOSE' || phase === 'AGORA_QUESTION' || phase === 'AGORA_REVEAL';
+  const agoraProofShowing = phase === 'AGORA_REVEAL' && agoraRevealStage === 'proof';
+  const agoraSpec: AgoraRenderSpec | null =
+    phase === 'AGORA_EXPOSE' ? (agoraExpose?.spec ?? null) : agoraProofShowing ? (agoraReveal?.proof.spec ?? null) : null;
+  const agoraHighlight: AgoraSubject | null = agoraProofShowing ? (agoraReveal?.proof.subject ?? null) : null;
 
   return (
     <>
@@ -2044,6 +2291,8 @@ export default function HostScreen() {
             />
           )}
         </div>
+      ) : isAgoraScenePhase ? (
+        <AgoraScene spec={agoraSpec} highlight={agoraHighlight} />
       ) : (
         <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       )}

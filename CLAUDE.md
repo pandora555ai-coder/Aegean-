@@ -219,11 +219,55 @@ Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       whatever fires plays via enterSocratesBeat as 'AGORA_MOMENT' on timer
       kind AGORA_SOCRATES. The seed is logged at expose start
       (`agora expose started - seed=N`); generateAgora(N) +
-      buildAgoraQuestions(scene, N) rebuilds the round. TV/phone views are
-      Tasks 208/209 — both clients render a phase-only placeholder today.
-      Check: `npm run agora:wire-check` (dev/agora-wire-check.ts, socket-level
+      buildAgoraQuestions(scene, N) rebuilds the round. Check:
+      `npm run agora:wire-check` (dev/agora-wire-check.ts, socket-level
       against a dev server on 4001: flow, leaks, reconnect, pause, plus a pure
-      `--subjects` sweep of the subject resolver against the truth).
+      `--subjects` sweep of the subject resolver against the truth). The
+      phone view is Task 209 (still a phase-only placeholder in
+      ControllerScreen.tsx). **The TV view is built (Task 208)** —
+      `client/src/components/AgoraScene.tsx`, TheatreScene's sibling for
+      exactly the three agora phases (`HostScreen`'s `isAgoraScenePhase`),
+      built from `design/agora-reference.html`'s OWN 1600x900 coordinate
+      space (copied verbatim — a viewBox is resolution-independent, so
+      there's no reason to rework every literal offset onto TheatreScene's
+      1280x720). TWO LAYERS: the sky (stars/moon/distant Acropolis) is
+      STATIC geometry (a fixed seeded LCG at module load, like TheatreScene's
+      own crowd — never touched by a round, never dimmed); the market group
+      (`data-testid="agora-market"`, stalls/torches/ground/animals) is drawn
+      fresh from the payload's `spec` every render and is the ONLY thing the
+      fairness rule hides — during AGORA_QUESTION `spec` is null and the
+      whole `<g>` simply isn't rendered (absence, not opacity/display:none).
+      No Math.random and no per-round seed anywhere in this component: goods/
+      animal placement comes straight from `spec` at fixed slot fractions, so
+      a reconnect's redraw is byte-for-byte identical by construction.
+      AGORA_REVEAL gets its own frame alternation (the Anavasis 192 pattern,
+      applied inside GameLayout rather than by bypassing it, since agora
+      stays in the ordinary two-column shell): AgoraRevealView's 'grid' stage
+      shows the options slab (market still closed, colour-kind options get
+      an inline swatch chip via AGORA_COLOURS) for `AGORA_REVEAL_GRID_MS` =
+      1800ms (HostScreen.tsx, client-only cosmetic timing, never sent by the
+      server), then 'proof': the slab unmounts to a 1x1 hidden marker
+      (`agora-reveal-marker`, the ClimbRevealView pattern) and the market
+      returns with a gold highlight (`data-testid="agora-highlight"`) on the
+      reveal's `proof.subject` — a stall gets an outline rect, an animal a
+      ring, and an ABSENT subject (existence's own "ΔΕΝ υπήρχε" phrasing) gets
+      NO highlight at all, since there's nothing present to point at. `stage`
+      ('grid'|'proof') lives in HostScreen, not inside either view, because
+      the scene and the reveal slab are SIBLINGS in the render tree, both
+      driven off that one value. Socrates gets no special pose for any agora
+      phase (CLAUDE.md's own instruction: reuse the standard placement) —
+      SocratesFigure's default bucket (`left:7%`) applies exactly as it does
+      for a plain quiz QUESTION. Verified with a dedicated Playwright
+      harness, `npx tsx dev/agora-scene-check.ts` (screenshot-phases.ts's own
+      spawn/cleanup shape, on its own throwaway ports 3902/5903, since
+      standalone `agora` isn't in ALL_PHASES_IN_ORDER's one `full`-mode run) —
+      spec-vs-DOM good/animal counts, the 5 sanctioned awning hexes, 0
+      market nodes across all 3 questions (event-driven off
+      AGORA_QUESTION_SHOW itself, not DOM-visibility polling — a whole round
+      can finish in a couple of seconds, fast enough that a re-armed
+      `waitForSelector` missed it outright before this fix), the proof
+      beat's exactly-1 highlight on the right subject with 0 slab nodes, and
+      a mid-expose reload redrawing identical counts/hexes.
 Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
       1 Η Αγορά (quiz + POWER_UP) -> 2 Ζωγραφική (one draw round)
       -> 3 Εκτίμηση (3 numeric) -> 4 Η Συκοφαντία (quiz + STEAL)
