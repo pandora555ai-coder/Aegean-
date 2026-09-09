@@ -19,6 +19,12 @@
 //
 //   PORT=4001 npx tsx dev/agora-wire-check.ts            # all four, against localhost:4001
 //   npx tsx dev/agora-wire-check.ts --subjects [N]       # the pure sweep only
+//   PORT=4001 npx tsx dev/agora-wire-check.ts --pause-virtual
+//       # criterion 4 ONLY, with the server booted IN-PROCESS on an injected
+//       # virtual TimerClock (timers.ts's installTimerClock, the Task 184
+//       # pattern) so resumeActiveTimer's stamp and the remainingMs readback
+//       # see the SAME now() - no millisecond tick can sit between them.
+//       # Needs 4001 free (this process listens on it).
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { io, type Socket } from 'socket.io-client';
@@ -348,11 +354,124 @@ function runSubjects(seeds: number): void {
   console.log(`\n== SUBJECTS (pure) == seeds=${seeds} questions=${seeds * 3} (${JSON.stringify(byKind)}) unresolved=${unresolved} disagreeWithTruth=${disagree}`);
 }
 
+// ---------------------------------------------------------------------------
+// Criterion 4 on a virtual clock (the server in THIS process)
+// ---------------------------------------------------------------------------
+interface PendingVirtual {
+  id: number;
+  at: number;
+  fn: () => void;
+}
+
+// server/scripts/trial-montecarlo.ts's VirtualClock shape, plus `advance`:
+// move virtual now forward by `ms`, firing every due timer in order along
+// the way. Real I/O (sockets, bots' own real setTimeouts) keeps running on
+// the event loop between advances.
+class VirtualClock {
+  private t = 0;
+  private nextId = 1;
+  private queue: PendingVirtual[] = [];
+  now = (): number => this.t;
+  setTimeout = (fn: () => void, ms: number): NodeJS.Timeout => {
+    const pending: PendingVirtual = { id: this.nextId++, at: this.t + ms, fn };
+    this.queue.push(pending);
+    return { id: pending.id } as unknown as NodeJS.Timeout;
+  };
+  clearTimeout = (handle: NodeJS.Timeout): void => {
+    const id = (handle as unknown as { id: number }).id;
+    this.queue = this.queue.filter((p) => p.id !== id);
+  };
+  advance(ms: number): void {
+    const target = this.t + ms;
+    for (;;) {
+      this.queue.sort((a, b) => a.at - b.at || a.id - b.id);
+      const next = this.queue[0];
+      if (!next || next.at > target) break;
+      this.queue.shift();
+      this.t = Math.max(this.t, next.at);
+      next.fn();
+    }
+    this.t = target;
+  }
+  pendingCount(): number {
+    return this.queue.length;
+  }
+}
+
+async function runPauseVirtualClock(): Promise<void> {
+  console.log('\n== 4. PAUSE (virtual TimerClock, server in-process) ==');
+  const clock = new VirtualClock();
+  // Install BEFORE the server module loads (dynamic import - a static one
+  // would be hoisted above this call). Same timers.ts module instance the
+  // server's own imports resolve to.
+  const { installTimerClock } = await import('../server/src/timers.js');
+  installTimerClock(clock);
+  await import('../server/src/index.js');
+  await delay(500);
+
+  const room = await startAgoraRoom(2);
+  const { code, host, player, capture } = room;
+  let over = false;
+  host.on(ServerEvents.GAME_OVER, () => {
+    over = true;
+  });
+  await waitFor(host, ServerEvents.PHASE_CHANGED, 15000, (p: { phase: string }) => p.phase === 'AGORA_EXPOSE');
+  await delay(50);
+
+  clock.advance(3000);
+  await delay(50);
+  const paused = waitFor(player, ServerEvents.GAME_PAUSED);
+  player.emit(ClientEvents.GAME_PAUSE, {});
+  await paused;
+  const probe = await rejoinHost(code, capture);
+  const pre = probe.sync.remainingMs as number;
+  console.log(`paused at virtual t=${clock.now()} (3000 ms into AGORA_EXPOSE); frozen remainingMs (state:sync while paused) = ${pre}`);
+
+  clock.advance(30000);
+  await delay(50);
+  const probe2 = await rejoinHost(code, capture);
+  const preAfterHold = probe2.sync.remainingMs as number;
+  console.log(`advanced the virtual clock 30000 ms while paused (now t=${clock.now()}, ${clock.pendingCount()} virtual timers armed); frozen remainingMs = ${preAfterHold}`);
+
+  const resumed = waitFor<{ remainingMs: number }>(player, ServerEvents.GAME_RESUMED);
+  player.emit(ClientEvents.GAME_RESUME, {});
+  const post = (await resumed).remainingMs;
+  const tAtResume = clock.now();
+  console.log(`remainingMs: frozen at pause = ${pre}, after hold = ${preAfterHold}, on GAME_RESUMED = ${post} -> drift ${post - pre} ms (${post === pre && preAfterHold === pre ? 'PASS, 0 ms' : 'FAIL'})`);
+
+  // Drive the rest of the round: 200 virtual ms per 25 real ms so socket I/O
+  // (and the bots' real-time answers) interleave with the virtual timers.
+  const nextPhase = waitFor<{ phase: string }>(probe2.socket, ServerEvents.PHASE_CHANGED, 60000);
+  let firstPhaseAt: number | null = null;
+  nextPhase.then(() => {
+    firstPhaseAt = clock.now();
+  });
+  let advanced = 0;
+  while (!over && advanced < 400000) {
+    clock.advance(200);
+    advanced += 200;
+    await delay(25);
+  }
+  const first = await nextPhase;
+  console.log(`after resume the exposure ended at virtual t=${firstPhaseAt} (resume was t=${tAtResume}: ${(firstPhaseAt ?? 0) - tAtResume} ms later, expected ${post}) -> ${first.phase}`);
+  const seq = phaseSequence(capture, 'host').filter((s, i, arr) => i === 0 || arr[i - 1].phase !== s.phase || true);
+  console.log(`round ${over ? 'completed' : 'DID NOT complete'}: ${[...new Set(seq.map((s) => `${s.phase}`))].join(' -> ')} (deduped across the 3 host probe sockets); virtual ms advanced after resume: ${advanced}`);
+  probe.socket.disconnect();
+  probe2.socket.disconnect();
+  host.disconnect();
+  player.disconnect();
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args[0] === '--subjects') {
     runSubjects(Number(args[1]) || 20000);
     return;
+  }
+  if (args[0] === '--pause-virtual') {
+    await runPauseVirtualClock();
+    console.log('\ndone');
+    process.exit(0);
   }
   runSubjects(20000);
   await runFlowLeaksReconnect();
