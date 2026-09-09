@@ -83,8 +83,9 @@ server/src/modes/        GameMode registry — READ modes/README.md before addin
 server/src/modes/quiz.ts   The quiz mode
 server/src/modes/draw.ts   The drawing mode (state in a WeakMap<Room, DrawState>)
 server/src/modes/numeric.ts  The numeric mode shell
-server/src/modes/full.ts   Full mode (Task 134): COMPOSES quiz/draw/numeric/trial as
-                         one show's five stages. Holds no mechanic of its own.
+server/src/modes/full.ts   Full mode (Task 134, relined by Task 214): COMPOSES
+                         quiz/blitz/draw/numeric/agora/trial(climb) as one show's
+                         seven LOCKED stages. Holds no mechanic of its own.
 server/src/payloads.ts   REVEAL / GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/steal.ts      STEAL thief selection + the clamped point transfer
@@ -100,7 +101,8 @@ server/src/agora.ts      Η Μνήμη της Αγοράς server-side PURE help
                          draw, render spec (scene minus absentStalls), the reveal's
                          subject resolver. No Room/io/timers. shared/src/agora.ts (Task
                          206) is the generator itself and stays untouched.
-server/src/modes/agora.ts  The agora mode SHELL (Task 207) — standalone only; see Phases.
+server/src/modes/agora.ts  The agora mode SHELL (Task 207) — standalone AND, since
+                         Task 214, full's stage 5; see Phases.
 server/src/crowd.ts      Crowd mood decision layer (calm/tension/cheer/boo) — HOST ONLY.
                          Playback IS built (Task 36a-d — see Crowd mood below). Wired into
                          every mode: quiz via phases.ts since Task 35, draw/numeric got
@@ -339,6 +341,15 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       -> 6 Η Συκοφαντία (quiz + STEAL) -> 7 Η Ανάβασις (the climb, entered
       with accumulated scores as the ladder's entry order) — or Η Δίκη in
       that same row when the VIP sets finaleMode back to 'trial'.
+      **Reference timing, socket-level bots, NOT a human estimate**: a
+      seeded `?bot=3` full run (default settings, `gameLength: 'long'`)
+      takes ~845-870s end to end across all seven stages — 844.2s in Task
+      214's own run (its per-stage table: Η Αγορά 119.1s, Η Παλαίστρα 41.5s,
+      Ζωγραφική 225.6s, Εκτίμηση 61.6s, Η Μνήμη της Αγοράς 77.7s,
+      Η Συκοφαντία 124.6s, Η Ανάβαση 183.1s — tasks/214-report.md), 870.3s in
+      Task 215's own run (tasks/215-report.md). This is a FLOOR: bots answer
+      in ~0.3-1.5s and there is no real human deciding, reading a card, or
+      asking "wait, what does this button do".
       It COMPOSES the five standalone mechanic modes (which stay
       VIP-selectable as the dev harness) through three optional GameMode
       hooks — stagesFor, beginStage, advanceAfterSegment. See
@@ -359,7 +370,11 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       (FULL_DRAW_ROUNDS_BY_LENGTH: short 2, medium 2, long 3 — Task 215
       retuned short/medium up from 1 to match the locked lineup's own
       "Ζωγραφική x2 rounds"; standalone draw's own room.settings.drawRounds
-      setting is untouched); numeric count (3) stays fixed regardless of
+      setting is untouched). **DEFAULT_ROOM_SETTINGS.gameLength is 'long'**
+      (shared/src/index.ts) — a fresh room nobody has touched the length
+      setting on therefore plays the `long` row, i.e. 3 draw rounds by
+      default, not 2; the 215 retune is visible only once the VIP picks
+      short/medium. Numeric count (3) stays fixed regardless of
       length. Every segment count is a CALL-SITE parameter
       (startDrawSegment(room, totalCycles, guessScale),
       prepareNumericGame(room, questionCount)) — standalone modes pass their
@@ -367,9 +382,10 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       5), full.ts passes its own (FULL_NUMERIC_QUESTION_COUNT = 3); neither
       mode's shell branches on who's calling it.
       FULL_QUIZ_SCORE_SCALE / FULL_GUESS_SCORE_SCALE / FULL_AGORA_SCORE_SCALE
-      (all three 400/(BASE_POINTS+SPEED_BONUS_MAX), kept as three separate
-      constants since each scales a different call site) put a max-speed
-      quiz answer, guess and agora answer at ~400 in FULL ONLY, matching
+      (all three 400/(BASE_POINTS+SPEED_BONUS_MAX) = 400/(1000+500) ≈ 0.267,
+      kept as three separate constants since each scales a different call
+      site) put a max-speed quiz answer, guess and agora answer at ~400 in
+      FULL ONLY, matching
       DRAWER_MAX_POINTS — passed as calculatePoints' existing `scale` arg
       (default 1, standalone quiz/draw/agora unaffected), never a mode check
       inside the scoring function. Agora's own scale (Task 215) is NOT a
@@ -396,8 +412,18 @@ Draw and numeric got their own SOCRATES moments in Task 138/139
 — detection logs unconditionally, but the phase only fires if the moment's
 line pool (DRAW_LINES / NUMERIC_LINES) has an unused entry; empty/exhausted
 detects and stays silent (Task 138 shipped with zero lines; 139 wrote them).
-Η Συκοφαντία (quiz stage 3, full stage 4) shares ONE intro pool,
-SYKOPHANTIA_INTRO_LINES, keyed under both numbers (socrates.ts:443-444). The
+Η Συκοφαντία (quiz stage 3) plays SYKOPHANTIA_INTRO_LINES, keyed in
+STAGE_INTRO_LINES under BOTH stage 3 and stage 4 (socrates.ts:460-461) — a
+leftover from when full's own Η Συκοφαντία WAS stage 4. Task 214 moved it to
+stage 6 without touching socrates.ts: key `4` is now ORPHANED (full's actual
+stage 4 is Εκτίμηση, a non-quiz segment whose beginStage hook intercepts
+before pickStageIntroLine ever runs — so nothing PLAYS the wrong line), and
+key `6` doesn't exist, so **full's own Η Συκοφαντία (stage 6) now gets NO
+STAGE_INTRO line at all** — pickStageIntroLine(state, 6) reads
+`STAGE_INTRO_LINES[6] ?? []`, an empty pool, so startSocratesBeat declines.
+Standalone quiz (still stage 3) is unaffected. Found during Task 216's
+doc-accuracy pass; NOT fixed there (docs-only) — the fix is either adding key
+`6` in socrates.ts or renaming SYKOPHANTIA_INTRO_LINES's second key. The
 trial's own announcement plays TRIAL_INTRO_LINES — the five "Η Δίκη" lines
 moved verbatim off quiz stage 3 in Task 139 to keep their lineHash-keyed
 mp3s valid — via pickTrialIntroLine (phases.ts:171).
@@ -655,7 +681,8 @@ this same value, it is not literal white).
 
 ## Numeric mode
 
-Standalone AND, since Task 134, composed as Stage 3 of `full` — both true at
+Standalone AND, since Task 134, composed as a stage of `full` (stage 4 of
+the locked lineup since Task 214, was stage 3 before) — both true at
 once (modes/full.ts calls startNumericSegment, same entry point the
 standalone mode uses). server/src/numeric.ts imports nothing from modes/ —
 MODE-AGNOSTIC, still true — so it needed no change for that composition.
@@ -681,7 +708,11 @@ host/BlitzRevealView.tsx, and the phone has its own branch in
 ControllerScreen.tsx (BlitzSwipeCard, Task 181's "card follows the finger"
 rebuild, titled "Η Παλαίστρα" through greekUpper same as every other
 title). Crowd mood is wired in from the mode's own Task 156a build (see
-Crowd mood below).
+Crowd mood below). **COMPLETE, TV and phone both** — not a prototype; the
+dev-only swipe screen two paragraphs down is a SEPARATE thing. Since Task
+214, blitz is also composable: `full`'s stage 2 (Η Παλαίστρα) calls this
+exact mode's `prepareBlitzGame`/`startBlitzSegment` (modes/blitz.ts,
+see Full above) — it was standalone-only before that.
 Separately, /dev/blitz (DevBlitzScreen.tsx, Task 69) is STILL a standalone
 solo phone-swipe prototype — one true/false statement at a time, swipe
 right for ΣΩΣΤΟ, left for ΛΑΘΟΣ, time-bound round (BLITZ_DURATIONS_SEC
@@ -756,8 +787,10 @@ as still live.
 Since Task 151 it's wired into every mode (quiz already had it via
 phases.ts; draw.ts and numeric.ts had ZERO wiring before, so a `full`
 game's draw/numeric stages were silent; blitz had its own wiring from its
-Task 156a build). A short full game emits 48
-crowd:mood events. LOBBY and TRIAL_QUESTION never get one attributed to
+Task 156a build). A short full game emitted 48 crowd:mood events as measured
+pre-Task-214 (the 5-stage lineup) — STALE now that `full` runs seven stages
+(214) including two more crowd-wired segments (blitz, agora); not
+re-measured since. LOBBY and TRIAL_QUESTION never get one attributed to
 them — LOBBY because nothing ever calls setCrowdMood there, TRIAL_QUESTION
 because its own setCrowdMood fires BEFORE that phase's `phase:changed`,
 the same signal-ordering trap already documented below for PHASE_CHANGED
@@ -845,6 +878,23 @@ via HOST_REJOIN.
   isn't agora-specific, and every criterion it was observed under still
   held (0 figures VISIBLE either way, which was the actual requirement).
   Known, not fixed.
+- **Η Ανάβασις (the climb finale) ignores `room.settings.gameLength`
+  entirely** — `startClimb` (phases.ts) draws its question pool via
+  `CLIMB_MAX_QUESTIONS` = 24 and the round cap is `CLIMB_MAX_ROUNDS` = 24
+  (both shared/src/index.ts), neither read off `gameLength`; grep confirms
+  climb.ts/phases.ts's climb path never references it. A `short` full show
+  therefore still ends on a finale that can run up to 24 rounds (~24s each —
+  22000ms question + CLIMB_BEAT_MS/CLIMB_GLIDE_MS's ~2.3s reveal — so up to
+  ~580s, the same order of magnitude as everything BEFORE it combined, per
+  tasks/214-report.md's own six-stage sum), same as `long`. Known,
+  deliberately not capped —
+  pending a human playtest to decide what a gameLength-scaled cap should be,
+  not fixed here.
+- **`full`'s own Η Συκοφαντία (stage 6 since Task 214) plays no STAGE_INTRO
+  line** — see the Phases section's Η Συκοφαντία paragraph for the full
+  trace (`STAGE_INTRO_LINES` in socrates.ts still keys the pool under the
+  PRE-214 stage number, not the new one). Found during Task 216's
+  doc-accuracy pass, not fixed (docs-only task).
 
 ## Working style
 
