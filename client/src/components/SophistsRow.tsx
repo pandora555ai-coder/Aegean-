@@ -101,6 +101,13 @@ interface SophistsRowProps {
   // else) - and is never animated: it's the server's live count, re-shown
   // as-is on every render, not a value that tweens toward a target.
   counterByPlayerId?: Record<string, string> | null;
+  // Task 210 - the agora's own "the market frame belongs to the market"
+  // rule: hidden through AGORA_EXPOSE and while AGORA_REVEAL's proof beat is
+  // showing (HostScreen computes this from its own agoraRevealStage, which
+  // `phase` alone can't tell apart from the grid beat, where the row stays
+  // visible as normal). The SAME opacity treatment STAGE_ANNOUNCE already
+  // gets below - not a second hide mechanism.
+  forceHidden?: boolean;
 }
 
 // The five himation colours from the reference's `hues`, by join index
@@ -455,6 +462,7 @@ export function SophistsRow({
   stealFlight = null,
   sabotageByPlayerId = null,
   counterByPlayerId = null,
+  forceHidden = false,
 }: SophistsRowProps) {
   // `standings` still carries every player - useDisplayOrder needs the full
   // set to sort correctly - so removal is a final filter applied AFTER
@@ -491,7 +499,7 @@ export function SophistsRow({
   // Task 163a - LOBBY no longer hides the row: it's how joining players
   // show up now that the lobby overlay names no one. STAGE_ANNOUNCE still
   // hides it (the stage card takes the whole screen, same as before).
-  const hidden = phase === 'STAGE_ANNOUNCE';
+  const hidden = phase === 'STAGE_ANNOUNCE' || forceHidden;
   const dim = phase === 'SOCRATES' || phase === 'STEAL';
   const rowClass = ['sophists', hidden ? 'sophists--hidden' : '', dim ? 'sophists--dim' : ''].filter(Boolean).join(' ');
 

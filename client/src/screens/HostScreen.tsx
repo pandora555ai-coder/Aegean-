@@ -253,6 +253,10 @@ export default function HostScreen() {
   const [agoraExposeSecondsLeft, setAgoraExposeSecondsLeft] = useState(0);
   const [agoraQuestion, setAgoraQuestion] = useState<AgoraQuestionShowHostPayload | null>(null);
   const [agoraQuestionSecondsLeft, setAgoraQuestionSecondsLeft] = useState(0);
+  // Task 210 - the sophists row's live lock-in ticker for AGORA_QUESTION,
+  // updated off answer:progress (see handleAnswerProgress) rather than
+  // frozen at question-start like the trial's own lockedInPlayerIds.
+  const [agoraQuestionAnsweredIds, setAgoraQuestionAnsweredIds] = useState<string[]>([]);
   const [agoraReveal, setAgoraReveal] = useState<AgoraRevealHostPayload | null>(null);
   const [agoraRevealSecondsLeft, setAgoraRevealSecondsLeft] = useState(0);
   // The reveal's own frame alternation (Task 208, the Anavasis 192 pattern
@@ -370,8 +374,17 @@ export default function HostScreen() {
 
     // Task 36d - each landed answer bumps the crowd ramp a step further;
     // phaseRef (not `phase`) because this handler is registered once.
-    function handleAnswerProgress(_payload: AnswerProgressPayload) {
+    // Task 210 - also the agora's own lock-in ticker: unlike the trial (whose
+    // TRIAL_QUESTION_SHOW is never re-sent after the question starts, so its
+    // own lockedInPlayerIds is frozen at whatever it was on entry), the
+    // sophists row's lock icon needs to move live here, and this generic
+    // "who has answered" event (already sent by submitAgoraAnswer) already
+    // carries the one field needed.
+    function handleAnswerProgress(payload: AnswerProgressPayload) {
       bumpCrowdIntensity(phaseRef.current);
+      if (phaseRef.current === 'AGORA_QUESTION') {
+        setAgoraQuestionAnsweredIds(payload.answeredPlayerIds);
+      }
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
@@ -404,6 +417,7 @@ export default function HostScreen() {
         setIsClimbFinale(false);
         setAgoraExpose(null);
         setAgoraQuestion(null);
+        setAgoraQuestionAnsweredIds([]);
         setAgoraReveal(null);
         setAgoraRevealStage('grid');
         lastClimbClimbersRef.current = [];
@@ -709,6 +723,7 @@ export default function HostScreen() {
         setAgoraReveal(null);
         setAgoraQuestion(payload);
         setAgoraQuestionSecondsLeft(Math.ceil(payload.questionTimeMs / 1000));
+        setAgoraQuestionAnsweredIds(payload.answeredPlayerIds);
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -821,6 +836,7 @@ export default function HostScreen() {
       setBlitzReveal(null);
       setAgoraExpose(null);
       setAgoraQuestion(null);
+      setAgoraQuestionAnsweredIds([]);
       setAgoraReveal(null);
       setAgoraRevealStage('grid');
 
@@ -1021,6 +1037,7 @@ export default function HostScreen() {
           if (isAgoraQuestionHostPayload(payload)) {
             setAgoraQuestion(payload);
             setAgoraQuestionSecondsLeft(Math.ceil(payload.remainingMs / 1000));
+            setAgoraQuestionAnsweredIds(payload.answeredPlayerIds);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -2223,7 +2240,16 @@ export default function HostScreen() {
   const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
   const confirmedOutPlayerIds = phase === 'TRIAL_REVEAL' ? trialConfirmedOutPlayerIds() : null;
-  const lockedInPlayerIds = phase === 'TRIAL_QUESTION' ? (trialQuestion?.lockedInPlayerIds ?? null) : null;
+  // Task 210 - AGORA_QUESTION's own lock-in list is agoraQuestionAnsweredIds,
+  // kept live by handleAnswerProgress (unlike the trial's own
+  // lockedInPlayerIds, frozen at whatever it was when the question started -
+  // see that field's own doc comment).
+  const lockedInPlayerIds =
+    phase === 'TRIAL_QUESTION'
+      ? (trialQuestion?.lockedInPlayerIds ?? null)
+      : phase === 'AGORA_QUESTION'
+        ? agoraQuestionAnsweredIds
+        : null;
   // Task 156b - the blitz mode's own live "n/K" ember counter, reusing the
   // row's delta slot (same position, same ember styling) rather than a new
   // one: the two never appear on the same phase (deltas is null during
@@ -2335,6 +2361,7 @@ export default function HostScreen() {
           stealFlight={stealFlightTargets}
           sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
           counterByPlayerId={counterByPlayerId}
+          forceHidden={phase === 'AGORA_EXPOSE' || agoraProofShowing}
         />
       )}
     </>
