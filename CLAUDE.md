@@ -58,6 +58,25 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 
 shared/src/index.ts      Event names, payload types, all constants. THE contract.
                          Also WORD_SETS and lineHash.
+shared/src/agora.ts      Η Μνήμη της Αγοράς generator (Task 206) — pure, no server/
+                         runtime imports. generateAgora(seed)/buildAgoraQuestions(scene,
+                         seed), both their own mulberry32 stream off the same seed.
+                         AGORA_STALL_SLOTS = 3 present stalls per scene out of 5
+                         AGORA_STALL_TYPES (amphorae/fish/cloth/pottery/fruit — the other
+                         2 are `absentStalls`, an existence question's answer pool);
+                         AGORA_GOODS_MIN..MAX = 2..5 per stall; AGORA_EXPOSURE_MS = 12000.
+                         AGORA_COLOURS is the 5-token awning palette (id/nameGr/hex):
+                         krasati/κρασάτη/#8E2440, ladi/λαδί/#9AA860, ochra/ώχρα/#E8A14A,
+                         porfyri/πορφυρή/#5A3350, lefki/λευκή/#EDE6D6 — the phone's
+                         colour-question swatch (Task 209) matches an option's own Greek
+                         text back against this table's `nameGr`, since no hex travels on
+                         the wire; renaming a colour's `nameGr` here silently breaks that
+                         swatch lookup (a known brittleness, not a bug). Re-exported
+                         wholesale from shared/src/index.ts (`export * from './agora.js'`).
+                         Check: `npm run agora:validate` (server/scripts/agora-validate.ts,
+                         a fixed batch of seeds through both functions, in-process, no
+                         Room/io — option-set validity, twin-guard/absent-subject
+                         invariants, count bounds, distribution/uniqueness stats).
 server/src/index.ts      Socket handlers (LARGE)
 server/src/phases.ts     QUIZ phase machine: startQuestion/endQuestion/advanceFrom*
 server/src/modes/        GameMode registry — READ modes/README.md before adding a mode
@@ -106,6 +125,15 @@ client/src/components/AnavasisScene.tsx  Η Ανάβασις (Task 189): Theatre
                          off one shared geometry (visualStepFor/laneLeftPct). Built from
                          design/anavasis-reference.html, the TV visual reference for this
                          scene (same role theatre-reference.html plays for TheatreScene).
+client/src/components/AgoraScene.tsx     Η Μνήμη της Αγοράς (Task 208): TheatreScene's
+                         sibling for the three agora phases — a static sky layer (fixed
+                         seeded LCG at module load, like TheatreScene's own crowd) plus a
+                         market group drawn fresh from each payload's `spec` (absent
+                         entirely, not hidden, during AGORA_QUESTION — the fairness rule)
+                         and the reveal's proof highlight. Built from
+                         design/agora-reference.html's own 1600x900 coordinate space,
+                         the TV visual reference for this scene (same role
+                         anavasis-reference.html/theatre-reference.html play for theirs).
 client/src/components/MarbleSlab.tsx     The read column's slab — renamed off PapyrusPanel
                          when Task 159 swapped the palette Ελαιογραφία → Θέατρο
 client/src/screens/ControllerScreen.tsx  Phone (LARGE)
@@ -222,9 +250,8 @@ Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       buildAgoraQuestions(scene, N) rebuilds the round. Check:
       `npm run agora:wire-check` (dev/agora-wire-check.ts, socket-level
       against a dev server on 4001: flow, leaks, reconnect, pause, plus a pure
-      `--subjects` sweep of the subject resolver against the truth). The
-      phone view is Task 209 (still a phase-only placeholder in
-      ControllerScreen.tsx). **The TV view is built (Task 208)** —
+      `--subjects` sweep of the subject resolver against the truth).
+      **The TV view is built (Task 208)** —
       `client/src/components/AgoraScene.tsx`, TheatreScene's sibling for
       exactly the three agora phases (`HostScreen`'s `isAgoraScenePhase`),
       built from `design/agora-reference.html`'s OWN 1600x900 coordinate
@@ -268,6 +295,39 @@ Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       `waitForSelector` missed it outright before this fix), the proof
       beat's exactly-1 highlight on the right subject with 0 slab nodes, and
       a mid-expose reload redrawing identical counts/hexes.
+      **The phone view is built too (Task 209)** — ControllerScreen.tsx:
+      AGORA_EXPOSE is a plain "Κοίτα την τηλεόραση" hold screen — the
+      payload's `spec` IS symmetric to TV/phone alike, but the phone never
+      reads any of it, and renders no countdown either (nothing in this
+      file does; only the TV owns a clock). AGORA_QUESTION reuses the
+      plain QUESTION answer grid/testid/tap-lock verbatim (no `category`/
+      `question` text travels to a player at all — `AgoraQuestionShowPlayerPayload`
+      — so only a question-progress readout fills that header slot), plus,
+      for `kind: 'colour'`, a swatch chip per option
+      (`data-testid="agora-swatch"`) whose hex is looked up from
+      AGORA_COLOURS by matching the option's own Greek text (see
+      shared/src/agora.ts above) rather than travelling on the wire.
+      AGORA_REVEAL is the standard personal result card, asymmetric by
+      design like the reveal's own `proof` — no scene, no proof, on the
+      phone. Verified with `npx tsx dev/agora-phone-check.ts`
+      (agora-scene-check.ts's own spawn/cleanup shape, its own throwaway
+      ports 3904/5905): one real phone + 2 bots through a full standalone
+      round, 3/3 lock-ins confirmed over the phone's own socket (not DOM
+      inference — `player:agora_submit` sent / `answer:accepted` received),
+      all 4 swatch hexes matching their computed `background-color`, 0
+      scene-derived DOM nodes on the phone at runtime during any
+      AGORA_QUESTION, and an unchanged plain-quiz answer grid as regression.
+      **Player figures leave the market frame during AGORA_EXPOSE and the
+      AGORA_REVEAL proof beat (Task 210)** — visible again during
+      AGORA_QUESTION with a genuinely LIVE lock-in ticker
+      (`agoraQuestionAnsweredIds`, off `answer:progress`'s own
+      `answeredPlayerIds` — the trial's own `lockedInPlayerIds` is frozen at
+      question-start and wouldn't show real movement here). Krater and
+      Socrates are untouched either way. See TV layout's own "the market
+      frame belongs to the market" rule below for the mechanism and file:line.
+      Verified with `npx tsx dev/agora-sophists-check.ts`
+      (agora-scene-check.ts's own spawn/cleanup shape, its own throwaway
+      ports 3903/5904).
 Full (134): THE game — five stages, each announced, then the ONE GAME_OVER:
       1 Η Αγορά (quiz + POWER_UP) -> 2 Ζωγραφική (one draw round)
       -> 3 Εκτίμηση (3 numeric) -> 4 Η Συκοφαντία (quiz + STEAL)
@@ -522,6 +582,17 @@ intensity (cap 3), both via addAppliedSabotage().
   <=6 → 0.68, 7-8 → 0.56), so the worst case is the count just BELOW a
   threshold, not MAX_PLAYERS.** GAME_OVER overflowed 720p at 5, not at 8.
   Height checks must sample 3, 5, 6 and 8.
+- **"The market frame belongs to the market" (Task 210, its own dev/
+  agora-sophists-check.ts:1 phrase).** The sophists row gets one prop,
+  `forceHidden` (SophistsRow.tsx:110/465), OR'd into the SAME
+  `.sophists--hidden` opacity-0 treatment STAGE_ANNOUNCE already uses
+  (SophistsRow.tsx:502) — no new animation vocabulary for agora. HostScreen
+  sets it to `phase === 'AGORA_EXPOSE' || agoraProofShowing`
+  (HostScreen.tsx:2364; `agoraProofShowing` was already computed for the
+  scene swap, HostScreen.tsx:2280) so player figures are out of frame
+  exactly when the market itself owns the screen, and back — with a live
+  lock-in ticker — once it's the players' turn during AGORA_QUESTION.
+  Krater and Socrates are untouched either way.
 
 ## Phone layout
 
@@ -713,8 +784,10 @@ via HOST_REJOIN.
   `trialQuestion` in the render if-chain (1588 vs. 1851/1969) and, since
   nothing but a fresh `numeric_question:show` ever cleared it, masked every
   phone view from the end of `full`'s numeric segment through the whole
-  trial. Fixed by clearing it in `handleQuestionShow` itself (line 519), the
-  first event of ANY quiz question. Corollary: bots answer at the SOCKET
+  trial. Fixed by clearing it in `handleQuestionShow` itself (line 878 as
+  of Task 209 — line numbers here drift as the file grows; the function is
+  the fix, not the number), the first event of ANY quiz question.
+  Corollary: bots answer at the SOCKET
   level (dev/screenshot-phases.ts:190's `joinBot` returns a raw Socket) and
   never render a phone — a bug like this one needs a Playwright phone
   client or a human, never a bot run.
@@ -724,6 +797,24 @@ via HOST_REJOIN.
   confirming a deploy landed by grepping the built bundle for a function
   name is worthless; grep for the literal (e.g. `'vip:set_audio_volume'`
   or `'powerUpsEnabled'`) instead.
+- **A pause-timing acceptance check must diff `remainingMs` against an
+  injected virtual clock (Task 184's `VirtualClock`/`installTimerClock`
+  pattern, server/src/timers.ts), never the real one.** A real-clock run's
+  `remainingMs` readback can be a millisecond or so off across a pause/
+  resume — clock-read granularity, not timer drift — and a check expecting
+  bit-for-bit equality there reads as a false failure. dev/agora-wire-check.ts's
+  `--pause-virtual` flag (installTimerClock before the server module even
+  loads, so `resumeActiveTimer`'s stamp and the readback share one `now()`)
+  is the pattern to copy for any future pause-timing check.
+- **A stale/empty LOBBY standings snapshot can reach a phase that carries
+  none of its own**, if a lobby update and the first phase-change land
+  close enough together to batch into one React render — HostScreen's
+  `lastStandingsRef` fallback (untouched by Task 210, which is where this
+  was observed: 0 sophists briefly during AGORA_EXPOSE in one run of a
+  fast join-then-start sequence, tasks/210-report.md). Predates Task 210,
+  isn't agora-specific, and every criterion it was observed under still
+  held (0 figures VISIBLE either way, which was the actual requirement).
+  Known, not fixed.
 
 ## Working style
 
