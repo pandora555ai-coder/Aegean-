@@ -412,18 +412,21 @@ Draw and numeric got their own SOCRATES moments in Task 138/139
 — detection logs unconditionally, but the phase only fires if the moment's
 line pool (DRAW_LINES / NUMERIC_LINES) has an unused entry; empty/exhausted
 detects and stays silent (Task 138 shipped with zero lines; 139 wrote them).
-Η Συκοφαντία (quiz stage 3) plays SYKOPHANTIA_INTRO_LINES, keyed in
-STAGE_INTRO_LINES under BOTH stage 3 and stage 4 (socrates.ts:460-461) — a
-leftover from when full's own Η Συκοφαντία WAS stage 4. Task 214 moved it to
-stage 6 without touching socrates.ts: key `4` is now ORPHANED (full's actual
-stage 4 is Εκτίμηση, a non-quiz segment whose beginStage hook intercepts
-before pickStageIntroLine ever runs — so nothing PLAYS the wrong line), and
-key `6` doesn't exist, so **full's own Η Συκοφαντία (stage 6) now gets NO
-STAGE_INTRO line at all** — pickStageIntroLine(state, 6) reads
-`STAGE_INTRO_LINES[6] ?? []`, an empty pool, so startSocratesBeat declines.
-Standalone quiz (still stage 3) is unaffected. Found during Task 216's
-doc-accuracy pass; NOT fixed there (docs-only) — the fix is either adding key
-`6` in socrates.ts or renaming SYKOPHANTIA_INTRO_LINES's second key. The
+Η Συκοφαντία plays SYKOPHANTIA_INTRO_LINES via `STAGE_INTRO_LINES['steal']`
+(socrates.ts) — **keyed by StageIntroIdentity since Task 218, not by table
+position.** Found during Task 216's doc-accuracy pass (the pre-218 numeric
+keying broke the instant Task 214 moved Η Συκοφαντία from stage 4 to stage
+6 in full's table — full's own Η Συκοφαντία played NO stage-intro line for
+one task's worth of commits); Task 218 fixed it by re-keying the whole
+table off `stageIntroIdentity(definition)` (socrates.ts) — `'quiz'` for any
+plain quiz-segment stage (standalone quiz's Η Αγορά AND Οι Σοφιστές are
+MERGED into this one pool now, since neither StageSegment nor this scheme
+distinguishes them — full's own Η Αγορά shares it too), `'steal'` for any
+`stealAfterEveryQuestion` stage, `'blitz'/'draw'/'numeric'/'agora'/'finale'`
+reserved but never populated (full.ts's `beginStage` hook already
+intercepts those segments before `pickStageIntroLine` is ever called for
+them, and the finale row is announced through its own
+room.trial/room.climb branches instead — see tasks/218-report.md). The
 trial's own announcement plays TRIAL_INTRO_LINES — the five "Η Δίκη" lines
 moved verbatim off quiz stage 3 in Task 139 to keep their lineHash-keyed
 mp3s valid — via pickTrialIntroLine (phases.ts:171).
@@ -890,11 +893,6 @@ via HOST_REJOIN.
   deliberately not capped —
   pending a human playtest to decide what a gameLength-scaled cap should be,
   not fixed here.
-- **`full`'s own Η Συκοφαντία (stage 6 since Task 214) plays no STAGE_INTRO
-  line** — see the Phases section's Η Συκοφαντία paragraph for the full
-  trace (`STAGE_INTRO_LINES` in socrates.ts still keys the pool under the
-  PRE-214 stage number, not the new one). Found during Task 216's
-  doc-accuracy pass, not fixed (docs-only task).
 
 ## Working style
 

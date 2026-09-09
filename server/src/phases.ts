@@ -70,6 +70,7 @@ import {
   pickWinnerLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
+  stageIntroIdentity,
   type PickedLine,
   type SocratesPlayerRoundInput,
 } from './socrates.js';
@@ -256,8 +257,10 @@ export function endStageAnnounce(code: RoomCode): void {
   if (modeForRoom(room).beginStage?.(room)) {
     return;
   }
-  const stage = stageOfQuestion(room, room.currentQuestionIndex).stage;
-  if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stage))) {
+  // Task 218 - by IDENTITY (what this stage actually IS), never by its
+  // table position; see StageIntroIdentity in socrates.ts.
+  const definition = stageOfQuestion(room, room.currentQuestionIndex);
+  if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stageIntroIdentity(definition)))) {
     return; // advanceFromSocrates calls beginRound once the beat is over
   }
   beginRound(room);

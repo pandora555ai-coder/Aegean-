@@ -27,11 +27,9 @@ const ALL_MOMENTS = 'ALL';
 const PRESET_DRAW_NUMERIC = '__preset_draw_numeric__';
 // The 9 draw/numeric moments (Task 138/139) plus Η Συκοφαντία's STAGE_INTRO
 // pool. That pool's moment key is generated at runtime by
-// collectVoiceLineEntries (server/src/socrates.ts) from whichever stage
-// number it meets FIRST while iterating STAGE_INTRO_LINES - it's keyed
-// under both stage 3 (quiz) and stage 4 (full show) with the SAME array,
-// and object key iteration order for integer-like keys is ascending, so
-// stage 3 always wins and "stage 4" never appears as its own moment.
+// collectVoiceLineEntries (server/src/socrates.ts), keyed by StageIntroIdentity
+// (Task 218) rather than a table position - Η Συκοφαντία's identity is
+// 'steal' in every mode/table, so this is the one, stable moment key.
 const PRESET_DRAW_NUMERIC_MOMENTS = [
   'DRAW_INTRO',
   'NOBODY_GUESSED',
@@ -42,7 +40,7 @@ const PRESET_DRAW_NUMERIC_MOMENTS = [
   'WILDLY_OFF',
   'ALL_CLUSTERED',
   'NOBODY_CLOSE',
-  'STAGE_INTRO (stage 3)',
+  'STAGE_INTRO (stage steal)',
 ];
 
 function loadRatings(): Record<string, Rating> {

@@ -1,4 +1,4 @@
-import { lineHash, type Difficulty } from '@game/shared';
+import { lineHash, stageSegment, type Difficulty, type StageDefinition } from '@game/shared';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -418,8 +418,10 @@ export const GAME_INTRO_LINES: readonly string[] = [
   'Ας αρχίσει η διαμάχη. Και ας κερδίσει ο λιγότερο ανόητος.',
 ];
 
-// Task 139 - Η Συκοφαντία's intro pool, its own const because TWO stage
-// numbers key it in STAGE_INTRO_LINES below (quiz 3, full show 4).
+// Task 139 - Η Συκοφαντία's intro pool, its own const so it can be shared
+// under whatever identities legitimately mean "the steal stage" (Task 218 -
+// see StageIntroIdentity below; quiz's own stage 3 and full's stage 6 both
+// resolve to 'steal').
 const SYKOPHANTIA_INTRO_LINES: readonly string[] = [
   'Η Συκοφαντία. Οι κατήγοροι έβγαζαν ψωμί από τις κατηγορίες — τώρα θα βγάλετε κι εσείς.',
   'Φτάνουμε στη Συκοφαντία. Εμένα με κατηγόρησαν άδικα· εσάς θα σας κατηγορήσουν σωστά.',
@@ -432,17 +434,60 @@ const SYKOPHANTIA_INTRO_LINES: readonly string[] = [
   'Η Συκοφαντία αρχίζει, και μαζί της τελειώνει η ευγένεια. Θα δούμε πόσο γρήγορα ξεχνάτε ότι ήρθατε μαζί.',
 ];
 
-// Keyed by StageDefinition.stage (1-based, matches STAGES in shared).
-export const STAGE_INTRO_LINES: Partial<Record<number, readonly string[]>> = {
-  1: [
+// Task 218 - what STAGE_INTRO_LINES is actually keyed by, replacing the raw
+// (pre-Task-214) table POSITION it used to be keyed by. The Task 214 lineup
+// reordered every stage, so a numeric key silently started resolving to the
+// WRONG stage (or to nothing) the moment a stage's position in its table
+// changed - see tasks/218-report.md's diagnosis for the exact fallout. An
+// IDENTITY survives reordering by construction: it's derived from what a
+// stage actually IS (its StageSegment, or - the one identity segment alone
+// can't distinguish - whether it steals), never from where it sits.
+// 'quiz' covers EVERY plain (non-stealing) quiz-segment stage regardless of
+// mode or table position: standalone quiz's own Η Αγορά AND Οι Σοφιστές
+// (Task 218 - previously two SEPARATE numeric pools, keys 1/2, that only
+// ever happened to resolve correctly because those two stages' POSITIONS
+// never moved; deliberately MERGED here into one pool since neither the
+// StageSegment vocabulary nor this task's identity scheme has a way to
+// tell them apart, and full's own single non-stealing quiz stage, "Η
+// Αγορά", already had to share this same bucket) - full's own stage 1
+// (also "Η Αγορά"). 'steal' covers every stealAfterEveryQuestion quiz
+// stage (Η Συκοφαντία, in both tables). 'blitz'/'draw'/'numeric'/'agora'
+// and 'finale' (the trial/climb row) have NO entry below - by design, the
+// existing silent-pool pattern (Task 138): `pickStageIntroLine` reads
+// `STAGE_INTRO_LINES[identity] ?? []`, an empty pool declines the beat and
+// the stage advances straight through with no added delay. In practice
+// full.ts's `beginStage` hook already intercepts blitz/draw/numeric/agora
+// stages before `pickStageIntroLine` is ever called for them (see
+// phases.ts's `endStageAnnounce`), and the finale row is announced through
+// its own room.trial/room.climb branches there, never this one - so those
+// five identities exist in the union purely for completeness/documentation,
+// not because any code path looks them up.
+export type StageIntroIdentity = 'quiz' | 'blitz' | 'draw' | 'numeric' | 'agora' | 'steal' | 'finale';
+
+export function stageIntroIdentity(definition: StageDefinition): StageIntroIdentity {
+  const segment = stageSegment(definition);
+  if (segment === 'trial') {
+    return 'finale';
+  }
+  if (segment === 'quiz') {
+    return definition.stealAfterEveryQuestion ? 'steal' : 'quiz';
+  }
+  return segment;
+}
+
+export const STAGE_INTRO_LINES: Partial<Record<StageIntroIdentity, readonly string[]>> = {
+  // Merged (Task 218, see StageIntroIdentity above): Η Αγορά's own six
+  // lines, then Οι Σοφιστές's own six - both sets kept VERBATIM (each is
+  // lineHash-keyed to an already-generated mp3, see ## Voice in CLAUDE.md);
+  // only which ARRAY holds them changed, not the line text itself, so no
+  // mp3 is invalidated by this merge.
+  quiz: [
     'Βρισκόμαστε στην Αγορά, εκεί όπου ξεκινούν όλες οι συζητήσεις. Εδώ χάνονται και οι περισσότερες.',
     'Πρώτος γύρος. Ακόμα κανείς δεν έχει ντροπιαστεί.',
     'Στην Αγορά μιλάει όποιος τολμά. Τολμήστε.',
     'Ξεκινάμε ήρεμα και πολιτισμένα, όπως αρμόζει. Δεν πρόκειται να κρατήσει πολύ αυτό.',
     'Η Αγορά είναι γεμάτη κόσμο σήμερα, και όλοι περιμένουν. Ας δούμε ποιος θα στέκεται ακόμη εδώ στο τέλος.',
     "Τα πρώτα ερωτήματα είναι πάντα απλά, και γι' αυτό επικίνδυνα. Οι απαντήσεις σας θα σας προδώσουν πριν το καταλάβετε.",
-  ],
-  2: [
     'Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.',
     'Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.',
     'Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.',
@@ -450,20 +495,18 @@ export const STAGE_INTRO_LINES: Partial<Record<number, readonly string[]>> = {
     'Ένα όπλο ο καθένας. Ας δούμε σε ποιον θα στραφεί.',
     'Η γνώση χωρίς πονηριά χάνει. Το έμαθα με τον δύσκολο τρόπο.',
   ],
-  // Task 139 - the Συκοφαντία stage is "stage 3" in the quiz's own table but
-  // "stage 4" in the full show's (modes/full.ts) - both keys share this one
-  // pool. Four new lines, plus the one old stage-3 line that was always
-  // about stealing rather than the trial - kept VERBATIM (it is
-  // lineHash-keyed to a pre-generated mp3, see ## Voice in CLAUDE.md).
-  // The five lines that literally say "Η Δίκη" moved to TRIAL_INTRO_LINES
-  // below, where the trial's own announcement now plays them.
-  3: SYKOPHANTIA_INTRO_LINES,
-  4: SYKOPHANTIA_INTRO_LINES,
+  // Four new lines, plus the one old stage-3 line that was always about
+  // stealing rather than the trial - kept VERBATIM (see ## Voice in
+  // CLAUDE.md). The five lines that literally say "Η Δίκη" moved to
+  // TRIAL_INTRO_LINES below, where the trial's own announcement now plays
+  // them.
+  steal: SYKOPHANTIA_INTRO_LINES,
 };
 
 // Task 139 - the trial's own announcement beat. These five lines are MOVED
-// verbatim from STAGE_INTRO_LINES[3] (where they had been talking about the
-// wrong stage since Task 126 renamed it) - moved, not rewritten, because
+// verbatim from what was then STAGE_INTRO_LINES[3] (quiz's own numeric key
+// pre-Task-218; where they had been talking about the wrong stage since
+// Task 126 renamed it) - moved, not rewritten, because
 // each is lineHash-keyed to an already-generated mp3. Played by
 // endStageAnnounce's trial branch (phases.ts), which used to skip the intro
 // beat entirely.
@@ -1419,8 +1462,8 @@ export function pickGameIntroLine(state: SocratesState): PickedLine | null {
   return pickLine(state, GAME_INTRO_LINES, {});
 }
 
-export function pickStageIntroLine(state: SocratesState, stage: number): PickedLine | null {
-  return pickLine(state, STAGE_INTRO_LINES[stage] ?? [], {});
+export function pickStageIntroLine(state: SocratesState, identity: StageIntroIdentity): PickedLine | null {
+  return pickLine(state, STAGE_INTRO_LINES[identity] ?? [], {});
 }
 
 export function pickWinnerLine(state: SocratesState): PickedLine | null {
@@ -1634,15 +1677,17 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
     add(moment, pool);
   }
   add('GAME_INTRO', GAME_INTRO_LINES);
-  // A pool aliased under two stage numbers (Συκοφαντία: quiz 3 / full 4,
-  // Task 139) is one set of lines - list it once, under its first key.
+  // Task 218 - keyed by StageIntroIdentity now, not a table position; the
+  // dedup below is defensive (nothing currently shares one pool across two
+  // identities) rather than load-bearing the way it was pre-218, when
+  // 'steal' (then keys 3 and 4) genuinely was one array under two keys.
   const seenStagePools = new Set<readonly string[]>();
-  for (const [stage, pool] of Object.entries(STAGE_INTRO_LINES)) {
+  for (const [identity, pool] of Object.entries(STAGE_INTRO_LINES)) {
     if (!pool || seenStagePools.has(pool)) {
       continue;
     }
     seenStagePools.add(pool);
-    add(`STAGE_INTRO (stage ${stage})`, pool);
+    add(`STAGE_INTRO (stage ${identity})`, pool);
   }
   add('WINNER', WINNER_LINES);
   add('TRIAL_INTRO', TRIAL_INTRO_LINES);
