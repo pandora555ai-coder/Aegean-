@@ -285,6 +285,14 @@ export default function HostScreen() {
   // exactly where the last reveal left them, not vanish.
   const lastClimbClimbersRef = useRef<AnavasisClimberData[]>([]);
   const lastClimbTopRef = useRef(0);
+  // Task 225 - a spear elimination (Η Λόγχη) drops its victim from every
+  // climb payload one round after their own reveal (see climbHiddenPlayerIds'
+  // own comment below), so lastClimbClimbersRef alone loses them: at
+  // GAME_OVER the crowning would render fewer figures than there were
+  // players. This accumulates every climber ever seen, by playerId, and
+  // never drops one - the GAME_OVER render below reads from here instead so
+  // an eliminated player still stands (faded) in the final ceremony.
+  const climbClimberHistoryRef = useRef<Map<string, AnavasisClimberData>>(new Map());
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -434,6 +442,7 @@ export default function HostScreen() {
         setAgoraRevealStage('grid');
         lastClimbClimbersRef.current = [];
         lastClimbTopRef.current = 0;
+        climbClimberHistoryRef.current = new Map();
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -835,6 +844,14 @@ export default function HostScreen() {
 
     function handleGameOver(payload: GameOverPayload) {
       setGameOver(payload);
+      // Task 225 - a duel-decided climb (two arrivals at the top) goes
+      // straight from DUEL_REVEAL to GAME_OVER, and nothing on that path
+      // cleared the settled duel: AnavasisDuel stayed mounted ON TOP of the
+      // crowning, scrim, tablets and all. Same clear handleClimbQuestionShow
+      // already does for the spear-cause duel that resolves back into the
+      // climb (Task 219) - the other exit from DUEL_REVEAL.
+      setDuelPick(null);
+      setDuelReveal(null);
       // The game concluded - nothing left to recover on a future refresh
       // unless/until "play again" makes the room live again (see
       // handlePhaseChanged's LOBBY branch, which re-arms this).
@@ -1838,10 +1855,18 @@ export default function HostScreen() {
       // tells the two apart (a trial's own GAME_OVER carries the same
       // isTrialResult flag, so that alone can't distinguish them).
       if (isClimbFinale) {
-        const winner = lastClimbClimbersRef.current.find((c) => c.playerId === gameOver.standings[0]?.playerId);
-        const winnerLeft = winner
-          ? laneLeftPct(winner.joinIndex, lastClimbClimbersRef.current.length, visualStepFor(winner.step, lastClimbTopRef.current))
-          : 50;
+        // Task 225 - lane math reads gameOver.standings (the winner is
+        // always standings[0], lane 0), the same complete roster
+        // climbClimbersForRender below renders from - NOT the live-only
+        // lastClimbClimbersRef, which a spear elimination can already have
+        // shrunk (that player's row drops out of every payload one round
+        // after their own reveal). Forcing the visual step to top/top
+        // always resolves to the full VISUAL_STEPS ratio (the temple),
+        // matching a genuine CLIMB_TOP arrival, regardless of the winner's
+        // real climbed step (the round-cap verdict can crown someone who
+        // never reached it) - there is exactly one winner, position, never
+        // points.
+        const winnerLeft = laneLeftPct(0, gameOver.standings.length, visualStepFor(climbTop, climbTop));
         return <AnavasisCrowning winnerName={gameOver.winnerName} winnerLeft={winnerLeft} />;
       }
       return <GameOverView gameOver={gameOver} />;
@@ -2203,6 +2228,12 @@ export default function HostScreen() {
   if (liveClimbClimbers.length > 0) {
     lastClimbClimbersRef.current = liveClimbClimbers;
     lastClimbTopRef.current = liveClimbTop;
+    // Task 225 - upsert, never drop: this is the ONLY place that must
+    // remember an eliminated climber past the round their own payload
+    // stopped carrying them (see climbClimberHistoryRef's own comment).
+    for (const climber of liveClimbClimbers) {
+      climbClimberHistoryRef.current.set(climber.playerId, climber);
+    }
   }
   const climbClimbers = isClimbFinale ? lastClimbClimbersRef.current : [];
   const climbTop = lastClimbTopRef.current;
@@ -2250,11 +2281,45 @@ export default function HostScreen() {
   // updates on a real climbQuestion/climbReveal payload and DUEL_PICK/
   // DUEL_REVEAL send neither - so this keeps them faded through a
   // following duel too, not just their own reveal.
-  const climbHiddenPlayerIds = [
-    ...(liveDuel ? [liveDuel.a.playerId, liveDuel.b.playerId] : []),
-    ...climbClimbers.filter((climber) => climber.eliminated).map((climber) => climber.playerId),
-  ];
+  // Task 225 - the ceremony hides NOBODY. Both reasons a climber is hidden
+  // mid-climb (a duelist shown in the foreground instead, a player the
+  // spear just struck out) are live-round reasons, and both outlive the
+  // round they belong to: the last reveal's `eliminated` row is still in
+  // climbClimbers at GAME_OVER, and a duel-decided climb ends with its own
+  // duelists still listed - so the winner themself was rendered at opacity
+  // 0 in the final ceremony. The standings are the figures, and the
+  // standings are complete: at GAME_OVER everyone stands, the winner
+  // unfaded (fadeExcept below) and everyone else at .45.
+  const climbHiddenPlayerIds =
+    phase === 'GAME_OVER' && isClimbFinale
+      ? []
+      : [
+          ...(liveDuel ? [liveDuel.a.playerId, liveDuel.b.playerId] : []),
+          ...climbClimbers.filter((climber) => climber.eliminated).map((climber) => climber.playerId),
+        ];
   const climbWinnerId = phase === 'GAME_OVER' && isClimbFinale ? (gameOver?.standings[0]?.playerId ?? null) : null;
+  // Task 225 - GAME_OVER renders from gameOver.standings, not the last live
+  // payload: standings is the server's complete, de-duplicated roster (it
+  // covers eliminated players too, see buildGameOver's climb branch),
+  // whereas lastClimbClimbersRef/climbClimbers can be missing anyone the
+  // spear struck out (their payload row is dropped one round after their
+  // own reveal - see climbClimberHistoryRef's comment). Lanes are assigned
+  // by final rank rather than whatever live joinIndex they last held (which
+  // may since have been reused by a still-climbing survivor). The winner
+  // always stands on the top step (visualStepFor(top, top) = the temple),
+  // matching winnerLeft above, regardless of their real climbed step (the
+  // round-cap verdict can crown someone who never reached CLIMB_TOP).
+  const climbClimbersForRender: AnavasisClimberData[] =
+    phase === 'GAME_OVER' && isClimbFinale && gameOver
+      ? gameOver.standings.map((standing, index) => ({
+          playerId: standing.playerId,
+          name: standing.name,
+          joinIndex: index,
+          step: standing.playerId === climbWinnerId ? climbTop : (climbClimberHistoryRef.current.get(standing.playerId)?.step ?? 0),
+          delta: null,
+          eliminated: false,
+        }))
+      : climbClimbers;
   const stealFlightHolding =
     phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;
   const rowStandings = stealFlightHolding
@@ -2330,7 +2395,7 @@ export default function HostScreen() {
           <AnavasisScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
           {phaseView}
           <AnavasisClimbers
-            climbers={climbClimbers}
+            climbers={climbClimbersForRender}
             top={climbTop}
             hiddenPlayerIds={climbHiddenPlayerIds}
             fadeExcept={climbWinnerId}

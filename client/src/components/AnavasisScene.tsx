@@ -459,7 +459,16 @@ function useClimbMovement(
 
   useEffect(() => () => timersRef.current.forEach(window.clearTimeout), []);
 
-  return { displayed, moving };
+  // Task 225 - with no reveal in flight (climb entry, a duel, GAME_OVER)
+  // there is no beat-then-glide to sequence, so the CURRENT props are what
+  // must paint. The effect above only re-runs on a NEW revealKey, so a
+  // `climbers` list that changes while revealKey stays null kept painting
+  // the previous round's positions - which is exactly what GAME_OVER does,
+  // since PHASE_CHANGED lands one render BEFORE the game_over payload (the
+  // house pattern): render 1 has no standings yet, render 2 has them and
+  // never reached this state. The winner was left standing on whatever step
+  // the last reveal left them on instead of the temple.
+  return { displayed: revealKey === null ? climbers : displayed, moving };
 }
 
 export function AnavasisClimbers({

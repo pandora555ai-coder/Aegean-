@@ -541,13 +541,16 @@ climb finale runs — no second implementation. Since a bot is never VIP
 (Core rules above) and only the VIP can call `vip:start_game`, a
 bots-only standalone-duel room can never start itself: a real human has
 to be present and press Έναρξη.
-**Η Λόγχη, the spear elimination rule (Task 203), is a PURE MECHANIC
-ONLY — NOT wired into the live climb.** Lives entirely in server/src/
-climb.ts (`applyClimbSpearRound`/`nextAfterSpearRound`/
-`nextAfterSpearEliminations`) plus its own Monte Carlo extension
+**Η Λόγχη, the spear elimination rule (Task 203), IS LIVE** — the mechanic
+lives in server/src/climb.ts (`applyClimbSpearRound`/`nextAfterSpearRound`/
+`nextAfterSpearEliminations`), with its own Monte Carlo extension
 (`server/scripts/trial-montecarlo.ts --spear on|off|auto`) and unit check
-(`npm run climb:spear-check`, 17/17 checks) — no phases.ts/payloads.ts/
-client change exists for it yet. The rule as designed: auto-gated to
+(`npm run climb:spear-check`, 17/17 checks), and Task 205/205b wired it into
+the real phase machine: `endClimbQuestion` (phases.ts:1487) calls
+`applyClimbSpearRound` every reveal. (This paragraph said "a PURE MECHANIC
+ONLY — NOT wired into the live climb" until Task 225, which watched real
+reveals strike real players out over real sockets — it had been stale since
+205.) The rule: auto-gated to
 `CLIMB_SPEAR_MIN_PLAYERS` = 4 (inert below that); sitting at step 0
 through a negative round (wrong OR no lock-in) increments a per-player
 counter, a correct lock-in (always a move OFF step 0) resets it to zero;
@@ -565,6 +568,36 @@ row, an eliminated figure sinks+fades (.out) and is removed outright
 REORDER_DELAY_MS + GLIDE_MS (2200ms, see TV layout) after its reveal — the
 same tween the reorder plays, so removal lands as the sink+fade finishes
 (SophistsRow.tsx's useRemovedIds); the survivors re-space via `left`.
+
+**The Η Ανάβασις CEREMONY (the climb's GAME_OVER) shows POSITION, never
+points (Task 225).** There is exactly one winner; the quiz score's only job
+is seeding entry steps (climbEntryStep), so it still travels in the payload
+and is simply never rendered as a result. The whole TV page renders ZERO
+digits there. Three rules the ceremony frame follows, all in HostScreen:
+(1) it renders from `gameOver.standings` — the server's complete,
+de-duplicated roster — not from the last live climb payload, which a spear
+elimination has already shrunk by then (`climbClimberHistoryRef` keeps every
+climber ever seen so their real step survives); (2) it HIDES NOBODY —
+`climbHiddenPlayerIds` is empty at a climb GAME_OVER, since both mid-climb
+reasons to hide a figure (a duelist drawn in the foreground, a player the
+spear just struck) outlive their own round and had been hiding the WINNER
+after a duel-decided climb; (3) the winner is forced onto the top visual step
+(`visualStepFor(top, top)`, directly under the wreath) even when the
+round-cap verdict crowns someone who never reached CLIMB_TOP. `handleGameOver`
+also clears duelPick/duelReveal, or a duel-decided climb ends with
+AnavasisDuel still mounted over the crowning (the other exit from
+DUEL_REVEAL was already cleared by handleClimbQuestionShow, Task 219).
+AnavasisScene's `useClimbMovement` returns the CURRENT climbers whenever
+`revealKey === null`: its effect only re-runs on a new revealKey, and
+PHASE_CHANGED lands one render BEFORE the game_over payload, so the ceremony
+otherwise paints the previous round's positions. Check:
+`npm run climb:ceremony-check` (dev/climb-ceremony-check.ts — real server
+in-process on a throwaway port, real client, real browser; five scenarios:
+a duel-decided finish, a spear elimination on the winning reveal, the round
+cap with several still climbing, a top-arrival win at every player count 2-6,
+and a socket-level ranking check reading the elimination order off the
+reveals and the standings off game_over; 94 checks. `ONLY_SCENARIO=A` runs
+one).
 
 **Anavasis TV invariant (Task 192): no on-screen text while any body is
 moving**, enforced as a strict per-round FRAME alternation — Frame A

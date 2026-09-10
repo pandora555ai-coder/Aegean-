@@ -16,6 +16,7 @@
     "trial:montecarlo": "tsx server/scripts/trial-montecarlo.ts",
     "climb:spear-check": "tsx server/scripts/climb-spear-check.ts",
     "climb:spear-live-check": "tsx server/scripts/climb-spear-live-check.ts",
+    "climb:ceremony-check": "tsx dev/climb-ceremony-check.ts",
     "agora:validate": "tsx server/scripts/agora-validate.ts",
     "agora:wire-check": "tsx dev/agora-wire-check.ts",
     "voice:generate": "tsx dev/generate-voice-lines.ts",

@@ -2040,12 +2040,20 @@ export default function ControllerScreen() {
           #{me ? me.rank : '-'}
         </div>
         {/* Task 165 - the player's own score as a plaque: the TV plaque's
-            shape (name over score), phone units (rem, not the TV's cqh). */}
+            shape (name over score), phone units (rem, not the TV's cqh).
+            Task 225 - a trial-result finale (Η Δίκη or Η Ανάβασις) ranks by
+            position, never points: `score` there is either life (trial) or
+            just the climb's starting-step seed, not a result, so the points
+            line is dropped exactly where the TV's own SophistsRow already
+            hides it (hideScores, HostScreen.tsx) - `#rank` above already
+            carries the real verdict. */}
         <div style={styles.plaque} data-testid="gameover-plaque">
           <div style={styles.plaqueName}>{joined?.name ? greekUpper(joined.name) : ''}</div>
-          <div style={styles.plaqueScore} data-testid="gameover-score">
-            {me ? me.score : 0} πόντοι
-          </div>
+          {!gameOver.isTrialResult && (
+            <div style={styles.plaqueScore} data-testid="gameover-score">
+              {me ? me.score : 0} πόντοι
+            </div>
+          )}
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
         {isVip && (
