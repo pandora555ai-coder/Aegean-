@@ -690,11 +690,24 @@ io.on('connection', (socket) => {
   });
 
   socket.on(ClientEvents.CREATE_ROOM, (payload) => {
-    const room = createRoom(socket.id);
+    // Task 222 - ?mode=X: the mode the room is CREATED in, so an all-bot
+    // room (Task 217's self-start) can play something other than the
+    // default - no bot ever holds VIP, so vip:set_mode is unreachable
+    // there. Same "never trust the client" check vip:set_mode makes: an
+    // unknown id is ignored entirely and the room opens in DEFAULT_GAME_MODE.
+    const requestedMode = payload?.mode;
+    const mode =
+      requestedMode && listGameModeOptions().some((option) => option.id === requestedMode)
+        ? requestedMode
+        : undefined;
+    if (requestedMode && !mode) {
+      console.log(`ignoring unknown mode '${requestedMode}' on ${ClientEvents.CREATE_ROOM} from ${socket.id}`);
+    }
+    const room = createRoom(socket.id, mode);
     socketAssociationBySocketId.set(socket.id, { role: 'host', code: room.code });
     socket.join(room.code);
     socket.emit(ServerEvents.ROOM_CREATED, { code: room.code });
-    console.log(`room ${room.code} created by ${socket.id}`);
+    console.log(`room ${room.code} created by ${socket.id} (mode=${room.mode})`);
     console.log(`active room count: ${getActiveRoomCount()}`);
 
     // Task 176 - ?bot=N: never trust the client's number, clamp to MAX_BOTS.

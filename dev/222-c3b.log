@@ -1,0 +1,14 @@
+[2026-09-10T13:13:26.518Z] === Task 222 criterion 3b on port 3914 ===
+[2026-09-10T13:13:26.569Z] room 2434 created with {"botCount":6,"mode":"full"} - mode='full'
+[2026-09-10T13:13:26.608Z] human joined playerId=f489a790 - VIP[after human join] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=0/1
+[2026-09-10T13:13:31.612Z] t+5.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:13:36.614Z] t+10.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:13:41.619Z] t+15.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:13:46.625Z] t+20.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:13:51.625Z] t+25.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:13:56.625Z] t+30.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:14:01.631Z] t+35.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:14:06.636Z] t+40.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:14:11.637Z] t+45.0s phase='LOBBY' connected=7 canStart=true bots=6 VIP[watch] vipPlayerId=f489a790-b7be-4554-87af-ea1dc8567664 holder=Ανθρωπος isBot=false isVip-flagged=[Ανθρωπος(isBot=false)] bots=6/7
+[2026-09-10T13:14:11.637Z] RESULT 3b: autostart did NOT fire; final phase='LOBBY', roster=7 (6 bots + human), canStart=true
+[2026-09-10T13:14:11.637Z] === criterion 3b done ===

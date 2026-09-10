@@ -1,0 +1,12 @@
+[2026-09-10T13:10:34.599Z] === Task 222 criterion 3a on port 3912 ===
+[2026-09-10T13:10:34.628Z] room 6869 created with {"botCount":6,"mode":"full"} - mode='full'
+[2026-09-10T13:10:34.668Z] lobby:update players=1 canStart=false mode='full' phase='LOBBY'
+[2026-09-10T13:10:34.672Z] lobby:update players=2 canStart=true mode='full' phase='LOBBY'
+[2026-09-10T13:10:34.677Z] lobby:update players=3 canStart=true mode='full' phase='LOBBY'
+[2026-09-10T13:10:34.678Z] lobby:update players=4 canStart=true mode='full' phase='LOBBY'
+[2026-09-10T13:10:34.680Z] lobby:update players=5 canStart=true mode='full' phase='LOBBY'
+[2026-09-10T13:10:34.686Z] lobby:update players=6 canStart=true mode='full' phase='SOCRATES'
+[2026-09-10T13:10:34.686Z] AUTOSTART fired: first non-LOBBY phase 'SOCRATES' at 6 connected bot(s)
+[2026-09-10T13:10:34.828Z] lobby:update player counts seen while still in LOBBY: [1, 2, 3, 4, 5, 6]
+[2026-09-10T13:10:34.829Z] RESULT 3a: started at 6 of 6 bots; mode at start = 'full'
+[2026-09-10T13:10:34.829Z] === criterion 3a done ===

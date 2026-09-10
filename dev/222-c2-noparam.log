@@ -1,0 +1,114 @@
+[2026-09-10T13:12:17.358Z] === Task 222 criterion 2 on port 3911 ===
+[2026-09-10T13:12:17.365Z] host emits host:create_room {"botCount":6}   (from /host?bot=6)
+[2026-09-10T13:12:17.388Z] room 2674 created - in-process room.mode = 'quiz'
+[2026-09-10T13:12:17.433Z] lobby:update  players=1 canStart=false mode='quiz'
+[2026-09-10T13:12:17.444Z] lobby:update  players=2 canStart=true mode='quiz'
+[2026-09-10T13:12:17.446Z] lobby:update  players=3 canStart=true mode='quiz'
+[2026-09-10T13:12:17.450Z] lobby:update  players=4 canStart=true mode='quiz'
+[2026-09-10T13:12:17.452Z] lobby:update  players=5 canStart=true mode='quiz'
+[2026-09-10T13:12:17.458Z] lobby:update  players=6 canStart=true mode='quiz'
+[2026-09-10T13:12:17.458Z] START - phase left LOBBY at 6 connected player(s); wire mode='quiz' in-process mode='quiz'
+[2026-09-10T13:12:17.458Z] VIP[at start] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:12:17.458Z] phase:changed SOCRATES (+0.0s)
+[2026-09-10T13:12:25.043Z] stage:announce 1/4 "Γύρος 1 — Η Αγορά"  VIP[at stage] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:12:25.043Z] phase:changed STAGE_ANNOUNCE (+7.6s)
+[2026-09-10T13:12:28.542Z] phase:changed SOCRATES (+11.1s)
+[2026-09-10T13:12:32.389Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:12:38.374Z] phase:changed QUESTION (+20.9s)
+[2026-09-10T13:12:42.693Z] phase:changed REVEAL (+25.2s)
+[2026-09-10T13:12:47.390Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:12:48.694Z] phase:changed SOCRATES (+31.2s)
+[2026-09-10T13:12:55.650Z] phase:changed QUESTION (+38.2s)
+[2026-09-10T13:12:59.771Z] phase:changed REVEAL (+42.3s)
+[2026-09-10T13:13:02.390Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:13:05.771Z] phase:changed SOCRATES (+48.3s)
+[2026-09-10T13:13:13.198Z] phase:changed QUESTION (+55.7s)
+[2026-09-10T13:13:17.391Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:13:17.691Z] phase:changed REVEAL (+60.2s)
+[2026-09-10T13:13:23.692Z] phase:changed SOCRATES (+66.2s)
+[2026-09-10T13:13:27.696Z] stage:announce 2/4 "Γύρος 2 — Οι Σοφιστές"  VIP[at stage] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:13:27.697Z] phase:changed STAGE_ANNOUNCE (+70.2s)
+[2026-09-10T13:13:31.196Z] phase:changed SOCRATES (+73.7s)
+[2026-09-10T13:13:32.392Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:13:36.636Z] phase:changed QUESTION (+79.2s)
+[2026-09-10T13:13:40.775Z] phase:changed REVEAL (+83.3s)
+[2026-09-10T13:13:46.776Z] phase:changed SOCRATES (+89.3s)
+[2026-09-10T13:13:47.392Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:13:54.202Z] phase:changed QUESTION (+96.7s)
+[2026-09-10T13:13:58.108Z] phase:changed REVEAL (+100.7s)
+[2026-09-10T13:14:02.393Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:14:04.109Z] phase:changed SOCRATES (+106.7s)
+[2026-09-10T13:14:08.505Z] phase:changed QUESTION (+111.0s)
+[2026-09-10T13:14:11.843Z] phase:changed REVEAL (+114.4s)
+[2026-09-10T13:14:17.394Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:14:17.844Z] phase:changed SOCRATES (+120.4s)
+[2026-09-10T13:14:27.204Z] phase:changed QUESTION (+129.7s)
+[2026-09-10T13:14:31.642Z] phase:changed REVEAL (+134.2s)
+[2026-09-10T13:14:32.395Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:14:37.644Z] phase:changed SOCRATES (+140.2s)
+[2026-09-10T13:14:43.163Z] phase:changed QUESTION (+145.7s)
+[2026-09-10T13:14:47.029Z] phase:changed REVEAL (+149.6s)
+[2026-09-10T13:14:47.396Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:14:53.029Z] phase:changed SOCRATES (+155.6s)
+[2026-09-10T13:14:59.098Z] stage:announce 3/4 "Γύρος 3 — Η Συκοφαντία"  VIP[at stage] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:14:59.098Z] phase:changed STAGE_ANNOUNCE (+161.6s)
+[2026-09-10T13:15:02.397Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:15:02.597Z] phase:changed SOCRATES (+165.1s)
+[2026-09-10T13:15:11.878Z] phase:changed QUESTION (+174.4s)
+[2026-09-10T13:15:16.152Z] phase:changed REVEAL (+178.7s)
+[2026-09-10T13:15:17.398Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:15:22.153Z] phase:changed STEAL (+184.7s)
+[2026-09-10T13:15:26.458Z] phase:changed SOCRATES (+189.0s)
+[2026-09-10T13:15:32.399Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:15:33.336Z] phase:changed QUESTION (+195.9s)
+[2026-09-10T13:15:37.809Z] phase:changed REVEAL (+200.4s)
+[2026-09-10T13:15:43.808Z] phase:changed STEAL (+206.3s)
+[2026-09-10T13:15:47.399Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:15:48.111Z] phase:changed SOCRATES (+210.7s)
+[2026-09-10T13:15:52.350Z] phase:changed QUESTION (+214.9s)
+[2026-09-10T13:15:56.420Z] phase:changed REVEAL (+219.0s)
+[2026-09-10T13:16:02.399Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:16:02.421Z] phase:changed STEAL (+225.0s)
+[2026-09-10T13:16:06.724Z] phase:changed SOCRATES (+229.3s)
+[2026-09-10T13:16:12.557Z] phase:changed QUESTION (+235.1s)
+[2026-09-10T13:16:17.003Z] phase:changed REVEAL (+239.5s)
+[2026-09-10T13:16:17.399Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:16:23.005Z] phase:changed STEAL (+245.5s)
+[2026-09-10T13:16:27.307Z] phase:changed SOCRATES (+249.8s)
+[2026-09-10T13:16:32.401Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:16:32.906Z] stage:announce 4/4 "Η Ανάβαση"  VIP[at stage] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:16:32.906Z] phase:changed STAGE_ANNOUNCE (+255.4s)
+[2026-09-10T13:16:36.408Z] phase:changed CLIMB_QUESTION (+258.9s)
+[2026-09-10T13:16:40.780Z] phase:changed CLIMB_REVEAL (+263.3s)
+[2026-09-10T13:16:46.780Z] phase:changed CLIMB_QUESTION (+269.3s)
+[2026-09-10T13:16:47.400Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:16:50.375Z] phase:changed CLIMB_REVEAL (+272.9s)
+[2026-09-10T13:16:56.377Z] phase:changed CLIMB_QUESTION (+278.9s)
+[2026-09-10T13:17:00.031Z] phase:changed CLIMB_REVEAL (+282.6s)
+[2026-09-10T13:17:02.401Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:17:06.032Z] phase:changed CLIMB_QUESTION (+288.6s)
+[2026-09-10T13:17:10.444Z] phase:changed CLIMB_REVEAL (+293.0s)
+[2026-09-10T13:17:16.445Z] phase:changed CLIMB_QUESTION (+299.0s)
+[2026-09-10T13:17:17.402Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:17:20.746Z] phase:changed CLIMB_REVEAL (+303.3s)
+[2026-09-10T13:17:26.747Z] phase:changed CLIMB_QUESTION (+309.3s)
+[2026-09-10T13:17:30.535Z] phase:changed CLIMB_REVEAL (+313.1s)
+[2026-09-10T13:17:32.403Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:17:36.537Z] phase:changed CLIMB_QUESTION (+319.1s)
+[2026-09-10T13:17:40.837Z] phase:changed CLIMB_REVEAL (+323.4s)
+[2026-09-10T13:17:46.836Z] phase:changed CLIMB_QUESTION (+329.4s)
+[2026-09-10T13:17:47.403Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:17:50.880Z] phase:changed CLIMB_REVEAL (+333.4s)
+[2026-09-10T13:17:56.880Z] phase:changed CLIMB_QUESTION (+339.4s)
+[2026-09-10T13:18:00.690Z] phase:changed CLIMB_REVEAL (+343.2s)
+[2026-09-10T13:18:02.404Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:18:06.691Z] phase:changed CLIMB_QUESTION (+349.2s)
+[2026-09-10T13:18:10.764Z] phase:changed CLIMB_REVEAL (+353.3s)
+[2026-09-10T13:18:16.766Z] phase:changed SOCRATES (+359.3s)
+[2026-09-10T13:18:17.404Z] VIP[sample] vipPlayerId=null holder=none isVip-flagged=[none] bots=6/6
+[2026-09-10T13:18:20.770Z] phase:changed GAME_OVER (+363.3s)
+[2026-09-10T13:18:21.771Z] GAME_OVER reached - total wall clock from start: 363.3s
+[2026-09-10T13:18:21.771Z] VIP[at end] vipPlayerId=null holder=none isVip-flagged=[none] bots=0/0
+[2026-09-10T13:18:21.772Z] STAGE SEQUENCE (4): 1/4 Γύρος 1 — Η Αγορά | 2/4 Γύρος 2 — Οι Σοφιστές | 3/4 Γύρος 3 — Η Συκοφαντία | 4/4 Η Ανάβαση
+[2026-09-10T13:18:21.772Z] PHASE SEQUENCE (70 transitions): SOCRATES -> STAGE_ANNOUNCE -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> STAGE_ANNOUNCE -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> QUESTION -> REVEAL -> SOCRATES -> STAGE_ANNOUNCE -> SOCRATES -> QUESTION -> REVEAL -> STEAL -> SOCRATES -> QUESTION -> REVEAL -> STEAL -> SOCRATES -> QUESTION -> REVEAL -> STEAL -> SOCRATES -> QUESTION -> REVEAL -> STEAL -> SOCRATES -> STAGE_ANNOUNCE -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> CLIMB_QUESTION -> CLIMB_REVEAL -> SOCRATES -> GAME_OVER
+[2026-09-10T13:18:21.772Z] === criterion 2 done ===

@@ -5,6 +5,8 @@ import {
   DEFAULT_GAME_MODE,
   DEFAULT_ROOM_SETTINGS,
   MAX_BOTS,
+  GAME_MODE_IDS,
+  type GameModeId,
   ServerEvents,
   isAgoraQuestionHostPayload,
   isAgoraRevealHostPayload,
@@ -151,6 +153,14 @@ export default function HostScreen() {
   const [botCount] = useState(() => {
     const param = Number(searchParams.get('bot'));
     return Number.isFinite(param) ? Math.max(0, Math.min(MAX_BOTS, Math.floor(param))) : 0;
+  });
+  // Task 222 - ?mode=X: the mode the room is CREATED in, read once at mount
+  // for the same reason botCount is. Only an id the shared registry list
+  // knows is ever sent; the server re-validates anyway and falls back to
+  // the default, so an unknown value here is simply dropped.
+  const [requestedMode] = useState<GameModeId | null>(() => {
+    const param = searchParams.get('mode');
+    return param && (GAME_MODE_IDS as readonly string[]).includes(param) ? (param as GameModeId) : null;
   });
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
@@ -1582,7 +1592,10 @@ export default function HostScreen() {
   }, [roomCode, phase]);
 
   function handleCreateRoom() {
-    socket.emit(ClientEvents.CREATE_ROOM, botCount > 0 ? { botCount } : {});
+    socket.emit(ClientEvents.CREATE_ROOM, {
+      ...(botCount > 0 ? { botCount } : {}),
+      ...(requestedMode ? { mode: requestedMode } : {}),
+    });
   }
 
   const players = lobby?.players ?? [];

@@ -249,8 +249,9 @@ export interface Room {
   players: Map<string, Player>; // keyed by playerId
   // Which GAME this room runs (Task 52). The mode owns the phase sequence,
   // what follows each phase and the stage table; this field is the only
-  // thing the room itself holds. Never changes after createRoom - a room is
-  // one game - and defaults to (currently: is always) 'quiz'.
+  // thing the room itself holds. Set at createRoom (from ?mode=X since Task
+  // 222, else DEFAULT_GAME_MODE) and changed only by vip:set_mode while
+  // still in LOBBY - locked once a game starts.
   mode: GameModeId;
   phase: GamePhase;
   // Stages (Task 31a) - which stage of the STAGES table the game is currently
@@ -394,14 +395,19 @@ export function generateRoomCode(): RoomCode {
   throw new Error(`failed to generate a unique room code after ${MAX_GENERATE_ATTEMPTS} attempts`);
 }
 
-export function createRoom(hostSocketId: string): Room {
+// Task 222 - `mode` is the room's mode AT CREATION (?mode=X on /host).
+// Optional and already-validated by the caller: state.ts holds no registry
+// import, so host:create_room checks the id against listGameModeOptions()
+// and passes only a known one. Omitted = DEFAULT_GAME_MODE, exactly as
+// before.
+export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME_MODE): Room {
   const code = generateRoomCode();
   const room: Room = {
     code,
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
-    mode: DEFAULT_GAME_MODE,
+    mode,
     phase: 'LOBBY',
     stage: 0, // no stage until the first question is entered
     // Nobody reads `questions` before the game actually starts - built for

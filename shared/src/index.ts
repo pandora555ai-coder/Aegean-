@@ -307,6 +307,12 @@ export interface HostCreateRoomPayload {
   // instant it's created. Clamped server-side to MAX_BOTS regardless of what
   // a client sends.
   botCount?: number;
+  // Task 222 - ?mode=X: the mode the room is CREATED in. Exists because an
+  // all-bot room (Task 217's self-start) has no VIP to send vip:set_mode -
+  // a bot never claims VIP - so 'full' was unreachable without a human.
+  // Validated server-side against the mode registry; anything unknown is
+  // ignored and the room keeps DEFAULT_GAME_MODE.
+  mode?: GameModeId;
 }
 
 export interface RoomCreatedPayload {

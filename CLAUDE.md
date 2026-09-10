@@ -195,7 +195,19 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
   migration stays immediate.
 - `?bot=N` (clamped server-side to MAX_BOTS = 7) spawns server-side bots
   (server/src/bots.ts) into a room; a bot is never VIP. cleanupRoomBots
-  runs in every mode's finishGame.
+  runs in every mode's finishGame. **`?mode=X` (Task 222) sets the room's
+  mode AT CREATION** — `host:create_room`'s own `mode` field, validated
+  against the mode registry exactly as `vip:set_mode` is, then passed to
+  `createRoom`. It exists because an all-bot room self-starts (Task 217)
+  with NO VIP, so `vip:set_mode` is unreachable there and every bot room
+  was stuck on DEFAULT_GAME_MODE; nothing about it grants a bot VIP. An
+  unknown id is logged and ignored. Check: `dev/bot-mode-param-check.ts`
+  (in-process server on a throwaway port, so VIP ownership can be read off
+  the live Room mid-game — no payload carries `isVip` outside LOBBY).
+  Only SEVEN avatars have art (server/src/avatars.ts vs
+  client/public/avatars), and bots claim the first N by catalogue order —
+  a human taking one of those gets that bot's join REJECTED, silently, no
+  retry (pre-existing, Task 176; documented at 222, not fixed).
 - Uppercased Greek text — titles AND player names — ALWAYS renders through
   greekUpper (client/src/greekUpper.ts). Never a raw text-transform:
   uppercase or .toUpperCase() on a Greek string; Greek uppercasing drops
