@@ -90,6 +90,7 @@ import {
   type RoomPeekResultPayload,
   type RoomSettings,
   type SabotageEffect,
+  type ServerErrorPayload,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
   type StealChoosePayload,
@@ -503,6 +504,11 @@ export default function ControllerScreen() {
   const [question, setQuestion] = useState<QuestionShowPlayerPayload | null>(null);
   const [pendingChoice, setPendingChoice] = useState<number | null>(null);
   const [acceptedChoice, setAcceptedChoice] = useState<number | null>(null);
+  // Task 223 - a malformed/malicious SUBMIT_ANSWER (server:error) never has
+  // a button to mark, so it gets its own banner rather than reusing
+  // pendingChoice/acceptedChoice. Cleared on the next question, same as the
+  // other per-question state above.
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
@@ -817,6 +823,14 @@ export default function ControllerScreen() {
       }
     }
 
+    // Task 223 - a rejected SUBMIT_ANSWER (out-of-range or non-numeric
+    // choice). The button tap that produced it was never valid, so there is
+    // no answer to mark; this just surfaces the server's own message.
+    function handleServerError(payload: ServerErrorPayload) {
+      console.warn(`server error: ${payload.message}`);
+      setAnswerError(payload.message);
+    }
+
     function handleRejected(payload: JoinRejectedPayload) {
       setError(REJECTION_MESSAGES[payload.reason]);
       if (payload.reason === 'AVATAR_TAKEN' || payload.reason === 'INVALID_AVATAR') {
@@ -880,6 +894,7 @@ export default function ControllerScreen() {
         setQuestion(payload);
         setPendingChoice(null);
         setAcceptedChoice(null);
+        setAnswerError(null);
         setReveal(null);
         // POWER_UP flows straight into the question it preceded - whatever
         // was chosen is now the server's business, and lands right here.
@@ -1473,6 +1488,7 @@ export default function ControllerScreen() {
 
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
+    socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
@@ -1509,6 +1525,7 @@ export default function ControllerScreen() {
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
+      socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
@@ -2920,6 +2937,11 @@ export default function ControllerScreen() {
             </div>
           ) : (
             <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για την ερώτηση</div>
+          )}
+          {answerError && (
+            <div style={styles.error} data-testid="answer-error">
+              {answerError}
+            </div>
           )}
           {/* One banner per EFFECT (Task 31a) - a stacked victim can be under
               an ice and an ink at once, and each has its own countdown. The

@@ -1035,6 +1035,9 @@ io.on('connection', (socket) => {
     const { choice } = payload;
     if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
       console.log(`rejected ${ClientEvents.SUBMIT_ANSWER} from ${socket.id}: invalid choice ${choice}`);
+      // Task 223 - every rejection needs a signal back to the submitter;
+      // this one previously just logged and dropped it.
+      socket.emit(ServerEvents.ERROR, { message: `invalid choice: ${JSON.stringify(choice)}` });
       return;
     }
 

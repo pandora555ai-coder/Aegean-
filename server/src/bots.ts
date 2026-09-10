@@ -310,7 +310,12 @@ export function spawnBots(code: string, count: number): void {
 
   for (let i = 0; i < n; i++) {
     const name = BOT_NAMES[i % BOT_NAMES.length];
-    const avatarId = avatarPool.length > 0 ? avatarPool[i % avatarPool.length] : 'minotaur';
+    // Task 223 - from the END of the catalogue, not the start: a human
+    // joining a bot room picks from the front of the same list, so this
+    // keeps a bot and a human from colliding on the same avatar in the
+    // common case (still possible once the pool is exhausted both ends).
+    const avatarId =
+      avatarPool.length > 0 ? avatarPool[avatarPool.length - 1 - (i % avatarPool.length)] : 'minotaur';
     const playerId = randomUUID();
     // Alternating fast/slow - with an odd bot count the extra one is fast,
     // matching the harness's own "bot 0 is always fast" convention.

@@ -1369,7 +1369,15 @@ function broadcastClimbQuestion(room: Room): void {
   if (hostPayload && room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.CLIMB_QUESTION_SHOW, hostPayload);
   }
+  // Task 223 - a speared-out (Η Λόγχη) climber can never lock in
+  // (submitClimbAnswer rejects them, see above), so they are not a
+  // recipient of this round's question at all - same "not their business"
+  // rule the market's fairness gate applies elsewhere.
+  const eliminated = new Set(room.climb?.eliminationOrder ?? []);
   for (const player of getConnectedPlayers(room)) {
+    if (eliminated.has(player.playerId)) {
+      continue;
+    }
     const playerPayload = buildClimbQuestionPlayerPayload(room, player.playerId);
     if (playerPayload) {
       io.to(player.socketId).emit(ServerEvents.CLIMB_QUESTION_SHOW, playerPayload);
