@@ -34,6 +34,7 @@ import {
   type AgoraRenderSpec,
   type AnswerProgressPayload,
   type AudioVolumePayload,
+  type BlitzProgressPayload,
   type BlitzRevealHostPayload,
   type BlitzRevealPayload,
   type BlitzShowHostPayload,
@@ -714,6 +715,15 @@ export default function HostScreen() {
       }
     }
 
+    // Task 224 - the live per-swipe tick (server/src/modes/blitz.ts's
+    // submitBlitzSwipe) was never listened for here, so the host's progress
+    // readout stayed frozen at the BLITZ_SHOW snapshot (everyone at 0) for
+    // the whole round. Merge into the existing snapshot rather than
+    // replacing it outright, so durationMs/standings/etc. stay put.
+    function handleBlitzProgress(payload: BlitzProgressPayload) {
+      setBlitz((current) => (current ? { ...current, progressByPlayerId: payload.progressByPlayerId } : current));
+    }
+
     // Η Μνήμη της Αγοράς (Task 208). Symmetric, unlike every phase above -
     // AgoraExposeShowPayload is the one shape both the TV and every phone
     // get, since the render spec is meant to be seen by everyone the moment
@@ -1104,6 +1114,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
     socket.on(ServerEvents.DUEL_LOCKED, handleDuelLocked);
     socket.on(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+    socket.on(ServerEvents.BLITZ_PROGRESS, handleBlitzProgress);
     socket.on(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
     socket.on(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
     socket.on(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);
@@ -1144,6 +1155,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.DUEL_REVEAL_SHOW, handleDuelRevealShow);
       socket.off(ServerEvents.DUEL_LOCKED, handleDuelLocked);
       socket.off(ServerEvents.BLITZ_SHOW, handleBlitzShow);
+      socket.off(ServerEvents.BLITZ_PROGRESS, handleBlitzProgress);
       socket.off(ServerEvents.BLITZ_REVEAL_SHOW, handleBlitzRevealShow);
       socket.off(ServerEvents.AGORA_EXPOSE_SHOW, handleAgoraExposeShow);
       socket.off(ServerEvents.AGORA_QUESTION_SHOW, handleAgoraQuestionShow);

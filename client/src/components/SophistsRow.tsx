@@ -110,6 +110,24 @@ interface SophistsRowProps {
   forceHidden?: boolean;
 }
 
+// Task 224 - names up to NAME_BASE_CHARS fit the plaque at the reference's
+// own 2.2cqh (.plaque .n below) with room to spare; past that the CSS
+// ellipsis was clipping real names ("ΔΗΜΗΤ...") rather than shrinking to
+// fit. Scaled down proportionally to the character count instead of a fixed
+// step table, floored at NAME_MIN_FONT_CQH so an 11-character name
+// (Πρωταγόρας, Θρασύμαχος) stays legible rather than vanishing - the plaque
+// itself and the row layout are untouched, only the text shrinks.
+const NAME_BASE_FONT_CQH = 2.2;
+const NAME_MIN_FONT_CQH = 1.3;
+const NAME_BASE_CHARS = 7;
+
+function nameFontSizeCqh(name: string): number {
+  if (name.length <= NAME_BASE_CHARS) {
+    return NAME_BASE_FONT_CQH;
+  }
+  return Math.max(NAME_MIN_FONT_CQH, (NAME_BASE_FONT_CQH * NAME_BASE_CHARS) / name.length);
+}
+
 // The five himation colours from the reference's `hues`, by join index
 // (cycled past five). Figure art - the same raw-hex exception TheatreScene's
 // own SVG has (CLAUDE.md's colour rule); the plaque, wreath and delta use
@@ -435,7 +453,11 @@ function Sophist({
         {/* Task 182 - greekUpper(), not CSS text-transform:uppercase (which
             keeps the Greek tonos: "Ελένη" -> "ΕΛ΄ΕΝΗ", not "ΕΛΕΝΗ") - display
             only, standing.name itself is untouched. */}
-        <div className={isInvolved ? 'n n--involved' : 'n'} data-testid="sophist-name">
+        <div
+          className={isInvolved ? 'n n--involved' : 'n'}
+          data-testid="sophist-name"
+          style={{ fontSize: `${nameFontSizeCqh(standing.name)}cqh` }}
+        >
           {isLockedIn ? '🔒 ' : ''}
           {greekUpper(standing.name)}
         </div>

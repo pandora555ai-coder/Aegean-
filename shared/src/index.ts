@@ -743,7 +743,15 @@ export interface StageDefinition {
   // Undefined means 1 - every quiz-mode row, unchanged.
   scoreScale?: number;
   title: string; // Greek, announced on the TV as the stage begins
-  tagline: string; // Greek, one line under the title
+  tagline: string; // Greek, one line under the title - used when powerUpBeforeEveryQuestion
+  // is false, or true AND room.settings.powerUpsEnabled is also true.
+  // Task 224 - a stage whose `tagline` promises the power-up trick must not
+  // show that promise when powerUpsEnabled is off (the default, Task 177) -
+  // buildStageAnnounce (payloads.ts) swaps to this instead whenever
+  // powerUpBeforeEveryQuestion is true but the setting is false. Undefined
+  // falls back to `tagline` unchanged - every row that never mentions
+  // power-ups needs no second string.
+  taglineNoPowerUps?: string;
 }
 
 // Task 37a - each stage is framed as a round of a public dispute in
@@ -771,6 +779,7 @@ export const QUIZ_STAGES: readonly StageDefinition[] = [
     stealAfterEveryQuestion: false,
     title: 'Γύρος 2 — Οι Σοφιστές',
     tagline: 'Πριν από ΚΑΘΕ ερώτηση επιλέγετε σοφιστικό τέχνασμα. Και τα τεχνάσματα στοιβάζονται.',
+    taglineNoPowerUps: 'Ανοιχτή αντιπαράθεση. Μόνο ταχύτητα και γνώση.',
   },
   {
     stage: 3,
@@ -945,6 +954,7 @@ export const FULL_STAGES: readonly StageDefinition[] = [
     scoreScale: FULL_QUIZ_SCORE_SCALE,
     title: 'Γύρος 1 — Η Αγορά',
     tagline: 'Ανοιχτή αντιπαράθεση. Πριν από κάθε ερώτηση διαλέγετε σοφιστικό τέχνασμα.',
+    taglineNoPowerUps: 'Ανοιχτή αντιπαράθεση. Χωρίς κόλπα, μόνο ταχύτητα και γνώση.',
   },
   {
     stage: 2,

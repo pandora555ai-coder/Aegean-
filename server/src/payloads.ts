@@ -85,11 +85,17 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
   // question index falls in whenever the table holds such a row.
   const definition = stages.find((stage) => stage.stage === room.stage)
     ?? stageForQuestionIndex(room.currentQuestionIndex, stages);
+  // Task 224 - a stage whose tagline promises the power-up trick must not
+  // say so when the setting that gates that phase (Task 177) is off.
+  const tagline =
+    definition.powerUpBeforeEveryQuestion && !room.settings.powerUpsEnabled
+      ? (definition.taglineNoPowerUps ?? definition.tagline)
+      : definition.tagline;
   return {
     stage: definition.stage,
     totalStages: stages.length,
     title: definition.title,
-    tagline: definition.tagline,
+    tagline,
     questionCount: definition.questionCount,
     firstQuestionIndex: firstQuestionIndexOfStage(definition.stage, stages),
     totalQuestions: room.questions.length,
