@@ -1550,6 +1550,11 @@ export function recordDrawGuessRoundAndPickLine(state: SocratesState, context: D
   return line;
 }
 
+// Task 226 - see its use in recordNumericRoundAndPickLine below. 3 is the
+// smallest miss that reads as more than a one-off rounding slip (off-by-1/2
+// happens even when someone is clearly aiming at the right number).
+const NOBODY_CLOSE_MIN_ABSOLUTE_DISTANCE = 3;
+
 export interface NumericRoundContext {
   answer: number;
   values: number[]; // every CONNECTED player's submitted (clamped) value, non-submitters excluded
@@ -1582,7 +1587,14 @@ export function recordNumericRoundAndPickLine(state: SocratesState, context: Num
   }
   if (answer > 0) {
     const bestDistance = Math.min(...values.map((value) => Math.abs(value - answer)));
-    if (bestDistance / answer >= 0.5) {
+    // Task 226 - the ratio alone used to be the whole gate, which broke down
+    // for the pool's many small answers (Πόσοι πλανήτες = 8, Πόσα λίτρα αίμα
+    // = 5, Κάθε πόσα χρόνια οι Ολυμπιακοί = 4...): missing a 4 by 2 is a 50%
+    // ratio, same as missing a 100 by 50, but a miss of 2 reads as a near
+    // guess, not "nobody was close". NOBODY_CLOSE_MIN_ABSOLUTE_DISTANCE is a
+    // floor under the ratio - an absolute miss below it never counts as far,
+    // whatever the answer's own size. First guess, to be tuned at playtest.
+    if (bestDistance / answer >= 0.5 && bestDistance >= NOBODY_CLOSE_MIN_ABSOLUTE_DISTANCE) {
       candidates.push('NOBODY_CLOSE');
     }
   }

@@ -341,10 +341,16 @@ export function endNumericQuestion(code: RoomCode): void {
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
   // Crowd mood (Task 151) - cheer when someone got reasonably close, boo
-  // otherwise. Reuses NUMERIC_LINES' own NOBODY_CLOSE threshold (nobody
-  // within half the answer) rather than inventing a second one. Guarded like
-  // recordNumericRoundAndPickLine: nothing to react to if nobody submitted.
-  // AFTER phase:changed, mirroring the quiz's endQuestion ordering.
+  // otherwise. Started as NUMERIC_LINES' own NOBODY_CLOSE threshold reused
+  // verbatim; Task 226 added an absolute-distance floor to THAT threshold
+  // (recordNumericRoundAndPickLine, socrates.ts) to stop it firing on a
+  // small-answer near-miss, but left this crowd-mood copy as the bare ratio
+  // - out of that task's scope (line selection only, not scored/cosmetic
+  // behaviour). The two now diverge on small answers: mood can go 'boo' on
+  // a close-ish miss that no longer triggers the NOBODY_CLOSE line. Known,
+  // not fixed here. Guarded like recordNumericRoundAndPickLine: nothing to
+  // react to if nobody submitted. AFTER phase:changed, mirroring the quiz's
+  // endQuestion ordering.
   const submittedValues = Array.from(state.submissions.values());
   if (submittedValues.length > 0) {
     const bestDistance = Math.min(...submittedValues.map((value) => Math.abs(value - question.answer)));

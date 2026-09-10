@@ -21,6 +21,7 @@
 // 'fast'/'slow' profile), where before it was speed alone against a uniform
 // 25%-on-4-options baseline.
 import { randomUUID } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import {
   ClientEvents,
@@ -133,13 +134,161 @@ function profileDelayMs(profile: BotProfile): number {
   return profile === 'fast' ? 300 + Math.random() * 500 : 3000 + Math.random() * 1500;
 }
 
-// 1x1 transparent PNG - draw:submit only requires a 'data:image/' prefix and
-// a size under DRAWING_MAX_BYTES, no real decode (proven by
-// dev/screenshot-phases.ts). A bot drawer submits this trivial scribble
-// rather than skipping its turn, so GUESS/GUESS_REVEAL always have a real
-// (blank) image to show.
-const PLACEHOLDER_DRAWING =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+// Task 226 - a bot drawer used to submit a 1x1 transparent PNG (draw:submit
+// only requires a 'data:image/' prefix and a size under DRAWING_MAX_BYTES,
+// no real decode - proven by dev/screenshot-phases.ts), so GUESS/GUESS_REVEAL
+// showed a blank tile on the TV during a bot run. This builds a genuinely
+// visible placeholder instead: a paper-coloured canvas with 2-4 random thick
+// ink strokes, encoded as a real PNG from raw pixels - no canvas library in
+// this dependency tree, so the encoder (CRC32 table, chunk framing, zlib
+// deflate via node:zlib) is written by hand below. It does not need to
+// resemble the round's word (spec) - just look like an actual attempt.
+const BOT_DRAWING_SIZE = 256;
+// Paper background matches DrawingCanvas's own PAPER constant (#F6EEDC);
+// the ink colours echo palette-theatro.css's --wine/--wine-2/--carve tokens
+// (client-only palette, not imported here, so restated as literals - this
+// is server-generated pixel data, not a screen the palette rule governs).
+const BOT_DRAWING_PAPER: readonly [number, number, number] = [0xf6, 0xee, 0xdc];
+const BOT_DRAWING_INKS: readonly [number, number, number][] = [
+  [0x5b, 0x14, 0x24], // --wine
+  [0x8e, 0x24, 0x40], // --wine-2
+  [0x2b, 0x24, 0x18], // --carve
+];
+
+const PNG_CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function png_crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    c = PNG_CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuf = Buffer.from(type, 'ascii');
+  const lenBuf = Buffer.alloc(4);
+  lenBuf.writeUInt32BE(data.length, 0);
+  const crcBuf = Buffer.alloc(4);
+  crcBuf.writeUInt32BE(png_crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
+}
+
+// Encodes a flat, uncompressed-per-row RGB buffer (width*height*3 bytes) as
+// a minimal 8-bit truecolor PNG (filter type 0 on every scanline).
+function encodeRgbPng(width: number, height: number, rgb: Buffer): Buffer {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 2; // color type: truecolor (RGB)
+  ihdrData[10] = 0; // compression method
+  ihdrData[11] = 0; // filter method
+  ihdrData[12] = 0; // interlace method
+  const ihdr = pngChunk('IHDR', ihdrData);
+
+  const stride = width * 3;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (stride + 1);
+    raw[rowStart] = 0; // filter type: none
+    rgb.copy(raw, rowStart + 1, y * stride, (y + 1) * stride);
+  }
+  const idat = pngChunk('IDAT', deflateSync(raw));
+  const iend = pngChunk('IEND', Buffer.alloc(0));
+  return Buffer.concat([signature, ihdr, idat, iend]);
+}
+
+function setBotDrawingPixel(rgb: Buffer, size: number, x: number, y: number, color: readonly [number, number, number]): void {
+  if (x < 0 || y < 0 || x >= size || y >= size) {
+    return;
+  }
+  const idx = (y * size + x) * 3;
+  rgb[idx] = color[0];
+  rgb[idx + 1] = color[1];
+  rgb[idx + 2] = color[2];
+}
+
+// Bresenham's line, stamping a filled disc of the given radius at every
+// step so the stroke reads as a thick pen line rather than a 1px hairline.
+function drawBotDrawingStroke(
+  rgb: Buffer,
+  size: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color: readonly [number, number, number],
+  radius: number,
+): void {
+  let cx = x0;
+  let cy = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    for (let oy = -radius; oy <= radius; oy++) {
+      for (let ox = -radius; ox <= radius; ox++) {
+        if (ox * ox + oy * oy <= radius * radius) {
+          setBotDrawingPixel(rgb, size, cx + ox, cy + oy, color);
+        }
+      }
+    }
+    if (cx === x1 && cy === y1) {
+      break;
+    }
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      cx += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      cy += sy;
+    }
+  }
+}
+
+// A fresh random scribble every call - 2 to 4 connected strokes in one ink
+// colour, kept inside a margin so nothing touches the canvas edge.
+function generateBotDrawing(): string {
+  const size = BOT_DRAWING_SIZE;
+  const rgb = Buffer.alloc(size * size * 3);
+  for (let i = 0; i < size * size; i++) {
+    rgb[i * 3] = BOT_DRAWING_PAPER[0];
+    rgb[i * 3 + 1] = BOT_DRAWING_PAPER[1];
+    rgb[i * 3 + 2] = BOT_DRAWING_PAPER[2];
+  }
+
+  const color = BOT_DRAWING_INKS[randomChoice(BOT_DRAWING_INKS.length)];
+  const margin = size * 0.15;
+  const radius = 4 + Math.floor(Math.random() * 4);
+  const segmentCount = 2 + randomChoice(3); // 2-4 segments
+  let x = margin + Math.random() * (size - 2 * margin);
+  let y = margin + Math.random() * (size - 2 * margin);
+  for (let i = 0; i < segmentCount; i++) {
+    const nx = margin + Math.random() * (size - 2 * margin);
+    const ny = margin + Math.random() * (size - 2 * margin);
+    drawBotDrawingStroke(rgb, size, Math.round(x), Math.round(y), Math.round(nx), Math.round(ny), color, radius);
+    x = nx;
+    y = ny;
+  }
+
+  return `data:image/png;base64,${encodeRgbPng(size, size, rgb).toString('base64')}`;
+}
 
 function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, accuracy: number): void {
   socket.on(ServerEvents.QUESTION_SHOW, (payload: QuestionShowPlayerPayload) => {
@@ -179,7 +328,7 @@ function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, ac
       return; // host-shaped payload, or this bot isn't the round's drawer
     }
     setTimeout(() => {
-      socket.emit(ClientEvents.DRAW_SUBMIT, { image: PLACEHOLDER_DRAWING });
+      socket.emit(ClientEvents.DRAW_SUBMIT, { image: generateBotDrawing() });
     }, 500 + Math.random() * 500);
   });
 
