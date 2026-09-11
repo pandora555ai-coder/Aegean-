@@ -293,6 +293,14 @@ export default function HostScreen() {
   // never drops one - the GAME_OVER render below reads from here instead so
   // an eliminated player still stands (faded) in the final ceremony.
   const climbClimberHistoryRef = useRef<Map<string, AnavasisClimberData>>(new Map());
+  // Task 227 - each climber's LANE is stable for the whole climb, assigned
+  // the first time their playerId is ever seen (join order, since the
+  // first CLIMB_QUESTION's `steps` array is room.players order) and never
+  // reassigned or reclaimed after an elimination. Read via laneForClimber
+  // below; CLIMB_REVEAL's own rank-sorted array must never feed a raw
+  // array index into `joinIndex` again - that reshuffled lanes by
+  // performance every single round.
+  const climbLaneRef = useRef<Map<string, number>>(new Map());
   const wakeLockFailed = useWakeLock();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   const {
@@ -443,6 +451,7 @@ export default function HostScreen() {
         lastClimbClimbersRef.current = [];
         lastClimbTopRef.current = 0;
         climbClimberHistoryRef.current = new Map();
+        climbLaneRef.current = new Map();
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -1855,18 +1864,22 @@ export default function HostScreen() {
       // tells the two apart (a trial's own GAME_OVER carries the same
       // isTrialResult flag, so that alone can't distinguish them).
       if (isClimbFinale) {
-        // Task 225 - lane math reads gameOver.standings (the winner is
-        // always standings[0], lane 0), the same complete roster
-        // climbClimbersForRender below renders from - NOT the live-only
-        // lastClimbClimbersRef, which a spear elimination can already have
-        // shrunk (that player's row drops out of every payload one round
-        // after their own reveal). Forcing the visual step to top/top
-        // always resolves to the full VISUAL_STEPS ratio (the temple),
-        // matching a genuine CLIMB_TOP arrival, regardless of the winner's
-        // real climbed step (the round-cap verdict can crown someone who
-        // never reached it) - there is exactly one winner, position, never
-        // points.
-        const winnerLeft = laneLeftPct(0, gameOver.standings.length, visualStepFor(climbTop, climbTop));
+        // Task 225 - lane math reads gameOver.standings, the same complete
+        // roster climbClimbersForRender below renders from - NOT the
+        // live-only lastClimbClimbersRef, which a spear elimination can
+        // already have shrunk (that player's row drops out of every
+        // payload one round after their own reveal). Forcing the visual
+        // step to top/top always resolves to the full VISUAL_STEPS ratio
+        // (the temple), matching a genuine CLIMB_TOP arrival, regardless of
+        // the winner's real climbed step (the round-cap verdict can crown
+        // someone who never reached it) - there is exactly one winner,
+        // position, never points.
+        // Task 227 - the winner's lane is no longer always 0: it's whatever
+        // stable lane laneForClimber gave them at climb start, so the
+        // wreath has to look it up rather than assume standings[0] sits in
+        // lane 0.
+        const winnerPlayerId = gameOver.standings[0]?.playerId ?? '';
+        const winnerLeft = laneLeftPct(laneForClimber(winnerPlayerId), climbTotalClimbers, visualStepFor(climbTop, climbTop));
         return <AnavasisCrowning winnerName={gameOver.winnerName} winnerLeft={winnerLeft} />;
       }
       return <GameOverView gameOver={gameOver} />;
@@ -2219,10 +2232,24 @@ export default function HostScreen() {
   // them from the payload entirely, one round after their reveal); a
   // climbReveal row carries the real flag, true only on the exact round
   // that struck them out.
+  // Task 227 - `laneForClimber` replaces the old `(s, i) => i` array-index
+  // joinIndex: climbQuestion.steps is join-order but climbReveal.results is
+  // RANK-sorted (sortAndRankResults), so an index straight off either array
+  // put a player in a different lane depending on which phase last drew
+  // them, reshuffling every reveal by that round's speed. A lane assigned
+  // once per playerId and never taken back is stable across both AND
+  // survives an elimination shrinking the array.
+  const laneForClimber = (playerId: string): number => {
+    const existing = climbLaneRef.current.get(playerId);
+    if (existing !== undefined) return existing;
+    const lane = climbLaneRef.current.size;
+    climbLaneRef.current.set(playerId, lane);
+    return lane;
+  };
   const liveClimbClimbers: AnavasisClimberData[] = climbQuestion
-    ? climbQuestion.steps.map((s, i) => ({ playerId: s.playerId, name: s.name, joinIndex: i, step: s.step, delta: null, eliminated: false }))
+    ? climbQuestion.steps.map((s) => ({ playerId: s.playerId, name: s.name, joinIndex: laneForClimber(s.playerId), step: s.step, delta: null, eliminated: false }))
     : climbReveal
-      ? climbReveal.results.map((r, i) => ({ playerId: r.playerId, name: r.name, joinIndex: i, step: r.stepAfter, delta: r.delta, eliminated: r.eliminated }))
+      ? climbReveal.results.map((r) => ({ playerId: r.playerId, name: r.name, joinIndex: laneForClimber(r.playerId), step: r.stepAfter, delta: r.delta, eliminated: r.eliminated }))
       : [];
   const liveClimbTop = climbQuestion?.top ?? climbReveal?.top ?? 0;
   if (liveClimbClimbers.length > 0) {
@@ -2242,8 +2269,9 @@ export default function HostScreen() {
   // entry, the duel, GAME_OVER holding the last positions), which is
   // exactly when that component should apply positions at once instead.
   const climbRevealKey = phase === 'CLIMB_REVEAL' && climbReveal ? String(climbReveal.roundIndex) : null;
-  const joinIndexForClimber = (playerId: string): number =>
-    climbClimbers.find((c) => c.playerId === playerId)?.joinIndex ?? 0;
+  // Task 227 - reuses the same stable lane map, so a duelist's figure keeps
+  // the identical hue/flip it had on the stair.
+  const joinIndexForClimber = laneForClimber;
   // The live duel, from whichever of duelPick/duelReveal is set (never
   // both - see the handlers). Its two duelists are hidden from the stair
   // row below while AnavasisDuel shows them in the foreground instead.
@@ -2303,23 +2331,31 @@ export default function HostScreen() {
   // covers eliminated players too, see buildGameOver's climb branch),
   // whereas lastClimbClimbersRef/climbClimbers can be missing anyone the
   // spear struck out (their payload row is dropped one round after their
-  // own reveal - see climbClimberHistoryRef's comment). Lanes are assigned
-  // by final rank rather than whatever live joinIndex they last held (which
-  // may since have been reused by a still-climbing survivor). The winner
+  // own reveal - see climbClimberHistoryRef's comment). Task 227 - lanes go
+  // through the same laneForClimber map every other climb payload used, so
+  // the winner (and everyone else) stands in the exact lane they climbed
+  // in, not a fresh index off gameOver.standings' own order. The winner
   // always stands on the top step (visualStepFor(top, top) = the temple),
   // matching winnerLeft above, regardless of their real climbed step (the
   // round-cap verdict can crown someone who never reached CLIMB_TOP).
   const climbClimbersForRender: AnavasisClimberData[] =
     phase === 'GAME_OVER' && isClimbFinale && gameOver
-      ? gameOver.standings.map((standing, index) => ({
+      ? gameOver.standings.map((standing) => ({
           playerId: standing.playerId,
           name: standing.name,
-          joinIndex: index,
+          joinIndex: laneForClimber(standing.playerId),
           step: standing.playerId === climbWinnerId ? climbTop : (climbClimberHistoryRef.current.get(standing.playerId)?.step ?? 0),
           delta: null,
           eliminated: false,
         }))
       : climbClimbers;
+  // Task 227 - the fixed lane COUNT every lane offset is spread across
+  // (laneLeftPct's own `n`). Every distinct climb contestant gets a lane
+  // the first time laneForClimber sees them (normally all at once, off the
+  // climb's first CLIMB_QUESTION), so this settles to the full roster size
+  // and then holds - an elimination shrinks who's ON screen, never this
+  // denominator, which is what keeps everyone else's spacing from shifting.
+  const climbTotalClimbers = climbLaneRef.current.size;
   const stealFlightHolding =
     phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;
   const rowStandings = stealFlightHolding
@@ -2367,7 +2403,17 @@ export default function HostScreen() {
   const phaseView = renderPhaseView();
   // True from the first climb/duel payload straight through this game's own
   // GAME_OVER - see isClimbFinale's declaration.
-  const showAnavasisWorld = isClimbFinale && (isAnavasisPhase || phase === 'GAME_OVER');
+  // Task 227 - `isAnavasisPhase` alone (not ANDed with isClimbFinale) covers
+  // the one PHASE_CHANGED-before-payload render (the house pattern - see
+  // CLAUDE.md) where `phase` has already become CLIMB_QUESTION but the
+  // CLIMB_QUESTION_SHOW payload that flips isClimbFinale true hasn't landed
+  // yet: with the old `isClimbFinale && isAnavasisPhase` this fell through
+  // to the ELSE branch below, so for that one frame the quiz's own
+  // TheatreScene+SophistsRow rendered instead - visible with the QUIZ
+  // leader still wearing SophistsRow's wreath, right as the climb began.
+  // isClimbFinale is still needed for GAME_OVER (phase alone can't tell a
+  // climb GAME_OVER from a trial one).
+  const showAnavasisWorld = isAnavasisPhase || (isClimbFinale && phase === 'GAME_OVER');
   // Η Μνήμη της Αγοράς (Task 208) - a lighter-weight backdrop swap than
   // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row,
   // Socrates and the krater all stay exactly as they are for every other
@@ -2397,6 +2443,7 @@ export default function HostScreen() {
           <AnavasisClimbers
             climbers={climbClimbersForRender}
             top={climbTop}
+            totalClimbers={climbTotalClimbers}
             hiddenPlayerIds={climbHiddenPlayerIds}
             fadeExcept={climbWinnerId}
             revealKey={climbRevealKey}
@@ -2465,7 +2512,16 @@ export default function HostScreen() {
           stealFlight={stealFlightTargets}
           sabotageByPlayerId={phase === 'QUESTION' ? (question?.sabotage ?? null) : null}
           counterByPlayerId={counterByPlayerId}
-          forceHidden={phase === 'AGORA_EXPOSE' || agoraProofShowing}
+          // Task 227 - endClimb's own WINNER Socrates beat (phases.ts) plays
+          // as a plain SOCRATES phase between the last CLIMB_REVEAL and
+          // GAME_OVER - not one of the 4 climb phases isAnavasisPhase names,
+          // so showAnavasisWorld is false here and this row would otherwise
+          // render normally, wreath included, on whoever leads by SCORE
+          // (never the climb's own winner - steps aren't score). isClimbFinale
+          // stays true for the rest of that game once set, so this can only
+          // ever fire during the climb's own tail end, the same "market frame
+          // belongs to the market" mechanism Task 210 already established.
+          forceHidden={phase === 'AGORA_EXPOSE' || agoraProofShowing || isClimbFinale}
         />
       )}
     </>

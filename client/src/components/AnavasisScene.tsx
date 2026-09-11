@@ -413,6 +413,13 @@ interface AnavasisClimbersProps {
   // starts the beat-then-glide sequence below; every other prop change
   // (a re-render with the same round, or the null state) applies at once.
   revealKey?: string | null;
+  // Task 227 - the fixed lane count laneLeftPct spreads `joinIndex` across.
+  // MUST be the total number of distinct climbers this climb has ever
+  // seen, never the current (possibly elimination-shrunk) `climbers.length`
+  // - the caller (HostScreen) is the one holding that count, since it's the
+  // one assigning stable per-playerId lanes in the first place. Falls back
+  // to climbers.length only for a caller with no such count to give.
+  totalClimbers?: number;
 }
 
 // Holds `climbers` positions back by CLIMB_BEAT_MS whenever `revealKey`
@@ -477,9 +484,11 @@ export function AnavasisClimbers({
   hiddenPlayerIds = [],
   fadeExcept = null,
   revealKey = null,
+  totalClimbers,
 }: AnavasisClimbersProps) {
   const { displayed, moving } = useClimbMovement(climbers, revealKey);
   const displayedById = new Map(displayed.map((c) => [c.playerId, c]));
+  const n = totalClimbers ?? climbers.length;
   return (
     <div className="anavasis-climbers-root" aria-hidden="true" data-testid="anavasis-climbers" data-moving={moving}>
       <style>{CLIMBERS_STYLE_TAG}</style>
@@ -501,10 +510,16 @@ export function AnavasisClimbers({
           <div
             key={climber.playerId}
             className={className}
-            style={{ bottom: `${stepBottomCqh(visualStep)}cqh`, left: `${laneLeftPct(climber.joinIndex, climbers.length, visualStep)}%` }}
+            style={{ bottom: `${stepBottomCqh(visualStep)}cqh`, left: `${laneLeftPct(climber.joinIndex, n, visualStep)}%` }}
             data-testid="anavasis-climber"
             data-player-id={climber.playerId}
             data-step={shown.step}
+            // Task 227 - the STABLE lane, for verification: `left`'s pixel
+            // value legitimately shifts round to round even for a player who
+            // never changes lane, because the stair narrows with height
+            // (stepWidthPct scales the offset) - this is the value that must
+            // never change while a player is on the stair.
+            data-lane={climber.joinIndex}
           >
             <div className={showDelta ? 'dl on' : 'dl'} data-testid="anavasis-climber-delta">
               {showDelta ? formatClimbDelta(climber.delta as number) : ''}

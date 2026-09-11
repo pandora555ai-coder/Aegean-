@@ -138,11 +138,17 @@ const HIMATION_HUES = ['#C9B7A0', '#9FB2C2', '#C2A08F', '#A8B29A', '#B7A6C4'];
 // palette's tokens. cqh, not vh: the root below is a size container the
 // exact size of the viewport, so the two are equal on the TV - and a scaled
 // preview box (a container of its own) would keep the same proportions.
+// Task 227 - `--dim` and `--hidden` are declared in THIS order (hidden
+// last) on purpose: both can land on the row at once (forceHidden during a
+// SOCRATES/STEAL phase, e.g. the climb's own WINNER beat between the final
+// CLIMB_REVEAL and its GAME_OVER), same specificity either way, so source
+// order is what decides the cascade - hidden (opacity 0) must win over
+// dim (opacity .6), never the reverse.
 const ROW_STYLE_TAG = `
 .sophists-root{position:fixed;inset:0;container-type:size;pointer-events:none;z-index:2}
 .sophists{position:absolute;left:10%;right:10%;bottom:6.5cqh;height:30cqh;transition:opacity 400ms}
-.sophists--hidden{opacity:0}
 .sophists--dim{opacity:.6}
+.sophists--hidden{opacity:0}
 .soph{position:absolute;bottom:0;width:14cqh;text-align:center;transform:translateX(-50%);
   transition:left ${LEFT_TRANSITION_MS}ms cubic-bezier(.4,0,.2,1),opacity 600ms,transform 600ms}
 .soph svg.fig{width:100%;height:19cqh;display:block;overflow:visible;filter:drop-shadow(-.8cqh .4cqh .6cqh rgba(0,0,0,.5))}

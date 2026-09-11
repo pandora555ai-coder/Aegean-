@@ -164,6 +164,12 @@ const DUEL_WEAPON_LABELS: Record<DuelWeapon, string> = {
   aspida: 'Ασπίδα',
 };
 
+// Task 227 - the pick screen gave no hint what beats what. This is
+// shared/src/index.ts's own DUEL_BEATS cycle (xifos > dory > aspida > xifos)
+// spelled out as a fixed sequence, purely static - no server data, no new
+// Socrates line, no audio.
+const DUEL_HINT_SEQUENCE: readonly DuelWeapon[] = ['xifos', 'dory', 'aspida', 'xifos'];
+
 // Task 171 - a control must stay visibly (not just functionally) disabled
 // until the socket is actually connected, so a tap in the pre-connect
 // window lands on something the player can see is not ready, rather than
@@ -3233,6 +3239,17 @@ export default function ControllerScreen() {
         <div style={styles.title} data-testid="duel-pick-caption">
           Μονομαχία{duelPick.opponentName ? ` — εναντίον ${duelPick.opponentName}` : ''}
         </div>
+        <div style={styles.duelHint} data-testid="duel-weapon-hint">
+          {DUEL_HINT_SEQUENCE.map((weapon, i) => (
+            <span style={styles.duelHintItem} key={`${weapon}-${i}`}>
+              {i > 0 && <span style={styles.duelHintArrow}>▸</span>}
+              <span style={styles.duelHintIcon}>
+                <WeaponIcon weapon={weapon} />
+              </span>
+              {DUEL_WEAPON_LABELS[weapon]}
+            </span>
+          ))}
+        </div>
         <div style={styles.powerUpEffectGrid}>
           {DUEL_WEAPONS.map((weapon) => {
             const isMine = weapon === myWeapon;
@@ -4682,6 +4699,31 @@ const styles: Record<string, CSSProperties> = {
   duelWeaponIconWrap: {
     width: '3rem',
     height: '3rem',
+  },
+  // Task 227 - the static "what beats what" strip above the weapon slabs.
+  duelHint: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: '0.3rem',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: 'var(--marble-2)',
+  },
+  duelHintItem: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+  },
+  duelHintIcon: {
+    width: '1.3rem',
+    height: '1.3rem',
+    display: 'inline-flex',
+  },
+  duelHintArrow: {
+    color: 'var(--marble-3)',
+    fontWeight: 700,
   },
   duelRevealWeapons: {
     display: 'flex',
