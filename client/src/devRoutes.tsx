@@ -8,6 +8,7 @@ import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
 import DevVoiceEqScreen from './screens/DevVoiceEqScreen';
 import DevVoiceAbScreen from './screens/DevVoiceAbScreen';
 import DevCrowdScreen from './screens/DevCrowdScreen';
+import DevIntroLinesScreen from './screens/DevIntroLinesScreen';
 
 export interface DevRoute {
   path: string;
@@ -74,5 +75,11 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Πλήθος',
     description: 'Listening page for the crowd sound set — three loops crossfaded by intensity, four one-shots (Task 36a).',
     element: <DevCrowdScreen />,
+  },
+  {
+    path: '/dev/intro-lines',
+    title: 'Νέες γραμμές εισαγωγής',
+    description: "Audition page for Task 228's ten new game-intro lines, in order, with a play-all-in-sequence control (Task 229).",
+    element: <DevIntroLinesScreen />,
   },
 ];
