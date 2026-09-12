@@ -3470,7 +3470,11 @@ export default function ControllerScreen() {
     // this file to edit.
     const mode: GameModeId = lobby?.mode ?? DEFAULT_GAME_MODE;
     const availableModes = lobby?.availableModes ?? [];
-    const modeIds = availableModes.map((option) => option.id);
+    // Task 232 - the VIP screen offers one game only: Πλήρες (full). Every
+    // other mode stays fully registered and playable (server, standalone
+    // dev harnesses, ?mode= on the host URL) - this only narrows what a real
+    // player is ever offered to pick from here.
+    const modeIds = availableModes.filter((option) => option.id === 'full').map((option) => option.id);
     const selectedModeOption = availableModes.find((option) => option.id === mode);
     // canStart is already mode-aware server-side (buildLobbyUpdate compares
     // against modeForRoom(room).minPlayers, not a flat floor) - this just
@@ -3523,9 +3527,24 @@ export default function ControllerScreen() {
             readOnly={!isVip}
             testIdPrefix="setting-mode"
           />
+          {/* Task 232 - the one setting the simplified VIP screen keeps,
+              shown regardless of mode (previously quiz-only; the real room
+              is 'full' by default now, and full's quiz stages read this same
+              room.settings.questionTimeMs). */}
+          <SegmentedRow
+            label="Χρόνος"
+            options={QUESTION_TIME_OPTIONS_MS}
+            current={roomSettings.questionTimeMs}
+            format={(ms) => `${ms / 1000}΄΄`}
+            onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
+            readOnly={!isVip}
+            testIdPrefix="setting-time"
+          />
           {/* Quiz-only settings - hidden for any other mode (not just a
               draw-specific check), so a future third mode never inherits a
-              stale quiz panel by accident. */}
+              stale quiz panel by accident. Only reachable now via ?mode=quiz
+              for standalone-quiz testing (Task 232), since the VIP picker
+              above no longer offers 'quiz' as a choice. */}
           {mode === 'quiz' && (
             <>
               <SegmentedRow
@@ -3549,15 +3568,6 @@ export default function ControllerScreen() {
                   .join(' + ')}
                 )
               </div>
-              <SegmentedRow
-                label="Χρόνος"
-                options={QUESTION_TIME_OPTIONS_MS}
-                current={roomSettings.questionTimeMs}
-                format={(ms) => `${ms / 1000}΄΄`}
-                onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
-                readOnly={!isVip}
-                testIdPrefix="setting-time"
-              />
               <SegmentedRow
                 label="Δυσκολία"
                 options={DIFFICULTY_MIX_OPTIONS}

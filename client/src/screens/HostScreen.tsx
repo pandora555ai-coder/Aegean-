@@ -1630,9 +1630,15 @@ export default function HostScreen() {
   }, [roomCode, phase]);
 
   function handleCreateRoom() {
+    // Task 232 - a real party (no ?bot, no ?mode) now creates straight into
+    // 'full', the only game the simplified VIP screen offers. `?bot=N` alone
+    // still falls through to the server's own default ('quiz') - that path is
+    // the dev/screenshot harness, not a party, and must keep working
+    // unchanged. An explicit `?mode=` always wins, bots or not.
+    const mode = requestedMode ?? (botCount === 0 ? 'full' : null);
     socket.emit(ClientEvents.CREATE_ROOM, {
       ...(botCount > 0 ? { botCount } : {}),
-      ...(requestedMode ? { mode: requestedMode } : {}),
+      ...(mode ? { mode } : {}),
     });
   }
 
