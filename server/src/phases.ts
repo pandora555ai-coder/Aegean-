@@ -260,7 +260,7 @@ export function endStageAnnounce(code: RoomCode): void {
   // Task 218 - by IDENTITY (what this stage actually IS), never by its
   // table position; see StageIntroIdentity in socrates.ts.
   const definition = stageOfQuestion(room, room.currentQuestionIndex);
-  if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stageIntroIdentity(definition)))) {
+  if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stageIntroIdentity(definition), room.mode))) {
     return; // advanceFromSocrates calls beginRound once the beat is over
   }
   beginRound(room);
@@ -290,7 +290,7 @@ export function enterQuestionOrPowerUp(room: Room): void {
 // a fresh game always has a full, unused GAME_INTRO_LINES pool).
 function startGameIntro(room: Room): boolean {
   room.gameIntroPlayed = true;
-  return startSocratesBeat(room, 'GAME_INTRO', pickGameIntroLine(room.socrates));
+  return startSocratesBeat(room, 'GAME_INTRO', pickGameIntroLine(room.socrates, room.mode));
 }
 
 // Task 138 - the generic phase-entry mechanics for ANY held SOCRATES beat,

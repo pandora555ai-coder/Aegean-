@@ -989,8 +989,8 @@ export const FULL_STAGES: readonly StageDefinition[] = [
     segment: 'agora',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: false,
-    title: 'Γύρος 5 — Η Μνήμη της Αγοράς',
-    tagline: 'Κοιτάξτε καλά την αγορά. Μετά κλείνει, και μένει μόνο η μνήμη σας.',
+    title: 'Γύρος 5 — Η Λήθη',
+    tagline: 'Κοιτάξτε καλά όσο προλαβαίνετε. Η Λήθη δεν επιστρέφει ό,τι σας πήρε.',
   },
   {
     stage: 6,

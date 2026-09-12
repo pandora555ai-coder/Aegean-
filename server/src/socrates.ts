@@ -1,4 +1,4 @@
-import { lineHash, stageSegment, type Difficulty, type StageDefinition } from '@game/shared';
+import { lineHash, stageSegment, type Difficulty, type GameModeId, type StageDefinition } from '@game/shared';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -1458,12 +1458,38 @@ export function pickQuestionIntro(state: SocratesState, context: SocratesQuestio
 // synchronous, same as every other picker in this file - never allowed to
 // delay a phase transition itself; whether to actually enter the phase is
 // the caller's decision (phases.ts), based on whether a line came back.
-export function pickGameIntroLine(state: SocratesState): PickedLine | null {
-  return pickLine(state, GAME_INTRO_LINES, {});
+// Task 231 - one GAME_INTRO_LINES entry names a round count ("Τρεις γύροι",
+// three rounds) that only ever matched standalone quiz's own stage count;
+// it contradicts full's seven-stage lineup. Checked the whole pool for the
+// same problem - this is the only line in it that states a round count.
+// Kept in the pool (its mp3 stays valid) and filtered out by mode instead.
+const GAME_INTRO_LINES_EXCLUDED_IN_FULL: ReadonlySet<string> = new Set([
+  'Τρεις γύροι σας χωρίζουν από την απάντηση που ήρθατε να ακούσετε. Ελάχιστοι φτάνουν ως εκεί όρθιοι.',
+]);
+
+export function pickGameIntroLine(state: SocratesState, mode: GameModeId): PickedLine | null {
+  const pool = mode === 'full' ? GAME_INTRO_LINES.filter((line) => !GAME_INTRO_LINES_EXCLUDED_IN_FULL.has(line)) : GAME_INTRO_LINES;
+  return pickLine(state, pool, {});
 }
 
-export function pickStageIntroLine(state: SocratesState, identity: StageIntroIdentity): PickedLine | null {
-  return pickLine(state, STAGE_INTRO_LINES[identity] ?? [], {});
+// Task 231 - three of quiz's STAGE_INTRO_LINES are standalone quiz's own
+// "Οι Σοφιστές" second-stage framing ("δεύτερος γύρος", a stage that
+// doesn't exist in full - the quiz pool fires once there, at stage 1).
+// Correct in standalone quiz, wrong in full. Kept in the pool (not deleted -
+// their mp3s stay valid, CLAUDE.md's Voice section) and filtered out by
+// mode at pick time instead.
+const QUIZ_STAGE_INTRO_LINES_EXCLUDED_IN_FULL: ReadonlySet<string> = new Set([
+  'Οι Σοφιστές. Από εδώ και πέρα δεν αρκεί να ξέρετε.',
+  'Δεύτερος γύρος. Τώρα μπορείτε να βλάψετε ο ένας τον άλλον.',
+  'Οι Σοφιστές δίδασκαν πώς να κερδίζεις, όχι πώς να έχεις δίκιο. Θα σας φανεί χρήσιμο.',
+]);
+
+export function pickStageIntroLine(state: SocratesState, identity: StageIntroIdentity, mode: GameModeId): PickedLine | null {
+  let pool = STAGE_INTRO_LINES[identity] ?? [];
+  if (mode === 'full' && identity === 'quiz') {
+    pool = pool.filter((line) => !QUIZ_STAGE_INTRO_LINES_EXCLUDED_IN_FULL.has(line));
+  }
+  return pickLine(state, pool, {});
 }
 
 export function pickWinnerLine(state: SocratesState): PickedLine | null {

@@ -33,7 +33,10 @@ import type { GameMode } from './types.js';
 //                          drawing is guessed in turn, each round advancing the
 //                          moment every connected participant has submitted
 //   4  Εκτίμηση            three numeric questions
-//   5  Η Μνήμη της Αγοράς  one agora round: the exposure, then its three questions
+//   5  Η Λήθη             one agora round: the exposure, then its three questions
+//                          (Task 231 - display rename off "Η Μνήμη της Αγοράς":
+//                          that title read as a return to stage 1, Η Αγορά. The
+//                          mechanic, phase names and 'agora' identity are untouched.)
 //   6  Η Συκοφαντία        quiz questions, each followed by a STEAL
 //   7  Η Ανάβασις          the climb finale (Task 188a), entered with the scores
 //                          everyone accumulated across stages 1-6 as the ladder's
