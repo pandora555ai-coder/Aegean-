@@ -144,6 +144,27 @@ import { Krater, type TimerState } from '../components/Krater';
 // REVEAL_DURATION_MS (6000ms) so the proof beat always gets a real window.
 const AGORA_REVEAL_GRID_MS = 1800;
 
+// Task 233b - the sentinel returned by payloadForPhase for a phase that has
+// no payload of its own to wait for, and the one handleStateSync stamps to
+// say "this phase's payload is already applied". Symbols so they can never
+// collide with a real payload object.
+const PHASE_PAYLOAD_READY: unique symbol = Symbol('phase-payload-ready');
+const PHASE_PAYLOAD_SYNCED: unique symbol = Symbol('phase-payload-synced');
+// Safety net only, and it never fires in a healthy game: a phase's own
+// payload lands ~1ms after its phase:changed. It exists because a host
+// payload builder that returns null makes the server skip that emit entirely
+// - without it the TV would sit on the previous phase forever rather than
+// merely showing it a few ms too long.
+// Task 233b set this to 400ms first, then raised it on measurement: across
+// two full games the TV's own render stalled for up to 494ms (REVEAL and
+// CLIMB_QUESTION, the heaviest scenes), i.e. ABOVE a 400ms threshold. Those
+// stalls were harmless - the payload was already in hand, so the commit was
+// consistent when it finally happened, and zero stale commits were recorded
+// - but a threshold sitting below normal render-stall duration is no margin
+// at all. 1000ms clears the measured worst case 2x over and is still far
+// below anything a viewer would read as a frozen TV.
+const PHASE_PAYLOAD_WATCHDOG_MS = 1000;
+
 export default function HostScreen() {
   const { connected } = useSocketConnection();
   const [searchParams] = useSearchParams();
@@ -165,7 +186,10 @@ export default function HostScreen() {
   });
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
-  const [phase, setPhase] = useState<GamePhase>('LOBBY');
+  // Task 233b - the SERVER's phase, as last announced by phase:changed. What
+  // the TV actually renders is `phase`, derived below: this one runs ahead of
+  // the payload by a few ms and must never be read by the view directly.
+  const [socketPhase, setSocketPhase] = useState<GamePhase>('LOBBY');
   // The theatre scene's crowd reaction (Task 158) - server-derived, HOST
   // ONLY (crowd:mood), consumed as-is. 'calm' is just the pre-first-event
   // rest state, not a value the server ever has to send before it's ready.
@@ -348,6 +372,120 @@ export default function HostScreen() {
     setSecondsLeft(value);
   }
 
+  // ===========================================================================
+  // Task 233b - phase/payload consistency.
+  //
+  // The server emits PHASE_CHANGED and THEN that phase's own payload (the
+  // house pattern - see CLAUDE.md). They arrive in separate ticks, so for a
+  // few milliseconds the TV knows the new phase while still holding the
+  // PREVIOUS phase's payload. `phase` used to be committed immediately, and
+  // standingsForPhase() would then read whatever object the new phase's slot
+  // happened to hold - last round's, or none at all. Task 233a measured the
+  // result: 49 stale commits per game (16-54ms each), which
+  // useAnimatedNumber's 1800ms tween stretched into a ~1.5s visible score
+  // drift, plus an already-resolved question re-rendered with a frozen timer.
+  //
+  // The invariant now: within one commit, the phase and the payload feeding
+  // the standings and the read slab always agree. `phase` advances only once
+  // the new phase's own payload has actually landed; until then the TV keeps
+  // rendering the LAST COMMITTED phase unchanged, and never reaches back into
+  // some other phase's payload.
+  const phaseEntryPhaseRef = useRef<GamePhase>('LOBBY');
+  const phaseEntryPayloadRef = useRef<unknown>(PHASE_PAYLOAD_READY);
+  const committedPhaseRef = useRef<GamePhase>('LOBBY');
+  const [phaseWatchdog, setPhaseWatchdog] = useState<GamePhase | null>(null);
+
+  // The state slot each phase fills from its own payload event. Exhaustive
+  // over GamePhase deliberately: a new phase added without a slot here is a
+  // type error, not a silently un-gated one.
+  function payloadForPhase(candidate: GamePhase): unknown {
+    switch (candidate) {
+      // Nothing of their own to wait for. LOBBY renders off lobby:update, and
+      // STAGE_ANNOUNCE's card is deliberately emitted BEFORE its phase:changed
+      // (phases.ts:216-218), so it is already in hand at entry.
+      case 'LOBBY':
+      case 'STAGE_ANNOUNCE':
+        return PHASE_PAYLOAD_READY;
+      case 'QUESTION':
+        return question;
+      case 'REVEAL':
+        return reveal;
+      case 'POWER_UP':
+        return powerUp;
+      case 'STEAL':
+        return steal;
+      case 'SOCRATES':
+        return socrates;
+      case 'DRAW':
+        return draw;
+      case 'GUESS':
+        return guess;
+      case 'GUESS_REVEAL':
+        return guessReveal;
+      case 'NUMERIC_QUESTION':
+        return numericQuestion;
+      case 'NUMERIC_REVEAL':
+        return numericReveal;
+      case 'TRIAL_QUESTION':
+        return trialQuestion;
+      case 'TRIAL_REVEAL':
+        return trialReveal;
+      case 'CLIMB_QUESTION':
+        return climbQuestion;
+      case 'CLIMB_REVEAL':
+        return climbReveal;
+      case 'DUEL_PICK':
+        return duelPick;
+      case 'DUEL_REVEAL':
+        return duelReveal;
+      case 'BLITZ':
+        return blitz;
+      case 'BLITZ_REVEAL':
+        return blitzReveal;
+      case 'AGORA_EXPOSE':
+        return agoraExpose;
+      case 'AGORA_QUESTION':
+        return agoraQuestion;
+      case 'AGORA_REVEAL':
+        return agoraReveal;
+      case 'GAME_OVER':
+        return gameOver;
+    }
+  }
+
+  const socketPhasePayload = payloadForPhase(socketPhase);
+  // First render after the server moved us: remember what this phase's slot
+  // held AT ENTRY, so "the payload arrived" means precisely "that slot has
+  // been replaced since". Ref writes only, and guarded, so StrictMode's
+  // double render-invoke re-runs this harmlessly (the established pattern in
+  // this file - see stealSnapshotKeyRef below).
+  if (socketPhase !== committedPhaseRef.current && phaseEntryPhaseRef.current !== socketPhase) {
+    phaseEntryPhaseRef.current = socketPhase;
+    phaseEntryPayloadRef.current = socketPhasePayload;
+  }
+  const phasePayloadArrived =
+    socketPhasePayload === PHASE_PAYLOAD_READY ||
+    socketPhasePayload !== phaseEntryPayloadRef.current ||
+    phaseWatchdog === socketPhase;
+  if (phasePayloadArrived) {
+    committedPhaseRef.current = socketPhase;
+  }
+  // THE phase every view, every timer and the sophists row read.
+  const phase = committedPhaseRef.current;
+
+  useEffect(() => {
+    if (phase === socketPhase) {
+      // Consume a watchdog that already fired, so a later re-entry into the
+      // same phase can't be waved through by a stale token.
+      if (phaseWatchdog !== null) {
+        setPhaseWatchdog(null);
+      }
+      return;
+    }
+    const timer = window.setTimeout(() => setPhaseWatchdog(socketPhase), PHASE_PAYLOAD_WATCHDOG_MS);
+    return () => window.clearTimeout(timer);
+  }, [phase, socketPhase, phaseWatchdog]);
+
   useEffect(() => {
     function handleRoomCreated(payload: RoomCreatedPayload) {
       setRoomCode(payload.code);
@@ -416,7 +554,9 @@ export default function HostScreen() {
     }
 
     function handlePhaseChanged(payload: PhaseChangedPayload) {
-      setPhase(payload.phase);
+      // Task 233b - this is the SERVER's phase. The rendered `phase` follows
+      // it only once this phase's own payload has landed.
+      setSocketPhase(payload.phase);
       phaseRef.current = payload.phase;
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round view
@@ -871,8 +1011,15 @@ export default function HostScreen() {
     // path after host:rejoin (a fresh page load recovering a stored room
     // code, or socket.io's own automatic reconnect after the TV wakes up).
     function handleStateSync(payload: StateSyncPayload) {
-      setPhase(payload.phase);
+      setSocketPhase(payload.phase);
       phaseRef.current = payload.phase;
+      // Task 233b - a sync applies the phase AND its payload in this one
+      // handler, so there is nothing in flight to wait for. Stamping the
+      // entry slot with a sentinel no payload can equal marks it arrived at
+      // once; without this a reconnect would sit on the pre-sync phase until
+      // the NEXT payload happened along.
+      phaseEntryPhaseRef.current = payload.phase;
+      phaseEntryPayloadRef.current = PHASE_PAYLOAD_SYNCED;
       setQuestion(null);
       setReveal(null);
       setGameOver(null);
@@ -2362,8 +2509,21 @@ export default function HostScreen() {
   // and then holds - an elimination shrinks who's ON screen, never this
   // denominator, which is what keeps everyone else's spacing from shifting.
   const climbTotalClimbers = climbLaneRef.current.size;
+  // Task 233b - `stealFlightActive` is set from an effect (deliberately: see
+  // the StrictMode note above), so it only becomes true on the render AFTER
+  // the resolution lands. For that one render the row therefore showed the
+  // POST-theft scores, and the pre-theft hold then pulled them back - a ~24ms
+  // A->B->A flicker on every steal, which useAnimatedNumber stretches into a
+  // visible wobble exactly like the phase/payload staleness above.
+  // `stealFlightArmed` closes that gap by deriving the hold from the refs
+  // that are ALREADY correct on the resolution render itself:
+  // stealPreResolveStandingsRef was captured just above, and stealFlightKeyRef
+  // is still on the previous key because only the effect advances it. Read
+  // only - no state is set during render, so the StrictMode discipline the
+  // effect exists for is untouched.
+  const stealFlightArmed = stealResolutionKey !== null && stealFlightKeyRef.current !== stealResolutionKey;
   const stealFlightHolding =
-    phase === 'STEAL' && stealFlightActive && stealPreResolveStandingsRef.current !== null;
+    phase === 'STEAL' && (stealFlightActive || stealFlightArmed) && stealPreResolveStandingsRef.current !== null;
   const rowStandings = stealFlightHolding
     ? (stealPreResolveStandingsRef.current as SophistStanding[])
     : (phaseStandings ?? lastStandingsRef.current ?? []);

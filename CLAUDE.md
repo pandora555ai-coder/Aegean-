@@ -870,10 +870,19 @@ via HOST_REJOIN.
   numbers are genuine ties. Reported as a bug twice; it is not one.
 - **PHASE_CHANGED is emitted BEFORE the phase's own payload at every emit
   site** (18 before Task 207, which added the agora's four) — the house
-  pattern, every mode. The host therefore renders once
-  with no payload for the new phase; HostScreen holds the last standings to
-  cover that render. Any new phase view must tolerate a first render with
-  no payload of its own.
+  pattern, every mode. The ONE exception, audited in Task 233b, is
+  `enterStageAnnounce` (phases.ts:216-218), which emits its card BEFORE the
+  phase change on purpose. **Since Task 233b the TV no longer renders that
+  gap**: HostScreen keeps the server's phase in `socketPhase` and DERIVES the
+  rendered `phase` from it, advancing it only once that phase's own payload
+  has arrived (`payloadForPhase`), so the phase and the payload feeding the
+  standings and the read slab always agree within one commit. Before that
+  they did not, and 233a measured the cost: 49 stale commits per game that
+  useAnimatedNumber stretched into a ~1.5s visible score drift, plus a
+  resolved question re-rendered with a frozen timer. A NEW PHASE THEREFORE
+  NEEDS AN ENTRY IN `payloadForPhase` — it is exhaustive over GamePhase, so a
+  missing one is a type error, not a silently un-gated phase — rather than a
+  view that tolerates a payloadless first render.
 - **Trial elimination is `trialReveal.results[].eliminated`, NEVER
   `score <= 0` — and that flag alone is still not enough.** A sudden-death
   ROUND charges no drain/hit (`eliminated: !suddenDeath && lifeAfter <= 0`),
