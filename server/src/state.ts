@@ -228,6 +228,15 @@ export interface ClimbDuelState {
 // per-round beats (mirroring the quiz's REVEAL-moment line, which instead
 // lives on RevealSnapshot.socratesLine* - draw/numeric have no equivalent
 // snapshot type, so their round moment reuses this same slot instead).
+// Task 236 - one queued line of a multi-line beat. Structurally the tail of
+// PendingSocratesBeat below (minus `kind`, which is carried by the beat
+// itself and reused for every line of the same sequence).
+export interface QueuedSocratesLine {
+  line: string;
+  lineTemplate: string;
+  lineTag: string | null;
+}
+
 export interface PendingSocratesBeat {
   kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT' | 'AGORA_MOMENT';
   line: string;
@@ -307,6 +316,17 @@ export interface Room {
   // STAGE_INTRO/WINNER beat rather than a REVEAL-moment one. See
   // PendingSocratesBeat.
   pendingSocratesBeat: PendingSocratesBeat | null;
+  // Task 236 - the lines of a multi-line Socrates beat that have NOT played
+  // yet (the full show's opening narration, Η Ανάβασις' own announcement).
+  // Empty for an ordinary one-line beat, which is every other beat in the
+  // game. advanceFromSocrates drains this BEFORE it routes anywhere, so each
+  // line gets its own held phase and its own audio ack - phase length still
+  // follows the audio, never a timer.
+  pendingSocratesQueue: QueuedSocratesLine[];
+  // Task 236 - monotonic id of the Socrates beat currently on screen, echoed
+  // by the host on socrates:audio_ended so a stale ack (one belonging to a
+  // beat the backstop already cut off) can be told apart from a real one.
+  socratesBeatId: number;
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
   // scratch at the start of every one. A LIST since Task 31a: at most one
@@ -428,6 +448,8 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     emptyTtlTimer: null,
     socrates: createSocratesState(),
     gameIntroPlayed: false,
+    pendingSocratesQueue: [],
+    socratesBeatId: 0,
     pendingSocratesBeat: null,
     activeSabotageByTarget: new Map(),
     shuffledOptionsByTarget: new Map(),
@@ -799,6 +821,9 @@ export function resetRoomForNewGame(room: Room): void {
   // A fresh game opens with GAME_INTRO again too.
   room.gameIntroPlayed = false;
   room.pendingSocratesBeat = null;
+  // Task 236 - no half-played narration survives into the next game.
+  room.pendingSocratesQueue = [];
+  room.socratesBeatId = 0;
   room.activeSabotageByTarget.clear();
   room.shuffledOptionsByTarget.clear();
   // No unspent power-up choice carries over from the game that just ended.

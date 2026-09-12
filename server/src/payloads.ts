@@ -266,6 +266,7 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     line,
     lineTemplate,
     lineTag,
+    beatId: room.socratesBeatId,
     // WINNER plays after the final question is already scored, so it must
     // never share a contentKey (client-side) with that same question's own
     // REVEAL-moment beat - one past the last real index is a natural,

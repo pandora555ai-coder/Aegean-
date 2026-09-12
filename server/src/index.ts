@@ -1288,7 +1288,7 @@ io.on('connection', (socket) => {
   // ceiling timer (armed in startSocratesIfLineFired). Same one-shot
   // advanceFrom* as the VIP skip above - a late/duplicate ack after the
   // phase has already moved on is a harmless no-op via the phase check.
-  socket.on(ClientEvents.SOCRATES_AUDIO_ENDED, () => {
+  socket.on(ClientEvents.SOCRATES_AUDIO_ENDED, (payload) => {
     const room = getHostRoomForSocket(socket, ClientEvents.SOCRATES_AUDIO_ENDED);
     if (!room) {
       return;
@@ -1310,6 +1310,20 @@ io.on('connection', (socket) => {
     // pause check, rather than trust a client that shouldn't be able to.
     if (room.paused) {
       console.log(`rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: game is paused`);
+      return;
+    }
+    // Task 236 - a STALE ack: this one belongs to a beat that is already
+    // over (the backstop cut an over-long clip off, and its audio finished
+    // afterwards, by which time the next line of a narration was on screen).
+    // Acting on it would advance the beat currently playing as well, losing
+    // it entirely. An ack with no beatId at all is accepted - that is the
+    // ordinary single-beat case from a client that sends none.
+    const ackBeatId = (payload as { beatId?: unknown } | undefined)?.beatId;
+    if (typeof ackBeatId === 'number' && ackBeatId !== room.socratesBeatId) {
+      console.log(
+        `rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: ` +
+          `stale beat ${ackBeatId}, current is ${room.socratesBeatId}`,
+      );
       return;
     }
     console.log(`room ${room.code} Socrates audio ended - advancing`);

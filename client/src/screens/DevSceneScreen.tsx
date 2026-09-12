@@ -152,6 +152,8 @@ const socrates: SocratesShowPayload = {
   line: 'Η γνώση είναι η μόνη λεία που αξίζει να κλέψεις.',
   lineTemplate: 'Η γνώση είναι η μόνη λεία που αξίζει να κλέψεις.',
   lineTag: null,
+  // Task 236 - a static mock for this dev scene; nothing here acks.
+  beatId: 1,
   questionIndex: 8,
   totalQuestions: 12,
   durationMs: 4000,

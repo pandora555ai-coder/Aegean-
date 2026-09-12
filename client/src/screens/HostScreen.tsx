@@ -673,8 +673,12 @@ export default function HostScreen() {
         // so the phase advances exactly then instead of at a guessed
         // duration. Never fires for a missing/muted/failed clip - the
         // server's own fallback timer covers that case.
+        // Task 236 - echoes WHICH beat finished. A clip running past the
+        // server's backstop is cut off mid-play, and this ack then arrives
+        // with the next line already on screen; without the id the server
+        // would advance that one too and swallow it.
         playSocratesLine(payload.lineTemplate, payload.lineTag, () => {
-          socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {});
+          socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, { beatId: payload.beatId });
         });
       }
     }

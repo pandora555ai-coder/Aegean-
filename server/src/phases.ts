@@ -63,7 +63,9 @@ import {
 import {
   LINES,
   logMomentFireSummary,
+  pickAnavasisIntroSequence,
   pickGameIntroLine,
+  pickGameIntroSequence,
   pickQuestionIntro,
   pickStageIntroLine,
   pickTrialIntroLine,
@@ -231,6 +233,36 @@ export function endStageAnnounce(code: RoomCode): void {
   if (!room || room.phase !== 'STAGE_ANNOUNCE') {
     return;
   }
+  // Task 236 - GAME_INTRO plays HERE now, after the first stage card, not
+  // before it (it used to be the first gate in enterQuestionOrPowerUp). The
+  // opening narration is a ten-line sequence, so under the old order the
+  // room watched more than a minute of Socrates with nothing on screen
+  // saying which round was about to start; announcing the card first means
+  // the round indicator is up before he says a word. The flag keeps this to
+  // exactly once per game, so every later stage card falls straight through.
+  if (!room.gameIntroPlayed && startGameIntro(room)) {
+    return; // advanceFromSocrates resumes the rest of this once it's over
+  }
+  resumeAfterStageAnnounce(room);
+}
+
+// The stage this room is actually IN. Task 236 - NOT stageOfQuestion, which
+// maps a QUESTION INDEX to a stage: every non-quiz stage of the full show has
+// questionCount 0 and is invisible to that mapping, so asking it during the
+// blitz/draw/numeric/agora card returns a neighbouring QUIZ stage and the
+// intro line picked below would be the wrong stage's. Same "the stage the
+// room is in wins over the one its question index falls in" resolution
+// buildStageAnnounce (payloads.ts) already uses for the card itself.
+function definitionForCurrentStage(room: Room): StageDefinition {
+  const table = stagesForRoom(room);
+  return table.find((definition) => definition.stage === room.stage)
+    ?? stageOfQuestion(room, room.currentQuestionIndex);
+}
+
+// Everything that follows the card once any GAME_INTRO is out of the way.
+// Split out of endStageAnnounce (Task 236) because the game intro now sits
+// between the two and has to be able to resume this from advanceFromSocrates.
+function resumeAfterStageAnnounce(room: Room): void {
   // Task 127 - the trial announces itself through this same beat (see
   // startTrial), so what follows the card is the first trial question, not a
   // quiz round. Task 139 - it now gets its own intro beat too, from
@@ -243,25 +275,42 @@ export function endStageAnnounce(code: RoomCode): void {
     startTrialQuestion(room);
     return;
   }
-  // Task 188a - the climb announces itself through this beat too (startClimb),
-  // and goes straight to its first question: it has no intro lines of its
-  // own yet (the trial's are Η Δίκη lines, with lineHash-keyed mp3s).
+  // Task 188a - the climb announces itself through this beat too (startClimb).
+  // Task 236 - and it is no longer silent: Η Ανάβασις' own three-line
+  // sequence is the ONE place the game explains that tonight's points only
+  // set your starting STEP, which is why a player can lead all night and
+  // still finish fourth. advanceFromSocrates's STAGE_INTRO case routes back
+  // to startClimbQuestion, so the climb still begins only after the audio.
   if (room.climb) {
+    if (startSocratesSequence(room, 'STAGE_INTRO', pickAnavasisIntroSequence(room.socrates))) {
+      return;
+    }
     startClimbQuestion(room);
-    return;
-  }
-  // Task 134 - a stage of the full show that is NOT a quiz stage starts its
-  // own mechanic here (the drawing round, the numeric segment) instead of a
-  // question. Absent on the three standalone modes, so this is a no-op for
-  // them and the quiz path below is reached exactly as before.
-  if (modeForRoom(room).beginStage?.(room)) {
     return;
   }
   // Task 218 - by IDENTITY (what this stage actually IS), never by its
   // table position; see StageIntroIdentity in socrates.ts.
-  const definition = stageOfQuestion(room, room.currentQuestionIndex);
+  // Task 236 - asked BEFORE the mode's beginStage hook below. That hook
+  // starts a non-quiz stage's own mechanic and returns true, so pre-236 it
+  // returned first and pickStageIntroLine was never reached for a
+  // blitz/draw/numeric/agora stage at all - four of the full show's seven
+  // stages announced their card and then went silent. Only the ORDER
+  // changed; the hook itself is untouched.
+  const definition = definitionForCurrentStage(room);
   if (startSocratesBeat(room, 'STAGE_INTRO', pickStageIntroLine(room.socrates, stageIntroIdentity(definition), room.mode))) {
-    return; // advanceFromSocrates calls beginRound once the beat is over
+    return; // advanceFromSocrates resumes the stage once the beat is over
+  }
+  beginStageOrRound(room);
+}
+
+// Task 134 - a stage of the full show that is NOT a quiz stage starts its
+// own mechanic (the drawing round, the numeric segment) instead of a
+// question. Absent on the standalone modes, so this is a no-op for them and
+// the quiz path is reached exactly as before. Task 236 split it out so both
+// endStageAnnounce's path and the STAGE_INTRO beat's can reach it.
+function beginStageOrRound(room: Room): void {
+  if (modeForRoom(room).beginStage?.(room)) {
+    return;
   }
   beginRound(room);
 }
@@ -272,13 +321,9 @@ export function endStageAnnounce(code: RoomCode): void {
 // stage announces itself once" structural rather than something each caller
 // has to remember.
 export function enterQuestionOrPowerUp(room: Room): void {
-  // Task 48 - GAME_INTRO, exactly once per game, before anything else. This
-  // gate runs on EVERY call (not just the very first), but the flag makes it
-  // a cheap no-op past the first time - so nothing else here has to know
-  // whether it's "the first call" itself.
-  if (!room.gameIntroPlayed && startGameIntro(room)) {
-    return; // advanceFromSocrates re-enters this same gate once it's over
-  }
+  // Task 236 - GAME_INTRO used to be gated here, BEFORE the stage card. It
+  // now plays from endStageAnnounce instead, so the card (and its round
+  // indicator) is on screen before Socrates opens the show.
   if (announceStageIfChanged(room)) {
     return; // endStageAnnounce starts the round once the beat is over
   }
@@ -288,8 +333,15 @@ export function enterQuestionOrPowerUp(room: Room): void {
 // Set BEFORE attempting the beat, not after: GAME_INTRO must play at most
 // once even if its pool somehow came back empty (practically unreachable -
 // a fresh game always has a full, unused GAME_INTRO_LINES pool).
+// Task 236 - the full show opens on its own ten-line narration
+// (GAME_INTRO_SEQUENCE); every other mode keeps the original one-line pool,
+// which is also what keeps Task 231's "filtered out of full, kept for
+// standalone" true of the lines it filtered.
 function startGameIntro(room: Room): boolean {
   room.gameIntroPlayed = true;
+  if (room.mode === 'full') {
+    return startSocratesSequence(room, 'GAME_INTRO', pickGameIntroSequence(room.socrates));
+  }
   return startSocratesBeat(room, 'GAME_INTRO', pickGameIntroLine(room.socrates, room.mode));
 }
 
@@ -310,6 +362,10 @@ export function enterSocratesBeat(
   onFire: () => void,
 ): void {
   room.pendingSocratesBeat = beat;
+  // Task 236 - a new beat is on screen, so any ack still in flight for the
+  // previous one is now stale. Incremented BEFORE buildSocratesPayload below
+  // reads it.
+  room.socratesBeatId += 1;
   room.phase = 'SOCRATES';
   // Same backstop-at-the-ceiling arming as every other Socrates beat (see
   // startSocratesIfLineFired) - the normal path out is still the client's
@@ -340,6 +396,38 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
     room,
     'SOCRATES',
     { kind, line: picked.text, lineTemplate: picked.template, lineTag: picked.tag },
+    () => advanceFromSocrates(room.code),
+  );
+  return true;
+}
+
+// Task 236 - the same beat, but several lines long: the opening narration
+// and Η Ανάβασις' announcement are both sequential prose, not pools to pick
+// one entry from. The first line enters the phase exactly as a one-line beat
+// does; the rest wait in room.pendingSocratesQueue and advanceFromSocrates
+// plays them one at a time. Each line therefore gets its OWN held phase and
+// its OWN audio ack - phase length still follows the audio, never a timer,
+// and a pause mid-narration freezes it like any other beat. Empty `picked`
+// (an exhausted pool) returns false and the caller falls through, the same
+// "no line, no phase" discipline as startSocratesBeat.
+function startSocratesSequence(
+  room: Room,
+  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER',
+  picked: readonly PickedLine[],
+): boolean {
+  if (picked.length === 0) {
+    return false;
+  }
+  room.pendingSocratesQueue = picked.slice(1).map((line) => ({
+    line: line.text,
+    lineTemplate: line.template,
+    lineTag: line.tag,
+  }));
+  const [first] = picked;
+  enterSocratesBeat(
+    room,
+    'SOCRATES',
+    { kind, line: first.text, lineTemplate: first.template, lineTag: first.tag },
     () => advanceFromSocrates(room.code),
   );
   return true;
@@ -814,11 +902,28 @@ export function advanceFromSocrates(code: RoomCode): void {
   }
 
   const pending = room.pendingSocratesBeat;
+  // Task 236 - a multi-line beat still has lines to say. Play the next one
+  // through this same held phase, under the SAME kind, before routing
+  // anywhere: the sequence is one narration, so nothing else may happen
+  // until its last line has been acked.
+  if (pending && room.pendingSocratesQueue.length > 0) {
+    const next = room.pendingSocratesQueue.shift()!;
+    enterSocratesBeat(
+      room,
+      'SOCRATES',
+      { kind: pending.kind, line: next.line, lineTemplate: next.lineTemplate, lineTag: next.lineTag },
+      () => advanceFromSocrates(room.code),
+    );
+    return;
+  }
   if (pending) {
     room.pendingSocratesBeat = null;
     switch (pending.kind) {
       case 'GAME_INTRO':
-        enterQuestionOrPowerUp(room); // now proceeds to announce stage 1
+        // Task 236 - the card is already up (endStageAnnounce showed it
+        // before this beat), so what follows the intro is the rest of that
+        // same card's sequence, not another trip through the stage gate.
+        resumeAfterStageAnnounce(room);
         return;
       case 'STAGE_INTRO':
         // Task 139 - the trial's card plays this same beat kind; what it
@@ -827,7 +932,16 @@ export function advanceFromSocrates(code: RoomCode): void {
           startTrialQuestion(room);
           return;
         }
-        beginRound(room); // starts the question (or its power-up) this stage begins with
+        // Task 236 - and the climb's card plays it too now, so what follows
+        // Η Ανάβασις' narration is its first question.
+        if (room.climb) {
+          startClimbQuestion(room);
+          return;
+        }
+        // Task 236 - a non-quiz stage's own mechanic starts here now that
+        // its intro line is asked for BEFORE the beginStage hook; for a quiz
+        // stage this is beginRound exactly as before.
+        beginStageOrRound(room);
         return;
       case 'WINNER':
         finishGame(room);

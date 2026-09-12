@@ -1521,6 +1521,16 @@ export interface SocratesShowPayload {
   // (template, tag) pair the generator did - never rendered, never spoken
   // client-side (it's already baked into the pre-generated audio file).
   lineTag: string | null;
+  // Task 236 - which BEAT this is, monotonic per room. Echoed back on
+  // socrates:audio_ended so the server can tell a real completion from a
+  // STALE one: a clip whose real audio runs past SOCRATES_MAX_DURATION_MS is
+  // cut off by the backstop, and its ack then lands while the NEXT beat is
+  // already on screen. That was harmless until beats could follow one
+  // another directly (the multi-line narrations), where it advanced the
+  // sequence twice and swallowed a line whole. Not a duration check: a
+  // missing clip legitimately acks at ~0ms (Task 154), and that ack carries
+  // the CURRENT id, so it still ends the beat immediately.
+  beatId: number;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat

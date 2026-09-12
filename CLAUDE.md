@@ -434,11 +434,26 @@ table off `stageIntroIdentity(definition)` (socrates.ts) — `'quiz'` for any
 plain quiz-segment stage (standalone quiz's Η Αγορά AND Οι Σοφιστές are
 MERGED into this one pool now, since neither StageSegment nor this scheme
 distinguishes them — full's own Η Αγορά shares it too), `'steal'` for any
-`stealAfterEveryQuestion` stage, `'blitz'/'draw'/'numeric'/'agora'/'finale'`
-reserved but never populated (full.ts's `beginStage` hook already
-intercepts those segments before `pickStageIntroLine` is ever called for
-them, and the finale row is announced through its own
-room.trial/room.climb branches instead — see tasks/218-report.md). The
+`stealAfterEveryQuestion` stage, and — since Task 236 — `'blitz'` (3),
+`'draw'` (2), `'numeric'` (2) and `'agora'` (2) POPULATED with the Task 230
+lines. They were "reserved but never populated" before 236, and the pools
+were not merely empty but UNREACHABLE: `endStageAnnounce` called full.ts's
+`beginStage` hook, which starts a non-quiz stage's mechanic and returns
+true, BEFORE `pickStageIntroLine` was ever consulted. Task 236 reversed
+only that ORDER (the hook itself is untouched) in the new
+`resumeAfterStageAnnounce`, and resolves the definition by `room.stage`
+(`definitionForCurrentStage`) rather than `stageOfQuestion`, which maps a
+QUESTION index and is blind to every `questionCount: 0` stage. `'finale'`
+still has no STAGE_INTRO_LINES entry — the finale row is announced through
+its own room.trial/room.climb branches, which since 236 play
+TRIAL_INTRO_LINES and ANAVASIS_INTRO_SEQUENCE respectively.
+Check: `npx tsx dev/intro-lines-check.ts` (a real `?bot=3&mode=full` room
+against a throwaway server, with a PAUSE-AWARE Socrates audio ack on the
+host socket — without that ack every beat rides the full 11s backstop and
+every timestamp it reports is wrong). It joins its human as `minotaur`,
+AVATAR_CATALOGUE[0], because bots take avatars from the END (bots.ts:466):
+dev/stage-intro-check.ts asks for `sphinx`, collides with a bot at
+`?bot=3`, and times out waiting for a fourth player — broken, not fixed. The
 trial's own announcement plays TRIAL_INTRO_LINES — the five "Η Δίκη" lines
 moved verbatim off quiz stage 3 in Task 139 to keep their lineHash-keyed
 mp3s valid — via pickTrialIntroLine (phases.ts:171).
@@ -776,10 +791,16 @@ shared's BLITZ_STATEMENTS block by `npm run blitz:generate` — edit the
 
 ## Voice
 
-254 pre-generated ElevenLabs mp3s (LINE_TAGS' count) in client/public/voice,
-named by lineHash(text, tag). Seven more orphaned mp3s (from replaced line
-text; the seventh is Task 149's shortened SPLIT_GUESS) also sit in that
-dir — nothing prunes them.
+283 pre-generated ElevenLabs mp3s in client/public/voice, named by
+lineHash(text, tag). 276 of them are ACTIVE lines (collectVoiceLineEntries'
+count, up from 254 when Task 236 wired Task 230's 22); the rest are
+orphans from replaced line text — nothing prunes them.
+**Two multi-line SEQUENCES exist since Task 236** — GAME_INTRO_SEQUENCE
+(10, full mode's opening) and ANAVASIS_INTRO_SEQUENCE (3, the climb's
+announcement). They are sequential PROSE, not pools: a random pick emits
+nonsense, so `pickSequence` returns every line in order and
+`startSocratesSequence`/`room.pendingSocratesQueue` (phases.ts) play them
+one at a time, each with its own held phase and its own audio ack.
 **lineHash does NOT include the voice ID** — switching voices overwrites
 the SAME filenames rather than producing new ones. This is the central
 trap of the whole voice system: a filename alone never tells you which
@@ -800,11 +821,29 @@ dir via ALT_OUTPUT_DIR and is swapped in only by running
 `dev/voice/swap-staging.sh`, which refuses to swap unless the staged file
 count matches what's expected.
 SOCRATES ends on socrates:audio_ended from the host; SOCRATES_MAX_DURATION_MS
-(11000ms) is a BACKSTOP, never a limit — source.onended actually drives
-phase length, so an over-long clip really does hold the phase that long.
+(11000ms) is the backstop AND, measurably, a CEILING: Task 236 timed a
+13.9s clip being cut off at 11006ms. (This section used to claim "never a
+limit — an over-long clip really does hold the phase that long". It does
+not: the backstop fires and advances the phase.) Four wired lines exceed
+the cap and are truncated — see the over-cap note below.
+**socrates:audio_ended carries a `beatId` (Task 236)** and the server drops
+an ack whose id isn't the beat currently on screen. An over-cap clip is cut
+off by the backstop and its audio finishes AFTERWARDS, so its ack lands
+while the next beat is already playing; before beats could follow one
+another directly that was harmless (the phase check rejected it), but in a
+sequence it advanced twice and swallowed a line whole. Deliberately an
+identity check, not a "too early" check: a missing clip legitimately acks
+at ~0ms (Task 154) carrying the CURRENT id, and must still end the beat.
 Measured ~100ms of audio per character: keep a line under ~95 characters to
 land under the cap. Never raise the cap to make a clip fit — shorten the
 line instead (Task 149).
+**Four ACTIVE lines are over the cap and are audibly truncated**, all from
+Task 230's batch and wired by Task 236: Εισαγωγή#9 (12.4s), Παλαίστρα#11
+(11.2s), Ζωγραφική#15 (11.0s) and Ανάβασις#22 (13.9s). Fixing them means
+shortening the text and REGENERATING (a new lineHash, a new file), which
+236 was forbidden to do — so this is known and outstanding, not a bug to
+re-diagnose. Ανάβασις#21 (9.3s, complete) is the line that actually states
+the climb's scoring rule, so the rule still lands despite #22's truncation.
 Since Task 154 the host PREFETCHES every active clip on LOBBY entry: it
 emits dev:get_voice_lines, the server answers with collectVoiceLineEntries'
 hash list, and prefetchSocratesLines (useGameAudio.ts:290) fetches each
