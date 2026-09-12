@@ -372,6 +372,17 @@ export default function HostScreen() {
     setSecondsLeft(value);
   }
 
+  // Task 234b - the blitz countdown's own ref/apply pair, mirroring the two
+  // above and for the same reason: its tick reads this ref rather than a
+  // functional updater, so StrictMode's dev-only double-invoke cannot
+  // double-decrement it. Every call site that sets `blitzSecondsLeft` goes
+  // through this, so the ref never drifts from the displayed value.
+  const blitzSecondsLeftRef = useRef(0);
+  function applyBlitzSecondsLeft(value: number) {
+    blitzSecondsLeftRef.current = value;
+    setBlitzSecondsLeft(value);
+  }
+
   // ===========================================================================
   // Task 233b - phase/payload consistency.
   //
@@ -859,6 +870,15 @@ export default function HostScreen() {
       if (isBlitzShowHostPayload(payload)) {
         setBlitzReveal(null);
         setBlitz(payload);
+        // Task 234b - the countdown is seeded HERE (and in the state:sync
+        // branch below), never by an effect keyed on the `blitz` object:
+        // handleBlitzProgress replaces that object on every accepted swipe,
+        // so such an effect re-seeded the clock dozens of times a round.
+        // `durationMs` is already the time STILL LEFT (see
+        // BlitzShowHostPayload), so this is right for a fresh entry and a
+        // reconnect alike.
+        applyBlitzSecondsLeft(Math.ceil(payload.durationMs / 1000));
+        setTimerTotalSeconds(Math.ceil(payload.durationMs / 1000));
         setPaused(payload.paused);
         setPausedByName(payload.pausedByName);
       }
@@ -988,6 +1008,13 @@ export default function HostScreen() {
         setAgoraQuestionSecondsLeft(seconds);
       } else if (phaseRef.current === 'AGORA_REVEAL') {
         setAgoraRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'BLITZ') {
+        // Task 234b - BLITZ was the one timed phase missing from this list,
+        // so a resumed swipe window kept whatever value the interval froze
+        // at instead of the server's real remaining time. Now that the tick
+        // is seeded from explicit call sites rather than an object-keyed
+        // effect, this is the call site a resume needs.
+        applyBlitzSecondsLeft(seconds);
       }
     }
 
@@ -1210,6 +1237,11 @@ export default function HostScreen() {
         case 'BLITZ':
           if (isBlitzShowHostPayload(payload)) {
             setBlitz(payload);
+            // Task 234b - same seeding as the live handleBlitzShow above;
+            // durationMs is the time STILL LEFT, so a reconnect picks the
+            // swipe window up mid-flight rather than restarting at 30.
+            applyBlitzSecondsLeft(Math.ceil(payload.durationMs / 1000));
+            setTimerTotalSeconds(Math.ceil(payload.durationMs / 1000));
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
           }
@@ -1555,24 +1587,33 @@ export default function HostScreen() {
     return () => clearInterval(interval);
   }, [numericReveal, paused]);
 
-  // Blitz mode (Task 156a) - same pattern as numeric's above.
+  // Blitz mode - Η Παλαίστρα's countdown, keyed like QUESTION's tick above
+  // rather than numeric's: every dependency is a SCALAR that stays constant
+  // for the whole swipe window, never the `blitz` payload object.
+  // Task 224's handleBlitzProgress replaces that object on every accepted
+  // swipe, so the object-keyed pair this replaces both (a) re-seeded the
+  // clock from the stale phase-entry durationMs and (b) tore down and
+  // re-armed this interval before it could ever fire. Task 234a measured
+  // the result: the TV stuck at 30 for 7.7s and then running a steady 7s
+  // behind the server, and under heavier swipe load counting BACKWARDS
+  // (27 -> 30 -> 29 -> 28 -> 30). Seeding now lives in handleBlitzShow and
+  // the state:sync branch. `blitz?.durationMs` is this segment's own
+  // constant (handleBlitzProgress's spread preserves it), so it changes
+  // only on a genuine re-sync - exactly the role question?.questionIndex
+  // plays above. The `!blitz` guard still matters: the 233b payload
+  // watchdog can advance `phase` to BLITZ with no payload in hand.
   useEffect(() => {
-    if (!blitz) {
-      return;
-    }
-    setBlitzSecondsLeft(Math.ceil(blitz.durationMs / 1000));
-    setTimerTotalSeconds(Math.ceil(blitz.durationMs / 1000));
-  }, [blitz]);
-
-  useEffect(() => {
-    if (!blitz || paused) {
+    if (phase !== 'BLITZ' || !blitz || paused) {
       return;
     }
     const interval = setInterval(() => {
-      setBlitzSecondsLeft((current) => Math.max(0, current - 1));
+      // Via the ref, not a functional updater - see applyBlitzSecondsLeft.
+      const next = Math.max(0, blitzSecondsLeftRef.current - 1);
+      blitzSecondsLeftRef.current = next;
+      setBlitzSecondsLeft(next);
     }, 1000);
     return () => clearInterval(interval);
-  }, [blitz, paused]);
+  }, [phase, blitz?.durationMs, paused]);
 
   useEffect(() => {
     if (!blitzReveal) {
