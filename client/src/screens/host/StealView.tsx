@@ -68,27 +68,40 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
               </>
             ) : (
               <>
-                <div style={{ ...styles.stealThiefRow, color: 'var(--carve)', fontSize: `${(3 * s).toFixed(2)}rem` }}>
-                  <Avatar avatarId={resolved.thiefAvatarId} sizeRem={bannerAvatar} />
-                  {resolved.thiefName}
-                </div>
+                {/* Task 235a - nominative-safe: no "τον/την" (would need Greek
+                    declension of a player name, which we never attempt - see
+                    CLAUDE.md), and the sign sits on whichever row it actually
+                    belongs to instead of floating between the two names. */}
                 <div
                   style={{
-                    ...styles.stealMovedAmount,
+                    ...styles.stealThiefRow,
                     color: 'var(--carve)',
-                    fontSize: `clamp(${(2.5 * s).toFixed(2)}rem, ${(7 * s).toFixed(2)}vw, ${(7 * s).toFixed(2)}rem)`,
+                    fontSize: `${(2.75 * s).toFixed(2)}rem`,
                   }}
-                  data-testid="steal-amount"
+                  data-testid="steal-thief-gain"
                 >
-                  −{resolved.stolenAmount}
+                  <Avatar avatarId={resolved.thiefAvatarId} sizeRem={bannerAvatar} />
+                  {resolved.thiefName}
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      color: 'var(--wine-2)',
+                      fontSize: `clamp(${(2 * s).toFixed(2)}rem, ${(5.5 * s).toFixed(2)}vw, ${(5.5 * s).toFixed(2)}rem)`,
+                    }}
+                    data-testid="steal-amount"
+                  >
+                    +{resolved.stolenAmount}
+                  </span>
                 </div>
                 <div
-                  style={{ ...styles.stealVictimRow, color: 'var(--carve)', fontSize: `${(2.5 * s).toFixed(2)}rem` }}
-                  data-testid="steal-victim"
+                  style={{ ...styles.stealVictimRow, color: 'var(--carve)', fontSize: `${(2.25 * s).toFixed(2)}rem` }}
+                  data-testid="steal-victim-loss"
                 >
-                  από τον/την
                   <Avatar avatarId={resolved.victimAvatarId ?? ''} sizeRem={victimAvatar} />
                   {resolved.victimName}
+                  <span style={{ fontWeight: 800 }} data-testid="steal-victim">
+                    −{resolved.stolenAmount}
+                  </span>
                 </div>
                 {/* The clamp made visible: "wanted 400, there were only 150
                     there". Shown only when it actually bit. */}

@@ -117,15 +117,37 @@ interface SophistsRowProps {
 // step table, floored at NAME_MIN_FONT_CQH so an 11-character name
 // (Πρωταγόρας, Θρασύμαχος) stays legible rather than vanishing - the plaque
 // itself and the row layout are untouched, only the text shrinks.
+//
+// Task 235b - 224's own floor (1.3cqh) was reached already AT 12 characters
+// (2.2*7/12 = 1.283, below 1.3), which CLAMPED it back up to 1.3 instead of
+// continuing to shrink - and 224 had only ever measured 10-character names.
+// A real 12-character name with wide glyphs (ΝΞΟΠΡΣΤΥΦΧΨΩ) clipped
+// (scrollWidth 88 vs clientWidth 86 on a 6-player board) even with the floor
+// removed from the equation, because the pure harmonic formula only cancels
+// character COUNT, not actual glyph width - a name with several wide
+// letters (Ξ, Φ, Ψ, Ω) is wider than the "average" character the formula
+// assumes. Names up to NAME_HARMONIC_MAX_CHARS (10 - the longest 224 ever
+// measured, "exactly fits" per its own report) keep 224's exact formula and
+// exact numbers unchanged, INCLUDING its measured 8-char/13.86px baseline;
+// past that, an extra per-character decay buys the margin a wide-glyph name
+// needs, floored the same as before so nothing vanishes.
 const NAME_BASE_FONT_CQH = 2.2;
-const NAME_MIN_FONT_CQH = 1.3;
+const NAME_MIN_FONT_CQH = 1.0;
 const NAME_BASE_CHARS = 7;
+const NAME_HARMONIC_MAX_CHARS = 10;
+const NAME_LONG_DECAY_PER_CHAR = 0.06;
 
 function nameFontSizeCqh(name: string): number {
-  if (name.length <= NAME_BASE_CHARS) {
+  const length = name.length;
+  if (length <= NAME_BASE_CHARS) {
     return NAME_BASE_FONT_CQH;
   }
-  return Math.max(NAME_MIN_FONT_CQH, (NAME_BASE_FONT_CQH * NAME_BASE_CHARS) / name.length);
+  const harmonic = (NAME_BASE_FONT_CQH * NAME_BASE_CHARS) / length;
+  if (length <= NAME_HARMONIC_MAX_CHARS) {
+    return Math.max(NAME_MIN_FONT_CQH, harmonic);
+  }
+  const extraDecay = Math.max(0.4, 1 - NAME_LONG_DECAY_PER_CHAR * (length - NAME_HARMONIC_MAX_CHARS));
+  return Math.max(NAME_MIN_FONT_CQH, harmonic * extraDecay);
 }
 
 // The five himation colours from the reference's `hues`, by join index

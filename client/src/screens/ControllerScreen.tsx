@@ -2105,16 +2105,22 @@ export default function ControllerScreen() {
                     ? `−${resolved.stolenAmount}`
                     : 'Κλοπή!'}
             </div>
+            {/* Task 235a - nominative-safe: never "τον/την"/"Ο/Η" (both would
+                need to guess a player name's gender to decline, which we
+                never attempt - see CLAUDE.md). Every name here stays
+                nominative, and the third-party case states each side's own
+                signed delta instead of narrating one sentence with the sign
+                floating in the middle. */}
             <div style={styles.powerUpLockedDetail} data-testid="steal-outcome-detail">
               {resolved.victimName === null
                 ? iAmThief
                   ? 'Δεν πρόλαβες να διαλέξεις'
-                  : `Ο/Η ${resolved.thiefName} δεν πρόλαβε να διαλέξει`
+                  : `${resolved.thiefName}: δεν πρόλαβε να διαλέξει`
                 : iAmThief
-                  ? `Έκλεψες ${resolved.stolenAmount} από τον/την ${resolved.victimName}`
+                  ? `Έκλεψες ${resolved.stolenAmount} πόντους — θύμα: ${resolved.victimName}`
                   : iAmVictim
-                    ? `Ο/Η ${resolved.thiefName} σου έκλεψε ${resolved.stolenAmount}`
-                    : `Ο/Η ${resolved.thiefName} έκλεψε ${resolved.stolenAmount} από τον/την ${resolved.victimName}`}
+                    ? `${resolved.thiefName} σου έκλεψε ${resolved.stolenAmount} πόντους`
+                    : `${resolved.thiefName} +${resolved.stolenAmount}  •  ${resolved.victimName} −${resolved.stolenAmount}`}
             </div>
             {(iAmThief || iAmVictim) && (
               <div style={styles.powerUpLockedHint} data-testid="steal-outcome-total">
@@ -2157,7 +2163,7 @@ export default function ControllerScreen() {
             <div style={styles.powerUpLockedIcon}>
               <Avatar avatarId={steal.thiefAvatarId} sizeRem={3} />
             </div>
-            <div style={styles.powerUpLockedDetail}>Ο/Η {steal.thiefName} διαλέγει θύμα...</div>
+            <div style={styles.powerUpLockedDetail}>{steal.thiefName} διαλέγει θύμα...</div>
             <div style={styles.powerUpLockedHint}>Μπορεί να είσαι εσύ</div>
           </div>
         )}
