@@ -1053,6 +1053,21 @@ export interface StageAnnouncePayload {
   // no stage table (draw/numeric/blitz standalone) never emit this at all -
   // the clock falls back to a client-observed start there.
   gameStartedAt: number | null;
+  // Task 244 - which finale this card announces, or null for every ordinary
+  // stage. The finale row's WORDS already swap off room.climb/room.trial
+  // (buildStageAnnounce), but which finale it is never left the server, so
+  // the TV could not tell Η Ανάβασις' own announcement from any other
+  // stage's until the first CLIMB payload arrived - three rule-line beats
+  // later. It rendered the quiz's TheatreScene + wreathed SophistsRow for
+  // that whole window (the fourth member of the wreath/overlay family Tasks
+  // 227/237 documented). Additive, and carried HERE rather than on a new
+  // event for exactly gameStartedAt's reason above: this card is already
+  // the first thing a stage emits AND is already held in client state
+  // through that stage's own SOCRATES beats, so one field covers the whole
+  // announce window, and state:sync rebuilds it for a TV that reloads
+  // mid-card. Scoped to THIS game by construction - resetRoomForNewGame
+  // clears room.climb/room.trial, so game 2's stage 1 announces null again.
+  finale: FinaleMode | null;
 }
 
 // How long the STAGE_ANNOUNCE phase lasts. A real beat, not a cosmetic
@@ -1576,6 +1591,13 @@ export interface SocratesShowPayload {
   // whether to keep the stage-announce card up underneath the subtitle (an
   // announce beat) or not (everything else) - `line` alone can't say that.
   kind: SocratesBeatKind;
+  // Task 244 - which finale is in flight while this beat plays, or null
+  // outside one. The SAME additive signal StageAnnouncePayload carries, on
+  // the one other payload the climb's entry window can land a TV in: the
+  // three ANAVASIS_INTRO_SEQUENCE rule lines are plain SOCRATES beats, so a
+  // TV reloading during them syncs into SOCRATES with no card and no CLIMB
+  // payload, and without this would come back to the quiz's theatre.
+  finale: FinaleMode | null;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat

@@ -74,6 +74,8 @@ const stageAnnounce: StageAnnouncePayload = {
   totalQuestions: 12,
   // Task 239 - a static mock; the dev scene isn't a real game in progress.
   gameStartedAt: null,
+  // Task 244 - an ordinary stage card, not a finale's.
+  finale: null,
 };
 
 const powerUp: PowerUpShowHostPayload = {
@@ -158,6 +160,8 @@ const socrates: SocratesShowPayload = {
   beatId: 1,
   // Task 239 - ordinary post-question commentary, the most common case.
   kind: 'REVEAL',
+  // Task 244 - no finale in flight in this static dev scene.
+  finale: null,
   questionIndex: 8,
   totalQuestions: 12,
   durationMs: 4000,

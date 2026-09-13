@@ -100,6 +100,9 @@ import { LobbyView } from './host/LobbyView';
 import { PowerUpView } from './host/PowerUpView';
 import { StealView } from './host/StealView';
 import { StageAnnounceOverlay } from './host/StageAnnounceOverlay';
+// Task 244 - rendered directly for the climb's own STAGE_INTRO beats, which
+// render no SocratesView (see renderPhaseView).
+import { SocratesSubtitle } from '../components/SocratesSubtitle';
 import { SocratesView } from './host/SocratesView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
@@ -698,6 +701,16 @@ export default function HostScreen() {
 
     function handleStageAnnounce(payload: StageAnnouncePayload) {
       setStageAnnounce(payload);
+      // Task 244 - the climb's world begins at its own CARD, not at its first
+      // CLIMB payload. This is the earliest the server can tell us (the card
+      // is the first thing startClimb emits), and it is what closes the
+      // window where the quiz's TheatreScene + wreathed SophistsRow rendered
+      // over the whole Ανάβασις announcement and its three rule lines.
+      // Never cleared here: a finale card is the LAST card of the game, and
+      // the flag's own reset is LOBBY, exactly as before.
+      if (payload.finale === 'climb') {
+        setIsClimbFinale(true);
+      }
     }
 
     // Socrates' own phase (Task 39) - host-only, so unlike question:show/
@@ -707,6 +720,13 @@ export default function HostScreen() {
       setReveal(null);
       setSteal(null);
       setSocrates(payload);
+      // Task 244 - the climb's rule-line beats are ordinary SOCRATES beats,
+      // so this is the other half of the announce window's signal (the card
+      // covers the rest). Setting it again on a beat that already set it is
+      // a no-op; it is never cleared here, same as handleStageAnnounce.
+      if (payload.finale === 'climb') {
+        setIsClimbFinale(true);
+      }
       setPaused(payload.paused);
       setPausedByName(payload.pausedByName);
       // Only for a LIVE entrance into the beat - never on a state:sync
@@ -1134,6 +1154,12 @@ export default function HostScreen() {
           // reconnect up: the game is genuinely holding on it, so a TV that
           // reattaches mid-beat must show the card, not the next view early.
           setStageAnnounce(payload);
+          // Task 244 - and a TV that reloads ON the climb's card comes back
+          // into the Anavasis world, not the theatre: buildStageAnnounce is
+          // this sync's own builder, so `finale` is present here too.
+          if (payload.finale === 'climb') {
+            setIsClimbFinale(true);
+          }
           break;
         case 'LOBBY':
           setRoomCode(payload.code);
@@ -1193,6 +1219,12 @@ export default function HostScreen() {
             setSocrates(payload);
             setPaused(payload.paused);
             setPausedByName(payload.pausedByName);
+            // Task 244 - a TV reloading mid-narration (between the climb's
+            // card and its first CLIMB_QUESTION) rejoins straight into the
+            // Anavasis world instead of the theatre.
+            if (payload.finale === 'climb') {
+              setIsClimbFinale(true);
+            }
           }
           break;
         case 'GAME_OVER':
@@ -2173,6 +2205,24 @@ export default function HostScreen() {
     // stage-announce card up underneath it - `stageAnnounce` state is never
     // cleared on entering SOCRATES (only on LOBBY/a fresh STAGE_ANNOUNCE), so
     // it's already exactly the right card, no extra tracking needed.
+    // Task 244 - the climb's ENTRY narration (ANAVASIS_INTRO_SEQUENCE, Task
+    // 236) is a run of STAGE_INTRO beats inside the Anavasis world, where the
+    // branch below deliberately renders nothing (Task 237 - GameLayout would
+    // duplicate the chrome AnavasisChrome already supplies). Rendering
+    // nothing at all would have silently dropped Task 239's subtitle AND the
+    // card underneath it for those three lines, so they are rendered
+    // directly here instead - the same two pieces SocratesView composes,
+    // without its GameLayout shell. The climb's WINNER beat still falls
+    // through to nothing, exactly as Task 237 left it.
+    if (phase === 'SOCRATES' && socrates && isClimbFinale && (socrates.kind === 'STAGE_INTRO' || socrates.kind === 'GAME_INTRO')) {
+      return (
+        <>
+          {stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
+          <SocratesSubtitle text={socrates.line} />
+        </>
+      );
+    }
+
     if (phase === 'SOCRATES' && socrates && !isClimbFinale) {
       const isAnnounceBeat = socrates.kind === 'GAME_INTRO' || socrates.kind === 'STAGE_INTRO';
       return (
@@ -2512,6 +2562,11 @@ export default function HostScreen() {
   // isClimbFinale is only ever true during a climb's own tail, so a quiz's
   // SOCRATES beats are untouched.
   const isClimbSocratesBeat = isClimbFinale && phase === 'SOCRATES';
+  // Task 244 - and the climb's own STAGE_ANNOUNCE card, the beat BEFORE those
+  // rule lines. isClimbFinale is set by the card itself now (see
+  // handleStageAnnounce), so this is true for the climb's announcement and
+  // for no other stage's.
+  const isClimbAnnounceBeat = isClimbFinale && phase === 'STAGE_ANNOUNCE';
   if (phaseStandings) {
     lastStandingsRef.current = phaseStandings;
   }
@@ -2721,7 +2776,11 @@ export default function HostScreen() {
   // leader still wearing SophistsRow's wreath, right as the climb began.
   // isClimbFinale is still needed for GAME_OVER (phase alone can't tell a
   // climb GAME_OVER from a trial one).
-  const showAnavasisWorld = isAnavasisPhase || isClimbSocratesBeat || (isClimbFinale && phase === 'GAME_OVER');
+  // Task 244 - isClimbAnnounceBeat is the fourth term: the climb's card used
+  // to render the theatre (and its wreathed row) because nothing told the TV
+  // which stage that card belonged to until a CLIMB payload landed.
+  const showAnavasisWorld =
+    isAnavasisPhase || isClimbSocratesBeat || isClimbAnnounceBeat || (isClimbFinale && phase === 'GAME_OVER');
   // Η Μνήμη της Αγοράς (Task 208) - a lighter-weight backdrop swap than
   // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row,
   // Socrates and the krater all stay exactly as they are for every other

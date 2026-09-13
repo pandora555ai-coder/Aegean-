@@ -693,13 +693,42 @@ read `"ΑΛΦΑ | ΒΗΤΑ"`. `DuelCause` now travels on `DuelPickShowHostPayloa
 and `DuelRevealHostPayload` (HOST ONLY, like `standings`) and AnavasisDuel
 renders a reason line that clears on reveal so the verdict gets the frame.
 `CLIMB_STAGE_TAGLINE` also promises the tie now, not just "first to the
-top". **Known, not fixed:** the climb's ENTRY narration (Task 236's
-`ANAVASIS_INTRO_SEQUENCE`) plays before any climb payload lands, so
-`isClimbFinale` is still false and the quiz's TheatreScene + wreathed
-SophistsRow render on the climb's own announcement — the fourth member of
-that family, caught by lane-check's wreath watcher (its 1 remaining
-failure) and proven pre-existing. Fixing it needs a server-side signal,
-since the client cannot yet tell which stage the card belongs to.
+top".
+
+**The climb's ENTRY window is the Anavasis world too (Task 244)** — the
+FOURTH and last member of that family, and the one 237 diagnosed but left.
+The card announcing Η Ανάβασις and the three `ANAVASIS_INTRO_SEQUENCE` rule
+lines after it (Task 236) all land BEFORE the first CLIMB payload, and
+`isClimbFinale` was set only BY one of those payloads — so the quiz's
+TheatreScene and its WREATHED SophistsRow rendered over the whole
+announcement. The server says which stage the card belongs to now: an
+additive **`finale: FinaleMode | null` on StageAnnouncePayload AND
+SocratesShowPayload**, both built off `room.climb`/`room.trial`
+(payloads.ts) — the same two facts the card's WORDS already swap on.
+HostScreen sets `isClimbFinale` from either, live and on state:sync, so a TV
+reloading ON the card (buildStageAnnounce is the sync's own builder,
+index.ts:447) or MID-NARRATION (the rule lines are plain SOCRATES beats,
+whose sync carries no card at all) comes back to the temple rather than the
+theatre. `isClimbAnnounceBeat` is the fourth term of `showAnavasisWorld`,
+and SocratesFigure's temple pose now covers STAGE_ANNOUNCE as well, or
+CENTRE_STAGE_PHASES would plant him mid-stair at 44% for the card and glide
+him to 57% the moment the narration began. Scoped to ONE game by
+construction: `resetRoomForNewGame` clears room.climb/room.trial, so game
+2's stage 1 announces `finale: null` and every ordinary stage always did.
+**The climb's STAGE_INTRO beats render their card + Task 239 subtitle
+DIRECTLY** (HostScreen's renderPhaseView), not through SocratesView, whose
+GameLayout would duplicate AnavasisChrome — the SOCRATES branch is gated
+`!isClimbFinale`, so without that new branch those three lines would have
+gone silent the moment the flag moved earlier. The climb's WINNER beat still
+falls through to nothing, exactly as 237 left it.
+Check: `npx tsx dev/climb-entry-check.ts` — a real `?bot=1&mode=full` show
+played END TO END (no startClimb shortcut: the defect is about which stage a
+card belongs to) on throwaway ports 3920/5921, reporting the entry timeline,
+the committed scene across the whole window, every other stage's card, and
+play-again. `?bot=1` deliberately: full's minPlayers is 2 and Task 217
+auto-starts a room holding ONLY bots, which would leave no VIP to press
+play-again. `RELOAD=on` runs the reload pass instead, and SERVER_PORT/
+CLIENT_PORT let both shows run at once.
 
 **Anavasis TV invariant (Task 192): no on-screen text while any body is
 moving**, enforced as a strict per-round FRAME alternation — Frame A

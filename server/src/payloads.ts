@@ -78,6 +78,11 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
       firstQuestionIndex: room.questions.length,
       totalQuestions: room.questions.length,
       gameStartedAt: room.gameStartedAt,
+      // Task 244 - the same room.climb/room.trial the card's words come from,
+      // told to the TV as a fact rather than left to be inferred from the
+      // title string. Read at BUILD time, so a state:sync mid-card carries it
+      // too (this function is the sync's builder as well - index.ts:447).
+      finale: room.climb ? 'climb' : 'trial',
     };
   }
   // Every non-quiz stage of the full show (the drawing round, the numeric
@@ -101,6 +106,10 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
     firstQuestionIndex: firstQuestionIndexOfStage(definition.stage, stages),
     totalQuestions: room.questions.length,
     gameStartedAt: room.gameStartedAt,
+    // Task 244 - an ordinary stage announces no finale. Every stage 1-6 of
+    // the full show comes through here, which is what keeps the TV's scene
+    // swap scoped to the finale's own card.
+    finale: null,
   };
 }
 
@@ -277,6 +286,11 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     // verbatim. The TV uses this to tell an announce beat (GAME_INTRO/
     // STAGE_INTRO) apart from everything else, since `line` alone can't.
     kind: pending?.kind ?? 'REVEAL',
+    // Task 244 - read off the room, exactly as buildStageAnnounce does, so a
+    // live beat and a state:sync of that same beat agree. True for every beat
+    // inside the finale (its entry narration and the climb's own WINNER beat
+    // alike), null for every beat before it.
+    finale: room.climb ? 'climb' : room.trial ? 'trial' : null,
     // WINNER plays after the final question is already scored, so it must
     // never share a contentKey (client-side) with that same question's own
     // REVEAL-moment beat - one past the last real index is a natural,

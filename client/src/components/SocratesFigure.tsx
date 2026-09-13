@@ -35,7 +35,16 @@ function poseFor(phase: GamePhase, climbFinale: boolean): { left: string; scale:
   // climbFinale covers that beat and this climb's GAME_OVER crowning alike:
   // `phase` alone can't tell a climb verdict from a trial one, so HostScreen
   // passes its own isClimbFinale flag through.
-  if (ANAVASIS_PHASES.has(phase) || (climbFinale && (phase === 'GAME_OVER' || phase === 'SOCRATES'))) {
+  // Task 244 - 'STAGE_ANNOUNCE' joins that list for the same reason: the
+  // climb's own card (and the rule-line beats after it) now render the
+  // Anavasis world, and CENTRE_STAGE_PHASES below would otherwise plant him
+  // mid-stair at 44% for the card and glide him to the temple at 57% the
+  // moment the narration began. climbFinale is only ever true during this
+  // game's own climb, so every other stage's card is untouched.
+  if (
+    ANAVASIS_PHASES.has(phase) ||
+    (climbFinale && (phase === 'GAME_OVER' || phase === 'SOCRATES' || phase === 'STAGE_ANNOUNCE'))
+  ) {
     return { left: '57%', bottom: `${ANAVASIS_TEMPLE_BOTTOM_CQH}cqh`, scale: 1 };
   }
   if (RAISED_LEFT_PHASES.has(phase)) return { left: '5%', scale: 1.35 };
