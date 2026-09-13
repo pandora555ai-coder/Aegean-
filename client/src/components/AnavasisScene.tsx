@@ -339,6 +339,31 @@ export function AnavasisScene({ mood, dimmed }: AnavasisSceneProps) {
 // ---------------------------------------------------------------------------
 const HIMATION_HUES = ['#C9B7A0', '#9FB2C2', '#C2A08F', '#A8B29A', '#B7A6C4'];
 
+// Task 242 - neither this plaque nor the duel's own one (below) had ANY
+// length-based sizing: a flat font-size regardless of name length, in a
+// FIXED-width lane (`.anavasis-soph{width:8cqh}` / `.anavasis-duelist
+// {width:17cqh}`). Measured live (dev/242-name-clip-check.ts) at the flat
+// size: an 8-char name ("ΔΗΜΗΤΡΗΣ") already renders 79px wide against a
+// 57.6px climber lane, and a 12-char name hits 114.5px - roughly double the
+// lane. SophistsRow's own plaque (Task 224/235) already solved this exact
+// shape for its own lane with a shrink-by-length formula PLUS a hard
+// ellipsis backstop for whatever still doesn't fit; same two-layer defence
+// applied here, tuned per lane (the two callers below pass their own
+// base/floor).
+function laneNameFontSizeCqh(name: string, baseCqh: number, baseChars: number, minCqh: number): number {
+  const length = name.length;
+  if (length <= baseChars) {
+    return baseCqh;
+  }
+  return Math.max(minCqh, (baseCqh * baseChars) / length);
+}
+const CLIMBER_NAME_BASE_CQH = 1.6;
+const CLIMBER_NAME_BASE_CHARS = 5;
+const CLIMBER_NAME_MIN_CQH = 0.85;
+const DUELIST_NAME_BASE_CQH = 2.5;
+const DUELIST_NAME_BASE_CHARS = 7;
+const DUELIST_NAME_MIN_CQH = 1.3;
+
 // Task 192 - the climb's per-round frame alternation: Frame A (CLIMB_QUESTION)
 // is a motionless read, Frame B (CLIMB_REVEAL) opens with a still ~800ms beat
 // showing each player's up/down arrow on a MOTIONLESS board, then glides
@@ -352,7 +377,8 @@ const CLIMBERS_STYLE_TAG = `
 .anavasis-soph{position:absolute;width:8cqh;text-align:center;transform:translateX(-50%);
   transition:left ${CLIMB_GLIDE_MS}ms cubic-bezier(.4,0,.2,1),bottom ${CLIMB_GLIDE_MS}ms cubic-bezier(.35,0,.25,1.12),opacity 600ms;}
 .anavasis-soph svg.fig{width:100%;height:9.2cqh;display:block;overflow:visible;filter:drop-shadow(-.45cqh .25cqh .4cqh rgba(0,0,0,.55))}
-.anavasis-soph .nm{display:inline-block;background:var(--marble);color:var(--carve);font-size:1.6cqh;font-weight:700;
+.anavasis-soph .nm{display:inline-block;box-sizing:border-box;max-width:8cqh;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;background:var(--marble);color:var(--carve);font-size:1.6cqh;font-weight:700;
   letter-spacing:.05em;padding:.35cqh .7cqh .25cqh;margin-top:.2cqh;
   clip-path:polygon(3% 0,97% 0,100% 12%,100% 88%,97% 100%,3% 100%,0 88%,0 12%);box-shadow:0 .4cqh .9cqh rgba(0,0,0,.5)}
 .anavasis-soph .dl{position:absolute;left:0;right:0;top:-2.8cqh;font-size:2.6cqh;font-weight:800;color:var(--ember);
@@ -525,7 +551,11 @@ export function AnavasisClimbers({
               {showDelta ? formatClimbDelta(climber.delta as number) : ''}
             </div>
             <ClimberFigure joinIndex={climber.joinIndex} />
-            <div className="nm" data-testid="anavasis-climber-name">
+            <div
+              className="nm"
+              data-testid="anavasis-climber-name"
+              style={{ fontSize: `${laneNameFontSizeCqh(shown.name, CLIMBER_NAME_BASE_CQH, CLIMBER_NAME_BASE_CHARS, CLIMBER_NAME_MIN_CQH)}cqh` }}
+            >
               {moving ? '' : greekUpper(shown.name)}
             </div>
           </div>
@@ -581,7 +611,8 @@ const DUEL_STYLE_TAG = `
 .anavasis-duelist{position:absolute;bottom:9cqh;width:17cqh;text-align:center}
 .anavasis-duelist svg.fig{width:100%;height:27cqh;overflow:visible;filter:drop-shadow(-.8cqh .4cqh .7cqh rgba(0,0,0,.6))}
 .anavasis-duelist--b svg.fig{transform:scaleX(-1)}
-.anavasis-duelist .nm{display:inline-block;background:var(--marble);color:var(--carve);font-size:2.5cqh;font-weight:800;
+.anavasis-duelist .nm{display:inline-block;box-sizing:border-box;max-width:17cqh;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;background:var(--marble);color:var(--carve);font-size:2.5cqh;font-weight:800;
   letter-spacing:.06em;padding:.7cqh 1.4cqh .5cqh;margin-top:.5cqh;
   clip-path:polygon(3% 0,97% 0,100% 12%,100% 88%,97% 100%,3% 100%,0 88%,0 12%)}
 .anavasis-tablet{position:absolute;top:-12.5cqh;left:50%;transform:translateX(-50%);width:10.5cqh;height:10.5cqh;perspective:600px}
@@ -689,7 +720,9 @@ function Duelist({
       </div>
       {!revealed && <div className="anavasis-picked" data-testid={`anavasis-duelist-${side}-picked`}>{picked ? '✓' : ''}</div>}
       <ClimberFigure joinIndex={data.joinIndex} />
-      <div className="nm">{greekUpper(data.name)}</div>
+      <div className="nm" style={{ fontSize: `${laneNameFontSizeCqh(data.name, DUELIST_NAME_BASE_CQH, DUELIST_NAME_BASE_CHARS, DUELIST_NAME_MIN_CQH)}cqh` }}>
+        {greekUpper(data.name)}
+      </div>
     </div>
   );
 }

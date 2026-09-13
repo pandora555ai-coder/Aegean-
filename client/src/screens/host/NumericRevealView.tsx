@@ -46,6 +46,17 @@ const NUMLINE_OVERLAP_THRESHOLD_PCT = 15;
 // position - so only same-(side,depth) pairs ever need the horizontal
 // threshold at all.
 const NUMLINE_DEPTH_STEP_CQH = 4;
+// Task 242 - the fixed clearance every label keeps from the tick baseline,
+// on TOP of the padding labelStyle already carries. Depth 0 above and depth
+// 0 below used to both anchor at the SAME `calc(100% + 0)` line (the
+// wrapper's own 0-height point, since it has no in-flow content to give
+// "100%" a real basis) - fine when the two halves land at DIFFERENT X, but
+// an exact guess (leftPct identical to the truth's) puts a guesser's label
+// directly above the truth's, touching it with a measured 0px gap: an
+// "ΑΒΓ 23" label's own bottom edge exactly equal to the truth "23" label's
+// top edge (dev/242-numeric-check.ts). This constant pushes BOTH sides off
+// that shared line so they never meet at zero, regardless of depth or X.
+const NUMLINE_LABEL_GAP_CQH = 1.2;
 
 interface NumlineMarker {
   key: string;
@@ -119,7 +130,7 @@ const tickStyle = (isTruth: boolean): CSSProperties => ({
 const labelStyle = (isTruth: boolean, side: 'above' | 'below', depth: number): CSSProperties => ({
   position: 'absolute',
   left: 0,
-  [side === 'above' ? 'bottom' : 'top']: `calc(100% + ${depth * NUMLINE_DEPTH_STEP_CQH}cqh)`,
+  [side === 'above' ? 'bottom' : 'top']: `calc(100% + ${NUMLINE_LABEL_GAP_CQH + depth * NUMLINE_DEPTH_STEP_CQH}cqh)`,
   transform: 'translateX(-50%)',
   fontSize: isTruth ? '2.8cqh' : '2.2cqh',
   fontWeight: 700,
