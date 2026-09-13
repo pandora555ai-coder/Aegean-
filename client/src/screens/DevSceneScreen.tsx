@@ -72,6 +72,8 @@ const stageAnnounce: StageAnnouncePayload = {
   questionCount: 5,
   firstQuestionIndex: 3,
   totalQuestions: 12,
+  // Task 239 - a static mock; the dev scene isn't a real game in progress.
+  gameStartedAt: null,
 };
 
 const powerUp: PowerUpShowHostPayload = {
@@ -154,6 +156,8 @@ const socrates: SocratesShowPayload = {
   lineTag: null,
   // Task 236 - a static mock for this dev scene; nothing here acks.
   beatId: 1,
+  // Task 239 - ordinary post-question commentary, the most common case.
+  kind: 'REVEAL',
   questionIndex: 8,
   totalQuestions: 12,
   durationMs: 4000,
@@ -261,6 +265,10 @@ const gameOver: GameOverPayload = {
   isTie: false,
   isTrialResult: false,
   totalQuestions: 12,
+  // Task 239 - a static mock; the dev scene isn't a real game in progress.
+  stageDurations: [],
+  gameStartedAt: null,
+  gameEndedAt: Date.now(),
 };
 
 // Task 106 - the phase list this route steps through, and the order arrow

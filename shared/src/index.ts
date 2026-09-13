@@ -1043,6 +1043,16 @@ export interface StageAnnouncePayload {
   questionCount: number;
   firstQuestionIndex: number; // 0-based, into the whole game's question list
   totalQuestions: number;
+  // Task 239 - when THIS game actually began (Date.now() at vip:start_game/
+  // the all-bot auto-start), server time; null only defensively (startGame
+  // always sets it before any stage can be announced). Additive: carried
+  // here (rather than a new event) because STAGE_ANNOUNCE already fires at
+  // the start of every stage and is already held in client state throughout
+  // that stage's own SOCRATES beats, so the TV's elapsed-game clock has a
+  // fresh, reconnect-safe reference without a payload of its own. Modes with
+  // no stage table (draw/numeric/blitz standalone) never emit this at all -
+  // the clock falls back to a client-observed start there.
+  gameStartedAt: number | null;
 }
 
 // How long the STAGE_ANNOUNCE phase lasts. A real beat, not a cosmetic
@@ -1515,6 +1525,20 @@ export function isRevealHostPayload(payload: RevealShowPayload): payload is Reve
   return 'results' in payload;
 }
 
+// Task 239 - the wire-level twin of PendingSocratesBeat['kind'] (server-only,
+// state.ts): 'REVEAL' added for the one case that type doesn't cover (no
+// pending beat at all - the ordinary post-question commentary).
+export type SocratesBeatKind =
+  | 'REVEAL'
+  | 'GAME_INTRO'
+  | 'STAGE_INTRO'
+  | 'WINNER'
+  | 'DRAW_INTRO'
+  | 'DRAW_MOMENT'
+  | 'DRAW_WINNER'
+  | 'NUMERIC_MOMENT'
+  | 'AGORA_MOMENT';
+
 // Socrates (Task 39) - HOST ONLY, the phones never show commentary; they
 // stay on their own reveal result while this beat plays. The round's single
 // highest-priority "moment" line, already rendered server-side (placeholders
@@ -1544,6 +1568,14 @@ export interface SocratesShowPayload {
   // missing clip legitimately acks at ~0ms (Task 154), and that ack carries
   // the CURRENT id, so it still ends the beat immediately.
   beatId: number;
+  // Task 239 - which KIND of beat this is. 'REVEAL' is the ordinary
+  // post-question commentary (room.lastReveal's own line, no pending beat);
+  // every other value mirrors PendingSocratesBeat['kind'] server-side.
+  // Additive, and the ONLY reason it exists on the wire: the TV needs to tell
+  // a GAME_INTRO/STAGE_INTRO beat apart from every other kind, so it knows
+  // whether to keep the stage-announce card up underneath the subtitle (an
+  // announce beat) or not (everything else) - `line` alone can't say that.
+  kind: SocratesBeatKind;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat
@@ -1763,6 +1795,19 @@ export interface GameOverStanding {
   rank: number;
 }
 
+// Task 239 - one stage's slice of the per-game timing record: STAGE_ANNOUNCE
+// entered stage X at startTs, then either the NEXT stage's own STAGE_ANNOUNCE
+// or (the last stage) finishGame closed it at endTs. Recorded automatically
+// by enterStageAnnounce/finishGame - nothing about WHEN a stage starts or
+// ends changes because of this, it only ever reads room.stage's own timing.
+export interface StageDurationRecord {
+  stage: number;
+  title: string;
+  startTs: number;
+  endTs: number;
+  durationMs: number;
+}
+
 export interface GameOverPayload {
   standings: GameOverStanding[];
   winnerName: string; // if tied, joined names: "Άννα & Μπάμπης"
@@ -1774,6 +1819,14 @@ export interface GameOverPayload {
   // reverse elimination order) rather than sorted by score.
   isTrialResult: boolean;
   totalQuestions: number;
+  // Task 239 - the per-game stage-duration record (empty for a mode with no
+  // stage table - draw/numeric/blitz standalone never push an entry) and the
+  // two timestamps bracketing the whole game, so a game's real elapsed time
+  // can be read straight off this ONE payload rather than reconstructed from
+  // server logs.
+  stageDurations: StageDurationRecord[];
+  gameStartedAt: number | null;
+  gameEndedAt: number;
 }
 
 // Sent to a single socket right after it joins/reconnects, whenever the

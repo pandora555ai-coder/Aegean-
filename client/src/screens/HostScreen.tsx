@@ -104,6 +104,7 @@ import { SocratesView } from './host/SocratesView';
 import { QuestionView } from './host/QuestionView';
 import { RevealView } from './host/RevealView';
 import { GameOverView } from './host/GameOverView';
+import { PodiumView } from './host/PodiumView';
 import { DrawView } from './host/DrawView';
 import { GuessView } from './host/GuessView';
 import { GuessRevealView } from './host/GuessRevealView';
@@ -123,6 +124,7 @@ import { AgoraRevealView } from './host/AgoraRevealView';
 import { AgoraScene } from '../components/AgoraScene';
 import { TheatreScene, isSceneLit } from '../components/TheatreScene';
 import { SocratesFigure } from '../components/SocratesFigure';
+import { GameClock } from '../components/GameClock';
 import { MarbleFilterDefs } from '../components/MarbleSlab';
 import { SophistsRow, STEAL_TOKEN_FLIGHT_MS, type SophistStanding } from '../components/SophistsRow';
 import {
@@ -165,6 +167,12 @@ const PHASE_PAYLOAD_SYNCED: unique symbol = Symbol('phase-payload-synced');
 // below anything a viewer would read as a frozen TV.
 const PHASE_PAYLOAD_WATCHDOG_MS = 1000;
 
+// Task 239 - how long the ceremony (GameOverView's leaf-fall, or Η Ανάβασις's
+// crowning) gets the screen alone before PodiumView takes over. Long enough
+// to read the winner's name and see the ceremony play, short enough that a
+// room used to a fast pace isn't left staring at the same overlay.
+const PODIUM_DELAY_MS = 6000;
+
 export default function HostScreen() {
   const { connected } = useSocketConnection();
   const [searchParams] = useSearchParams();
@@ -206,6 +214,27 @@ export default function HostScreen() {
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const [reveal, setReveal] = useState<RevealHostPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
+  // Task 239 - the end state: PodiumView takes over from whatever ceremony
+  // GAME_OVER opened on (GameOverView's leaf-fall, Η Ανάβασις's crowning)
+  // after a fixed beat, so the room reads the winner first and the full
+  // ranking second rather than both competing for attention at once. Purely
+  // client-side timing (no phase-machine change - the server's own phase
+  // stays GAME_OVER the whole time); reset on every fresh GAME_OVER and on
+  // leaving it (handlePhaseChanged's LOBBY branch), so a "play again" never
+  // opens game 2 already on the podium.
+  const [showPodium, setShowPodium] = useState(false);
+  const podiumTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Task 239 - the elapsed-game clock's fallback start reference, for a mode
+  // with no stage table at all (draw/numeric/blitz standalone never emit
+  // StageAnnouncePayload's own gameStartedAt). Set once, the first time this
+  // client observes leaving LOBBY; reset alongside every other per-game ref
+  // in handlePhaseChanged's LOBBY branch. stageAnnounce.gameStartedAt (the
+  // server's real value) is always preferred over this when it exists.
+  const clientGameStartRef = useRef<number | null>(null);
+  // Task 239 - ?clock=off hides the elapsed-game clock; anything else (or no
+  // param at all) shows it, same "read once, ignore later URL edits" rule
+  // botCount/requestedMode already follow above.
+  const [showClock] = useState(() => searchParams.get('clock') !== 'off');
   const [revealSecondsLeft, setRevealSecondsLeft] = useState(0);
   // Power-up (Task 30b). One piece of state: the phase payload, set once per
   // phase - Task 115 deleted the TV's chosen counter and avatar strip, the
@@ -603,6 +632,16 @@ export default function HostScreen() {
         lastClimbTopRef.current = 0;
         climbClimberHistoryRef.current = new Map();
         climbLaneRef.current = new Map();
+        // Task 239 - no residue from the game that just ended: a fresh "play
+        // again" must open game 2 on the ceremony, not already on the
+        // podium, and its own elapsed clock must start from 0, not
+        // wherever game 1's left off.
+        setShowPodium(false);
+        if (podiumTimeoutRef.current) {
+          clearTimeout(podiumTimeoutRef.current);
+          podiumTimeoutRef.current = null;
+        }
+        clientGameStartRef.current = null;
         // Pause is impossible in LOBBY - reset defensively, in case a
         // player somehow paused right as the room reset.
         setPaused(false);
@@ -613,6 +652,12 @@ export default function HostScreen() {
         if (roomCodeRef.current) {
           setStoredHostRoomCode(roomCodeRef.current);
         }
+      } else if (clientGameStartRef.current === null) {
+        // Task 239 - the elapsed-game clock's fallback reference: the first
+        // moment THIS client observed leaving LOBBY. Only ever used when
+        // stageAnnounce.gameStartedAt hasn't arrived (a mode with no stage
+        // table, or a clock rendered before the first STAGE_ANNOUNCE lands).
+        clientGameStartRef.current = Date.now();
       }
     }
 
@@ -1024,6 +1069,16 @@ export default function HostScreen() {
 
     function handleGameOver(payload: GameOverPayload) {
       setGameOver(payload);
+      // Task 239 - the podium takes over from the ceremony after a fixed
+      // beat. Clearing any timer already running first covers the case a
+      // GAME_OVER lands twice in a row for the same room somehow (it never
+      // should - finishGame is one-shot - but a stray double-fire must not
+      // leave two timers racing to flip the same boolean).
+      setShowPodium(false);
+      if (podiumTimeoutRef.current) {
+        clearTimeout(podiumTimeoutRef.current);
+      }
+      podiumTimeoutRef.current = setTimeout(() => setShowPodium(true), PODIUM_DELAY_MS);
       // Task 225 - a duel-decided climb (two arrivals at the top) goes
       // straight from DUEL_REVEAL to GAME_OVER, and nothing on that path
       // cleared the settled duel: AnavasisDuel stayed mounted ON TOP of the
@@ -2057,6 +2112,16 @@ export default function HostScreen() {
     }
 
     if (phase === 'GAME_OVER' && gameOver) {
+      // Task 239 - the end state: PodiumView takes over from whichever
+      // ceremony was playing (below) once showPodium's timer fires, for
+      // EVERY finale alike (checked before the isClimbFinale branch so it
+      // wins over both). It renders through the exact same slot the
+      // ceremony did - see AnavasisCrowning's own branch below for why that
+      // matters for a climb finale specifically (SophistsRow never renders
+      // there either way, showAnavasisWorld gates it out).
+      if (showPodium) {
+        return <PodiumView gameOver={gameOver} />;
+      }
       // Η Ανάβασις's own verdict (Task 189) - the winner crowned at the
       // temple threshold, not the theatre's overlay. `isClimbFinale` is what
       // tells the two apart (a trial's own GAME_OVER carries the same
@@ -2101,12 +2166,23 @@ export default function HostScreen() {
     // Task 237 - except during the climb, where the Anavasis world IS the
     // screen and AnavasisChrome already supplies the room code and pause
     // overlay that this view's GameLayout would otherwise render a second
-    // copy of. Nothing is lost by drawing nothing: SocratesView passes
-    // `{null}` as its children, so the beat carries no TV text at all - the
-    // line is audio, and the caption lives outside this view.
+    // copy of.
+    // Task 239 - SocratesView no longer passes `{null}`: the line is now a
+    // TEXT subtitle too (a viewer with no audio must still be able to follow
+    // it), and an announce beat (GAME_INTRO/STAGE_INTRO) keeps the LAST
+    // stage-announce card up underneath it - `stageAnnounce` state is never
+    // cleared on entering SOCRATES (only on LOBBY/a fresh STAGE_ANNOUNCE), so
+    // it's already exactly the right card, no extra tracking needed.
     if (phase === 'SOCRATES' && socrates && !isClimbFinale) {
+      const isAnnounceBeat = socrates.kind === 'GAME_INTRO' || socrates.kind === 'STAGE_INTRO';
       return (
-        <SocratesView socrates={socrates} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
+        <SocratesView
+          socrates={socrates}
+          roomCode={roomCode}
+          paused={paused}
+          pausedByName={pausedByName}
+          announceCard={isAnnounceBeat ? stageAnnounce : null}
+        />
       );
     }
 
@@ -2659,6 +2735,12 @@ export default function HostScreen() {
     phase === 'AGORA_EXPOSE' ? (agoraExpose?.spec ?? null) : agoraProofShowing ? (agoraReveal?.proof.spec ?? null) : null;
   const agoraHighlight: AgoraSubject | null = agoraProofShowing ? (agoraReveal?.proof.subject ?? null) : null;
 
+  // Task 239 - the elapsed-game clock's reference: the server's own value
+  // (stageAnnounce.gameStartedAt, reconnect-safe) when one has arrived,
+  // otherwise this client's own first-observed-non-LOBBY moment (a mode with
+  // no stage table, or a render before the first STAGE_ANNOUNCE lands).
+  const gameStartedAt = stageAnnounce?.gameStartedAt ?? clientGameStartRef.current;
+
   return (
     <>
       <MarbleFilterDefs />
@@ -2718,6 +2800,11 @@ export default function HostScreen() {
           🔇 Άγγιξε την οθόνη για ήχο
         </div>
       )}
+      {/* Task 239 - the elapsed-game clock. Chrome-level, like the three
+          chips above, so it survives every phase change without remounting;
+          hidden in LOBBY (there is no game running yet to time) and behind
+          ?clock=off. */}
+      {showClock && phase !== 'LOBBY' && gameStartedAt !== null && <GameClock startedAt={gameStartedAt} />}
       {/* Task 192 - the climb/duel phases' own chrome, rendered ONCE here
           instead of by each of the four views (was AnavasisChrome duplicated
           four times) - never at GAME_OVER, matching every other mode's
@@ -2754,7 +2841,10 @@ export default function HostScreen() {
           // stays true for the rest of that game once set, so this can only
           // ever fire during the climb's own tail end, the same "market frame
           // belongs to the market" mechanism Task 210 already established.
-          forceHidden={phase === 'AGORA_EXPOSE' || agoraProofShowing || isClimbFinale}
+          // Task 239 - PodiumView owns the whole standings story once it's
+          // up (zero digits, position only); a non-climb finale's row would
+          // otherwise still be showing real score digits underneath it.
+          forceHidden={phase === 'AGORA_EXPOSE' || agoraProofShowing || isClimbFinale || showPodium}
         />
       )}
     </>

@@ -202,6 +202,20 @@ function announceStageIfChanged(room: Room): boolean {
 // a drawing round and a numeric segment too - stages that have no question
 // index to detect a change from, which is the only thing the caller above
 // adds. Exported so a MODE can announce a stage of its own (modes/full.ts).
+// Task 239 - the per-game stage-duration record. Closes whatever entry is
+// still open (the stage this room is LEAVING - a no-op the very first time,
+// when there is nothing open yet) and opens a fresh one for the stage it's
+// entering. finishGame closes the final entry the same way, since there's no
+// "next" stage to trigger that close.
+function recordStageStart(room: Room, stage: number, title: string): void {
+  const now = Date.now();
+  const open = room.stageTimings[room.stageTimings.length - 1];
+  if (open && open.endTs === null) {
+    open.endTs = now;
+  }
+  room.stageTimings.push({ stage, title, startTs: now, endTs: null });
+}
+
 export function enterStageAnnounce(room: Room, stage: number): void {
   room.stage = stage;
 
@@ -219,6 +233,7 @@ export function enterStageAnnounce(room: Room, stage: number): void {
   // Room-wide, but only the TV renders it: the phones are controllers and
   // are about to be busy with a power-up choice or an answer.
   const card = buildStageAnnounce(room);
+  recordStageStart(room, card.stage, card.title);
   io.to(room.code).emit(ServerEvents.STAGE_ANNOUNCE, card);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
@@ -2055,6 +2070,13 @@ function endClimb(room: Room): void {
 function finishGame(room: Room): void {
   room.phase = 'GAME_OVER';
   clearActiveTimer(room); // no more phase-advance timer needed once the game is over
+  // Task 239 - close whatever stage is still open (the last one - nothing
+  // else will ever announce a "next" stage to close it the normal way).
+  // A no-op for any mode with no stage table at all (stageTimings stays []).
+  const openTiming = room.stageTimings[room.stageTimings.length - 1];
+  if (openTiming && openTiming.endTs === null) {
+    openTiming.endTs = Date.now();
+  }
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
   setCrowdMood(room, 'calm');
@@ -2066,6 +2088,7 @@ function finishGame(room: Room): void {
   const gameOverPayload = buildGameOver(room, room.trial?.winnerPlayerId ?? room.climb?.winnerPlayerId ?? null);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
+  console.log(`room ${room.code} stage durations: ${JSON.stringify(gameOverPayload.stageDurations)}`);
   logMomentFireSummary(room.socrates, room.code);
   // Task 176 - one person's bot game reaches its verdict here; clean them up
   // now rather than leaving them in the roster for a play-again that didn't

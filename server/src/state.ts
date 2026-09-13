@@ -245,6 +245,15 @@ export interface PendingSocratesBeat {
   lineTag: string | null;
 }
 
+// Task 239 - one open-or-closed slot in Room.stageTimings (see there).
+// `endTs: null` while this stage is the one currently running.
+export interface StageTiming {
+  stage: number;
+  title: string;
+  startTs: number;
+  endTs: number | null;
+}
+
 // A room is deleted only once it's been fully empty - no host/TV display
 // AND no connected players - for this long. Reattaching either cancels it.
 export const ROOM_TTL_MS = 300000; // 5 minutes
@@ -335,6 +344,20 @@ export interface Room {
   // remainder - so buildSocratesPayload has nothing else to derive
   // elapsed-since-armed from. Meaningless outside a SOCRATES beat.
   socratesBackstopMs: number;
+  // Task 239 - when THIS game began (Date.now() at startGame - vip:start_game
+  // or the all-bot auto-start), null before that. Feeds StageAnnouncePayload's
+  // own gameStartedAt (the TV clock's reconnect-safe reference) and the
+  // GAME_OVER record below; not read anywhere else.
+  gameStartedAt: number | null;
+  // Task 239 - the per-game stage-duration record: enterStageAnnounce pushes
+  // one entry per stage it enters and closes the PREVIOUS entry's endTs at
+  // the same moment; finishGame closes whatever's still open (the last
+  // stage, which has no "next" stage to close it). `endTs` is null exactly
+  // while that stage is the one currently running - buildGameOver
+  // (payloads.ts) is the only place these are turned into the wire's
+  // always-closed StageDurationRecord. Empty for any mode with no stage
+  // table (draw/numeric/blitz standalone never call enterStageAnnounce).
+  stageTimings: StageTiming[];
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
   // scratch at the start of every one. A LIST since Task 31a: at most one
@@ -459,6 +482,8 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     pendingSocratesQueue: [],
     socratesBeatId: 0,
     socratesBackstopMs: SOCRATES_MAX_DURATION_MS,
+    gameStartedAt: null,
+    stageTimings: [],
     pendingSocratesBeat: null,
     activeSabotageByTarget: new Map(),
     shuffledOptionsByTarget: new Map(),
@@ -834,6 +859,11 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingSocratesQueue = [];
   room.socratesBeatId = 0;
   room.socratesBackstopMs = SOCRATES_MAX_DURATION_MS;
+  // Task 239 - no residue from the game that just ended: a fresh "play
+  // again" must open its own clean timing record and re-derive its own
+  // start time at the next startGame, not inherit the last one's.
+  room.gameStartedAt = null;
+  room.stageTimings = [];
   room.activeSabotageByTarget.clear();
   room.shuffledOptionsByTarget.clear();
   // No unspent power-up choice carries over from the game that just ended.

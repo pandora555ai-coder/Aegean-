@@ -32,6 +32,7 @@ import {
   type RevealPlayerPayload,
   type SocratesShowPayload,
   type StageAnnouncePayload,
+  type StageDurationRecord,
   type StealShowHostPayload,
   type StealShowPlayerPayload,
   type StealTarget,
@@ -76,6 +77,7 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
       questionCount: 0,
       firstQuestionIndex: room.questions.length,
       totalQuestions: room.questions.length,
+      gameStartedAt: room.gameStartedAt,
     };
   }
   // Every non-quiz stage of the full show (the drawing round, the numeric
@@ -98,6 +100,7 @@ export function buildStageAnnounce(room: Room): StageAnnouncePayload {
     questionCount: definition.questionCount,
     firstQuestionIndex: firstQuestionIndexOfStage(definition.stage, stages),
     totalQuestions: room.questions.length,
+    gameStartedAt: room.gameStartedAt,
   };
 }
 
@@ -269,6 +272,11 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     lineTemplate,
     lineTag,
     beatId: room.socratesBeatId,
+    // Task 239 - 'REVEAL' is the ordinary post-question commentary (no
+    // pending beat at all); every other value is the pending beat's own kind
+    // verbatim. The TV uses this to tell an announce beat (GAME_INTRO/
+    // STAGE_INTRO) apart from everything else, since `line` alone can't.
+    kind: pending?.kind ?? 'REVEAL',
     // WINNER plays after the final question is already scored, so it must
     // never share a contentKey (client-side) with that same question's own
     // REVEAL-moment beat - one past the last real index is a natural,
@@ -439,6 +447,22 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
   const players = [...room.players.values()];
   const declaredWinner = winnerPlayerId !== null ? room.players.get(winnerPlayerId) : undefined;
 
+  // Task 239 - the per-game timing record, computed once and spread into
+  // whichever of the three shapes below actually returns. The caller
+  // (finishGame) closes the LAST stage's endTs before calling this, so every
+  // entry here is already final - an entry that's somehow still open (never
+  // observed; kept defensive) is simply dropped rather than sent half-built.
+  const stageDurations: StageDurationRecord[] = room.stageTimings.flatMap((timing) =>
+    timing.endTs === null
+      ? []
+      : [{ stage: timing.stage, title: timing.title, startTs: timing.startTs, endTs: timing.endTs, durationMs: timing.endTs - timing.startTs }],
+  );
+  // The last stage's own close IS the game's end, for any mode that has a
+  // stage table at all; a mode with none (draw/numeric/blitz standalone,
+  // which never call enterStageAnnounce) falls back to now.
+  const lastTiming = stageDurations[stageDurations.length - 1];
+  const gameOverTiming = { stageDurations, gameStartedAt: room.gameStartedAt, gameEndedAt: lastTiming?.endTs ?? Date.now() };
+
   // Task 188a - the climb's verdict: the winner first, then (Task 205)
   // SURVIVAL order before final-step order - anyone the spear speared out
   // ranks below every survivor, most-recently-eliminated highest among
@@ -474,6 +498,7 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
       isTie: false,
       isTrialResult: true,
       totalQuestions: room.questions.length,
+      ...gameOverTiming,
     };
   }
 
@@ -519,6 +544,7 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
       isTie: false, // the trial decides between them - that is what it is for
       isTrialResult: true,
       totalQuestions: room.questions.length,
+      ...gameOverTiming,
     };
   }
 
@@ -546,6 +572,7 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
     isTie: winners.length > 1,
     isTrialResult: false,
     totalQuestions: room.questions.length,
+    ...gameOverTiming,
   };
 }
 

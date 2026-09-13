@@ -414,6 +414,51 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
 `paused` is a boolean flag, NOT a phase.
 **There is no mid-game SCOREBOARD** — scores live in the TV's right-hand
 column at all times. Do not reintroduce one.
+**The end state (Task 239)** — a podium screen, client-only (no phase-machine
+change: room.phase stays GAME_OVER throughout). `PodiumView.tsx` replaces
+whichever ceremony was playing (GameOverView / AnavasisCrowning) once
+HostScreen's `showPodium` flips true, `PODIUM_DELAY_MS` = 6000ms after
+GAME_OVER; reset on every fresh GAME_OVER and on leaving it via play-again.
+Renders `gameOver.standings` in the order the server already computed —
+NEVER re-sorts — as name+avatar rows, ZERO digits (no rank, no score, no
+step count; position on screen is the rank, SophistsRow's own idiom).
+SophistsRow is force-hidden once `showPodium` is true. The VIP's phone
+button is relabelled "Νέο παιχνίδι" (same testid `play-again-button`, same
+`vip:play_again` mechanism — already did the full reset before this task,
+untouched); non-VIP gets `waiting-for-play-again`, the LOBBY's own
+"waiting-for-vip" idiom.
+**The game timer (Task 239)** — `Room.stageTimings` (state.ts) records one
+`{stage, title, startTs, endTs}` per stage, opened/closed inside
+`enterStageAnnounce`/`finishGame` (phases.ts) — the existing functions every
+stage transition and the real GAME_OVER already go through, no new call
+site. Exposed as `GameOverPayload.stageDurations`/`gameStartedAt`/
+`gameEndedAt` (additive). The TV's top-left clock (`GameClock.tsx`) ticks
+off `StageAnnouncePayload.gameStartedAt` (additive, set once in `startGame`)
+with a client-observed fallback for a mode with no stage table (draw/
+numeric/blitz standalone never call enterStageAnnounce); `?clock=off` hides
+it.
+**SOCRATES subtitles (Task 239)** — `SocratesSubtitle.tsx` renders
+`socrates.line` (already fully-substituted, no payload change needed for
+the text itself) as a caption bar on EVERY beat. `SocratesShowPayload.kind`
+(additive: `'REVEAL'` for the ordinary post-question beat, else the pending
+beat's own kind) lets the TV tell an announce beat (GAME_INTRO/STAGE_INTRO)
+apart from every other kind, so it keeps the stage-announce card up
+underneath the subtitle for those — `stageAnnounce` client state was
+already never cleared on entering SOCRATES. The climb's own WINNER beat
+(`isClimbSocratesBeat`) still renders no subtitle, deliberately left alone
+to avoid touching Task 237's staging invariants for a beat no acceptance
+criterion named specifically.
+Check: `dev/end-state-timer-subtitles-check.ts` (real server/browser, TWO
+real phones as the whole roster — bots were tried and rejected: any bot
+count meeting minPlayers self-starts an all-bot room, Task 217, the INSTANT
+the bots join inside CREATE_ROOM's own handler, before a harness can even
+read the room code back) plus `dev/podium-subtitle-followup-check.ts` (targeted
+re-checks: `.innerText()` vs `.textContent()` for the zero-digit claim —
+the latter sweeps up a component's own `<style>` tag CSS numbers, a trap
+for ANY of this codebase's `<style>{STYLE_TAG}</style>`-pattern views, not
+just this one; and the ACTUAL content box of `[data-testid="stage-announce"]
+> div`, not that testid's own full-viewport, mostly-transparent positioning
+wrapper, for an accurate overlap check).
 Every quiz question is entered via enterQuestionOrPowerUp() — the only gate.
 STAGE_ANNOUNCE is a real held phase: the stage card shows alone and the
 question timer starts only after it.

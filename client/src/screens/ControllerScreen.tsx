@@ -2100,10 +2100,19 @@ export default function ControllerScreen() {
           )}
         </div>
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
-        {isVip && (
+        {/* Task 239 - the end state's own action, relabelled from "Ξανά":
+            same vip:play_again mechanism (same room, same players, full
+            reset - resetRoomForNewGame, server-side), unchanged. Non-VIP
+            gets an explicit waiting note instead of nothing, the same
+            "waiting-for-vip" idiom the LOBBY screen already uses. */}
+        {isVip ? (
           <button data-testid="play-again-button" style={styles.button} type="button" onClick={handlePlayAgain}>
-            Ξανά
+            Νέο παιχνίδι
           </button>
+        ) : (
+          <div style={styles.subtitle} data-testid="waiting-for-play-again">
+            Ο/Η {vipName ?? '...'} αποφασίζει αν θα παίξετε ξανά
+          </div>
         )}
       </div>
     );

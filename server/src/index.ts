@@ -688,6 +688,11 @@ function getHostRoomForSocket(
 // Task 217's auto-start both call only this, so a bot-room's unaided start
 // runs the exact same path a human's Έναρξη does.
 function startGame(room: Room): void {
+  // Task 239 - the ONE moment a game actually begins, for both entry points
+  // (vip:start_game and the all-bot auto-start below share this function).
+  // Feeds the TV's elapsed-game clock (via StageAnnouncePayload) and the
+  // GAME_OVER stage-duration record; nothing about the phase machine reads it.
+  room.gameStartedAt = Date.now();
   buildRoomQuestions(room);
   room.currentQuestionIndex = 0;
   // Task 52 - through the MODE, so this never has to know which phase a
