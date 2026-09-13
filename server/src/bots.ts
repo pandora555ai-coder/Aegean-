@@ -78,15 +78,20 @@ function accurateChoice(numOptions: number, correctIndex: number | null, accurac
 
 // Numeric (Εκτίμηση) has no "correct" - instead sample around the true
 // value with spread INVERSELY related to accuracy:
-//   value = clamp(round(trueValue + U(-1,1) * (1 - accuracy) * max), 0, max)
+//   value = clamp(round(trueValue + U(-1,1) * (1 - accuracy) * max), 1, max)
 // A 0.7-accuracy bot's noise amplitude is at most 30% of the question's own
 // range; a 0.5-accuracy bot's is at most 50%. `max` is the question's own
 // derived range (maxForAnswer), so the spread scales with the question, not
 // a fixed absolute number.
+// Task 243 - the lower clamp is 1, not 0: a real player never has a reason
+// to sit at the slider's exact minimum, so a bot landing there (a low-
+// accuracy bot's negative noise dragging trueValue below the floor) read as
+// a degenerate, obviously-bot guess. NUMERIC_ROUND_VALUES' smallest max (20)
+// keeps 1 comfortably below max at every question.
 function sampleNumericValue(trueValue: number, max: number, accuracy: number): number {
   const noiseScale = (1 - accuracy) * max;
   const offset = (Math.random() * 2 - 1) * noiseScale;
-  return Math.min(max, Math.max(0, Math.round(trueValue + offset)));
+  return Math.min(max, Math.max(1, Math.round(trueValue + offset)));
 }
 
 // Distinct Greek names, cycled if a room somehow asks for more than this
@@ -348,7 +353,10 @@ function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, ac
     }
     const room = getRoom(code);
     const trueValue = room ? getNumericTrueAnswer(room) : null;
-    const value = trueValue === null ? randomChoice(payload.max + 1) : sampleNumericValue(trueValue, payload.max, accuracy);
+    // Task 243 - the race-condition fallback (state not ready) also excluded
+    // 0: uniform over 1..max, not 0..max, so this path can't degenerate to
+    // the slider minimum either.
+    const value = trueValue === null ? 1 + randomChoice(payload.max) : sampleNumericValue(trueValue, payload.max, accuracy);
     setTimeout(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value }), profileDelayMs(profile));
   });
 

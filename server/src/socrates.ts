@@ -1251,6 +1251,12 @@ function ensurePlayerState(state: SocratesState, playerId: string): SocratesPlay
   return p;
 }
 
+// Task 243 - CLOSE_SCORES' [amused] line read as flippant for a moment
+// about the game being on a knife's edge. Argyrios asked it filtered
+// everywhere (not scoped to one mode like the Task 231 precedent below) -
+// kept in the pool, its mp3 stays valid, filtered out at pick time instead.
+const CLOSE_SCORES_EXCLUDED: ReadonlySet<string> = new Set(['Στενό. Μου αρέσει όταν δεν ξέρω το τέλος.']);
+
 // Called once per question, right after scoring - updates every connected
 // player's tracked state, detects which MOMENTS fired, and returns the
 // single highest-priority one whose target (if any) isn't on cooldown, as
@@ -1507,7 +1513,8 @@ export function recordRoundAndPickLine(
         continue;
       }
     }
-    const line = pickLine(state, LINES[candidate.moment], candidate.vars);
+    const pool = candidate.moment === 'CLOSE_SCORES' ? LINES.CLOSE_SCORES.filter((line) => !CLOSE_SCORES_EXCLUDED.has(line)) : LINES[candidate.moment];
+    const line = pickLine(state, pool, candidate.vars);
     if (line === null) {
       continue; // this moment's line pool is exhausted - try the next candidate
     }

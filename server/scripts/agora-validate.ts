@@ -204,7 +204,7 @@ function agoraColourText(type: AgoraStallType): string {
 function agoraCountText(type: AgoraStallType): string {
   switch (type) {
     case 'amphorae':
-      return 'Πόσους αμφορείς είχε ο αμφορέας;';
+      return 'Πόσους αμφορείς είχε ο αγγειοπλάστης;';
     case 'fish':
       return 'Πόσα ψάρια είχε ο ψαράς;';
     case 'cloth':

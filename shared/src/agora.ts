@@ -59,8 +59,13 @@ export const AGORA_STALL_LABEL_GR: Readonly<Record<AgoraStallType, string>> = {
 // rather than templated, because the grammar isn't uniform (amphorae takes
 // a masculine accusative "Πόσους", not the neuter/feminine "Πόσα" every
 // other stall takes, and each stall's "merchant" noun is irregular).
+// Task 243 - amphorae's merchant noun used to be the object's own name
+// ("ο αμφορέας", the amphora itself) standing in for the person selling it -
+// "how many amphorae did the amphora have?". Swapped for a distinct
+// occupational noun; kept off "κεραμέας" (pottery's own merchant, the twin
+// pair above) so the two stalls still read as different people.
 const AGORA_STALL_COUNT_TEXT_GR: Readonly<Record<AgoraStallType, string>> = {
-  amphorae: 'Πόσους αμφορείς είχε ο αμφορέας;',
+  amphorae: 'Πόσους αμφορείς είχε ο αγγειοπλάστης;',
   fish: 'Πόσα ψάρια είχε ο ψαράς;',
   cloth: 'Πόσα τόπια ύφασμα είχε ο υφαντής;',
   pottery: 'Πόσα πιθάρια είχε ο κεραμέας;',

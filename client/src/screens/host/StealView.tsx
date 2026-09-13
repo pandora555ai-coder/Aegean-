@@ -128,6 +128,12 @@ export function StealView({ steal, roomCode, paused, pausedByName }: StealViewPr
                 <Avatar avatarId={steal.thiefAvatarId} sizeRem={bannerAvatar} />
                 {steal.thiefName}
               </div>
+              {/* Task 243 - the banner named the thief but never why: this
+                  names the mechanic (fastest correct answer to the previous
+                  question) as its own nominative fact, no name involved. */}
+              <div style={{ ...styles.stealEarnerReason, color: 'var(--marble-3)' }} data-testid="steal-earner-reason">
+                Ταχύτερη σωστή απάντηση στην προηγούμενη ερώτηση
+              </div>
               <div
                 style={{
                   ...styles.questionTextTv,

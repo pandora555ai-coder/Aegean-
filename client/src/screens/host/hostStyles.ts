@@ -378,6 +378,15 @@ export const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     color: 'var(--marble)',
   },
+  // Task 243 - the earner-mechanic caption ("fastest correct answer"), a
+  // standalone nominative fact rather than a sentence built around the
+  // thief's name (same "no declension" reasoning as Task 235a below).
+  stealEarnerReason: {
+    fontSize: '1.35rem',
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+    color: 'var(--marble-3)',
+  },
   stealVictimRow: {
     display: 'flex',
     alignItems: 'center',

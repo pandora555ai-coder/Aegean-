@@ -244,7 +244,15 @@ async function playRound(room: RoomLike, plan: Array<{ sim: Sim; answer: 'correc
 async function newRoom(browser: Browser, playerCount: number): Promise<{ page: Page; sims: Sim[]; code: string; close: () => Promise<void> }> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await page.goto(`http://localhost:${CLIENT_PORT}/host`);
+  // Task 243 - ?clock=off: the page-wide digit sweep (pageDigits below) reads
+  // the whole body's innerText, and Task 239's GameClock renders an mm:ss
+  // string there throughout every scenario - 8 known false fails, all
+  // "0053"-shaped. The clock is cosmetic chrome, not part of the "no digits
+  // in the ceremony" claim this harness makes, so it's excluded at the
+  // source (never rendered) rather than carved out of the scan after the
+  // fact - the targeted scene-only digit check (sceneDigits) is untouched
+  // and stays exactly as strict.
+  await page.goto(`http://localhost:${CLIENT_PORT}/host?clock=off`);
   await page.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
