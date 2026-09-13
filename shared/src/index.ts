@@ -208,37 +208,148 @@ export const MIN_PLAYERS = 2;
 // (MAX_PLAYERS - MAX_BOTS = 1) even at a full room of bots.
 export const MAX_BOTS = 7;
 
-// ~150 common Greek first names, roughly balanced masculine/feminine,
-// including short forms people actually go by (Μάκης, Τάκης, Ρούλα,
-// Τούλα). Offered as a scrollable/searchable preset list in the join flow
-// (Task 26) - "Άλλο όνομα" falls back to free text for anyone not on it.
-// A name is considered "preset" (see Player.isPresetName) iff it appears
-// here verbatim - computed server-side, never trusted from the client.
+// Task 241 - 99 common Greek first names (53 masculine, 46 feminine),
+// replacing the earlier ~165-name list wholesale (that list's own custom-
+// name fallback is gone too - see PlayerJoinPayload/isValidPlayerName -
+// this IS the closed set now, exactly like AVATAR_CATALOGUE). A name is
+// considered "preset" (see Player.isPresetName) iff it appears here
+// verbatim - computed server-side, never trusted from the client.
+// VOCATIVE_FORMS (below) is this list's companion table: every entry here
+// has exactly one entry there.
 export const PRESET_NAMES: readonly string[] = [
   // masculine
-  'Γιώργος', 'Νίκος', 'Δημήτρης', 'Γιάννης', 'Κώστας', 'Χρήστος', 'Βασίλης', 'Παναγιώτης',
-  'Μιχάλης', 'Θανάσης', 'Ανδρέας', 'Αντώνης', 'Σπύρος', 'Θόδωρος', 'Στέλιος', 'Στέφανος',
-  'Άγγελος', 'Αλέξανδρος', 'Απόστολος', 'Αριστείδης', 'Γρηγόρης', 'Δημοσθένης', 'Ελευθέριος',
-  'Εμμανουήλ', 'Ευάγγελος', 'Ζήσης', 'Ηλίας', 'Θεόδωρος', 'Ιάσονας', 'Ιωάννης', 'Κλέαρχος',
-  'Κυριάκος', 'Λάμπρος', 'Λεωνίδας', 'Μάριος', 'Μενέλαος', 'Νεκτάριος', 'Ξενοφών', 'Οδυσσέας',
-  'Ορέστης', 'Παναγής', 'Παύλος', 'Περικλής', 'Πέτρος', 'Πλάτωνας', 'Πολύκαρπος', 'Σάββας',
-  'Σεραφείμ', 'Σίμος', 'Σταμάτης', 'Σωτήρης', 'Τάσος', 'Τρύφωνας', 'Φίλιππος', 'Φώτης',
-  'Χαράλαμπος', 'Ιάκωβος', 'Ματθαίος', 'Μάρκος', 'Λουκάς', 'Ραφαήλ', 'Γαβριήλ', 'Μιλτιάδης',
-  'Αχιλλέας', 'Διονύσης', 'Νικηφόρος', 'Θεοφάνης', 'Ευστάθιος', 'Κοσμάς', 'Παρασκευάς',
-  'Μάκης', 'Τάκης', 'Πάνος', 'Γιωργάκης', 'Δημητράκης', 'Βαγγέλης', 'Θύμιος', 'Λευτέρης',
-  'Μανώλης', 'Ορφέας',
+  'Νίκος', 'Γιώργος', 'Κώστας', 'Γιάννης', 'Μήτσος', 'Αλέξης', 'Θάνος', 'Τάκης', 'Λάκης',
+  'Μάκης', 'Σάκης', 'Μπάμπης', 'Παύλος', 'Άρης', 'Τάσος', 'Νάσος', 'Ηλίας', 'Θωμάς', 'Μηνάς',
+  'Λουκάς', 'Πέτρος', 'Σπύρος', 'Φώτης', 'Χάρης', 'Στάθης', 'Αργύρης', 'Αντώνης', 'Μανώλης',
+  'Μιχάλης', 'Ανδρέας', 'Ξενοφών', 'Στέλιος', 'Κυριάκος', 'Θοδωρής', 'Σωτήρης', 'Βαγγέλης',
+  'Λευτέρης', 'Βασίλης', 'Γρηγόρης', 'Παναγιώτης', 'Χρήστος', 'Σταύρος', 'Μάριος', 'Διονύσης',
+  'Άλκης', 'Φίλιππος', 'Οδυσσέας', 'Αχιλλέας', 'Ορέστης', 'Περικλής', 'Λάμπρος', 'Ντίνος', 'Τόλης',
   // feminine
-  'Μαρία', 'Ελένη', 'Κατερίνα', 'Σοφία', 'Άννα', 'Βασιλική', 'Δήμητρα', 'Ειρήνη', 'Αικατερίνη',
-  'Παναγιώτα', 'Γεωργία', 'Χριστίνα', 'Αγγελική', 'Αναστασία', 'Ευαγγελία', 'Θεοδώρα', 'Ιωάννα',
-  'Κωνσταντίνα', 'Μαργαρίτα', 'Νικολέτα', 'Ξένια', 'Ολυμπία', 'Παρασκευή', 'Ρωξάνη', 'Σταματία',
-  'Φωτεινή', 'Χαρίκλεια', 'Ζωή', 'Ηλέκτρα', 'Θάλεια', 'Ιουλία', 'Καλλιόπη', 'Λαμπρινή', 'Μελίνα',
-  'Μυρτώ', 'Νεφέλη', 'Ουρανία', 'Πηνελόπη', 'Ραφαέλα', 'Στέλλα', 'Τατιάνα', 'Φιλίτσα', 'Αφροδίτη',
-  'Άρτεμις', 'Δανάη', 'Ελισάβετ', 'Ζωίτσα', 'Θεανώ', 'Κυριακή', 'Λυδία', 'Μαρίνα', 'Ναταλία',
-  'Πολυξένη', 'Ρέα', 'Σεβαστή', 'Τερψιχόρη', 'Υπατία', 'Φανή', 'Χρυσή', 'Άλκηστη', 'Βέρα',
-  'Γιώτα', 'Δέσποινα', 'Ελπίδα', 'Ζαχαρούλα', 'Ρούλα', 'Τούλα', 'Λένα', 'Νίκη', 'Μάρω', 'Λίνα',
-  'Βίκυ', 'Ντίνα', 'Ζωζώ', 'Φρόσω', 'Ασπασία', 'Ασημίνα', 'Ερασμία', 'Θεοδοσία', 'Καλλιρόη',
-  'Μαρκέλλα', 'Ξανθίππη', 'Παρθένα', 'Σμαράγδα', 'Χρυσάνθη',
+  'Μαρία', 'Ελένη', 'Σοφία', 'Δήμητρα', 'Κατερίνα', 'Βάσω', 'Τούλα', 'Ρούλα', 'Λίτσα', 'Νίκη',
+  'Άννα', 'Φωφώ', 'Εύα', 'Ζωή', 'Χαρά', 'Πόπη', 'Σούλα', 'Ντίνα', 'Λιάνα', 'Ιωάννα', 'Ειρήνη',
+  'Βούλα', 'Μαρίνα', 'Μελιάνα', 'Χρύσα', 'Μάρω', 'Τζένη', 'Φανή', 'Ρένα', 'Αγγελική', 'Βασιλική',
+  'Αναστασία', 'Ελευθερία', 'Παρασκευή', 'Γεωργία', 'Παναγιώτα', 'Θεοδώρα', 'Σταυρούλα',
+  'Ευαγγελία', 'Κλειώ', 'Δανάη', 'Θάλεια', 'Νεφέλη', 'Αρετή', 'Όλγα', 'Λένα',
 ];
+
+// Task 241 - the vocative (κλητική) form of every PRESET_NAMES entry, for
+// second-person address ONLY (Socrates/the game speaking TO the player -
+// e.g. a lobby greeting). Third-person surfaces (scoreboard, steal banner,
+// standings, podium) must keep reading the nominative `name` field
+// directly and never call this. An explicit per-name table, not a runtime
+// regex: masculine names ending in -ΟΣ/-ΗΣ/-ΑΣ drop the final Σ (Νίκος ->
+// Νίκο, Γιάννης -> Γιάννη), feminine names are unchanged, ΞΕΝΟΦΩΝ is
+// unchanged (no final Σ to drop), and ΦΙΛΙΠΠΟΣ is the one irregular case
+// (-> ΦΙΛΙΠΠΕ, not the regular "Φίλιππο").
+export const VOCATIVE_FORMS: Readonly<Record<string, string>> = {
+  'Νίκος': 'Νίκο',
+  'Γιώργος': 'Γιώργο',
+  'Κώστας': 'Κώστα',
+  'Γιάννης': 'Γιάννη',
+  'Μήτσος': 'Μήτσο',
+  'Αλέξης': 'Αλέξη',
+  'Θάνος': 'Θάνο',
+  'Τάκης': 'Τάκη',
+  'Λάκης': 'Λάκη',
+  'Μάκης': 'Μάκη',
+  'Σάκης': 'Σάκη',
+  'Μπάμπης': 'Μπάμπη',
+  'Παύλος': 'Παύλο',
+  'Άρης': 'Άρη',
+  'Τάσος': 'Τάσο',
+  'Νάσος': 'Νάσο',
+  'Ηλίας': 'Ηλία',
+  'Θωμάς': 'Θωμά',
+  'Μηνάς': 'Μηνά',
+  'Λουκάς': 'Λουκά',
+  'Πέτρος': 'Πέτρο',
+  'Σπύρος': 'Σπύρο',
+  'Φώτης': 'Φώτη',
+  'Χάρης': 'Χάρη',
+  'Στάθης': 'Στάθη',
+  'Αργύρης': 'Αργύρη',
+  'Αντώνης': 'Αντώνη',
+  'Μανώλης': 'Μανώλη',
+  'Μιχάλης': 'Μιχάλη',
+  'Ανδρέας': 'Ανδρέα',
+  'Ξενοφών': 'Ξενοφών',
+  'Στέλιος': 'Στέλιο',
+  'Κυριάκος': 'Κυριάκο',
+  'Θοδωρής': 'Θοδωρή',
+  'Σωτήρης': 'Σωτήρη',
+  'Βαγγέλης': 'Βαγγέλη',
+  'Λευτέρης': 'Λευτέρη',
+  'Βασίλης': 'Βασίλη',
+  'Γρηγόρης': 'Γρηγόρη',
+  'Παναγιώτης': 'Παναγιώτη',
+  'Χρήστος': 'Χρήστο',
+  'Σταύρος': 'Σταύρο',
+  'Μάριος': 'Μάριο',
+  'Διονύσης': 'Διονύση',
+  'Άλκης': 'Άλκη',
+  'Φίλιππος': 'Φίλιππε',
+  'Οδυσσέας': 'Οδυσσέα',
+  'Αχιλλέας': 'Αχιλλέα',
+  'Ορέστης': 'Ορέστη',
+  'Περικλής': 'Περικλή',
+  'Λάμπρος': 'Λάμπρο',
+  'Ντίνος': 'Ντίνο',
+  'Τόλης': 'Τόλη',
+  'Μαρία': 'Μαρία',
+  'Ελένη': 'Ελένη',
+  'Σοφία': 'Σοφία',
+  'Δήμητρα': 'Δήμητρα',
+  'Κατερίνα': 'Κατερίνα',
+  'Βάσω': 'Βάσω',
+  'Τούλα': 'Τούλα',
+  'Ρούλα': 'Ρούλα',
+  'Λίτσα': 'Λίτσα',
+  'Νίκη': 'Νίκη',
+  'Άννα': 'Άννα',
+  'Φωφώ': 'Φωφώ',
+  'Εύα': 'Εύα',
+  'Ζωή': 'Ζωή',
+  'Χαρά': 'Χαρά',
+  'Πόπη': 'Πόπη',
+  'Σούλα': 'Σούλα',
+  'Ντίνα': 'Ντίνα',
+  'Λιάνα': 'Λιάνα',
+  'Ιωάννα': 'Ιωάννα',
+  'Ειρήνη': 'Ειρήνη',
+  'Βούλα': 'Βούλα',
+  'Μαρίνα': 'Μαρίνα',
+  'Μελιάνα': 'Μελιάνα',
+  'Χρύσα': 'Χρύσα',
+  'Μάρω': 'Μάρω',
+  'Τζένη': 'Τζένη',
+  'Φανή': 'Φανή',
+  'Ρένα': 'Ρένα',
+  'Αγγελική': 'Αγγελική',
+  'Βασιλική': 'Βασιλική',
+  'Αναστασία': 'Αναστασία',
+  'Ελευθερία': 'Ελευθερία',
+  'Παρασκευή': 'Παρασκευή',
+  'Γεωργία': 'Γεωργία',
+  'Παναγιώτα': 'Παναγιώτα',
+  'Θεοδώρα': 'Θεοδώρα',
+  'Σταυρούλα': 'Σταυρούλα',
+  'Ευαγγελία': 'Ευαγγελία',
+  'Κλειώ': 'Κλειώ',
+  'Δανάη': 'Δανάη',
+  'Θάλεια': 'Θάλεια',
+  'Νεφέλη': 'Νεφέλη',
+  'Αρετή': 'Αρετή',
+  'Όλγα': 'Όλγα',
+  'Λένα': 'Λένα',
+};
+
+// Looks up the vocative form for a preset name; falls back to the
+// nominative unchanged for anything not in the table (defensive only - a
+// name reaching this point that isn't in PRESET_NAMES shouldn't happen
+// post-241, since the join flow no longer accepts free text).
+export function getVocative(name: string): string {
+  return VOCATIVE_FORMS[name] ?? name;
+}
 
 export interface AvatarDefinition {
   id: string;
@@ -343,19 +454,27 @@ export interface HostRejoinPayload {
   code: RoomCode;
 }
 
-// NAME_TAKEN is gone (Task 26) - names may repeat now that identity is
-// name+avatar together, not name alone. AVATAR_TAKEN/INVALID_AVATAR cover
-// the new uniqueness/validity checks on the other half of that pair.
-export type JoinRejectedReason = 'ROOM_NOT_FOUND' | 'ROOM_FULL' | 'INVALID_NAME' | 'INVALID_AVATAR' | 'AVATAR_TAKEN';
+// NAME_TAKEN was removed in Task 26 (free-text names could repeat) and is
+// BACK as of Task 241: names are a closed preset list again, unique per
+// room exactly like avatars, so the same taken/invalid pairing now applies
+// to both halves of identity.
+export type JoinRejectedReason =
+  | 'ROOM_NOT_FOUND'
+  | 'ROOM_FULL'
+  | 'INVALID_NAME'
+  | 'NAME_TAKEN'
+  | 'INVALID_AVATAR'
+  | 'AVATAR_TAKEN';
 
-// A read-only "is this room joinable, and which avatars are already
+// A read-only "is this room joinable, and which avatars/names are already
 // claimed" lookup - fired from the room-code step of the join flow, BEFORE
-// player:join, so the avatar grid can grey out taken creatures up front
-// instead of only discovering a clash via JOIN_REJECTED after the fact.
-// Deliberately minimal (no player list, no settings) - this socket hasn't
-// joined the room yet and isn't owed anything beyond "can I join, and with
-// which avatar". The eventual player:join is still the sole source of
-// truth (this is a best-effort UI hint, not a reservation).
+// player:join, so the avatar grid AND (Task 241) the name list can grey out
+// taken picks up front instead of only discovering a clash via
+// JOIN_REJECTED after the fact. Deliberately minimal (no player list, no
+// settings) - this socket hasn't joined the room yet and isn't owed
+// anything beyond "can I join, and with which name/avatar". The eventual
+// player:join is still the sole source of truth (this is a best-effort UI
+// hint, not a reservation).
 export interface RoomPeekPayload {
   code: RoomCode;
 }
@@ -364,6 +483,7 @@ export interface RoomPeekResultPayload {
   code: RoomCode;
   found: boolean;
   takenAvatarIds: string[];
+  takenNames: string[];
 }
 
 export interface PlayerJoinPayload {
@@ -410,8 +530,9 @@ export interface Player {
   /** One of AVATAR_CATALOGUE's ids - unique per room, kept across reconnects. */
   avatarId: string;
   /** True iff `name` came verbatim from PRESET_NAMES - computed server-side
-   *  at join time, never trusted from the client. Task 25 (TTS) will use
-   *  this to pick pre-generated audio vs. live synthesis for spoken names. */
+   *  at join time, never trusted from the client. Always true since Task
+   *  241 (the join flow no longer accepts free text), kept as a field
+   *  rather than removed since Task 25 (TTS) still plans to read it. */
   isPresetName: boolean;
   /** Task 176 - a server-spawned bot player. Never VIP-eligible. */
   isBot: boolean;

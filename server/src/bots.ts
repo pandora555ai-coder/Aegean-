@@ -31,6 +31,7 @@ import {
   type BlitzShowPayload,
   type ClimbQuestionShowPayload,
   DUEL_WEAPONS,
+  PRESET_NAMES,
   type DuelPickShowPayload,
   type DrawShowPayload,
   type GuessShowPayload,
@@ -93,21 +94,6 @@ function sampleNumericValue(trueValue: number, max: number, accuracy: number): n
   const offset = (Math.random() * 2 - 1) * noiseScale;
   return Math.min(max, Math.max(1, Math.round(trueValue + offset)));
 }
-
-// Distinct Greek names, cycled if a room somehow asks for more than this
-// list has (never happens today - MAX_BOTS is well under it).
-const BOT_NAMES = [
-  'Γιώργος',
-  'Ελένη',
-  'Νίκος',
-  'Μαρία',
-  'Δημήτρης',
-  'Σοφία',
-  'Κώστας',
-  'Ειρήνη',
-  'Ανδρέας',
-  'Κατερίνα',
-];
 
 type BotProfile = 'fast' | 'slow';
 
@@ -466,7 +452,11 @@ export function spawnBots(code: string, count: number): void {
   botsByRoom.set(code, records);
 
   for (let i = 0; i < n; i++) {
-    const name = BOT_NAMES[i % BOT_NAMES.length];
+    // Task 241 - names now draw from PRESET_NAMES, from the END of the
+    // list, exactly the same "bots claim from the end, humans pick from
+    // the front" convention Task 223 established for avatars just below -
+    // with 99 names and MAX_BOTS=7 this never collides with a human pick.
+    const name = PRESET_NAMES[PRESET_NAMES.length - 1 - (i % PRESET_NAMES.length)];
     // Task 223 - from the END of the catalogue, not the start: a human
     // joining a bot room picks from the front of the same list, so this
     // keeps a bot and a human from colliding on the same avatar in the

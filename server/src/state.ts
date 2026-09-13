@@ -27,6 +27,7 @@ import {
   DEFAULT_GAME_MODE,
   SOCRATES_MAX_DURATION_MS,
   sanitizeCustomName,
+  PRESET_NAMES,
 } from '@game/shared';
 // The registry only - never modes/index.js, which imports the mode modules
 // (and through them phases.ts, which imports THIS file). registry.ts is a
@@ -647,8 +648,47 @@ export function normalizePlayerName(name: string): string {
   return sanitizeCustomName(name);
 }
 
+// Task 241 - the join flow no longer offers free text, so a valid name is
+// no longer just "non-empty after sanitizing": it must be a verbatim
+// PRESET_NAMES entry, checked server-side and never trusted from the
+// client (the same "never trust the client's own claim" posture as
+// isValidAvatarId below).
 export function isValidPlayerName(name: string): boolean {
-  return normalizePlayerName(name).length > 0;
+  const normalized = normalizePlayerName(name);
+  return normalized.length > 0 && (PRESET_NAMES as readonly string[]).includes(normalized);
+}
+
+// Names are unique PER ROOM, checked against every player who has ever
+// occupied a seat (connected or not) - the exact same shape as
+// isAvatarTaken below, so a disconnected player's name can't be stolen out
+// from under them either.
+export function isNameTaken(room: Room, name: string, excludePlayerId?: string): boolean {
+  for (const player of room.players.values()) {
+    if (player.playerId !== excludePlayerId && player.name === name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// True once every PRESET_NAMES entry is already claimed in this room - the
+// escape hatch that relaxes strict uniqueness (see player:join in
+// index.ts), mirroring allAvailableAvatarsTaken below. With 99 names and
+// MAX_PLAYERS=8 this never actually fires; it exists so a future name-list
+// shrink can't turn into a hard join block.
+export function allPresetNamesTaken(room: Room, excludePlayerId?: string): boolean {
+  const taken = new Set<string>();
+  for (const player of room.players.values()) {
+    if (player.playerId !== excludePlayerId) {
+      taken.add(player.name);
+    }
+  }
+  for (const presetName of PRESET_NAMES) {
+    if (!taken.has(presetName)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function isRoomFull(room: Room): boolean {

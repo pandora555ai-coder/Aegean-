@@ -17,6 +17,7 @@ import {
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
   ServerEvents,
+  getVocative,
   isAgoraQuestionHostPayload,
   isAgoraRevealHostPayload,
   isBlitzRevealHostPayload,
@@ -34,7 +35,6 @@ import {
   isSocratesHostPayload,
   isStealHostPayload,
   isTrialQuestionHostPayload,
-  sanitizeCustomName,
   stagesForLength,
   totalQuestionsForLength,
   type ActiveSabotage,
@@ -182,6 +182,7 @@ const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   ROOM_NOT_FOUND: 'Λάθος κωδικός δωματίου',
   ROOM_FULL: 'Το δωμάτιο είναι γεμάτο',
   INVALID_NAME: 'Μη έγκυρο όνομα',
+  NAME_TAKEN: 'Το όνομα μόλις πιάστηκε από άλλον παίκτη',
   INVALID_AVATAR: 'Μη έγκυρος χαρακτήρας',
   AVATAR_TAKEN: 'Ο χαρακτήρας μόλις πιάστηκε από άλλον παίκτη',
 };
@@ -473,22 +474,22 @@ export default function ControllerScreen() {
   // the code field stays hidden (assume valid until told otherwise) or
   // reappears with an invalid-code notice.
   const [deepLinkRoomFound, setDeepLinkRoomFound] = useState<boolean | null>(null);
-  // The identity picker (Task 26) - NAME then AVATAR, each one tap (or one
-  // typed line + confirm for a custom name) to move on, ending on a preview
-  // + the actual Join button, all on the avatar step - never a third
-  // screen. `selectedName` is the committed choice (preset tap OR a
-  // confirmed custom entry); `customDraft` is only the in-progress text
-  // field's own value, kept separate so switching back to the preset list
-  // never loses what was typed.
+  // The identity picker (Task 26, preset-only since Task 241) - NAME then
+  // AVATAR, each one tap to move on, ending on a preview + the actual Join
+  // button, all on the avatar step - never a third screen. `selectedName`
+  // is the committed preset pick; there is no custom-text fallback anymore
+  // (removed in Task 241 - PRESET_NAMES is now a closed list, exactly like
+  // AVATAR_CATALOGUE).
   const [joinStep, setJoinStep] = useState<'name' | 'avatar'>('name');
   const [nameFilter, setNameFilter] = useState('');
-  const [customNameMode, setCustomNameMode] = useState(false);
-  const [customDraft, setCustomDraft] = useState('');
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   // Best-effort UI hint only (see room:peek's doc comment in shared) - the
   // real, race-proof check happens server-side at the actual join attempt.
   const [peekedTakenAvatarIds, setPeekedTakenAvatarIds] = useState<string[]>([]);
+  // Task 241 - the same best-effort hint, now for names too (names are
+  // unique per room again).
+  const [peekedTakenNames, setPeekedTakenNames] = useState<string[]>([]);
   const availableAvatars = useAvailableAvatars();
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
   // The main socket-listener effect below is registered ONCE (empty deps,
@@ -870,6 +871,13 @@ export default function ControllerScreen() {
         setSelectedAvatarId(null);
         setJoinStep('avatar');
       }
+      if (payload.reason === 'NAME_TAKEN' || payload.reason === 'INVALID_NAME') {
+        // Task 241 - same idea as AVATAR_TAKEN above: someone else just
+        // claimed the name (or the preset list moved on) - drop it and send
+        // them back to the name step, which a fresh peek will also re-grey.
+        setSelectedName(null);
+        setJoinStep('name');
+      }
       // Task 174 - a stored identity that no longer holds (the room is gone,
       // most commonly - see PLAYER_JOIN's existing-player fast path, which
       // is the only route a resume ever takes and bypasses every OTHER
@@ -884,6 +892,7 @@ export default function ControllerScreen() {
     function handleRoomPeekResult(payload: RoomPeekResultPayload) {
       if (payload.code === codeRef.current) {
         setPeekedTakenAvatarIds(payload.takenAvatarIds);
+        setPeekedTakenNames(payload.takenNames);
         if (payload.code === deepLinkCodeRef.current) {
           setDeepLinkRoomFound(payload.found);
         }
@@ -1692,24 +1701,8 @@ export default function ControllerScreen() {
     setCode(event.target.value.replace(/\D/g, '').slice(0, 4));
   }
 
-  function handleCustomDraftChange(event: ChangeEvent<HTMLInputElement>) {
-    // Strip as-you-type - the same sanitizer the server re-runs, so what's
-    // on screen is always exactly what would be stored.
-    setCustomDraft(sanitizeCustomName(event.target.value));
-  }
-
   function handleSelectPresetName(presetName: string) {
     setSelectedName(presetName);
-    setCustomNameMode(false);
-    setJoinStep('avatar');
-  }
-
-  function handleConfirmCustomName() {
-    const cleaned = sanitizeCustomName(customDraft);
-    if (cleaned.length === 0) {
-      return;
-    }
-    setSelectedName(cleaned);
     setJoinStep('avatar');
   }
 
@@ -1743,6 +1736,11 @@ export default function ControllerScreen() {
   // with a duplicate, rather than getting stuck with nothing tappable.
   const poolExhausted =
     availableAvatars.length > 0 && availableAvatars.every((avatar) => peekedTakenAvatarIds.includes(avatar.id));
+
+  // Task 241 - the same escape hatch for names (mirrors allPresetNamesTaken
+  // server-side). With 99 names and MAX_PLAYERS=8 this never actually
+  // fires in practice.
+  const namePoolExhausted = PRESET_NAMES.every((presetName) => peekedTakenNames.includes(presetName));
 
   const canJoin = connected && code.length === 4 && selectedName !== null && selectedAvatarId !== null;
   const isVip = vipPlayerId === playerId;
@@ -3559,7 +3557,12 @@ export default function ControllerScreen() {
             👑 VIP
           </div>
         )}
-        <div style={styles.title}>{joined.name}</div>
+        {/* Task 241 - the one genuine second-person address in the app: a
+            lobby greeting spoken TO this player, so it's the vocative
+            (getVocative), never the raw nominative `joined.name` every
+            OTHER surface (plaques, steal banner, standings, podium) keeps
+            showing. */}
+        <div style={styles.title} data-testid="lobby-greeting">{`Καλώς ήρθες, ${getVocative(joined.name)}!`}</div>
         <div style={styles.subtitle}>waiting for the game to start</div>
         <div style={styles.lobbyCount}>
           {connectedCount} {connectedCount === 1 ? 'παίκτης' : 'παίκτες'} στο δωμάτιο
@@ -3766,85 +3769,41 @@ export default function ControllerScreen() {
         </div>
       )}
 
-      {joinStep === 'name' &&
-        (!customNameMode ? (
-          <>
-            <input
-              style={withDisabled(styles.input, !connected)}
-              disabled={!connected}
-              placeholder="Αναζήτηση ονόματος"
-              value={nameFilter}
-              onChange={(event) => setNameFilter(event.target.value)}
-              data-testid="name-search"
-            />
-            <div style={styles.nameList} data-testid="name-list">
-              {filteredPresetNames.map((presetName) => (
+      {joinStep === 'name' && (
+        <>
+          <input
+            style={withDisabled(styles.input, !connected)}
+            disabled={!connected}
+            placeholder="Αναζήτηση ονόματος"
+            value={nameFilter}
+            onChange={(event) => setNameFilter(event.target.value)}
+            data-testid="name-search"
+          />
+          <div style={styles.nameList} data-testid="name-list">
+            {filteredPresetNames.map((presetName) => {
+              // Task 241 - the exact same taken/exhausted shape the avatar
+              // grid below already uses (peekedTakenAvatarIds/poolExhausted).
+              const taken = !namePoolExhausted && presetName !== selectedName && peekedTakenNames.includes(presetName);
+              return (
                 <button
                   key={presetName}
                   type="button"
-                  style={withDisabled(styles.nameOption, !connected)}
-                  disabled={!connected}
+                  style={withDisabled(styles.nameOption, !connected || taken)}
+                  disabled={!connected || taken}
                   data-testid="preset-name-option"
+                  data-taken={taken}
                   onClick={() => handleSelectPresetName(presetName)}
                 >
                   {presetName}
                 </button>
-              ))}
-              {filteredPresetNames.length === 0 && (
-                <div style={styles.nameListEmpty}>Κανένα όνομα δεν ταιριάζει</div>
-              )}
-            </div>
-            <button
-              type="button"
-              style={withDisabled(styles.customNameButton, !connected)}
-              disabled={!connected}
-              data-testid="custom-name-toggle"
-              onClick={() => setCustomNameMode(true)}
-            >
-              Άλλο όνομα
-            </button>
-          </>
-        ) : (
-          <>
-            <input
-              style={withDisabled(styles.input, !connected)}
-              disabled={!connected}
-              // NOT MAX_NAME_LENGTH - that cap belongs on the SANITIZED
-              // result (sanitizeCustomName's own .slice), applied AFTER
-              // stripping. A native maxLength here would count raw
-              // keystrokes BEFORE stripping, so typed junk (digits,
-              // symbols) would eat into the letter budget - e.g. typing
-              // 17 raw characters where 5 are digits/symbols would cap at
-              // the first 12 raw chars, leaving only 9 real letters after
-              // stripping, instead of the full 12 the player is entitled
-              // to. This is just a generous paste/typing buffer.
-              maxLength={40}
-              placeholder="Το όνομά σου"
-              value={customDraft}
-              onChange={handleCustomDraftChange}
-              data-testid="custom-name-input"
-              autoFocus
-            />
-            <button
-              style={connected && customDraft.trim().length > 0 ? styles.button : styles.buttonDisabled}
-              type="button"
-              onClick={handleConfirmCustomName}
-              disabled={!connected || customDraft.trim().length === 0}
-              data-testid="custom-name-confirm"
-            >
-              Επόμενο
-            </button>
-            <button
-              type="button"
-              style={withDisabled(styles.skipButton, !connected)}
-              disabled={!connected}
-              data-testid="custom-name-cancel"
-              onClick={() => setCustomNameMode(false)}
-            >
-              ‹ Πίσω στη λίστα
-            </button>
-          </>
-        ))}
+              );
+            })}
+            {filteredPresetNames.length === 0 && (
+              <div style={styles.nameListEmpty}>Κανένα όνομα δεν ταιριάζει</div>
+            )}
+          </div>
+        </>
+      )}
 
       {joinStep === 'avatar' && (
         <>
@@ -4190,16 +4149,6 @@ const styles: Record<string, CSSProperties> = {
     padding: '0.75rem',
     textAlign: 'center',
     color: 'var(--carve)',
-    fontWeight: 600,
-  },
-  customNameButton: {
-    width: '100%',
-    fontSize: '1rem',
-    padding: '0.7rem',
-    borderRadius: '0.5rem',
-    border: '1px dashed var(--marble-3)',
-    background: 'transparent',
-    color: 'var(--marble-3)',
     fontWeight: 600,
   },
   previewRow: {

@@ -42,6 +42,8 @@ import {
   getPlayer,
   getRoom,
   isAvatarTaken,
+  isNameTaken,
+  allPresetNamesTaken,
   isRoomFull,
   isValidPlayerName,
   isVip,
@@ -804,11 +806,12 @@ io.on('connection', (socket) => {
     const { code } = payload;
     const room = getRoom(code);
     if (!room) {
-      socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: false, takenAvatarIds: [] });
+      socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: false, takenAvatarIds: [], takenNames: [] });
       return;
     }
     const takenAvatarIds = Array.from(new Set(Array.from(room.players.values()).map((player) => player.avatarId)));
-    socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: true, takenAvatarIds });
+    const takenNames = Array.from(new Set(Array.from(room.players.values()).map((player) => player.name)));
+    socket.emit(ServerEvents.ROOM_PEEK_RESULT, { code, found: true, takenAvatarIds, takenNames });
   });
 
   socket.on(ClientEvents.PLAYER_JOIN, (payload) => {
@@ -898,6 +901,15 @@ io.on('connection', (socket) => {
     }
 
     const trimmedName = normalizePlayerName(name);
+
+    // Task 241 - names are unique per room again, same escape-hatch shape
+    // as avatars (isNameTaken/allPresetNamesTaken mirror isAvatarTaken/
+    // allAvailableAvatarsTaken exactly).
+    if (isNameTaken(room, trimmedName) && !allPresetNamesTaken(room)) {
+      socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'NAME_TAKEN' });
+      return;
+    }
+
     const isPresetName = (PRESET_NAMES as readonly string[]).includes(trimmedName);
     const player: Player = {
       playerId,
