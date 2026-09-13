@@ -25,6 +25,7 @@ import {
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
   DEFAULT_GAME_MODE,
+  SOCRATES_MAX_DURATION_MS,
   sanitizeCustomName,
 } from '@game/shared';
 // The registry only - never modes/index.js, which imports the mode modules
@@ -327,6 +328,13 @@ export interface Room {
   // by the host on socrates:audio_ended so a stale ack (one belonging to a
   // beat the backstop already cut off) can be told apart from a real one.
   socratesBeatId: number;
+  // Task 238 - what the CURRENT Socrates beat's backstop timer was armed at
+  // (socratesBackstopMs: this line's own clip length plus a margin, or the
+  // flat unknown-duration fallback). Recorded because the timer itself only
+  // ever reports what is LEFT, and a resume rewrites its `durationMs` to the
+  // remainder - so buildSocratesPayload has nothing else to derive
+  // elapsed-since-armed from. Meaningless outside a SOCRATES beat.
+  socratesBackstopMs: number;
   // Sabotage (Task 28b) - what is actually running RIGHT NOW, keyed by
   // targetPlayerId. Only ever populated during QUESTION, and rebuilt from
   // scratch at the start of every one. A LIST since Task 31a: at most one
@@ -450,6 +458,7 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     gameIntroPlayed: false,
     pendingSocratesQueue: [],
     socratesBeatId: 0,
+    socratesBackstopMs: SOCRATES_MAX_DURATION_MS,
     pendingSocratesBeat: null,
     activeSabotageByTarget: new Map(),
     shuffledOptionsByTarget: new Map(),
@@ -824,6 +833,7 @@ export function resetRoomForNewGame(room: Room): void {
   // Task 236 - no half-played narration survives into the next game.
   room.pendingSocratesQueue = [];
   room.socratesBeatId = 0;
+  room.socratesBackstopMs = SOCRATES_MAX_DURATION_MS;
   room.activeSabotageByTarget.clear();
   room.shuffledOptionsByTarget.clear();
   // No unspent power-up choice carries over from the game that just ended.

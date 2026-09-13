@@ -597,6 +597,47 @@ function getVipRoomForSocket(
   return room;
 }
 
+// Task 238 - THE one way a Socrates beat ends early, whoever asked for it: the
+// host's audio ack (socrates:audio_ended), the VIP's skip (vip:skip_socrates)
+// and vip:next's own SOCRATES branch all land here. A skip is deliberately NOT
+// a second advance path that happens to look like the first - it IS the first,
+// synthesising exactly the advance a natural end produces, so a sequence's
+// next line, the finale's staging and every continuation behave identically
+// whether the audio finished or somebody cut it short.
+//
+// `beatId` is validated the same way for all three (Task 236's rule, unchanged):
+// an id that is no longer the beat on screen is stale and does nothing, while
+// an absent id means "whatever is current" - which is what a client that sends
+// none (bots.ts's harness ack, vip:next) has always meant, and is what makes a
+// VIP who reconnected mid-beat still able to skip it.
+function endSocratesBeat(room: Room, beatId: unknown, source: string): void {
+  if (room.phase !== 'SOCRATES') {
+    console.log(`rejected ${source} for room ${room.code}: phase is ${room.phase}, not SOCRATES`);
+    return;
+  }
+  // A suspended AudioContext can't fire an ack - genuinely can't happen - but
+  // reject it anyway, the same defensive stance vip:next already takes, rather
+  // than trust a client that shouldn't be able to. A skip is refused while
+  // paused for the plainer reason that nothing may advance past a pause.
+  if (room.paused) {
+    console.log(`rejected ${source} for room ${room.code}: game is paused`);
+    return;
+  }
+  // A STALE id: this one belongs to a beat that is already over (the backstop
+  // cut an over-long clip off and its audio finished afterwards; or the VIP
+  // pressed Παράλειψη twice inside one beat). Acting on it would advance the
+  // beat currently on screen as well, losing it entirely.
+  if (typeof beatId === 'number' && beatId !== room.socratesBeatId) {
+    console.log(`rejected ${source} for room ${room.code}: stale beat ${beatId}, current is ${room.socratesBeatId}`);
+    return;
+  }
+  console.log(`room ${room.code} Socrates beat ${room.socratesBeatId} ended (${source}) - advancing`);
+  // Task 138 - dispatched through the room's own MODE, never a hardcoded call
+  // to the quiz's advanceFromSocrates: draw/numeric/agora enter this same
+  // wire-level phase under their own timer kinds.
+  continuationForActiveTimer(room)?.();
+}
+
 // Authorises a player:* event that ANY connected player may send (not just
 // the VIP) - pause/resume is deliberately open to everyone, since anyone
 // might need a break. Still requires a genuine connected player, never the
@@ -1246,8 +1287,11 @@ io.on('connection', (socket) => {
     // now enter this same wire-level phase under their own timer kinds
     // ('DRAW_SOCRATES'/'NUMERIC_SOCRATES'), each with its own advance-from-here.
     if (room.phase === 'SOCRATES') {
-      console.log(`room ${room.code} skipped past Socrates (VIP)`);
-      continuationForActiveTimer(room)?.();
+      // Task 238 - through the ONE beat-ending path, exactly as the audio ack
+      // and vip:skip_socrates do. No beat id: this event carries none and
+      // never has, which reads as "whatever is on screen" - unchanged
+      // behaviour, now expressed as the same call everything else makes.
+      endSocratesBeat(room, undefined, `${ClientEvents.VIP_NEXT} (VIP skip past Socrates)`);
       return;
     }
 
@@ -1301,34 +1345,25 @@ io.on('connection', (socket) => {
       onDuelAudioEnded(room);
       return;
     }
-    if (room.phase !== 'SOCRATES') {
-      console.log(`rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: phase is ${room.phase}, not SOCRATES`);
+    // Task 236's phase/pause/stale-beat rules all live in endSocratesBeat as
+    // of Task 238 - shared verbatim with the VIP skip below, so the two can
+    // never drift into validating the same ack differently.
+    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.SOCRATES_AUDIO_ENDED);
+  });
+
+  // Task 238 - the VIP cuts the beat currently on screen short from their own
+  // phone. Server-authoritative in the strict sense: the phone sends only WHICH
+  // beat it means, and this synthesises precisely the advance that beat's own
+  // audio ack would have produced (same function, same validation, same
+  // mode-generic continuation). Mid-sequence that means the NEXT line of the
+  // narration, never a jump past the whole narration - the queue drain in
+  // advanceFromSocrates is what decides that, and it is untouched here.
+  socket.on(ClientEvents.VIP_SKIP_SOCRATES, (payload) => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_SKIP_SOCRATES);
+    if (!room) {
       return;
     }
-    // A suspended AudioContext can't fire this - genuinely can't happen -
-    // but reject it anyway, the same defensive stance as VIP_NEXT's own
-    // pause check, rather than trust a client that shouldn't be able to.
-    if (room.paused) {
-      console.log(`rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: game is paused`);
-      return;
-    }
-    // Task 236 - a STALE ack: this one belongs to a beat that is already
-    // over (the backstop cut an over-long clip off, and its audio finished
-    // afterwards, by which time the next line of a narration was on screen).
-    // Acting on it would advance the beat currently playing as well, losing
-    // it entirely. An ack with no beatId at all is accepted - that is the
-    // ordinary single-beat case from a client that sends none.
-    const ackBeatId = (payload as { beatId?: unknown } | undefined)?.beatId;
-    if (typeof ackBeatId === 'number' && ackBeatId !== room.socratesBeatId) {
-      console.log(
-        `rejected ${ClientEvents.SOCRATES_AUDIO_ENDED} for room ${room.code}: ` +
-          `stale beat ${ackBeatId}, current is ${room.socratesBeatId}`,
-      );
-      return;
-    }
-    console.log(`room ${room.code} Socrates audio ended - advancing`);
-    // Task 138 - same mode-generic dispatch as the VIP skip above.
-    continuationForActiveTimer(room)?.();
+    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.VIP_SKIP_SOCRATES);
   });
 
   // Task 53 - dev-only sink for the /dev/draw harness. No room and no

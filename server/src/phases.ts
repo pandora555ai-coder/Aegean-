@@ -35,6 +35,9 @@ import {
   type Room,
   type TrialState,
 } from './state.js';
+// Task 238 - each Socrates beat's backstop is derived from ITS OWN clip's
+// length, so the phase machine has to ask how long this line actually runs.
+import { socratesBackstopMs } from './socratesAudio.js';
 // The registry only - a leaf module (see modes/registry.ts), so this keeps the
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
@@ -367,18 +370,30 @@ export function enterSocratesBeat(
   // reads it.
   room.socratesBeatId += 1;
   room.phase = 'SOCRATES';
-  // Same backstop-at-the-ceiling arming as every other Socrates beat (see
-  // startSocratesIfLineFired) - the normal path out is still the client's
-  // SOCRATES_AUDIO_ENDED ack.
-  armActiveTimer(room, timerKind, SOCRATES_MAX_DURATION_MS, onFire);
+  // Task 238 - armed against THIS line's own clip (plus a margin) rather than
+  // a flat ceiling, so a long clip is no longer cut off mid-word. Recorded on
+  // the room because buildSocratesPayload needs to know what the span was in
+  // order to derive elapsed-since-armed from what the timer says is left.
+  room.socratesBackstopMs = socratesBackstopMs(beat.lineTemplate || null, beat.lineTag);
+  armActiveTimer(room, timerKind, room.socratesBackstopMs, onFire);
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Task 238 - the whole room learns WHICH beat is up (the id only; the line
+  // stays host-only below), so the VIP's phone can name the beat it skips.
+  io.to(room.code).emit(ServerEvents.SOCRATES_BEAT, { beatId: room.socratesBeatId });
   emitCrowdIntensity(room);
   const payload = buildSocratesPayload(room);
   if (payload && room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
   }
-  console.log(`room ${room.code} Socrates (${beat.kind}) — "${beat.line}"`);
+  // Task 238 - the armed span is stated out loud: a beat that ends on its own
+  // audio leaves an "ended (...)" line behind it, and one that does NOT is a
+  // backstop firing, so these two lines together say which happened and what
+  // the deadline actually was.
+  console.log(
+    `room ${room.code} Socrates (${beat.kind}) beat ${room.socratesBeatId} ` +
+      `backstop=${room.socratesBackstopMs}ms — "${beat.line}"`,
+  );
 }
 
 // Task 48 - the shared entry for the quiz's three one-shot beats (GAME_INTRO/
@@ -862,21 +877,35 @@ function startSocratesIfLineFired(room: Room): boolean {
   }
 
   room.phase = 'SOCRATES';
+  // Task 238 - a REVEAL-moment beat gets its own id too. It always had one on
+  // the wire (buildSocratesPayload reads room.socratesBeatId regardless), but
+  // nothing incremented it here, so every such beat reused the id of whatever
+  // beat came before it. Harmless while only a stale AUDIO ack was being
+  // filtered; not harmless once a VIP skip is identified the same way, since
+  // one press could then match two different beats.
+  room.socratesBeatId += 1;
   // Armed BEFORE the payload is built - it reports the timer's remaining
-  // time, so it has to exist first. Task 42c: armed at the CEILING, not this
-  // line's own estimated audio length - the normal path out of this phase is
-  // now the client's SOCRATES_AUDIO_ENDED ack (index.ts), fired the instant
-  // its clip genuinely finishes, whatever that actually takes (network/decode
-  // latency included). This timer is only the backstop for when that ack
-  // never arrives at all (host muted, file missing, ack lost) - arming it at
-  // the per-line estimate instead would reintroduce exactly the "phase ends
-  // before the clip finishes" race this task exists to fix.
-  armQuizTimer(room, 'SOCRATES', SOCRATES_MAX_DURATION_MS, () => advanceFromSocrates(room.code));
+  // time, so it has to exist first. Task 42c: the normal path out of this
+  // phase is the client's SOCRATES_AUDIO_ENDED ack (index.ts), fired the
+  // instant its clip genuinely finishes, whatever that actually takes
+  // (network/decode latency included). This timer is only the backstop for
+  // when that ack never arrives at all (host muted, file missing, ack lost).
+  // Task 238: that backstop now sits a fixed margin past THIS line's own
+  // measured clip instead of at a flat ceiling shorter than some of them -
+  // still comfortably clear of the ack, so the "phase ends before the clip
+  // finishes" race Task 42c fixed stays fixed.
+  room.socratesBackstopMs = socratesBackstopMs(
+    room.lastReveal.socratesLineTemplate ?? null,
+    room.lastReveal.socratesLineTag ?? null,
+  );
+  armQuizTimer(room, 'SOCRATES', room.socratesBackstopMs, () => advanceFromSocrates(room.code));
   // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a
   // steal) set is the mood he's speaking into, and re-setting it here would
   // stomp the cheer/boo this beat is a reaction to.
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  // Task 238 - see enterSocratesBeat: the id only, room-wide.
+  io.to(room.code).emit(ServerEvents.SOCRATES_BEAT, { beatId: room.socratesBeatId });
   emitCrowdIntensity(room);
   // Host only - the phones are controllers and never show commentary; they
   // stay on their own reveal result until the next question arrives.
@@ -884,7 +913,11 @@ function startSocratesIfLineFired(room: Room): boolean {
   if (payload && room.hostSocketId) {
     io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_SHOW, payload);
   }
-  console.log(`room ${room.code} Socrates — "${room.lastReveal.socratesLine}"`);
+  // Task 238 - same shape as enterSocratesBeat's own line above.
+  console.log(
+    `room ${room.code} Socrates beat ${room.socratesBeatId} ` +
+      `backstop=${room.socratesBackstopMs}ms — "${room.lastReveal.socratesLine}"`,
+  );
   return true;
 }
 

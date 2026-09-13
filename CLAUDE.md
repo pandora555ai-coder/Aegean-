@@ -874,12 +874,25 @@ symlink. A FULL regeneration (all 254 lines) instead writes to a staging
 dir via ALT_OUTPUT_DIR and is swapped in only by running
 `dev/voice/swap-staging.sh`, which refuses to swap unless the staged file
 count matches what's expected.
-SOCRATES ends on socrates:audio_ended from the host; SOCRATES_MAX_DURATION_MS
-(11000ms) is the backstop AND, measurably, a CEILING: Task 236 timed a
-13.9s clip being cut off at 11006ms. (This section used to claim "never a
-limit — an over-long clip really does hold the phase that long". It does
-not: the backstop fires and advances the phase.) Four wired lines exceed
-the cap and are truncated — see the over-cap note below.
+SOCRATES ends on socrates:audio_ended from the host. **AUDIO LENGTH IS
+AUTHORITATIVE since Task 238** — an explicit Argyrios decision (2026-09-13)
+to raise what was a flat cap, which is why the "never raise the cap" rule
+below now reads differently than it did. The phase's backstop is armed
+PER BEAT at that line's own clip + SOCRATES_BACKSTOP_MARGIN_MS (3000ms), or
+a flat SOCRATES_BACKSTOP_UNKNOWN_MS (15000ms) when the clip's length can't
+be measured at all; `socratesBackstopMs` (server/src/socratesAudio.ts) is
+the one place that decides, and the armed value is echoed in the server log
+(`Socrates ... beat N backstop=Xms`) and kept on room.socratesBackstopMs so
+buildSocratesPayload can still derive its countdown. SOCRATES_MAX_DURATION_MS
+(11000ms) is NO LONGER that backstop: it survives only as the duel's
+early-lock ceiling (onDuelLockTimer) and as the neutral value the field holds
+outside a beat. Clip length comes from the mp3's BYTE SIZE (CBR, Task 42b) —
+measured against ffprobe over all 283 files in Task 238, within 32ms every
+time and always erring slightly HIGH, which is the safe direction here.
+That source cannot regress the Task 154 missing-clip path: it is read
+server-side when the beat is ARMED, while Task 154 is a CLIENT behaviour
+(a 404/decode failure calls onEnded at once), and an ack is accepted the
+moment it arrives whatever the backstop was set to — measured at 1ms.
 **socrates:audio_ended carries a `beatId` (Task 236)** and the server drops
 an ack whose id isn't the beat currently on screen. An over-cap clip is cut
 off by the backstop and its audio finishes AFTERWARDS, so its ack lands
@@ -888,16 +901,49 @@ another directly that was harmless (the phase check rejected it), but in a
 sequence it advanced twice and swallowed a line whole. Deliberately an
 identity check, not a "too early" check: a missing clip legitimately acks
 at ~0ms (Task 154) carrying the CURRENT id, and must still end the beat.
-Measured ~100ms of audio per character: keep a line under ~95 characters to
-land under the cap. Never raise the cap to make a clip fit — shorten the
-line instead (Task 149).
-**Four ACTIVE lines are over the cap and are audibly truncated**, all from
-Task 230's batch and wired by Task 236: Εισαγωγή#9 (12.4s), Παλαίστρα#11
-(11.2s), Ζωγραφική#15 (11.0s) and Ανάβασις#22 (13.9s). Fixing them means
-shortening the text and REGENERATING (a new lineHash, a new file), which
-236 was forbidden to do — so this is known and outstanding, not a bug to
-re-diagnose. Ανάβασις#21 (9.3s, complete) is the line that actually states
-the climb's scoring rule, so the rule still lands despite #22's truncation.
+**A beat has exactly ONE way to end early, whoever asked (Task 238).**
+`endSocratesBeat` (server/src/index.ts) owns the phase/pause/stale-beat
+rules, and all three callers go through it: the host's audio ack, the VIP's
+new `vip:skip_socrates`, and `vip:next`'s own SOCRATES branch. A skip is NOT
+a parallel advance — it synthesises exactly the advance the natural end
+produces, so mid-sequence it plays the NEXT line rather than jumping the
+narration (the queue drain in advanceFromSocrates decides that, untouched).
+The server log says which fired: `Socrates beat N ended (<event>) -
+advancing`, identical but for the event name, and a beat that leaves NO such
+line was ended by its backstop instead. `ServerEvents.SOCRATES_BEAT` carries
+the beat id ROOM-WIDE (the id alone — the line itself stays host-only) so the
+VIP's phone can name what it is skipping; a second press inside one beat
+cites an id that is no longer current and is refused as stale, and a press
+with NO id means "whatever is current" (so a VIP who reloaded mid-beat can
+still skip). `startSocratesIfLineFired` now increments `socratesBeatId` too —
+pre-238 only `enterSocratesBeat` did, so every REVEAL-moment beat reused the
+previous beat's id, which was harmless for a stale AUDIO ack but would have
+let one press match two beats. The phone's control is
+`data-testid="socrates-skip-button"`, rendered on the reveal card and on the
+waiting screen (the intro/stage beats have no round view of their own); a
+non-VIP renders no such node at all — a branch, not a disabled control.
+Check: `npx tsx dev/socrates-pacing-check.ts` (in-process real server on
+3917, so the harness reads the LIVE Room and reports what the timer was
+ACTUALLY armed at; `SCENARIO=A|B|C|D|E` runs one). Beats are driven through
+the real sequence machinery rather than waiting out a ~14-minute show for
+lines that are random pool picks — #11 is 1 of 3 and #15 is 1 of 2, so a live
+run covers all four over-cap clips about one time in six.
+Measured ~100ms of audio per character. Keep a line short because a room
+will not sit through a lecture — NOT because the phase will cut it off; it
+no longer will (Task 238). Task 149's "shorten the line rather than raise
+the cap" still stands as PACING advice, but it is no longer a correctness
+rule, and the cap it referred to is gone.
+**The four over-cap lines are no longer truncated (Task 238).** All four are
+from Task 230's batch, wired by Task 236: Εισαγωγή#9, Παλαίστρα#11,
+Ζωγραφική#15 and Ανάβασις#22. Each now plays to its natural end — measured,
+in that order: clips of 12356/11233/10998/13949ms held for 12357/11233/
+10998/13949ms against backstops of 15388/14264/14029/16981ms, every one
+advancing on its own audio ack with the backstop firing zero times
+(`SCENARIO=A npx tsx dev/socrates-pacing-check.ts`). Ζωγραφική#15 is the
+subtle one: ffprobe says 10998ms, UNDER the old 11000ms cap, but the server's
+byte-size estimate says 11029ms and that estimate is what the cap clamped —
+so judge "over-cap" by the estimate, never by ffprobe. Ανάβασις#21 (9.3s) was
+always complete and still is.
 Since Task 154 the host PREFETCHES every active clip on LOBBY entry: it
 emits dev:get_voice_lines, the server answers with collectVoiceLineEntries'
 hash list, and prefetchSocratesLines (useGameAudio.ts:290) fetches each

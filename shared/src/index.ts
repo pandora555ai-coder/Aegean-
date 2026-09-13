@@ -43,6 +43,13 @@ export const ClientEvents = {
   // useGameAudio.playSocratesLine), so the server can end the beat exactly
   // then instead of guessing a duration up front.
   SOCRATES_AUDIO_ENDED: 'socrates:audio_ended',
+  // Task 238 - the VIP cuts the commentary beat currently on screen short.
+  // Carries the beat id the phone was last told about, so the server can put
+  // it through the SAME staleness check a real audio ack goes through: a
+  // second press within one beat cites an id that is no longer current and is
+  // rejected, exactly as a late ack would be. This is a PLAYER event (VIP
+  // only), unlike SOCRATES_AUDIO_ENDED, which only the host may send.
+  VIP_SKIP_SOCRATES: 'vip:skip_socrates',
   // Task 53 - dev-only drawing harness (/dev/draw). Not part of any game
   // phase yet: the real draw phase will get its own player:* event with a
   // room/phase check. This one exists so the surface can be tried on a
@@ -111,6 +118,12 @@ export const ServerEvents = {
   POWER_UP_CHOICE_ACCEPTED: 'power_up:choice_accepted',
   STAGE_ANNOUNCE: 'stage:announce',
   SOCRATES_SHOW: 'socrates:show',
+  // Task 238 - which beat is on screen, to the WHOLE room rather than just the
+  // host. Carries the id and nothing else: no line text, no template, no tag,
+  // so a phone still learns nothing about what Socrates is saying (that stays
+  // host-only, SOCRATES_SHOW's job). The VIP's phone needs the id to be able
+  // to name the beat it is skipping - see VIP_SKIP_SOCRATES.
+  SOCRATES_BEAT: 'socrates:beat',
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
@@ -1562,18 +1575,32 @@ export const SOCRATES_VOICE_DIR = 'voice';
 // without decoding it or adding an audio-parsing dependency.
 export const AUDIO_BITRATE_KBPS = 64;
 
-// The audio-driven SOCRATES duration (totalDurationMs, an ESTIMATE used only
-// for the progress bar) never goes below the fallback (a very short clip
-// still needs a moment to read) or above this cap. Task 42c: this is ALSO
-// what the server actually arms the phase's real advance timer at - a
-// backstop for "the client's audio_ended ack never arrives" (host muted, the
-// file's missing, or the ack itself got lost), not the normal path, which
-// ends the phase exactly when the client reports the clip truly finished
-// (see SOCRATES_AUDIO_ENDED). Must comfortably exceed the longest actually
-// generated clip - `npm run voice:generate` reports that length after every
-// run (last measured: ~9436ms, Task 51's HOT_STREAK_5 line) - with real
-// headroom for normal network/decode latency before playback even starts.
+// Task 238 - NO LONGER the SOCRATES phase's backstop, and no longer a cap on
+// the reported audio duration either. It was both until this task: a flat
+// ceiling that had to "comfortably exceed the longest generated clip", which
+// four wired clips had quietly grown past (Ανάβασις#22 at 13.9s lost ~2.9s to
+// it). AUDIO LENGTH IS AUTHORITATIVE now - see socratesBackstopMs
+// (server/src/socratesAudio.ts), which arms each beat against ITS OWN clip.
+// Kept as the duel's early-lock ceiling (onDuelLockTimer, phases.ts), which is
+// not an audio-driven beat, and as the neutral initial value of
+// room.socratesBackstopMs outside any beat.
 export const SOCRATES_MAX_DURATION_MS = 11000;
+
+// Task 238 - how far PAST a clip's own measured length that clip's beat is
+// allowed to run before the backstop gives up on ever hearing an ack. Room for
+// the fetch/decode latency before playback even starts, and for the ack's own
+// trip back, without being so wide that genuinely wedged audio strands the
+// show. The normal way out of the phase remains the client's ack, so this
+// margin is dead time only when something has actually gone wrong.
+export const SOCRATES_BACKSTOP_MARGIN_MS = 3000;
+
+// Task 238 - the backstop for a beat whose clip length CANNOT be measured (no
+// pre-generated file on this server's disk, or an unreadable one). Deliberately
+// NOT "the 4s floor plus the margin": an unmeasurable clip may still be a long
+// one, and cutting it off at 7s would be the very truncation this task exists
+// to remove. In practice a missing file makes the CLIENT ack at ~0ms (Task
+// 154), so this ceiling is reached only when audio is genuinely hung.
+export const SOCRATES_BACKSTOP_UNKNOWN_MS = 15000;
 
 // sha256(template [+ tag]), hex, first 16 chars - deliberately synchronous
 // and dependency-free (no node:crypto, which the browser build can't
@@ -1660,9 +1687,31 @@ function sha256Hex(input: string): string {
 
 export interface VipNextPayload {}
 
-// Task 42c - empty like VipNextPayload above; the event itself (host-only,
-// current SOCRATES beat only - see the server handler) is the whole signal.
-export interface SocratesAudioEndedPayload {}
+// Task 42c - the event itself (host-only, current SOCRATES beat only - see the
+// server handler) is most of the signal. Task 236 added `beatId`, which the
+// host echoes back off the SocratesShowPayload it is acking, so the server can
+// tell a real completion from one belonging to a beat that is already over;
+// it was sent on the wire from that task on but only typed here in Task 238.
+// Optional because an ack carrying no id at all is still accepted (the
+// ordinary single-beat case from a client that sends none).
+export interface SocratesAudioEndedPayload {
+  beatId?: number;
+}
+
+// Task 238 - the VIP's "Παράλειψη" press. `beatId` is whichever beat that
+// phone was last told is on screen (SocratesBeatPayload); the server accepts
+// it only while it is still the current one, so a double-press is idempotent
+// rather than skipping two beats of a narration.
+export interface VipSkipSocratesPayload {
+  beatId?: number;
+}
+
+// Task 238 - room-wide, and deliberately ONLY the id: the line itself stays
+// host-only (SocratesShowPayload). A phone learns that a beat is on screen and
+// which one, never what is being said.
+export interface SocratesBeatPayload {
+  beatId: number;
+}
 
 // Every player's current score + rank, in room.players' insertion (join)
 // order - NEVER re-sorted by score, so the TV's persistent score column
@@ -3416,6 +3465,7 @@ export type ClientToServerEvents = {
   [ClientEvents.POWER_UP_CHOOSE]: (payload: PowerUpChoosePayload) => void;
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
+  [ClientEvents.VIP_SKIP_SOCRATES]: (payload: VipSkipSocratesPayload) => void;
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
   [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
   [ClientEvents.DEV_GET_VOICE_LINES]: () => void;
@@ -3452,6 +3502,7 @@ export type ServerToClientEvents = {
   [ServerEvents.POWER_UP_CHOICE_ACCEPTED]: (payload: PowerUpChoiceAcceptedPayload) => void;
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
   [ServerEvents.SOCRATES_SHOW]: (payload: SocratesShowPayload) => void;
+  [ServerEvents.SOCRATES_BEAT]: (payload: SocratesBeatPayload) => void;
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;

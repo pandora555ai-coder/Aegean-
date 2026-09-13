@@ -517,6 +517,15 @@ export default function ControllerScreen() {
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealPlayerPayload | null>(null);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
+  // Task 238 - which Socrates beat is on screen right now (socrates:beat
+  // carries the id and nothing else; the line itself never reaches a phone).
+  // Null outside a beat. The VIP's Παράλειψη cites it so the server can tell a
+  // real press from a second one inside the same beat.
+  const [socratesBeatId, setSocratesBeatId] = useState<number | null>(null);
+  // Cosmetic half of that same guard: the button stops responding the instant
+  // it is pressed, rather than waiting for the next beat to prove the press
+  // landed. The server is still the authority - a stale id is refused there.
+  const [socratesSkipSent, setSocratesSkipSent] = useState(false);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
@@ -786,8 +795,23 @@ export default function ControllerScreen() {
       setBlitzIndex(payload?.answeredCount ?? 0);
     }
 
+    // Task 238 - host-only commentary stays host-only: this carries the beat's
+    // id alone, purely so the VIP's phone can name what it is skipping.
+    function handleSocratesBeat(payload: { beatId: number }) {
+      setSocratesBeatId(payload.beatId);
+      setSocratesSkipSent(false);
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       setPhase(payload.phase);
+      // Task 238 - phase-scoped state, cleared on EVERY transition out of the
+      // beat rather than only the one that "normally" ends it (the Task 140
+      // rule): a beat id left standing would otherwise let a later press cite
+      // a beat that is long gone.
+      if (payload.phase !== 'SOCRATES') {
+        setSocratesBeatId(null);
+        setSocratesSkipSent(false);
+      }
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
         // view so we fall back to the `joined` waiting view below, with no
@@ -1497,6 +1521,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
+    socket.on(ServerEvents.SOCRATES_BEAT, handleSocratesBeat);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -1534,6 +1559,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
+      socket.off(ServerEvents.SOCRATES_BEAT, handleSocratesBeat);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -1937,6 +1963,18 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_NEXT, {});
   }
 
+  // Task 238 - skip the commentary beat on screen. Sends the beat id when this
+  // phone knows one; omits it after a reconnect mid-beat, which the server
+  // reads as "whatever is current" (the same rule an ack with no id follows),
+  // so a VIP who reloaded can still skip.
+  function handleSkipSocrates() {
+    if (socratesSkipSent || inputsLocked) {
+      return;
+    }
+    setSocratesSkipSent(true);
+    socket.emit(ClientEvents.VIP_SKIP_SOCRATES, socratesBeatId !== null ? { beatId: socratesBeatId } : {});
+  }
+
   function handlePlayAgain() {
     socket.emit(ClientEvents.VIP_PLAY_AGAIN, {});
   }
@@ -2223,7 +2261,18 @@ export default function ControllerScreen() {
           </div>
         )}
         {isVip && !inputsLocked && (
-          <button data-testid="continue-button" style={styles.skipButton} type="button" onClick={handleNext}>
+          // Task 238 - the phone stays on this reveal card while Socrates
+          // speaks, so this one button covers both: past the REVEAL itself,
+          // and past the commentary beat that may follow it. During the beat
+          // it goes through the beat-ending path (which validates the id and
+          // synthesises the natural end) rather than vip:next's blunter skip.
+          <button
+            data-testid={phase === 'SOCRATES' ? 'socrates-skip-button' : 'continue-button'}
+            style={styles.skipButton}
+            type="button"
+            disabled={phase === 'SOCRATES' && socratesSkipSent}
+            onClick={phase === 'SOCRATES' ? handleSkipSocrates : handleNext}
+          >
             Παράλειψη
           </button>
         )}
@@ -3652,6 +3701,24 @@ export default function ControllerScreen() {
           <div style={styles.lookAtTv} data-testid="game-started-notice">
             Το παιχνίδι ξεκίνησε — κοίτα την τηλεόραση
           </div>
+        )}
+
+        {/* Task 238 - the opening narration and every stage announcement play
+            before this phone has any round view of its own, so without this
+            the VIP had no way to cut a beat short outside a REVEAL. Gated on
+            the beat actually being on screen, so it never appears in a real
+            LOBBY; non-VIP phones render nothing here at all (a branch, not a
+            disabled control). */}
+        {isVip && phase === 'SOCRATES' && (
+          <button
+            data-testid="socrates-skip-button"
+            style={styles.skipButton}
+            type="button"
+            disabled={socratesSkipSent}
+            onClick={handleSkipSocrates}
+          >
+            Παράλειψη
+          </button>
         )}
       </div>
     );

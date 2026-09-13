@@ -4,7 +4,6 @@ import {
   CLIMB_STAGE_TITLE,
   CLIMB_TOP,
   POWER_UP_EFFECTS,
-  SOCRATES_MAX_DURATION_MS,
   TRIAL_STAGE_TAGLINE,
   TRIAL_STAGE_TITLE,
   firstQuestionIndexOfStage,
@@ -253,14 +252,17 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
   // state:sync alike) rather than read off the timer, which only ever holds
   // what's LEFT of a DIFFERENT span now (Task 42c below).
   const totalDurationMs = resolveSocratesDurationMs(lineTemplate || null, lineTag);
-  // The phase's REAL timer is armed at the ceiling (SOCRATES_MAX_DURATION_MS,
-  // see startSocratesIfLineFired) - it's a backstop, not this line's expected
-  // length, so its own remaining time is the wrong thing to show as the
-  // countdown. Deriving elapsed-since-armed from it and subtracting from
-  // `totalDurationMs` instead gives a countdown that reaches 0 right as the
-  // clip is expected to finish (matching the progress bar), even though the
-  // phase itself may keep waiting a little past that for the completion ack.
-  const elapsedMs = SOCRATES_MAX_DURATION_MS - remainingActiveTimerMs(room);
+  // The phase's REAL timer is armed at a BACKSTOP (room.socratesBackstopMs -
+  // this line's own clip plus a margin since Task 238, a flat ceiling before
+  // that), not at this line's expected length, so its own remaining time is
+  // the wrong thing to show as the countdown. Deriving elapsed-since-armed
+  // from it and subtracting from `totalDurationMs` instead gives a countdown
+  // that reaches 0 right as the clip is expected to finish (matching the
+  // progress bar), even though the phase itself may keep waiting a little past
+  // that for the completion ack. Reading the armed span off the room (rather
+  // than the timer, whose own durationMs a resume rewrites to the remainder)
+  // is what keeps this correct across a pause.
+  const elapsedMs = room.socratesBackstopMs - remainingActiveTimerMs(room);
   const durationMs = Math.max(0, totalDurationMs - elapsedMs);
   return {
     line,
