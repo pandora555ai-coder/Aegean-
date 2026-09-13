@@ -2474,10 +2474,17 @@ export interface DuelistStanding {
   avatarId: string;
 }
 
-// The TV's view of DUEL_PICK: who duels, WHO has picked (never what), and
+// Task 237 - why a duel is being fought. Server-side this has existed since
+// Task 205 (ClimbDuelState.cause, state.ts) but it never left the server, so
+// the TV could not say WHY two players were suddenly standing at the temple
+// with weapons: the whole duel overlay read "ΑΛΦΑ | ΒΗΤΑ" and nothing else.
+export type DuelCause = 'top' | 'spear';
+
+// The TV's view of DUEL_PICK: who duels, WHY, WHO has picked (never what), and
 // how many tied rounds preceded this one.
 export interface DuelPickShowHostPayload {
   duelists: [DuelistStanding, DuelistStanding];
+  cause: DuelCause;
   pickedPlayerIds: string[];
   tieCount: number;
   durationMs: number; // time STILL LEFT, frozen while paused
@@ -2542,6 +2549,10 @@ export interface DuelRevealPayload {
 }
 
 export interface DuelRevealHostPayload extends DuelRevealPayload {
+  // Task 237 - HOST ONLY, like standings: the reason line stays on screen
+  // through the reveal's own frame so the overlay never goes back to being
+  // two unexplained names.
+  cause: DuelCause;
   standings: PlayerStanding[];
 }
 
@@ -2554,7 +2565,12 @@ export function isDuelRevealHostPayload(payload: DuelRevealPayload | DuelRevealH
 // The stage card for the climb - the same held STAGE_ANNOUNCE beat the trial
 // gets (buildStageAnnounce branches on room.climb exactly as on room.trial).
 export const CLIMB_STAGE_TITLE = 'Η Ανάβαση';
-export const CLIMB_STAGE_TAGLINE = 'Δέκα σκαλιά ως τον ναό. Όποιος φτάσει πρώτος στην κορυφή, νικά.';
+// Task 237 - the old tagline promised only "whoever gets there first wins",
+// which is why a top-arrival duel read as the game stalling: two players stood
+// at the temple for several questions with the card's own words saying that
+// should already have settled it. The tie is now part of the promise.
+export const CLIMB_STAGE_TAGLINE =
+  'Δέκα σκαλιά ως τον ναό. Όποιος φτάσει πρώτος, νικά — κι αν φτάσουν δύο μαζί, μονομαχούν.';
 
 export interface ClimbSubmitPayload {
   choice: number; // 0-3, validated server-side

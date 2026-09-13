@@ -2098,7 +2098,13 @@ export default function HostScreen() {
 
     // Socrates has the screen to himself for his beat (Task 39) - the reveal
     // it follows is already gone by the time this renders.
-    if (phase === 'SOCRATES' && socrates) {
+    // Task 237 - except during the climb, where the Anavasis world IS the
+    // screen and AnavasisChrome already supplies the room code and pause
+    // overlay that this view's GameLayout would otherwise render a second
+    // copy of. Nothing is lost by drawing nothing: SocratesView passes
+    // `{null}` as its children, so the beat carries no TV text at all - the
+    // line is audio, and the caption lives outside this view.
+    if (phase === 'SOCRATES' && socrates && !isClimbFinale) {
       return (
         <SocratesView socrates={socrates} roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       );
@@ -2417,6 +2423,19 @@ export default function HostScreen() {
   const inGamePhase = phase !== 'LOBBY' && phase !== 'STAGE_ANNOUNCE' && phase !== 'GAME_OVER';
   const isAnavasisPhase =
     phase === 'CLIMB_QUESTION' || phase === 'CLIMB_REVEAL' || phase === 'DUEL_PICK' || phase === 'DUEL_REVEAL';
+  // Task 237 - the climb's own WINNER beat (endClimb, phases.ts) is a plain
+  // SOCRATES phase sitting between the last CLIMB_REVEAL and GAME_OVER, and it
+  // is NOT one of the four phases above. The whole Anavasis world therefore
+  // fell back to TheatreScene for it: the scene dropped out of the temple to
+  // name the winner and came back for the ceremony (measured: 77 consecutive
+  // theatre frames, ~5.2s, with Socrates gliding 57% -> 5% -> 57%). Task 227
+  // already patched SophistsRow for this exact phase via forceHidden; the
+  // scene, the shell and Socrates' own pose were the rest of that family.
+  // EVERY terminal path of the climb funnels through endClimb, so this one
+  // flag covers all of them at once rather than per-path.
+  // isClimbFinale is only ever true during a climb's own tail, so a quiz's
+  // SOCRATES beats are untouched.
+  const isClimbSocratesBeat = isClimbFinale && phase === 'SOCRATES';
   if (phaseStandings) {
     lastStandingsRef.current = phaseStandings;
   }
@@ -2485,6 +2504,7 @@ export default function HostScreen() {
         tie: duelReveal.tie,
         tieCount: duelReveal.tieCount,
         winnerPlayerId: duelReveal.winnerPlayerId,
+        cause: duelReveal.cause,
       }
     : duelPick
       ? {
@@ -2498,6 +2518,7 @@ export default function HostScreen() {
           tie: false,
           tieCount: duelPick.tieCount,
           winnerPlayerId: null,
+          cause: duelPick.cause,
         }
       : null;
   // Task 205 - reuses the SAME hide-and-fade a live duel already gets:
@@ -2581,7 +2602,7 @@ export default function HostScreen() {
   // and so, since Task 189, do the four climb/duel phases: the AnavasisScene
   // world IS their layout, positioned like the reference rather than
   // GameLayout's two-column read area.
-  const showShell = inGamePhase && !isAnavasisPhase;
+  const showShell = inGamePhase && !isAnavasisPhase && !isClimbSocratesBeat;
 
   const isTrialPhase = phase === 'TRIAL_QUESTION' || phase === 'TRIAL_REVEAL';
   const eliminatedPlayerIds = isTrialPhase ? trialEliminatedPlayerIds() : null;
@@ -2624,7 +2645,7 @@ export default function HostScreen() {
   // leader still wearing SophistsRow's wreath, right as the climb began.
   // isClimbFinale is still needed for GAME_OVER (phase alone can't tell a
   // climb GAME_OVER from a trial one).
-  const showAnavasisWorld = isAnavasisPhase || (isClimbFinale && phase === 'GAME_OVER');
+  const showAnavasisWorld = isAnavasisPhase || isClimbSocratesBeat || (isClimbFinale && phase === 'GAME_OVER');
   // Η Μνήμη της Αγοράς (Task 208) - a lighter-weight backdrop swap than
   // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row,
   // Socrates and the krater all stay exactly as they are for every other
@@ -2671,6 +2692,7 @@ export default function HostScreen() {
               tie={liveDuel.tie}
               tieCount={liveDuel.tieCount}
               winnerPlayerId={liveDuel.winnerPlayerId}
+              cause={liveDuel.cause}
             />
           )}
         </div>
@@ -2700,7 +2722,7 @@ export default function HostScreen() {
           instead of by each of the four views (was AnavasisChrome duplicated
           four times) - never at GAME_OVER, matching every other mode's
           GAME_OVER (no room code, no pause overlay there either). */}
-      {isClimbFinale && isAnavasisPhase && (
+      {isClimbFinale && (isAnavasisPhase || isClimbSocratesBeat) && (
         <AnavasisChrome roomCode={roomCode} paused={paused} pausedByName={pausedByName} />
       )}
       {showShell ? <div style={hostStyles.gameLayout}>{phaseView}</div> : !showAnavasisWorld && phaseView}

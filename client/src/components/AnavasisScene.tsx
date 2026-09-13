@@ -599,9 +599,21 @@ const DUEL_STYLE_TAG = `
 .anavasis-duel-root.reveal .anavasis-verdict{opacity:1}
 .anavasis-tiecount{position:absolute;left:0;right:0;top:0.5cqh;text-align:center;font-size:2.4cqh;font-weight:700;
   color:var(--ember);letter-spacing:.1em}
+.anavasis-duel-reason{position:absolute;left:0;right:0;top:4.2cqh;text-align:center;font-size:2.6cqh;font-weight:700;
+  color:var(--marble-2);letter-spacing:.06em;text-shadow:0 2px 10px rgba(0,0,0,.85);transition:opacity 300ms}
+.anavasis-duel-root.reveal .anavasis-duel-reason{opacity:0}
 .anavasis-picked{position:absolute;top:-3cqh;left:50%;transform:translateX(-50%);font-size:2.4cqh}
 @media (prefers-reduced-motion:reduce){.anavasis-tablet .card{transition:none}}
 `;
+
+// Task 237 - what the duel says for itself. Two players appearing at the
+// temple with weapons, for a reason the TV never stated, read as the game
+// having stalled; the pick window is where that has to be answered, so the
+// line clears on reveal and hands the frame to the verdict.
+const DUEL_REASON: Record<'top' | 'spear', string> = {
+  top: 'Έφτασαν μαζί στον ναό. Η μονομαχία κρίνει.',
+  spear: 'Η λόγχη τούς βρήκε μαζί. Ο νικητής μένει.',
+};
 
 export interface AnavasisDuelistData {
   playerId: string;
@@ -621,9 +633,12 @@ interface AnavasisDuelProps {
   tie?: boolean;
   tieCount: number;
   winnerPlayerId?: string | null;
+  // Task 237 - 'top' for two arrivals at CLIMB_TOP (or a round-cap tie),
+  // 'spear' for two struck by Η Λόγχη in one round.
+  cause?: 'top' | 'spear';
 }
 
-export function AnavasisDuel({ a, b, weaponA = null, weaponB = null, pickedA = false, pickedB = false, revealed, tie = false, tieCount, winnerPlayerId = null }: AnavasisDuelProps) {
+export function AnavasisDuel({ a, b, weaponA = null, weaponB = null, pickedA = false, pickedB = false, revealed, tie = false, tieCount, winnerPlayerId = null, cause = 'top' }: AnavasisDuelProps) {
   const verdict = !revealed
     ? ''
     : buildDuelVerdictLine({ weaponA, weaponB, tie, winnerPlayerId, aPlayerId: a.playerId, aName: a.name, bName: b.name });
@@ -632,6 +647,9 @@ export function AnavasisDuel({ a, b, weaponA = null, weaponB = null, pickedA = f
       <style>{DUEL_STYLE_TAG}</style>
       <div className="anavasis-duel-scrim" />
       {tieCount > 0 && <div className="anavasis-tiecount">Ξανά ×{tieCount}</div>}
+      <div className="anavasis-duel-reason" data-testid="anavasis-duel-reason">
+        {greekUpper(DUEL_REASON[cause])}
+      </div>
       <Duelist side="a" data={a} weapon={weaponA} picked={pickedA} revealed={revealed} won={revealed && winnerPlayerId === a.playerId} lost={revealed && !tie && winnerPlayerId !== null && winnerPlayerId !== a.playerId} />
       <Duelist side="b" data={b} weapon={weaponB} picked={pickedB} revealed={revealed} won={revealed && winnerPlayerId === b.playerId} lost={revealed && !tie && winnerPlayerId !== null && winnerPlayerId !== b.playerId} />
       <div className="anavasis-verdict" data-testid="anavasis-duel-verdict">

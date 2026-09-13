@@ -18,6 +18,7 @@
     "climb:spear-live-check": "tsx server/scripts/climb-spear-live-check.ts",
     "climb:ceremony-check": "tsx dev/climb-ceremony-check.ts",
     "climb:lane-check": "tsx dev/climb-lane-check.ts",
+    "climb:staging-check": "tsx dev/finale-staging-check.ts",
     "agora:validate": "tsx server/scripts/agora-validate.ts",
     "agora:wire-check": "tsx dev/agora-wire-check.ts",
     "voice:generate": "tsx dev/generate-voice-lines.ts",

@@ -202,6 +202,12 @@ function reportCeremony(label: string, sims: Sim[], dom: Awaited<ReturnType<type
 type RoomLike = {
   phase: string;
   code: string;
+  // Task 237 - seeded true before every startClimb below. A real game plays
+  // GAME_INTRO_SEQUENCE (Task 236, ten lines) at stage 1, long before the
+  // finale; this harness jumps straight to the climb, so leaving it false
+  // fires that whole narration at the climb's own STAGE_ANNOUNCE and
+  // CLIMB_QUESTION never arrives. That is what broke this suite at Task 236.
+  gameIntroPlayed: boolean;
   climb: {
     questions: Array<{ correctIndex: number }>;
     questionIndex: number;
@@ -306,6 +312,7 @@ async function main() {
       const { page, sims, code, close } = await newRoom(browser, 4);
       const room = getRoom(code) as unknown as RoomLike;
       wireDuelPicks(sims, new Map([[sims[0].playerId, 'xifos'], [sims[1].playerId, 'aspida']]));
+      room.gameIntroPlayed = true; // see RoomLike above (Task 237)
       startClimb(room as never);
       await waitForPhase(room, 'CLIMB_QUESTION');
       room.climb!.steps.set(sims[0].playerId, CLIMB_TOP - 2); // fastest correct: +2 -> TOP
@@ -335,6 +342,7 @@ async function main() {
       console.log('\n=== B. spear elimination on the winning reveal, 4 players ===');
       const { page, sims, code, close } = await newRoom(browser, 4);
       const room = getRoom(code) as unknown as RoomLike;
+      room.gameIntroPlayed = true; // see RoomLike above (Task 237)
       startClimb(room as never);
       await waitForPhase(room, 'CLIMB_QUESTION');
       room.climb!.steps.set(sims[0].playerId, 4);
@@ -377,6 +385,7 @@ async function main() {
       console.log('\n=== C. round-cap finish, 3 still climbing ===');
       const { page, sims, code, close } = await newRoom(browser, 3);
       const room = getRoom(code) as unknown as RoomLike;
+      room.gameIntroPlayed = true; // see RoomLike above (Task 237)
       startClimb(room as never);
       await waitForPhase(room, 'CLIMB_QUESTION');
       room.climb!.steps.set(sims[0].playerId, 6);
@@ -409,6 +418,7 @@ async function main() {
       console.log(`\n=== D. top-arrival win, ${playerCount} players ===`);
       const { page, sims, code, close } = await newRoom(browser, playerCount);
       const room = getRoom(code) as unknown as RoomLike;
+      room.gameIntroPlayed = true; // see RoomLike above (Task 237)
       startClimb(room as never);
       await waitForPhase(room, 'CLIMB_QUESTION');
       // The winner two steps from the top; everyone else spread down the
@@ -471,6 +481,7 @@ async function main() {
         (resolve) => host.once(ServerEvents.GAME_OVER, resolve as never),
       );
       const room = getRoom(code) as unknown as RoomLike;
+      room.gameIntroPlayed = true; // see RoomLike above (Task 237)
       startClimb(room as never);
       const [a, b, c, d, e] = sims;
       const seed = (pairs: Array<[Sim, number]>): void => {

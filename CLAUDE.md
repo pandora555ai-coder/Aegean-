@@ -614,6 +614,48 @@ and a socket-level ranking check reading the elimination order off the
 reveals and the standings off game_over; 94 checks. `ONLY_SCENARIO=A` runs
 one).
 
+**A harness that calls `startClimb` directly MUST seed
+`room.gameIntroPlayed = true` first** (Task 237). Since Task 236 the opening
+`GAME_INTRO_SEQUENCE` (ten lines) fires from `resumeAfterStageAnnounce`
+whenever that flag is false, so a room jumped straight to the climb plays
+the whole narration at the CLIMB's own STAGE_ANNOUNCE and CLIMB_QUESTION
+never arrives. This silently killed BOTH climb suites — ceremony-check and
+lane-check timed out at HEAD from 236 until 237 repaired them; a real game
+is unaffected, since stage 1 has long since played it.
+
+**The climb's WINNER beat stays in the temple (Task 237).** `endClimb`
+plays it as a plain SOCRATES phase, which is NOT one of the four phases
+`isAnavasisPhase` names, so the whole world used to fall back to
+TheatreScene for it and back again for the ceremony — measured at 77
+consecutive theatre frames (~5.2s) with Socrates gliding 57% → 5% → 57%.
+HostScreen's `isClimbSocratesBeat` (`isClimbFinale && phase === 'SOCRATES'`)
+now feeds `showAnavasisWorld`, `showShell` and the AnavasisChrome gate, and
+`SocratesFigure`'s `poseFor` tests the temple pose BEFORE
+`RAISED_LEFT_PHASES` — which contains 'SOCRATES' and was what walked him
+off the terrace. That phase renders no `SocratesView` at all (it passes
+`{null}` children; the line is audio, and AnavasisChrome already supplies
+the room code/pause). EVERY terminal path funnels through `endClimb`, so
+this one flag covers all seven. Third member of the family Task 227
+documented — 227 fixed only SophistsRow for this same phase.
+Check: `npm run climb:staging-check` (dev/finale-staging-check.ts, ports
+3915/5916 — samples the scene every 50ms off the Anavasis container plus
+Socrates' own computed `left`; 35 checks over the winner sequence, the
+slab-vs-leader boxes, a top-arrival duel, and all seven terminal paths).
+
+**The duel says why it is happening (Task 237).** `duel.cause` existed
+server-side from Task 205 but never left the server, so the whole overlay
+read `"ΑΛΦΑ | ΒΗΤΑ"`. `DuelCause` now travels on `DuelPickShowHostPayload`
+and `DuelRevealHostPayload` (HOST ONLY, like `standings`) and AnavasisDuel
+renders a reason line that clears on reveal so the verdict gets the frame.
+`CLIMB_STAGE_TAGLINE` also promises the tie now, not just "first to the
+top". **Known, not fixed:** the climb's ENTRY narration (Task 236's
+`ANAVASIS_INTRO_SEQUENCE`) plays before any climb payload lands, so
+`isClimbFinale` is still false and the quiz's TheatreScene + wreathed
+SophistsRow render on the climb's own announcement — the fourth member of
+that family, caught by lane-check's wreath watcher (its 1 remaining
+failure) and proven pre-existing. Fixing it needs a server-side signal,
+since the client cannot yet tell which stage the card belongs to.
+
 **Anavasis TV invariant (Task 192): no on-screen text while any body is
 moving**, enforced as a strict per-round FRAME alternation — Frame A
 (CLIMB_QUESTION, a motionless read) then Frame B (CLIMB_REVEAL, movement).
@@ -628,12 +670,24 @@ climb (AnavasisScene swaps in). Task 198: Socrates must never occlude the
 CLIMB_QUESTION slab — `ClimbQuestionView`'s `SLAB_WRAP_STYLE` sits at
 `zIndex: 3`, above SocratesFigure (1) and AnavasisClimbers (2), so the
 slab paints on top of every scene actor regardless of DOM order. Task 199:
-that same wrapper has a determinate `height: '42vh'` (was auto-height, so
+that same wrapper has a determinate height (was auto-height, so
 `useFitFontSize`'s shrink never triggered and the bank's longest question
 pushed the slab to 1148px, past the 720px canvas) with `MarbleSlab` at
 `flex: '1 1 0'` inside it — the same "give the slab real height so its
 flex children have something to shrink against" shape `TrialQuestionView`
-already used via GameLayout.
+already used via GameLayout. **Task 237 changed that height from
+`top:'9%'`/`42vh` to `top:'1%'`/`23vh`**: 199's box was y 97..367 at
+1280x720 and a climber near the top of the stair stands inside it, so
+zIndex 3 painted the SLAB OVER THE LEADER — measured overlaps of
+2320/4292/4930/4872 px² with the leader at real steps 6/7/8/9 (every other
+climber, down at steps 0-2, overlapped 0). The box is now y 39..173. Real
+step 9 is the highest anyone can stand DURING a question (reaching
+CLIMB_TOP ends the climb in that same reveal; a 3+-way arrival holds the
+extras at TOP−1) and its figure box starts at y 192, so this clears the
+worst case by 19px at EVERY player count — `laneLeftPct`'s leftmost offset
+is a constant −0.36 of the step width, independent of `n`. `left`/`width`
+are deliberately unchanged: Socrates still passes behind the slab, which is
+198's own accepted arrangement, not a bug.
 
 The VIP's crowd/voice sliders (Task 178) are collapsed behind one toggle
 button by default (`VipAudioControls`, ControllerScreen.tsx:361, ten call

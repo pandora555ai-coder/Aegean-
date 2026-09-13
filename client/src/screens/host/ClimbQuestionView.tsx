@@ -45,12 +45,26 @@ interface ClimbQuestionViewProps {
 // flex children have something to shrink against" fix TrialQuestionView
 // already uses via GameLayout's READ_AREA_HEIGHT + MarbleSlab's own
 // `flex: '1 1 0'`.
+// Task 237 - `top: '9%'`/`height: '42vh'` put the slab's box at y 97..367 on a
+// 1280x720 TV, and a climber near the top of the stair stands right inside
+// that band: measured overlaps of 2320/4292/4930/4872 px² with the LEADER at
+// real steps 6/7/8/9 (the other climbers, down at steps 0-2, overlapped 0).
+// Task 198's z-index 3 is what made this a defect rather than a draw - the
+// slab paints OVER the leader, so the player in front vanishes behind the
+// question exactly as they near the temple. Raised and shortened to y 7..173
+// instead: real step 9 is the highest a climber can ever stand DURING a
+// question (reaching CLIMB_TOP ends the climb in the same reveal, and a 3+-way
+// arrival holds the extras at TOP-1), and its figure box starts at y 192, so
+// this clears the worst case by 19px at every player count - laneLeftPct's
+// leftmost offset is a constant -0.36 of the step width, independent of n.
+// left/width are deliberately unchanged: Socrates at the temple still passes
+// behind the slab, which is Task 198's own accepted arrangement, not this bug.
 const SLAB_WRAP_STYLE = {
   position: 'fixed',
   left: '16%',
-  top: '9%',
+  top: '1%',
   width: '52%',
-  height: '42vh',
+  height: '23vh',
   zIndex: 3,
   display: 'flex',
   flexDirection: 'column',

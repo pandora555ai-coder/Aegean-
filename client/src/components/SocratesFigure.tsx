@@ -27,14 +27,19 @@ function poseFor(phase: GamePhase, climbFinale: boolean): { left: string; scale:
   // SpeechSlab was widened left:24%/w:52% -> left:14%/w:72% in Task 163b,
   // after this figure's reference position was authored. 5% clears the
   // slab's left edge (179px at 1280x720) with ~14px margin.
-  if (RAISED_LEFT_PHASES.has(phase)) return { left: '5%', scale: 1.35 };
-  if (CENTRE_STAGE_PHASES.has(phase)) return { left: '44%', scale: 1.15 };
-  // climbFinale also covers this climb's own GAME_OVER (the crowning) -
+  // Task 237 - the temple pose is tested FIRST, because 'SOCRATES' is itself
+  // in RAISED_LEFT_PHASES below. The climb's own WINNER beat (endClimb,
+  // phases.ts) is a plain SOCRATES phase, so he used to walk off the temple
+  // terrace down to the theatre orchestra at left:5% to name the winner and
+  // climb back up for the ceremony - measured at 57% -> 5% -> 57%.
+  // climbFinale covers that beat and this climb's GAME_OVER crowning alike:
   // `phase` alone can't tell a climb verdict from a trial one, so HostScreen
   // passes its own isClimbFinale flag through.
-  if (ANAVASIS_PHASES.has(phase) || (phase === 'GAME_OVER' && climbFinale)) {
+  if (ANAVASIS_PHASES.has(phase) || (climbFinale && (phase === 'GAME_OVER' || phase === 'SOCRATES'))) {
     return { left: '57%', bottom: `${ANAVASIS_TEMPLE_BOTTOM_CQH}cqh`, scale: 1 };
   }
+  if (RAISED_LEFT_PHASES.has(phase)) return { left: '5%', scale: 1.35 };
+  if (CENTRE_STAGE_PHASES.has(phase)) return { left: '44%', scale: 1.15 };
   if (phase === 'GAME_OVER') return { left: '40%', scale: 1.3 };
   return { left: '7%', scale: 1 };
 }

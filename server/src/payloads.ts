@@ -822,6 +822,8 @@ export function buildDuelPickHostPayload(room: Room): DuelPickShowHostPayload | 
   }
   return {
     duelists: [duelistStanding(room, duel.duelistIds[0]), duelistStanding(room, duel.duelistIds[1])],
+    // Task 237 - the TV's only way to explain itself; see DuelCause (shared).
+    cause: duel.cause,
     pickedPlayerIds: Array.from(duel.picks.keys()),
     tieCount: duel.tieCount,
     durationMs: remainingActiveTimerMs(room),
@@ -867,5 +869,6 @@ export function buildDuelRevealPayload(room: Room): DuelRevealPayload | null {
 
 export function buildDuelRevealHostPayload(room: Room): DuelRevealHostPayload | null {
   const payload = buildDuelRevealPayload(room);
-  return payload ? { ...payload, standings: computeStandings(room) } : null;
+  const cause = room.climb?.duel?.cause;
+  return payload && cause ? { ...payload, cause, standings: computeStandings(room) } : null;
 }

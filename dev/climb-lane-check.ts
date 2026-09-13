@@ -100,6 +100,12 @@ const NAMES = ['Άλφα', 'Βήτα', 'Γάμα', 'Δέλτα', 'Έψιλον',
 type RoomLike = {
   phase: string;
   code: string;
+  // Task 237 - seeded true before every startClimb below. A real game plays
+  // GAME_INTRO_SEQUENCE (Task 236, ten lines) at stage 1, long before the
+  // finale; this harness jumps straight to the climb, so leaving it false
+  // fires that whole narration at the climb's own STAGE_ANNOUNCE and
+  // CLIMB_QUESTION never arrives. That is what broke this suite at Task 236.
+  gameIntroPlayed: boolean;
   players: Map<string, { playerId: string; score: number }>;
   climb: {
     questions: Array<{ correctIndex: number }>;
@@ -275,6 +281,7 @@ async function main() {
     // before returning), so arming immediately after it - before awaiting
     // anything - still watches from before the client has processed that
     // transition.
+    room.gameIntroPlayed = true; // Task 237 - see RoomLike above
     startClimb(room as never);
     await armWreathWatch(page);
     await waitForPhase(room, 'CLIMB_QUESTION');
@@ -439,6 +446,7 @@ async function main() {
     for (const n of [2, 3, 4, 5, 6]) {
       const room2 = await newRoom(browser, n);
       const r = getRoom(room2.code) as unknown as RoomLike;
+      r.gameIntroPlayed = true; // Task 237 - see RoomLike above
       startClimb(r as never);
       await waitForPhase(r, 'CLIMB_QUESTION');
       await delay(300);
