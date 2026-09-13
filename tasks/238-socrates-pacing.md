@@ -146,3 +146,85 @@ first, next beat frozen 6659→6659, resumed 6409.
 - Harness note: `startClimb` shows the finale STAGE_ANNOUNCE **card** first —
   the announcement sequence only begins when that card's timer elapses. A flat
   sleep after `startClimb` finds the room still on the card.
+
+## Follow-up: the intro seam audit (measurement only)
+
+Live listening on the PRE-238 build caught roughly a second of two clips
+sounding at once, and tails cut by ~0.2s. `dev/intro-seam-check.ts` measures
+the seams at HEAD. It must use REAL BROWSER AUDIO: `socrates:audio_ended` is
+emitted from Web Audio's own `source.onended`, so a socket-level harness
+acking after a computed delay would make every gap >= 0 **by construction**
+and prove nothing. It drives a real `/host` page (`?bot=3&mode=full`, which
+self-starts with no VIP — Task 217) and timestamps the actual WebSocket
+frames: `socrates:show` arriving = audio start, `socrates:audio_ended`
+leaving = audio end. Each ack is matched to its OWN `beatId`, never "the
+latest beat" — an overlapping clip's ack lands while a later beat is already
+on screen, which is exactly the case under test. Chromium needs
+`--autoplay-policy=no-user-gesture-required`, or the AudioContext stays
+suspended, nothing sounds, no `onended` fires, and every beat rides its
+backstop — an artifact that reads like a seam defect and is not one.
+
+**Played vs real** (ms; `est` = the payload's `totalDurationMs`):
+
+| line | beat | real | played | delta | est |
+|---|---|---|---|---|---|
+| Εισαγωγή#1 | 1 | 2038 | 2071 | +33 | 4000 |
+| Εισαγωγή#2 | 2 | 9953 | 9978 | +25 | 9984 |
+| Εισαγωγή#3 | 3 | 2273 | 2276 | +3 | 4000 |
+| Εισαγωγή#4 | 4 | 8438 | 8468 | +30 | 8469 |
+| Εισαγωγή#5 | 5 | 5407 | 5407 | 0 | 5439 |
+| Εισαγωγή#6 | 6 | 10841 | 10839 | −2 | 10872 |
+| Εισαγωγή#7 | 7 | 6113 | 6132 | +19 | 6144 |
+| Εισαγωγή#8 | 8 | 3318 | 3337 | +19 | 4000 |
+| Εισαγωγή#9 | 9 | 12356 | 12397 | +41 | 12388 |
+| Εισαγωγή#10 | 10 | 6191 | 6211 | +20 | 6223 |
+
+**Seams** (gap = next audio start − this audio end; ts relative to #1's start):
+
+| seam | this end | next start | gap |
+|---|---|---|---|
+| #1→#2 | 2071 | 2075 | +4 |
+| #2→#3 | 12053 | 12057 | +4 |
+| #3→#4 | 14333 | 14334 | +1 |
+| #4→#5 | 22802 | 22805 | +3 |
+| #5→#6 | 28212 | 28214 | +2 |
+| #6→#7 | 39053 | 39060 | +7 |
+| #7→#8 | 45192 | 45195 | +3 |
+| #8→#9 | 48532 | 48535 | +3 |
+| #9→#10 | 60932 | 60933 | +1 |
+
+10/10 beats observed, beat ids 1-10 consecutive (each line its own held phase
+and its own ack). **Negative gaps: 0. Clipped tails (>150ms short): 0.** Every
+gap >= 0 and played == real within +41/−2ms.
+
+This is real playback, not the suspended-context artifact: had nothing
+sounded, every beat would have ridden its backstop at a uniform `real+3000`.
+Instead `played` tracks each clip's own length individually.
+
+**Mechanism behind the pre-238 symptoms** — consistent with both the old
+report and these numbers, though the old build was NOT re-measured: the cap
+was armed from PHASE ENTRY, not from playback start. Εισαγωγή#9 (12356ms) hit
+the 11000ms backstop ~1.36s before its audio ended, and nothing stops the
+previous `BufferSource`, so the next clip began over the top of it — the ~1s
+overlap, and #9 is the only intro line long enough to cause it. The ~0.2s
+clipped tails are the same clock from the other side: Εισαγωγή#6 at 10841ms
+sits just under the cap, so fetch/decode latency before playback began pushed
+its tail past the 11000ms deadline. At HEAD #9 runs to 12397ms against a
+15388ms backstop (gap to #10: +1ms) and #6 to 10839ms against 13841ms (−2ms).
+
+**Documented, not fixed (found by this audit):**
+
+- The three clips under the 4000ms floor (#1, #3, #8) report
+  `totalDurationMs` = 4000 rather than their true 2038/2273/3318ms — the
+  pre-existing `SOCRATES_DURATION_MS` floor in `resolveSocratesClip` (Task
+  42b). It drives only the TV's countdown/progress cosmetics (the ack gates
+  the phase, not this), and their 7000ms backstops still clear the real clips.
+  No seam effect.
+- `vip:next`'s SOCRATES branch (index.ts:1294) passes NO beat id, so the
+  staleness check does not engage for that event — the deliberate "absent id =
+  current beat" rule the host ack has always used (bots.ts acks with `{}`),
+  not a hole opened by 238; phase and pause guards still apply. Unreachable
+  from the shipped phone, whose only `handleNext` site
+  (ControllerScreen.tsx:2274) routes to `handleSkipSocrates` during SOCRATES.
+  One press would still end only one beat; two rapid presses could end two,
+  where `vip:skip_socrates` refuses the second as stale.
