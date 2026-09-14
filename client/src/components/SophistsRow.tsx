@@ -137,8 +137,40 @@ const NAME_BASE_CHARS = 7;
 const NAME_HARMONIC_MAX_CHARS = 10;
 const NAME_LONG_DECAY_PER_CHAR = 0.06;
 
+// Task 245 - character COUNT alone assumes every glyph is the same width,
+// but the actual plaque font's Greek capitals vary a lot: measured (canvas,
+// same family/weight/letter-spacing as `.plaque .n`, normalized to
+// average=1) Μ=1.204 Θ=1.126 Ο=1.126 Φ=1.187 Ψ=1.17 Ω=1.16 run ~15-20% over
+// average, Ι=0.414 Σ=0.873 Γ=0.874 Τ=0.888 well under. ΞΕΝΟΦΩΝ (7 chars, all
+// average-or-wider letters) sat exactly AT NAME_BASE_CHARS - the never-
+// shrinks flat branch - and clipped (scrollWidth 90 vs clientWidth 86); a
+// 10-char name that's ALSO wide (ΧΑΡΑΛΑΜΠΟΣ) clipped inside the harmonic
+// branch the same way (87 vs 86). `weightedLength` sums each glyph's
+// measured relative width, and `Math.max(name.length, weightedLength(name))`
+// below means this can only ever SHRINK a name relative to the old pure-
+// count formula, never grow one - a narrower-than-average name (ΚΥΡΙΑΚΟΣ,
+// ΠΑΝΑΓΙΩΤΗΣ, ΤΕΡΨΙΧΟΡΗ) computes BELOW its own character count and is
+// clamped straight back to the unchanged original value, which is what
+// keeps the 224/235b pinned baselines (ΚΥΡΙΑΚΟΣ 13.86px, ΠΑΝΑΓΙΩΤΗΣ full at
+// 11.088px) exactly where they were.
+const GLYPH_WIDTH: Readonly<Record<string, number>> = {
+  Α: 1.046, Β: 1.046, Γ: 0.874, Δ: 1.041, Ε: 0.968, Ζ: 0.888, Η: 1.046,
+  Θ: 1.126, Ι: 0.414, Κ: 1.046, Λ: 0.968, Μ: 1.204, Ν: 1.046, Ξ: 0.934,
+  Ο: 1.126, Π: 1.046, Ρ: 0.968, Σ: 0.873, Τ: 0.888, Υ: 0.968, Φ: 1.187,
+  Χ: 0.968, Ψ: 1.17, Ω: 1.16,
+};
+
+function weightedLength(name: string): number {
+  let sum = 0;
+  for (const ch of name) {
+    const base = ch.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+    sum += GLYPH_WIDTH[base] ?? 1;
+  }
+  return sum;
+}
+
 function nameFontSizeCqh(name: string): number {
-  const length = name.length;
+  const length = Math.max(name.length, weightedLength(name));
   if (length <= NAME_BASE_CHARS) {
     return NAME_BASE_FONT_CQH;
   }
