@@ -3,6 +3,7 @@ import {
   BLITZ_DURATION_MS,
   BLITZ_MIN_PLAYERS,
   BLITZ_REVEAL_DURATION_MS,
+  BLITZ_ROUND_COUNT,
   BLITZ_STATEMENT_COUNT,
   BLITZ_WRONG_POINTS,
   ServerEvents,
@@ -20,7 +21,7 @@ import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../tim
 import { buildGameOver, computeStandings } from '../payloads.js';
 import { emitCrowdIntensity, setCrowdMood } from '../crowd.js';
 import {
-  drawBlitzGameStatements,
+  drawBlitzGameRounds,
   mostMissedBlitzStatement,
   scoreBlitzTally,
   tallyBlitzSwipes,
@@ -39,6 +40,12 @@ interface BlitzState {
   // Fixed for the game, drawn at prepareGame - "play again" reuses the same
   // Room object, so this is rebuilt fresh every time rather than mutated.
   // Truth lives in here and nowhere a client can see before BLITZ_REVEAL.
+  // Task 253 - EVERY round's statements, drawn once at prepareGame with no
+  // repeats across rounds (drawBlitzGameRounds). `statements` is whichever
+  // round is live right now, so everything below this line reads exactly what
+  // it always read and never asks how many rounds the stage runs.
+  rounds: BlitzStatement[][];
+  roundIndex: number; // 0-based, into `rounds`
   statements: BlitzStatement[];
   swipes: Map<string, BlitzSwipe[]>; // playerId -> swipes in order
   // Same reconnect discipline as numeric's lastReveal: snapshotted once, the
@@ -80,15 +87,18 @@ function armBlitzTimer(room: Room, kind: BlitzTimerKind, durationMs: number, onF
 // same as draw's and numeric's - a second game (via "play again", the same
 // Room object) must never see a trace of the first game's swipes.
 function prepareGame(room: Room): void {
-  prepareBlitzGame(room, BLITZ_STATEMENT_COUNT);
+  prepareBlitzGame(room, BLITZ_STATEMENT_COUNT, BLITZ_ROUND_COUNT);
 }
 
 // The draw, callable by a composing mode with its own count (same shape as
 // prepareNumericGame - a later task composes this into full).
-export function prepareBlitzGame(room: Room, statementCount: number): void {
+export function prepareBlitzGame(room: Room, statementCount: number, roundCount: number): void {
   blitzStateByRoom.delete(room);
+  const rounds = drawBlitzGameRounds(roundCount, statementCount);
   blitzStateByRoom.set(room, {
-    statements: drawBlitzGameStatements(statementCount),
+    rounds,
+    roundIndex: 0,
+    statements: rounds[0] ?? [],
     swipes: new Map(),
     lastReveal: null,
   });
@@ -101,6 +111,28 @@ function start(room: Room): void {
 
 export function startBlitzSegment(room: Room): void {
   const state = requireBlitzState(room);
+  state.roundIndex = 0;
+  state.statements = state.rounds[0] ?? [];
+  enterBlitzSwipeWindow(room, state);
+}
+
+// Task 253 - the stage's NEXT swipe window. Deliberately not a stage entry:
+// room.stage never moves, so enterStageAnnounce is never reached and the card
+// and STAGE_INTRO line that played once for Η Παλαίστρα stay played exactly
+// once. The BLITZ_REVEAL that just ended IS the between-rounds transition -
+// it already holds the screen for BLITZ_REVEAL_DURATION_MS and now says a
+// round follows, so the room is never cut silently from a result into a
+// fresh deck.
+function startNextBlitzRound(room: Room, state: BlitzState): void {
+  state.roundIndex += 1;
+  state.statements = state.rounds[state.roundIndex] ?? [];
+  state.lastReveal = null;
+  enterBlitzSwipeWindow(room, state);
+}
+
+// startBlitzSegment's own body, moved verbatim (Task 253) so the stage's
+// first window and every later one enter through one identical path.
+function enterBlitzSwipeWindow(room: Room, state: BlitzState): void {
   state.swipes.clear();
 
   room.phase = 'BLITZ';
@@ -113,7 +145,10 @@ export function startBlitzSegment(room: Room): void {
   setCrowdMood(room, 'tension');
   broadcastBlitzShow(room);
 
-  console.log(`room ${room.code} blitz started - ${state.statements.length} statements, ${BLITZ_DURATION_MS}ms`);
+  console.log(
+    `room ${room.code} blitz started - round ${state.roundIndex + 1}/${state.rounds.length}, ` +
+      `${state.statements.length} statements, ${BLITZ_DURATION_MS}ms`,
+  );
 }
 
 function progressByPlayerId(room: Room, state: BlitzState): Record<string, number> {
@@ -134,6 +169,8 @@ export function buildBlitzHostShow(room: Room): BlitzShowHostPayload | null {
   }
   return {
     total: state.statements.length,
+    round: state.roundIndex + 1,
+    totalRounds: state.rounds.length,
     durationMs: remainingActiveTimerMs(room),
     progressByPlayerId: progressByPlayerId(room, state),
     paused: room.paused,
@@ -150,6 +187,8 @@ export function buildBlitzPlayerShow(room: Room, playerId: string): BlitzShowPla
   return {
     statements: state.statements.map((statement) => statement.text), // texts only - never isTrue
     total: state.statements.length,
+    round: state.roundIndex + 1,
+    totalRounds: state.rounds.length,
     durationMs: remainingActiveTimerMs(room),
     answeredCount: state.swipes.get(playerId)?.length ?? 0,
     paused: room.paused,
@@ -278,6 +317,9 @@ export function buildBlitzRevealHostShow(room: Room): BlitzRevealHostPayload | n
   }
   return {
     total: state.statements.length,
+    round: state.roundIndex + 1,
+    totalRounds: state.rounds.length,
+    hasNextRound: state.roundIndex + 1 < state.rounds.length,
     results: state.lastReveal.results,
     mostMissed: state.lastReveal.mostMissed,
     // Task 156b - safe now that BLITZ_REVEAL has resolved; HOST payload
@@ -300,6 +342,9 @@ export function buildBlitzRevealPlayerShow(room: Room, playerId: string): BlitzR
   }
   return {
     total: state.statements.length,
+    round: state.roundIndex + 1,
+    totalRounds: state.rounds.length,
+    hasNextRound: state.roundIndex + 1 < state.rounds.length,
     correct: mine.correct,
     wrong: mine.wrong,
     unanswered: mine.unanswered,
@@ -330,6 +375,14 @@ export function endBlitzReveal(code: RoomCode): void {
     return;
   }
   clearActiveTimer(room);
+  // Task 253 - another swipe window of the SAME stage, if the draw dealt one.
+  // Checked before finishGame, which is what ends the stage (and, in the full
+  // show, hands over to the next one via advanceAfterSegment).
+  const state = requireBlitzState(room);
+  if (state.roundIndex + 1 < state.rounds.length) {
+    startNextBlitzRound(room, state);
+    return;
+  }
   finishGame(room);
 }
 

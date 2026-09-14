@@ -347,8 +347,9 @@ Agora (207): LOBBY -> AGORA_EXPOSE (AGORA_EXPOSURE_MS = 12000, the scene on
       ports 3903/5904).
 Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       each announced, then the ONE GAME_OVER:
-      1 Η Αγορά (quiz + POWER_UP) -> 2 Η Παλαίστρα (one blitz window,
-      BLITZ_STATEMENT_COUNT = 12 statements) -> 3 Ζωγραφική (draw)
+      1 Η Αγορά (quiz + POWER_UP) -> 2 Η Παλαίστρα (BLITZ_ROUND_COUNT = 2
+      blitz windows back to back since Task 253, BLITZ_STATEMENT_COUNT = 12
+      statements EACH) -> 3 Ζωγραφική (draw)
       -> 4 Εκτίμηση (3 numeric) -> 5 Η Μνήμη της Αγοράς (one agora round)
       -> 6 Η Συκοφαντία (quiz + STEAL) -> 7 Η Ανάβασις (the climb, entered
       with accumulated scores as the ladder's entry order) — or Η Δίκη in
@@ -359,7 +360,15 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       214's own run (its per-stage table: Η Αγορά 119.1s, Η Παλαίστρα 41.5s,
       Ζωγραφική 225.6s, Εκτίμηση 61.6s, Η Μνήμη της Αγοράς 77.7s,
       Η Συκοφαντία 124.6s, Η Ανάβαση 183.1s — tasks/214-report.md), 870.3s in
-      Task 215's own run (tasks/215-report.md). This is a FLOOR: bots answer
+      Task 215's own run (tasks/215-report.md). **Task 253 gave Η Παλαίστρα a
+      second round**: two 5-bot `mode=full` runs of ONE harness
+      (dev/253-blitz-rounds-check.ts) put that stage at 41.5s before and 79.5s
+      after, whole show 505.5s -> 531.4s (tasks/253-blitz-second-round.md).
+      Those two totals sit well under the 214/215 baselines because their
+      climb finale happened to resolve in fewer rounds — the climb ignores
+      gameLength and varies hugely run to run (see the trap below), so compare
+      a STAGE against that stage, never one run's total against another's.
+      This is a FLOOR: bots answer
       in ~0.3-1.5s and there is no real human deciding, reading a card, or
       asking "wait, what does this button do".
       It COMPOSES the five standalone mechanic modes (which stay
@@ -904,6 +913,25 @@ dev-only swipe screen two paragraphs down is a SEPARATE thing. Since Task
 214, blitz is also composable: `full`'s stage 2 (Η Παλαίστρα) calls this
 exact mode's `prepareBlitzGame`/`startBlitzSegment` (modes/blitz.ts,
 see Full above) — it was standalone-only before that.
+**Since Task 253 Η Παλαίστρα runs BLITZ_ROUND_COUNT = 2 swipe windows back
+to back** (shared/src/index.ts), standalone AND as full's stage 2 — one
+constant, passed as prepareBlitzGame's own third parameter, never a mode
+check. All roundCount x K statements are drawn ONCE at prepareGame
+(drawBlitzGameRounds, server/src/blitz.ts) from a pool that shrinks per
+round, so nothing repeats within a game AND each round keeps its own
+ceil/floor true/false balance. Each round ends in its own BLITZ_REVEAL, and
+that reveal IS the between-rounds transition — it carries `hasNextRound`
+and says another round follows, rather than cutting the room silently from
+a result into a fresh deck. **room.stage never moves across the rounds**, so
+the stage card and its STAGE_INTRO line still play exactly ONCE for the
+whole stage (startNextBlitzRound deliberately does not go near
+enterStageAnnounce). The blitz STAGE_INTRO pool still says "δώδεκα
+πράγματα" — true of each WINDOW, not of the stage's 24; documented, NOT
+fixed, since 253 was forbidden from touching voice lines.
+Check: `SCENARIO=A npx tsx dev/253-blitz-rounds-check.ts` (a 5-bot
+`mode=full` show end to end: per-round hashes, the repeat check, card/intro
+counts, GAME_OVER's stageDurations) and `SCENARIO=B` (pause/resume in round
+2 and in the transition, real TV in a real browser).
 Separately, /dev/blitz (DevBlitzScreen.tsx, Task 69) is STILL a standalone
 solo phone-swipe prototype — one true/false statement at a time, swipe
 right for ΣΩΣΤΟ, left for ΛΑΘΟΣ, time-bound round (BLITZ_DURATIONS_SEC

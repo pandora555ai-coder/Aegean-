@@ -55,6 +55,33 @@ export function drawBlitzGameStatements(
   return shuffle([...trues, ...falses], rng);
 }
 
+// Task 253 - one draw for the WHOLE stage: `roundCount` rounds of
+// `countPerRound` each, and no statement is dealt twice in one game. Each
+// round draws from the pool MINUS everything already dealt, so every round
+// keeps drawBlitzGameStatements' own ceil/floor true/false balance instead of
+// inheriting whatever a single big slice happened to hold. Still pure and
+// mode-agnostic: the round count is a call-site parameter like every other
+// number in this file. Dedup is by statement TEXT - the pool carries no ids,
+// and text is what a player would recognise as a repeat anyway.
+export function drawBlitzGameRounds(
+  roundCount: number,
+  countPerRound: number,
+  rng: () => number = Math.random,
+  pool: readonly BlitzStatement[] = BLITZ_STATEMENTS,
+): BlitzStatement[][] {
+  const rounds: BlitzStatement[][] = [];
+  const dealt = new Set<string>();
+  for (let round = 0; round < roundCount; round++) {
+    const remaining = pool.filter((statement) => !dealt.has(statement.text));
+    const drawn = drawBlitzGameStatements(countPerRound, rng, remaining);
+    for (const statement of drawn) {
+      dealt.add(statement.text);
+    }
+    rounds.push(drawn);
+  }
+  return rounds;
+}
+
 // Correct / wrong / unanswered for one player's ordered swipes against the
 // dealt statements. A swipe whose index is out of range is ignored (the shell
 // never records one, but the tally shouldn't trust that).

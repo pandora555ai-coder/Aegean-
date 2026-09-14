@@ -93,6 +93,17 @@ const statementTextStyle: CSSProperties = {
   lineHeight: 1.18,
 };
 
+// Task 253 - the "another round follows" line under the two columns. Same
+// --carve the rows use, set back with opacity so it reads as a footer rather
+// than competing with the statements themselves.
+const nextRoundLineStyle: CSSProperties = {
+  marginTop: '1.4cqh',
+  fontSize: '2.4cqh',
+  fontWeight: 700,
+  color: 'var(--carve)',
+  opacity: 0.7,
+};
+
 const progressBarTrackStyle: CSSProperties = {
   width: '100%',
   maxWidth: '500px',
@@ -163,6 +174,15 @@ export function BlitzRevealView({ reveal, roomCode, paused, pausedByName, second
           <StatementColumn heading="Αληθινά" statements={trues} isTrueColumn emphasizedText={emphasizedText} />
           <StatementColumn heading="Ψεύτικα" statements={falses} isTrueColumn={false} emphasizedText={emphasizedText} />
         </div>
+        {/* Task 253 - this reveal IS the between-rounds transition when the
+            stage has another window coming: it says so rather than cutting
+            the room silently from a result into a fresh deck. Absent on the
+            stage's LAST reveal, which ends Η Παλαίστρα as it always did. */}
+        {reveal.hasNextRound && (
+          <div style={nextRoundLineStyle} data-testid="blitz-next-round">
+            Ακολουθεί ο γύρος {reveal.round + 1} από {reveal.totalRounds}
+          </div>
+        )}
       </MarbleSlab>
       <div style={progressBarTrackStyle} data-testid="blitz-reveal-progress">
         <div

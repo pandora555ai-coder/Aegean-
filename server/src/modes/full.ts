@@ -1,4 +1,5 @@
 import {
+  BLITZ_ROUND_COUNT,
   BLITZ_STATEMENT_COUNT,
   FULL_AGORA_SCORE_SCALE,
   FULL_DRAW_ROUNDS_BY_LENGTH,
@@ -26,8 +27,11 @@ import type { GameMode } from './types.js';
 // mechanic back to back - the LOCKED lineup -
 //
 //   1  Η Αγορά             quiz questions (a POWER_UP before each, per the table)
-//   2  Η Παλαίστρα         one blitz swipe window (BLITZ_STATEMENT_COUNT
-//                          statements, BLITZ_DURATION_MS) then its reveal
+//   2  Η Παλαίστρα         BLITZ_ROUND_COUNT blitz swipe windows back to back
+//                          (BLITZ_STATEMENT_COUNT statements each,
+//                          BLITZ_DURATION_MS), each followed by its own
+//                          reveal; the last reveal ends the stage, the others
+//                          are the between-rounds transition (Task 253)
 //   3  Ζωγραφική           drawing round(s) (1, or 3 on gameLength 'long' - see
 //                          FULL_DRAW_ROUNDS_BY_LENGTH): everyone draws, then every
 //                          drawing is guessed in turn, each round advancing the
@@ -153,13 +157,14 @@ function drawRoundCount(room: Room): number {
 // is the standalone mode's own prepare, deleting its state first.
 function prepareGame(room: Room): void {
   room.questions = getQuestionSet(room.settings.difficultyMix, quizQuestionCount(room));
-  prepareBlitzGame(room, BLITZ_STATEMENT_COUNT);
+  prepareBlitzGame(room, BLITZ_STATEMENT_COUNT, BLITZ_ROUND_COUNT);
   clearDrawState(room);
   prepareNumericGame(room, FULL_NUMERIC_QUESTION_COUNT);
   prepareAgoraRound(room);
   console.log(
     `room ${room.code} full show: ${quizQuestionCount(room)} quiz question(s) over 2 stages, ` +
-      `${BLITZ_STATEMENT_COUNT} blitz statement(s), ${drawRoundCount(room)} drawing round(s), ` +
+      `${BLITZ_ROUND_COUNT} blitz round(s) of ${BLITZ_STATEMENT_COUNT} statement(s), ` +
+      `${drawRoundCount(room)} drawing round(s), ` +
       `${FULL_NUMERIC_QUESTION_COUNT} numeric question(s), 1 agora round`,
   );
 }

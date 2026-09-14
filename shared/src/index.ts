@@ -3440,6 +3440,14 @@ export const BLITZ_LOG_PATH = '/api/blitz-log/378857bcc8436b3a395a8033062b12cb';
 // parameter of the pure mechanic (server/src/blitz.ts), never read inside it.
 export const BLITZ_MIN_PLAYERS = 2;
 export const BLITZ_STATEMENT_COUNT = 12; // K
+// Task 253 - how many swipe windows Η Παλαίστρα runs back to back. ONE
+// constant drives the whole stage: the draw (roundCount * K statements, no
+// repeats across rounds - drawBlitzGameRounds), the reveal's "another round
+// follows" branch, and the round indicator both screens show. A call-site
+// parameter like every other number here, so the pure mechanic still never
+// asks how many rounds anyone is playing. The stage measured ~41.5s as one
+// round (tasks/214-report.md), too short to register as a stage of the show.
+export const BLITZ_ROUND_COUNT = 2;
 export const BLITZ_DURATION_MS = 30_000;
 export const BLITZ_REVEAL_DURATION_MS = 8_000;
 export const BLITZ_CORRECT_POINTS = 50;
@@ -3458,6 +3466,11 @@ export interface BlitzSwipePayload {
 // phase entry share one shape.
 export interface BlitzShowHostPayload {
   total: number; // K
+  // Task 253 - which swipe window of the stage this is, 1-based, and how many
+  // the stage runs in all. Both screens read these; nothing branches on them
+  // server-side (modes/blitz.ts's own roundIndex decides what actually runs).
+  round: number;
+  totalRounds: number;
   durationMs: number;
   progressByPlayerId: Record<string, number>; // playerId -> statements swiped so far
   paused: boolean;
@@ -3468,6 +3481,8 @@ export interface BlitzShowHostPayload {
 export interface BlitzShowPlayerPayload {
   statements: string[]; // texts only - truth never leaves the server before BLITZ_REVEAL
   total: number; // K (= statements.length)
+  round: number; // Task 253, 1-based
+  totalRounds: number;
   durationMs: number;
   answeredCount: number; // how many THIS phone already swiped - non-zero only on a state:sync catch-up
   paused: boolean;
@@ -3510,6 +3525,13 @@ export interface BlitzMostMissed {
 // gets everyone's for the score column plus the most-missed statement.
 export interface BlitzRevealHostPayload {
   total: number;
+  // Task 253 - the round that just resolved, and whether the stage has
+  // another one after it. `hasNextRound` is what turns this reveal into the
+  // between-rounds transition rather than the end of the stage: it is the
+  // ONLY signal either screen gets that Η Παλαίστρα is not over.
+  round: number;
+  totalRounds: number;
+  hasNextRound: boolean;
   results: BlitzRevealResult[];
   mostMissed: BlitzMostMissed | null;
   // Task 156b - the round's own K statements, in dealt order, WITH their
@@ -3525,6 +3547,9 @@ export interface BlitzRevealHostPayload {
 
 export interface BlitzRevealPlayerPayload {
   total: number;
+  round: number; // Task 253
+  totalRounds: number;
+  hasNextRound: boolean;
   correct: number;
   wrong: number;
   unanswered: number;

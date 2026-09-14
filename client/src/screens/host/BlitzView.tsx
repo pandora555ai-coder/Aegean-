@@ -53,6 +53,14 @@ export function BlitzView({ blitz, roomCode, paused, pausedByName }: BlitzViewPr
           <div style={detailLineStyle} data-testid="blitz-instruction">
             Δώδεκα προτάσεις, τριάντα δευτερόλεπτα.
           </div>
+          {/* Task 253 - which window of the stage this is. Only when the
+              stage actually runs more than one, so a single-round blitz
+              reads exactly as it did before. */}
+          {blitz.totalRounds > 1 && (
+            <div style={detailLineStyle} data-testid="blitz-round">
+              Γύρος {blitz.round} από {blitz.totalRounds}
+            </div>
+          )}
         </div>
       </MarbleSlab>
     </GameLayout>

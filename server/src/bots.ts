@@ -395,8 +395,11 @@ function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, ac
     setTimeout(() => socket.emit(ClientEvents.DUEL_PICK, { weapon }), 400 + Math.random() * 1100);
   });
 
-  // blitz:show broadcasts once per game (never re-sent per-swipe), so this
-  // schedules the bot's own remaining swipes locally.
+  // blitz:show broadcasts once per ROUND (Task 253 - never re-sent per-swipe),
+  // so this schedules the bot's own remaining swipes locally. Re-arming on a
+  // second round needs no code of its own: this handler fires per EVENT, and
+  // the previous round's chain has already stopped itself at nextIndex >=
+  // total by the time the next round's payload (answeredCount 0) arrives.
   socket.on(ServerEvents.BLITZ_SHOW, (payload: BlitzShowPayload) => {
     if ('progressByPlayerId' in payload) {
       return; // host-shaped payload, not sent to this socket anyway

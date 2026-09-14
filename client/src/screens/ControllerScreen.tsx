@@ -2678,6 +2678,13 @@ export default function ControllerScreen() {
           </div>
         )}
         <div style={styles.category}>{greekUpper('Η Παλαίστρα')}</div>
+        {/* Task 253 - which swipe window of the stage this phone is in. Only
+            when the stage runs more than one. */}
+        {blitz.totalRounds > 1 && (
+          <div style={{ fontSize: '0.95rem', opacity: 0.75 }} data-testid="blitz-round">
+            Γύρος {blitz.round} από {blitz.totalRounds}
+          </div>
+        )}
         <div style={styles.blitzProgress} data-testid="blitz-progress">
           {Math.min(blitzIndex, blitz.total)}/{blitz.total}
         </div>
@@ -2724,7 +2731,14 @@ export default function ControllerScreen() {
         <div style={styles.revealTotal} data-testid="blitz-reveal-unanswered">
           Αναπάντητα: {blitzReveal.unanswered}
         </div>
-        <div style={styles.lookAtTv}>Κοίτα την τηλεόραση</div>
+        {/* Task 253 - the phone's half of the between-rounds transition: a
+            player who is about to be handed a fresh deck is told so here,
+            instead of the swipe cards simply reappearing. */}
+        <div style={styles.lookAtTv} data-testid="blitz-next-round">
+          {blitzReveal.hasNextRound
+            ? `Ακολουθεί ο γύρος ${blitzReveal.round + 1} από ${blitzReveal.totalRounds}`
+            : 'Κοίτα την τηλεόραση'}
+        </div>
         <ConnectionBanner visible={!connected && joined !== null} />
         <PauseControl paused={paused} pausedByName={pausedByName} onPause={handlePause} onResume={handleResume} />
         {isVip && (
