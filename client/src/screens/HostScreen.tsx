@@ -1084,6 +1084,35 @@ export default function HostScreen() {
         // is seeded from explicit call sites rather than an object-keyed
         // effect, this is the call site a resume needs.
         applyBlitzSecondsLeft(seconds);
+      } else if (phaseRef.current === 'BLITZ_REVEAL') {
+        // Task 246 - the last three timed phases with a countdown of their
+        // own that this list never covered. Measured before the fix: the
+        // server's timer was NOT dead on any of them (it resumes through the
+        // mode's continuations table, which has had CLIMB_*/DUEL_* entries
+        // since Task 188a/b) and neither was the local tick (both effects key
+        // on `paused`, so they re-arm when it flips back). What was missing is
+        // only the authoritative CORRECTION: a resumed CLIMB_QUESTION sat at
+        // 19s against a server holding 17966ms, and DUEL_PICK at 18s against
+        // 16970ms - each a second stale, and staying stale for the rest of
+        // the phase. Same shape as every branch above: keyed on
+        // phaseRef.current, a primitive, never a payload object (the 234 bug
+        // class).
+        //
+        // CLIMB_REVEAL and DUEL_REVEAL get no branch on purpose: Task 192
+        // tore every countdown out of them (no on-screen text while bodies
+        // move), so there is no displayed value to correct - verified as
+        // `absent` in the DOM, not merely unread.
+        //
+        // DUEL_PICK note: once both duelists have locked in, the server
+        // re-arms as DUEL_LOCKED (DUEL_LOCK_FLOOR_MS) while the PHASE is
+        // still DUEL_PICK, so a resume inside that short beat snaps this ring
+        // to the lock floor's own remainder. That is the honest time left
+        // before the phase advances, which is what this ring claims to show.
+        setBlitzRevealSecondsLeft(seconds);
+      } else if (phaseRef.current === 'CLIMB_QUESTION') {
+        setClimbQuestionSecondsLeft(seconds);
+      } else if (phaseRef.current === 'DUEL_PICK') {
+        setDuelPickSecondsLeft(seconds);
       }
     }
 

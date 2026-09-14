@@ -102,7 +102,13 @@ function wireDuelPicks(sims: Sim[], weaponFor: Map<string, DuelWeapon>): void {
 }
 
 const AVATARS = ['sphinx', 'medusa', 'centaur', 'minotaur', 'pegasus', 'cyclops'];
-const NAMES = ['Άλφα', 'Βήτα', 'Γάμα', 'Δέλτα', 'Έψιλον', 'Ζήτα'];
+// Task 246 - names are PRESET-ONLY since Task 241/245 (isValidPlayerName =
+// strict membership in PRESET_NAMES), so the Greek-letter names this suite
+// was written with are rejected at join with INVALID_NAME and the whole run
+// dies on the first sim. Lengths kept close to the originals (4/4/4/5/7/3 vs
+// 4/4/4/5/7/4) so nothing geometric shifts. Name constants only - no check,
+// threshold or scenario is touched.
+const NAMES = ['Άρης', 'Νίκη', 'Χαρά', 'Τάκης', 'Γιώργος', 'Ζωή'];
 
 interface ClimberDom {
   playerId: string;
