@@ -108,12 +108,31 @@ function buildNumlineMarkers(reveal: NumericRevealShowPayload): NumlineMarker[] 
   });
 }
 
+// Task 248 - marginTop 6cqh -> 4cqh and marginBottom 4cqh -> 2.5cqh, which
+// hands ~25px back to the question block above.
+//
+// Measured cause: on this screen the question block gets only 57px (the
+// SLIDER screen's identical block gets 198px), because this slab carries the
+// numline as well as the question. The bank's longest question needs two
+// lines at useFitFontSize's 2rem FLOOR - scrollHeight 80 against clientHeight
+// 57, i.e. 23px clipped by styles.questionBlock's `overflow: hidden`.
+// Shrinking further is not an option worth having: two lines inside 57px
+// needs ~1.4rem, which is not TV-at-couch-distance text. Width is not the
+// lever either (questionTextTv caps at maxWidth 85%, and this string wraps to
+// two lines at full width too), so the 23px has to come from height.
+//
+// It comes from HERE because every tick label is absolutely positioned: these
+// margins are pure clearance, not flow, so trimming them costs no label any
+// room of its own. What it does reduce is the gap an 'above' label has before
+// it reaches the question text, which is exactly why the check for this task
+// measures label-vs-label AND label-vs-question-text boxes rather than
+// trusting the arithmetic (Task 242's own invariant, re-verified).
 const numlineRootStyle: CSSProperties = {
   position: 'relative',
   width: '100%',
   height: '6cqh',
-  marginTop: '6cqh',
-  marginBottom: '4cqh',
+  marginTop: '4cqh',
+  marginBottom: '2.5cqh',
   borderBottom: '0.4cqh solid var(--marble-3)',
 };
 
