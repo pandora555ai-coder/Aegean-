@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
-import { ClientEvents, DUEL_WEAPONS, ServerEvents, PRESET_NAMES, VOCATIVE_FORMS, type GameModeId } from '@game/shared';
+import { ClientEvents, DUEL_WEAPONS, NAME_GENDER, ServerEvents, PRESET_NAMES, VOCATIVE_FORMS, type GameModeId } from '@game/shared';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLIENT_DIR = path.join(ROOT, 'client');
@@ -221,6 +221,59 @@ async function main(): Promise<void> {
   check('1: VOCATIVE_FORMS has 201 entries', Object.keys(VOCATIVE_FORMS).length === 201, `${Object.keys(VOCATIVE_FORMS).length}`);
   const missingVocative = PRESET_NAMES.filter((n) => !(n in VOCATIVE_FORMS));
   check('1: every PRESET_NAMES entry has a VOCATIVE_FORMS entry', missingVocative.length === 0, JSON.stringify(missingVocative));
+
+  // =========================================================================
+  // Task 247 - 1:1 integrity across ALL THREE tables, ENFORCED not asserted.
+  // Every pair is checked in BOTH directions, so a name present in any one
+  // table but missing from another fails loudly here. The check above only
+  // ever looked PRESET_NAMES -> VOCATIVE_FORMS, one way: an entry added to
+  // VOCATIVE_FORMS or NAME_GENDER alone would have sailed through.
+  // =========================================================================
+  const vocativeKeys = Object.keys(VOCATIVE_FORMS);
+  const genderKeys = Object.keys(NAME_GENDER);
+  console.log(`  counts: PRESET_NAMES=${PRESET_NAMES.length} VOCATIVE_FORMS=${vocativeKeys.length} NAME_GENDER=${genderKeys.length}`);
+  const tables: Array<[string, string[]]> = [
+    ['PRESET_NAMES', [...PRESET_NAMES]],
+    ['VOCATIVE_FORMS', vocativeKeys],
+    ['NAME_GENDER', genderKeys],
+  ];
+  for (const [nameA, a] of tables) {
+    for (const [nameB, b] of tables) {
+      if (nameA === nameB) continue;
+      const setB = new Set(b);
+      const missing = a.filter((n) => !setB.has(n));
+      check(
+        `1: every ${nameA} entry exists in ${nameB}`,
+        missing.length === 0,
+        missing.length ? `${missing.length} MISSING: ${JSON.stringify(missing.slice(0, 10))}` : `all ${a.length} present`,
+      );
+    }
+  }
+  const badGender = genderKeys.filter((n) => NAME_GENDER[n] !== 'm' && NAME_GENDER[n] !== 'f');
+  check('1: every NAME_GENDER value is exactly m or f', badGender.length === 0, JSON.stringify(badGender));
+
+  // Criterion 2 - the m/f split, and what a NAIVE ending rule would make of
+  // the same names. The tonos is stripped FIRST: without that, Χαρά/Ζωή/
+  // Αγγελική look "unclassifiable" purely because of an accent, which
+  // overstates the case badly. Two failure classes, reported apart - a rule
+  // that states the WRONG gender is a different thing from one that cannot
+  // state any.
+  const gm = genderKeys.filter((n) => NAME_GENDER[n] === 'm').length;
+  const gf = genderKeys.filter((n) => NAME_GENDER[n] === 'f').length;
+  console.log(`  gender split: m=${gm} f=${gf} (total ${genderKeys.length})`);
+  const strip = (s: string): string =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC').toUpperCase();
+  const naive = (n: string): 'm' | 'f' | null => {
+    const u = strip(n);
+    if (u.endsWith('ΟΣ') || u.endsWith('ΗΣ')) return 'm';
+    if (u.endsWith('Α') || u.endsWith('Η')) return 'f';
+    return null;
+  };
+  const naiveWrong = genderKeys.filter((n) => naive(n) !== null && naive(n) !== NAME_GENDER[n]);
+  const naiveSilent = genderKeys.filter((n) => naive(n) === null);
+  console.log(`  naive ending rule (-ΟΣ/-ΗΣ=m, -Α/-Η=f, tonos stripped): states the WRONG gender for ${naiveWrong.length}, cannot classify ${naiveSilent.length}`);
+  console.log(`  naive WRONG: ${JSON.stringify(naiveWrong)}`);
+  console.log(`  naive CANNOT CLASSIFY: ${JSON.stringify(naiveSilent)}`);
 
   // =========================================================================
   // 3 - ΞΕΝΟΦΩΝ plaque fix + pinned baselines + new stress names, across

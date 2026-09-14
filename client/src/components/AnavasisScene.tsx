@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CrowdMood, DuelWeapon, RoomCode } from '@game/shared';
+import { winnerTitleForName } from '@game/shared';
 import { greekUpper } from '../greekUpper';
 import { styles as hostStyles, type CSSVars } from '../screens/host/hostStyles';
 import { buildDuelVerdictLine } from './duelVerdict';
@@ -785,7 +786,12 @@ export function AnavasisCrowning({ winnerName, winnerLeft }: AnavasisCrowningPro
         </g>
       </svg>
       <div className="anavasis-crown-text">
-        <div className="anavasis-crown-n">{greekUpper('Ο μαθητής')}</div>
+        {/* Task 247 - gendered (Ο ΣΟΦΙΣΤΗΣ / Η ΣΟΦΙΣΤΡΙΑ, replacing the fixed
+            Ο ΜΑΘΗΤΗΣ). The climb crowns exactly one climber, so `winnerName`
+            is always a single real name here - unlike GameOverView, which has
+            to read standings[0].name because a score tie joins winnerName
+            with " & ". Still greekUpper, never text-transform. */}
+        <div className="anavasis-crown-n" data-testid="winner-title">{greekUpper(winnerTitleForName(winnerName))}</div>
         <div className="anavasis-crown-t" data-testid="anavasis-winner-banner">
           {winnerName}
         </div>

@@ -1,4 +1,5 @@
 import type { GameOverPayload } from '@game/shared';
+import { winnerTitleForName } from '@game/shared';
 import type { CSSVars } from './hostStyles';
 import { greekUpper } from '../../greekUpper';
 
@@ -61,11 +62,19 @@ export function GameOverView({ gameOver }: GameOverViewProps) {
         ))}
       </div>
       <div>
-        {/* "Ο μαθητής" is a fixed kicker, not the winner's name (that's .t,
-            winnerName, below - never uppercase-transformed). A Task 181-style
-            tonos bug ("Ο ΜΑΘΗΤΉΣ"), caught while auditing name displays for
-            Task 182. */}
-        <div className="n">{greekUpper('Ο μαθητής')}</div>
+        {/* The kicker is not the winner's name (that's .t, winnerName, below -
+            never uppercase-transformed). Still greekUpper, never
+            text-transform: a Task 181-style tonos bug ("Ο ΜΑΘΗΤΉΣ"), caught
+            while auditing name displays for Task 182.
+            Task 247 - it is now gendered (Ο ΣΟΦΙΣΤΗΣ / Η ΣΟΦΙΣΤΡΙΑ, replacing
+            the fixed Ο ΜΑΘΗΤΗΣ), read from standings[0].name rather than
+            `winnerName`: on a TIE the server joins winnerName with " & "
+            (payloads.ts), which matches no NAME_GENDER entry, whereas
+            standings[0].name is always one real name. An unknown name falls
+            back to the masculine form - see winnerTitleForName. */}
+        <div className="n" data-testid="winner-title">
+          {greekUpper(winnerTitleForName(gameOver.standings[0]?.name ?? gameOver.winnerName))}
+        </div>
         <div className="t" data-testid="winner-banner">
           {gameOver.winnerName}
         </div>

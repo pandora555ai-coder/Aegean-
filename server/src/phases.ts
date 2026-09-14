@@ -17,6 +17,7 @@ import {
   TRIAL_MAX_QUESTIONS,
   ServerEvents,
   climbEntryStep,
+  genderForName,
   stageForQuestionIndex,
   type ClimbRevealHostResult,
   type CrowdIntensityContext,
@@ -67,6 +68,7 @@ import {
   LINES,
   logMomentFireSummary,
   pickAnavasisIntroSequence,
+  pickCoronationLine,
   pickGameIntroLine,
   pickGameIntroSequence,
   pickQuestionIntro,
@@ -429,6 +431,40 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
     () => advanceFromSocrates(room.code),
   );
   return true;
+}
+
+// Task 247 - who the WINNER beat is actually speaking to, or null when that
+// is not one identifiable person.
+//
+// The three WINNER beat sites reach this differently, which is exactly why
+// this lives in ONE place rather than at each of them: the climb and the
+// trial each declare a winner outright, while the plain quiz path (no finale
+// configured) has not computed one yet - there, the winner is whoever leads
+// on score, and ONLY if they lead alone. A shared top score is a tie, and a
+// tie has no single person to inflect a line for, so it returns null and
+// takes the fallback below rather than guessing at one of them.
+function winnerNameForBeat(room: Room): string | null {
+  const declaredId = room.climb?.winnerPlayerId ?? room.trial?.winnerPlayerId ?? null;
+  if (declaredId) {
+    return room.players.get(declaredId)?.name ?? null;
+  }
+  const players = [...room.players.values()];
+  if (players.length === 0) {
+    return null;
+  }
+  const topScore = Math.max(...players.map((player) => player.score));
+  const leaders = players.filter((player) => player.score === topScore);
+  return leaders.length === 1 ? leaders[0].name : null;
+}
+
+// The line that beat speaks. Gender known -> the coronation variant for it;
+// gender unknown for ANY reason (a tie, a disconnected winner, a name absent
+// from NAME_GENDER) -> the original WINNER_LINES pool, which is fully voiced.
+// The degrade is therefore exactly what every winner heard before this task,
+// never a blank beat and never a guessed gender.
+function pickWinnerBeatLine(room: Room): PickedLine | null {
+  const name = winnerNameForBeat(room);
+  return pickCoronationLine(name ? genderForName(name) : null) ?? pickWinnerLine(room.socrates);
 }
 
 // Task 236 - the same beat, but several lines long: the opening narration
@@ -1035,7 +1071,7 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
     if (startFinale(room)) {
       return; // the finale runs its own phases and ends the game itself
     }
-    if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
+    if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
       return; // advanceFromSocrates calls finishGame once the beat is over
     }
     finishGame(room);
@@ -1378,7 +1414,7 @@ export function endTrialReveal(code: RoomCode): void {
 // before the trial existed - advanceFromSocrates's WINNER case calls
 // finishGame once the beat is done.
 function endTrial(room: Room): void {
-  if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
+  if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
     return;
   }
   finishGame(room);
@@ -2057,7 +2093,7 @@ export function endDuelReveal(code: RoomCode): void {
 // The climb is over (a verdict, or the pool running out): Socrates names the
 // winner, then finishGame - identical to endTrial.
 function endClimb(room: Room): void {
-  if (startSocratesBeat(room, 'WINNER', pickWinnerLine(room.socrates))) {
+  if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
     return;
   }
   finishGame(room);

@@ -2243,10 +2243,26 @@ export default function HostScreen() {
     // directly here instead - the same two pieces SocratesView composes,
     // without its GameLayout shell. The climb's WINNER beat still falls
     // through to nothing, exactly as Task 237 left it.
-    if (phase === 'SOCRATES' && socrates && isClimbFinale && (socrates.kind === 'STAGE_INTRO' || socrates.kind === 'GAME_INTRO')) {
+    if (
+      phase === 'SOCRATES' &&
+      socrates &&
+      isClimbFinale &&
+      (socrates.kind === 'STAGE_INTRO' || socrates.kind === 'GAME_INTRO' || socrates.kind === 'WINNER')
+    ) {
+      // Task 247 - WINNER joins the two announce kinds here so the climb's
+      // coronation beat finally gets Task 239's subtitle; it had none since
+      // 237 left it "falling through to nothing", which was the only beat in
+      // the game that spoke with no caption.
+      //
+      // The CARD is gated to the announce kinds only, deliberately:
+      // `stageAnnounce` is never cleared on entering SOCRATES (Task 244), so
+      // at the coronation it still holds the stage card Η Ανάβασις was
+      // announced with - rendering it here would put that card back up over
+      // the crowning. The WINNER beat renders the subtitle ALONE.
+      const isAnnounceCard = socrates.kind === 'STAGE_INTRO' || socrates.kind === 'GAME_INTRO';
       return (
         <>
-          {stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
+          {isAnnounceCard && stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
           <SocratesSubtitle text={socrates.line} />
         </>
       );

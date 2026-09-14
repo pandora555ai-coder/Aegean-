@@ -594,6 +594,39 @@ export const WINNER_LINES: readonly string[] = [
   'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.',
 ];
 
+// Task 247 - the CORONATION line: what Socrates says to the one person left
+// standing. Two variants of the SAME line, not a pool of two - they differ
+// only where Greek forces them to (σοφιστή/σοφίστρια, κανέναν/καμία), so the
+// beat says one thing and simply inflects it for who is standing there.
+// Chosen by NAME_GENDER (shared), never by the name's ending.
+//
+// No audio exists for either yet (Task 247's own scope). Both therefore ride
+// Task 154's missing-clip path: the host's fetch 404s, it calls onEnded()
+// immediately, and the beat ends on that ack at ~0ms instead of waiting out
+// SOCRATES_BACKSTOP_UNKNOWN_MS. That is the intended interim behaviour, and
+// it is why the beat needs its subtitle to render on the FIRST frame.
+export const CORONATION_LINES: Readonly<Record<'m' | 'f', string>> = {
+  m: "Σ' εσένα το λέω σοβαρά. Σοφιστή. Δεν το έχω πει ποτέ σε κανέναν… Πήγαινε να το πουλήσεις. Απόψε αξίζει.",
+  f: "Σ' εσένα το λέω σοβαρά. Σοφίστρια. Δεν το έχω πει ποτέ σε καμία… Πήγαινε να το πουλήσεις. Απόψε αξίζει.",
+};
+
+// Gender known -> that variant. Gender UNKNOWN (a name absent from
+// NAME_GENDER, or a tie, whose winner is not one person) -> null, and the
+// caller falls back to the fully-voiced WINNER_LINES pool. That is the
+// degrade path: an unknown winner hears exactly what every winner heard
+// before this task, rather than a blank beat or a guessed gender.
+//
+// `state.usedLines` is deliberately NOT consulted or written: this beat fires
+// once per game by construction, and the two variants are mutually exclusive,
+// so pool-exhaustion bookkeeping has nothing to track here.
+export function pickCoronationLine(gender: 'm' | 'f' | null): PickedLine | null {
+  if (!gender) {
+    return null;
+  }
+  const template = CORONATION_LINES[gender];
+  return { template, text: template, tag: LINE_TAGS[template] ?? null };
+}
+
 // Task 138 built these pools empty (detection only); Task 139 wrote the
 // lines. Same craft rules as every pool above: name-free, short (the TTS
 // clip length is round time), an observation then a turn, landing on a
@@ -1865,6 +1898,12 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
     add(`STAGE_INTRO (stage ${identity})`, pool);
   }
   add('WINNER', WINNER_LINES);
+  // Task 247 - registered so `npm run voice:generate` will produce clips for
+  // the two coronation variants when the time comes. Until then both are
+  // simply missing from disk: the host's LOBBY prefetch (Task 154) 404s on
+  // them and drops the bytes, which is harmless, and the beat itself ends on
+  // the immediate onEnded() ack rather than a backstop.
+  add('CORONATION', Object.values(CORONATION_LINES));
   add('TRIAL_INTRO', TRIAL_INTRO_LINES);
   for (const [moment, pool] of Object.entries(DRAW_LINES)) {
     add(moment, pool);
