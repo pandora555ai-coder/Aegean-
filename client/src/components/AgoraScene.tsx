@@ -12,15 +12,21 @@ import { AGORA_COLOURS, type AgoraRenderSpec, type AgoraStall, type AgoraSubject
 // Scene ART only - raw hex is allowed inside this SVG, the same exception
 // TheatreScene/AnavasisScene/SocratesFigure already use.
 //
-// TWO LAYERS, exactly as the task requires. The sky (stars, moon, distant
-// Acropolis) is STATIC geometry, built once at module load - like
-// TheatreScene's own crowd - and stays visible, full brightness, through
-// every agora phase, AGORA_QUESTION included: nothing here ever dims it.
-// The market group (stalls, torches, ground, animals) is drawn fresh from
-// `spec` every render and is the ONLY thing the fairness rule hides: when
-// `marketVisible` is false its whole <g> simply ISN'T RENDERED (no opacity
-// trick, no display:none) - a DOM query for it during AGORA_QUESTION finds
-// zero nodes, not a hidden one.
+// THREE LAYERS now (Task 252 split the third out of what used to be one
+// "market" group). The sky (stars, moon, distant Acropolis) is STATIC
+// geometry, built once at module load - like TheatreScene's own crowd - and
+// stays visible, full brightness, through every agora phase, AGORA_QUESTION
+// included: nothing here ever dims it. The ground/torches/glow (MarketGround)
+// are decor with no round data in them at all, so Task 252 made them
+// UNCONDITIONAL too - before that they disappeared together with the actual
+// content for the whole AGORA_QUESTION phase plus the reveal's own grid
+// stage, and the sophists appeared to float over bare sky. The market's
+// actual CONTENT (Market: stalls, animals) is drawn fresh from `spec` every
+// render and is the ONLY thing the fairness rule still hides: when `spec` is
+// null its whole <g> simply ISN'T RENDERED (no opacity trick, no
+// display:none) - a DOM query for `agora-market` during AGORA_QUESTION finds
+// zero nodes, not a hidden one. `agora-ground` has no such gate; it is
+// present in literally every agora phase.
 //
 // Nothing here calls Math.random, and nothing is seeded from the round at
 // all: the sky is fixed forever, and the market's own layout (which of the
@@ -295,19 +301,26 @@ function isAnimalHighlighted(highlight: AgoraSubject | null, kind: string): bool
   return !!highlight && highlight.present && highlight.kind === 'animal' && highlight.animal === kind;
 }
 
-// The market group - stalls, torches, ground, animals - drawn fresh from
-// `spec` every render. Rendered ONLY when the fairness rule allows it (see
-// AgoraScene below): this component is never mounted at all during
-// AGORA_QUESTION, so there is nothing to hide, only something to not render.
-function Market({ spec, highlight }: MarketProps) {
+// Task 252 - the floor/torches/glow, split out of Market and made
+// UNCONDITIONAL: none of this depends on `spec` (fixed positions, no round
+// data), so none of it needs the fairness rule's protection - the ANSWER
+// lives in which stalls/animals are present, never in the ground they stand
+// on. Before this split, the whole Market <g> (ground included) vanished for
+// the entire AGORA_QUESTION phase and the reveal's own grid stage, so the
+// sophists appeared to float over bare sky with nothing beneath them -
+// measured at ~1.8s right after the round's last submit (the reveal's own
+// AGORA_REVEAL_GRID_MS window, HostScreen.tsx). Always rendered now, so a DOM
+// query for it never returns zero nodes - unlike `agora-market` below, whose
+// own "absent during AGORA_QUESTION" contract every existing agora check
+// depends on and which this split leaves untouched.
+function MarketGround() {
   return (
-    <g data-testid="agora-market">
+    <g data-testid="agora-ground">
       <rect x={0} y={H * 0.645} width={W} height={H * 0.355} fill="url(#agora-ground)" />
       <rect x={0} y={H * 0.645} width={W} height={14} fill="#5A4830" />
       {GLOW_X_FRAC.map((fx, i) => (
         <ellipse key={i} cx={W * fx} cy={H * 0.72} rx={W * 0.17} ry={H * 0.26} fill="url(#agora-glow)" />
       ))}
-      {spec.stalls.map((stall) => renderStall(stall, isStallHighlighted(highlight, stall.type)))}
       {TORCH_X_FRAC.map((fx, i) => {
         const x = W * fx;
         const y = H * 0.62;
@@ -319,6 +332,21 @@ function Market({ spec, highlight }: MarketProps) {
           </g>
         );
       })}
+    </g>
+  );
+}
+
+// The market's actual CONTENT - stalls and animals, the only things that
+// could give an answer away. Still drawn fresh from `spec` every render and
+// still rendered ONLY when the fairness rule allows it (see AgoraScene
+// below): this component is never mounted at all during AGORA_QUESTION, so
+// there is nothing to hide, only something to not render. `data-testid`
+// unchanged from before the split - every existing check's "0 agora-market
+// nodes during AGORA_QUESTION" query still means exactly what it always has.
+function Market({ spec, highlight }: MarketProps) {
+  return (
+    <g data-testid="agora-market">
+      {spec.stalls.map((stall) => renderStall(stall, isStallHighlighted(highlight, stall.type)))}
       {spec.animals.dog && <DogFigure x={W * 0.13} y={ANIMAL_AY - 6} highlighted={isAnimalHighlighted(highlight, 'dog')} />}
       {spec.animals.goat && <GoatFigure x={W * 0.6} y={ANIMAL_AY - 10} highlighted={isAnimalHighlighted(highlight, 'goat')} />}
       {spec.animals.cat && <CatFigure x={W * 0.925} y={ANIMAL_AY - 14} highlighted={isAnimalHighlighted(highlight, 'cat')} />}
@@ -395,8 +423,12 @@ export function AgoraScene({ spec, highlight }: AgoraSceneProps) {
           })()}
         </g>
 
-        {/* Market layer - the fairness rule's whole subject. Absent (no <g>
-            at all) when spec is null. */}
+        {/* Task 252 - the ground/torches/glow are decor, not content: always
+            rendered, fairness rule or not (see MarketGround above). */}
+        <MarketGround />
+
+        {/* Market CONTENT layer - the fairness rule's whole subject. Absent
+            (no <g> at all) when spec is null. */}
         {spec && <Market spec={spec} highlight={highlight} />}
       </svg>
     </div>

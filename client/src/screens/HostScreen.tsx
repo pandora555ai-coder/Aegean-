@@ -2827,9 +2827,10 @@ export default function HostScreen() {
   const showAnavasisWorld =
     isAnavasisPhase || isClimbSocratesBeat || isClimbAnnounceBeat || (isClimbFinale && phase === 'GAME_OVER');
   // Η Μνήμη της Αγοράς (Task 208) - a lighter-weight backdrop swap than
-  // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row,
-  // Socrates and the krater all stay exactly as they are for every other
-  // in-game phase). `spec`/`highlight` are null whenever there is nothing to
+  // Anavasis's: only TheatreScene is replaced (GameLayout, the sophists row
+  // and the krater all stay exactly as they are for every other in-game
+  // phase - Socrates does NOT, see isAgoraScenePhase's other use below,
+  // Task 252). `spec`/`highlight` are null whenever there is nothing to
   // draw - AGORA_QUESTION always (the fairness rule), AGORA_REVEAL until its
   // own 'proof' stage begins (see agoraRevealStage) - which is precisely
   // when AgoraScene renders no market group at all (see its own doc comment).
@@ -2887,7 +2888,12 @@ export default function HostScreen() {
       ) : (
         <TheatreScene mood={crowdMood} dimmed={!isSceneLit(phase)} />
       )}
-      <SocratesFigure phase={phase} climbFinale={isClimbFinale} />
+      {/* Task 252 - a live playtest reported Socrates standing in the Η
+          Λήθη scene itself, which he should never do (this stage only -
+          the AGORA_MOMENT beat that can follow a reveal is a plain
+          'SOCRATES' phase, not one of the three below, so he still speaks
+          there exactly as everywhere else). */}
+      {!isAgoraScenePhase && <SocratesFigure phase={phase} climbFinale={isClimbFinale} />}
       {showFullscreenToggle && (
         <button
           type="button"
