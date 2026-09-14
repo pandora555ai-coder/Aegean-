@@ -16,8 +16,10 @@ interface GameOverViewProps {
 // reference's fixed one; ties are whatever `winnerName` already contains
 // (server joins them with " & " - see payloads.ts, untouched here).
 // The standings themselves are the sophists row (Task 161) - nothing here
-// names or counts a player except the winner's own name, and the row keeps
-// the wreath on whoever's leading (or the trial's survivor).
+// names or counts a player except the winner's own name. Task 250 removed
+// the row's in-play leader wreath (it added no information once the row
+// was sorted by rank); the winner's own wreath now lives only on the
+// coronation (AnavasisCrowning) and the podium (PodiumView) that follows.
 const LEAF_COUNT = 60;
 const LEAVES = Array.from({ length: LEAF_COUNT }, (_, i) => {
   const left = (i * 37) % 100;

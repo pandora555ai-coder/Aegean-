@@ -2946,7 +2946,7 @@ export default function HostScreen() {
           // as a plain SOCRATES phase between the last CLIMB_REVEAL and
           // GAME_OVER - not one of the 4 climb phases isAnavasisPhase names,
           // so showAnavasisWorld is false here and this row would otherwise
-          // render normally, wreath included, on whoever leads by SCORE
+          // render normally, plaque-highlighted, on whoever leads by SCORE
           // (never the climb's own winner - steps aren't score). isClimbFinale
           // stays true for the rest of that game once set, so this can only
           // ever fire during the climb's own tail end, the same "market frame

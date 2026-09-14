@@ -218,8 +218,6 @@ const ROW_STYLE_TAG = `
 .d{position:absolute;left:0;right:0;top:-3.6cqh;font-size:3cqh;font-weight:800;color:var(--ember);opacity:0;transition:opacity 300ms;
   text-shadow:0 2px 8px rgba(0,0,0,.8)}
 .d.on{opacity:1}
-.wreath{position:absolute;top:-1.4cqh;left:50%;transform:translateX(-50%);width:8cqh;height:3.6cqh;display:none}
-.soph.lead .wreath{display:block}
 .soph.out{opacity:0;transform:translateX(-50%) translateY(8cqh) scale(.9)}
 .soph.out .plaque{background:var(--marble-3)}
 .fx{position:absolute;left:50%;top:1cqh;transform:translateX(-50%);width:11cqh;height:14cqh;opacity:0;
@@ -242,7 +240,7 @@ function byRank(standings: SophistStanding[]): SophistStanding[] {
   return [...standings].sort((a, b) => a.rank - b.rank);
 }
 
-// Holds the visual order (and who wears the wreath) back from the
+// Holds the visual order (and who gets the leader plaque) back from the
 // just-arrived sort order until HOLD_BEFORE_MOVE_MS has passed, so a score
 // change tweens its number first and only reorders the figures once that
 // has settled and been read. A later score change while a reorder is still
@@ -334,20 +332,6 @@ function Figure({ joinIndex }: { joinIndex: number }) {
         <path d="M80 88 L100 66 L106 72 L86 96 Z" fill="#A07A54" />
         <circle cx={60} cy={58} r={22} fill="#B58C63" />
         <path d="M40 52 C44 34 76 34 80 52 C74 44 46 44 40 52Z" fill="#2A2218" />
-      </g>
-    </svg>
-  );
-}
-
-function Wreath() {
-  return (
-    <svg className="wreath" viewBox="0 0 90 40" aria-hidden="true" data-testid="sophist-wreath">
-      <path d="M45 34 Q10 30 6 8 Q30 6 45 34 Q60 6 84 8 Q80 30 45 34" fill="none" stroke="var(--olive)" strokeWidth={3} />
-      <g fill="var(--olive)">
-        <ellipse cx={18} cy={18} rx={7} ry={3} transform="rotate(-40 18 18)" />
-        <ellipse cx={30} cy={26} rx={7} ry={3} transform="rotate(-30 30 26)" />
-        <ellipse cx={72} cy={18} rx={7} ry={3} transform="rotate(40 72 18)" />
-        <ellipse cx={60} cy={26} rx={7} ry={3} transform="rotate(30 60 26)" />
       </g>
     </svg>
   );
@@ -508,7 +492,6 @@ function Sophist({
         <InkBlot />
       </div>
       <Figure joinIndex={joinIndex} />
-      <Wreath />
       <div className={disconnected ? 'plaque plaque--disconnected' : 'plaque'}>
         {/* Task 182 - greekUpper(), not CSS text-transform:uppercase (which
             keeps the Greek tonos: "Ελένη" -> "ΕΛ΄ΕΝΗ", not "ΕΛΕΝΗ") - display
