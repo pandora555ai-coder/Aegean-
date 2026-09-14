@@ -10,5 +10,6 @@ client/public/voice-matrix-eq/
 client/public/voice-ab/
 client/public/voice-staging/
 client/public/crowd/
+dev/voice/.reproduce-scratch/
 *.tar.gz
 .mcp.json

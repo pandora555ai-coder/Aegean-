@@ -18,7 +18,7 @@
 //                    exactly these lines regardless of what already exists
 //                    in the output dir (needed because ALT_OUTPUT_DIR starts
 //                    empty, so without this every line would look "missing").
-import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
 import {
@@ -35,6 +35,17 @@ import {
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
 import { lineHash, stripPlaceholders } from './voice/text.ts';
+import { checkTail } from './voice/tailCheck.ts';
+
+// Task 251 - ElevenLabs occasionally returns an HTTP-complete response whose
+// AUDIO stops mid-sentence (see tasks/251-voice-generation-truncation.md):
+// no networking race, just a generation-side truncation at a roughly
+// constant ~12-13% rate regardless of text length or batch. Undetectable
+// from the response alone, so each freshly written clip is checked with the
+// same test Task 249 diagnosed the defect with, and re-synthesized (a fresh
+// API call, not a retried read of the same response) on failure rather than
+// silently kept.
+const MAX_SYNTHESIS_ATTEMPTS = 3;
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -157,9 +168,29 @@ async function main() {
       // Tag is spoken direction for the model only - never part of what's
       // shown on screen (that stays `template`/`stripped`, untouched).
       const spoken = tag ? `${tag} ${stripped}` : stripped;
-      const audio = await provider.synthesize(spoken);
-      writeFileSync(path.join(OUT_DIR, filename), audio);
-      console.log(`  ${filename}  "${spoken}"`);
+      const destPath = path.join(OUT_DIR, filename);
+      let attempt = 0;
+      for (;;) {
+        attempt++;
+        const audio = await provider.synthesize(spoken);
+        writeFileSync(destPath, audio);
+        const { ok, analysis } = checkTail(destPath);
+        if (ok) {
+          console.log(`  ${filename}  "${spoken}"`);
+          break;
+        }
+        const verdict = `ratio=${analysis.ratio.toFixed(2)} peak=${analysis.recentPeakRms.toFixed(0)}`;
+        if (attempt < MAX_SYNTHESIS_ATTEMPTS) {
+          console.warn(`  ${filename} failed the tail check (${verdict}) on attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS} - re-synthesizing`);
+          continue;
+        }
+        // Refuse to keep a clip this test would flag - regeneration next
+        // run is better than shipping a silently truncated line.
+        unlinkSync(destPath);
+        throw new Error(
+          `${filename} ("${spoken}") failed the tail check ${MAX_SYNTHESIS_ATTEMPTS} times in a row (${verdict}) - refusing to save a truncated clip`,
+        );
+      }
     }
   }
 
