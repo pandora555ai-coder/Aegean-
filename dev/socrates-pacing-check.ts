@@ -120,7 +120,11 @@ interface Sim {
 }
 
 const AVATARS = ['minotaur', 'sphinx', 'medusa', 'centaur'];
-const NAMES = ['Άλφα', 'Βήτα', 'Γάμα', 'Δέλτα'];
+// Task 249 - names are PRESET-ONLY since Task 241 (isValidPlayerName = strict
+// membership in PRESET_NAMES), so the Greek-letter names this suite was
+// written with are rejected at join with INVALID_NAME. Names only - no
+// scenario, threshold or check is touched.
+const NAMES = ['Άρης', 'Νίκη', 'Χαρά', 'Τάκης'];
 
 function joinSim(name: string, avatarId: string, code: string): Promise<Sim> {
   const playerId = randomUUID();
