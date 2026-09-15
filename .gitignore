@@ -13,3 +13,4 @@ client/public/crowd/
 dev/voice/.reproduce-scratch/
 *.tar.gz
 .mcp.json
+.claude/
