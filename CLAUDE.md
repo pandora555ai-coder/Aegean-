@@ -13,7 +13,8 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 
 ## WHERE YOU WORK — read this before running anything
 
-- **/root/Aegean- is the ONLY place code is edited, run and committed.**
+- **/home/argyrios/Aegean is the ONLY place code is edited, run and committed.**
+- **All work runs as user `argyrios`, not root.**
 - **/opt/party-game is production.** It is written ONLY by deploy.sh.
   Never edit it, never run a dev server in it, never git in it.
 - Ports: production 3001 (127.0.0.1, Caddy-proxied), dev server 4001,
