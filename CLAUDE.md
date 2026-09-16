@@ -1189,6 +1189,50 @@ via HOST_REJOIN.
   deliberately not capped —
   pending a human playtest to decide what a gameLength-scaled cap should be,
   not fixed here.
+- **The stage titled «Η Αγορά» does NOT use the AGORA_* phases — «Η Λήθη»
+  does.** full's stage 1 (Η Αγορά, modes/full.ts:29) is a PLAIN QUIZ stage:
+  QUESTION/REVEAL, TheatreScene, Socrates on his terrace. The agora mechanic
+  is stage 5, titled «Η Λήθη» since Task 231's display rename off «Η Μνήμη
+  της Αγοράς» — modes/full.ts:40 records the reason, that the old title read
+  as a return to stage 1. Every agora gate keys on the GamePhase VALUE,
+  never on a stage title or number: `isAgoraScenePhase`
+  (HostScreen.tsx:2837) is literally `phase === 'AGORA_EXPOSE' || phase ===
+  'AGORA_QUESTION' || phase === 'AGORA_REVEAL'`. This has already caused one
+  false alarm — a Task 252 review read "Socrates is hidden for the agora
+  scene" as "…hidden in Η Αγορά too", and the follow-up (cd498a0,
+  dev/lethe-vs-agora-stage-check.ts) had to play a real show to settle it:
+  socrates-figure count 1 during stage 1's QUESTION, 0 during stage 5's
+  AGORA_QUESTION. Read the phase, never the card.
+- **Preset-only names (Task 241/245) silently killed eight dev harnesses.**
+  `isValidPlayerName` (state.ts:655) is now strict membership in
+  PRESET_NAMES, so any harness hardcoding the pre-241 Άλφα/Βήτα/Γάμα/Δέλτα/
+  Έψιλον set is rejected at index.ts:826 with `{"reason":"INVALID_NAME"}` on
+  its FIRST sim join — before a single check runs, so it scores NOTHING
+  rather than failing loudly. Measured against the real function: Άλφα,
+  Βήτα, Γάμα, Δέλτα, Έψιλον all false; Άρης, Νίκη, Τάκης true. Three were
+  repaired at Task 246 (climb-ceremony-check, climb-lane-check,
+  finale-staging-check) and one at Task 249 (socrates-pacing-check) — those
+  four still MENTION the old names in comments and check labels, which is
+  not breakage. **FIVE are still broken** (verified at ed608e2):
+  dev/242-subtitle-check.ts, dev/climb-entry-check.ts, dev/duel-hint-check.ts,
+  dev/end-state-timer-subtitles-check.ts,
+  dev/podium-subtitle-followup-check.ts. When one is needed, repair ONLY its
+  NAMES constant (preset entries, e.g. Άρης/Νίκη/Χαρά/Τάκης) and say so in
+  the report — never fold a harness rewrite into an unrelated task. **Never
+  trust a "suite green" claim until the harness has been SHOWN to run**: at
+  Task 246 all three climb suites had been scoring zero since 241 and
+  nothing reported a failure. Corollary (Task 254): the NAMES constant is
+  not always the whole repair. Task 241 ALSO deleted the custom-name entry
+  UI — `grep -arn "custom-name" client/src` returns 0, and
+  dev/241-name-check.ts:229-230 asserts those testids are absent by design
+  (the flow is now name-search/name-list/preset-name-option) — so the four
+  browser-driven files of the five above also drive the dead
+  `custom-name-toggle` and will hang there after a NAMES-only fix; only
+  dev/climb-entry-check.ts, which joins at the socket level, is a NAMES-only
+  repair. dev/242-numeric-check.ts hit this same wall at Task 252 and was
+  documented, not fixed; dev/screenshot-phases.ts:739 and
+  dev/socrates-pacing-check.ts:665 still carry that dead flow on their phone
+  paths too, unverified by execution.
 
 ## Working style
 
