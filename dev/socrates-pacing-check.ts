@@ -662,9 +662,10 @@ async function main(): Promise<void> {
       await page.addInitScript((id: string) => localStorage.setItem('playerId', id), randomUUID());
       await page.goto(`http://localhost:${CLIENT_PORT}/play`);
       await page.getByTestId('code-input').fill(code);
-      await page.getByTestId('custom-name-toggle').click();
-      await page.getByTestId('custom-name-input').fill(NAMES[0]);
-      await page.getByTestId('custom-name-confirm').click();
+      // Task 255 - the custom-name toggle/input/confirm flow was deleted in
+      // Task 241; joining is now preset-name-list -> avatar-grid -> join-button.
+      await page.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+      await page.locator('[data-testid="preset-name-option"]', { hasText: NAMES[0] }).first().click();
       await page.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
       await page.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
       await page.getByTestId('join-button').click();

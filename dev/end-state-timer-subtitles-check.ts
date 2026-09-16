@@ -39,7 +39,11 @@ const CLIENT_PORT = 5921;
 const ROOT = new URL('..', import.meta.url).pathname;
 const CLIENT_DIR = `${ROOT}client`;
 const VOICE_DIR = path.join(ROOT, 'client/public/voice');
-const NAMES = ['Άλφα', 'Βήτα'];
+// Task 255 - names are PRESET-ONLY since Task 241/245 (isValidPlayerName =
+// strict membership in PRESET_NAMES), so the Greek-letter names this suite
+// was written with are rejected at join with INVALID_NAME. Same
+// replacements Tasks 246/249 already used for their own Greek-letter names.
+const NAMES = ['Άρης', 'Νίκη'];
 
 let clientProc: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -310,9 +314,10 @@ async function main(): Promise<void> {
     await page.addInitScript((id: string) => localStorage.setItem('playerId', id), playerId);
     await page.goto(`http://localhost:${CLIENT_PORT}/play`);
     await page.getByTestId('code-input').fill(code);
-    await page.getByTestId('custom-name-toggle').click();
-    await page.getByTestId('custom-name-input').fill(name);
-    await page.getByTestId('custom-name-confirm').click();
+    // Task 255 - the custom-name toggle/input/confirm flow was deleted in
+    // Task 241; joining is now preset-name-list -> avatar-grid -> join-button.
+    await page.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+    await page.locator('[data-testid="preset-name-option"]', { hasText: name }).first().click();
     await page.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
     await page.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
     await page.getByTestId('join-button').click();

@@ -316,8 +316,13 @@ async function main(): Promise<void> {
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');
     console.log(`room ${code} created (?bot=1&mode=full)`);
 
-    sims.push(await joinSim('Άλφα', humanAvatars[0], code));
-    sims.push(await joinSim('Βήτα', humanAvatars[1], code));
+    // Task 255 - names are PRESET-ONLY since Task 241/245 (isValidPlayerName
+    // = strict membership in PRESET_NAMES), so the Greek-letter names this
+    // suite was written with are rejected at join with INVALID_NAME. Same
+    // replacements Tasks 246/249 already used for their own Greek-letter
+    // names.
+    sims.push(await joinSim('Άρης', humanAvatars[0], code));
+    sims.push(await joinSim('Νίκη', humanAvatars[1], code));
     for (const sim of sims) wireFastAnswers(sim.socket);
     await delay(1200);
 

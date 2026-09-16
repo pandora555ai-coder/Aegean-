@@ -57,14 +57,16 @@ async function waitForClient(): Promise<void> {
   throw new Error('client dev server did not come up in time');
 }
 
+// Task 255 - the custom-name toggle/input/confirm flow was deleted in Task
+// 241; joining is now code-input -> preset-name-list -> avatar-grid ->
+// join-button (the pattern dev/245-name-check.ts's join steps already use).
 async function joinPhone(browser: Browser, code: string, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 360, height: 640 } });
   const page = await context.newPage();
   await page.goto(`http://localhost:${CLIENT_PORT}/play`);
   await page.getByTestId('code-input').fill(code);
-  await page.getByTestId('custom-name-toggle').click();
-  await page.getByTestId('custom-name-input').fill(name);
-  await page.getByTestId('custom-name-confirm').click();
+  await page.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+  await page.locator('[data-testid="preset-name-option"]', { hasText: name }).first().click();
   await page.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
   await page.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
   await page.getByTestId('join-button').click();
@@ -96,14 +98,14 @@ async function main() {
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');
     console.log(`room ${code} created in mode=duel`);
 
-    const phoneA = await joinPhone(browser, code, 'Άλφα');
-    const phoneB = await joinPhone(browser, code, 'Βήτα');
+    const phoneA = await joinPhone(browser, code, 'Άρης');
+    const phoneB = await joinPhone(browser, code, 'Νίκη');
     await delay(500);
 
-    // Άλφα joined first - VIP.
+    // Άρης joined first - VIP.
     await phoneA.getByTestId('start-button').click();
 
-    for (const [label, page] of [['Άλφα', phoneA], ['Βήτα', phoneB]] as const) {
+    for (const [label, page] of [['Άρης', phoneA], ['Νίκη', phoneB]] as const) {
       await page.getByTestId('duel-pick-caption').waitFor({ state: 'visible', timeout: 20000 });
 
       const hint = page.getByTestId('duel-weapon-hint');

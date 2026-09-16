@@ -82,17 +82,20 @@ async function main(): Promise<void> {
 
   const playerCtxs: Awaited<ReturnType<typeof browser.newContext>>[] = [];
   const pages: Page[] = [];
-  for (const name of ['Άλφα', 'Βήτα']) {
+  // Task 255 - the custom-name toggle/input/confirm flow was deleted in Task
+  // 241; joining is now preset-name-list -> avatar-grid -> join-button (the
+  // pattern dev/245-name-check.ts's newPhonePage/join steps already use). A
+  // `?room=` deep link jumps straight past the code-input step to the name
+  // list, same as that harness.
+  for (const name of ['Άρης', 'Νίκη']) {
     const ctx = await browser.newContext({ viewport: { width: 360, height: 640 } });
     playerCtxs.push(ctx);
     const p = await ctx.newPage();
     pages.push(p);
     await p.addInitScript((id: string) => localStorage.setItem('playerId', id), randomUUID());
-    await p.goto(`http://localhost:${CLIENT_PORT}/play`);
-    await p.getByTestId('code-input').fill(code);
-    await p.getByTestId('custom-name-toggle').click();
-    await p.getByTestId('custom-name-input').fill(name);
-    await p.getByTestId('custom-name-confirm').click();
+    await p.goto(`http://localhost:${CLIENT_PORT}/play?room=${code}`);
+    await p.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+    await p.locator('[data-testid="preset-name-option"]', { hasText: name }).first().click();
     await p.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
     await p.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
     await p.getByTestId('join-button').click();

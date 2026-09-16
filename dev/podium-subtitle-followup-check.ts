@@ -131,16 +131,17 @@ async function main(): Promise<void> {
     // identity - the second "reconnects" as the first and the join screen
     // (custom-name-toggle) never appears, hanging for its full 30s timeout.
     const playerCtxs: Awaited<ReturnType<typeof browser.newContext>>[] = [];
-    for (const name of ['Άλφα', 'Βήτα']) {
+    // Task 255 - the custom-name toggle/input/confirm flow was deleted in
+    // Task 241; joining is now preset-name-list -> avatar-grid -> join-button.
+    for (const name of ['Άρης', 'Νίκη']) {
       const ctx = await browser.newContext({ viewport: { width: 360, height: 640 } });
       playerCtxs.push(ctx);
       const p = await ctx.newPage();
       await p.addInitScript((id: string) => localStorage.setItem('playerId', id), randomUUID());
       await p.goto(`http://localhost:${CLIENT_PORT}/play`);
       await p.getByTestId('code-input').fill(code);
-      await p.getByTestId('custom-name-toggle').click();
-      await p.getByTestId('custom-name-input').fill(name);
-      await p.getByTestId('custom-name-confirm').click();
+      await p.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+      await p.locator('[data-testid="preset-name-option"]', { hasText: name }).first().click();
       await p.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
       await p.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
       await p.getByTestId('join-button').click();
@@ -207,15 +208,14 @@ async function main(): Promise<void> {
     const vipPage = await vipCtx.newPage();
     const otherPage = await otherCtx.newPage();
     for (const [page, name] of [
-      [vipPage, 'Άλφα'],
-      [otherPage, 'Βήτα'],
+      [vipPage, 'Άρης'],
+      [otherPage, 'Νίκη'],
     ] as const) {
       await page.addInitScript((id: string) => localStorage.setItem('playerId', id), randomUUID());
       await page.goto(`http://localhost:${CLIENT_PORT}/play`);
       await page.getByTestId('code-input').fill(code);
-      await page.getByTestId('custom-name-toggle').click();
-      await page.getByTestId('custom-name-input').fill(name);
-      await page.getByTestId('custom-name-confirm').click();
+      await page.getByTestId('name-list').waitFor({ state: 'visible', timeout: 15000 });
+      await page.locator('[data-testid="preset-name-option"]', { hasText: name }).first().click();
       await page.getByTestId('avatar-grid').waitFor({ state: 'visible', timeout: 15000 });
       await page.locator('[data-testid="avatar-option"]:not([disabled])').first().click();
       await page.getByTestId('join-button').click();
