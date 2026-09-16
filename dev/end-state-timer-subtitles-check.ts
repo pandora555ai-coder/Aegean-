@@ -211,7 +211,12 @@ async function sampleCurrentBeat(tvPage: Page, state: RoomState): Promise<void> 
   target.domText = await sub.first().textContent();
   const subBox = await sub.first().boundingBox();
   target.subBox = subBox;
-  const card = tvPage.locator('[data-testid="stage-announce"]');
+  // Task 256 - `[data-testid="stage-announce"]` itself is the full-viewport,
+  // mostly-transparent positioning wrapper (pointer-events:none outside its
+  // centred children); `> div` is the actual content box, the corrected
+  // measurement dev/podium-subtitle-followup-check.ts's own check C already
+  // uses.
+  const card = tvPage.locator('[data-testid="stage-announce"] > div');
   if ((await card.count()) > 0) {
     target.cardBox = await card.first().boundingBox();
   }
@@ -247,6 +252,7 @@ async function drivePhone(page: Page, stop: { stopped: boolean }, onBeforeSkip?:
 async function main(): Promise<void> {
   console.log('booting in-process server on', SERVER_PORT);
   await import('../server/src/index.js');
+  const { deleteRoom } = await import('../server/src/state.js');
   console.log('server up');
 
   clientProc = spawn('npx', ['vite', '--port', String(CLIENT_PORT), '--strictPort'], {
@@ -270,7 +276,7 @@ async function main(): Promise<void> {
     const page = await ctx.newPage();
     await page.goto(`http://localhost:${CLIENT_PORT}/host?bot=3&mode=full&clock=off`);
     await page.getByRole('button', { name: 'Create Room' }).click();
-    await page.getByTestId('room-code').waitFor({ timeout: 15000 });
+    const scenario0Code = ((await page.getByTestId('room-code').textContent({ timeout: 15000 })) ?? '').replace(/\s+/g, '');
     // An all-bot room self-starts (Task 217) with no VIP needed - wait for
     // the stage-1 card, the first real content past LOBBY.
     await page.locator('[data-testid="stage-announce"]').waitFor({ timeout: 30000 }).catch(() => {});
@@ -278,6 +284,18 @@ async function main(): Promise<void> {
     const clockCount = await page.locator('[data-testid="game-clock"]').count();
     check('0: ?clock=off hides the clock even during an active phase', clockCount === 0, `count=${clockCount}`);
     await ctx.close();
+    // Task 256 - closing the context only drops the TV page; the all-bot
+    // game keeps playing server-side ("game continues running" is logged on
+    // host disconnect) for its own multi-minute 'full' show, which starved
+    // the main run's second phone socket connection below (measured: 3 of 4
+    // runs hung 30s on an avatar-option click that never became enabled,
+    // because useSocketConnection's `connected` never flipped true while
+    // this room's bots kept the event loop busy). This is an in-process
+    // server (see the import above), so the room can just be deleted
+    // outright rather than merely orphaned.
+    if (/^\d{4}$/.test(scenario0Code)) {
+      deleteRoom(scenario0Code);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -419,7 +437,11 @@ async function main(): Promise<void> {
   await delay(7000); // PODIUM_DELAY_MS (6000) + margin
   const podiumRoot = tvPage.locator('[data-testid="podium-root"]');
   await podiumRoot.waitFor({ timeout: 10000 }).catch(() => {});
-  const podiumText = (await podiumRoot.textContent().catch(() => null)) ?? '';
+  // Task 256 - .textContent() sweeps up PodiumView's own <style>{STYLE_TAG}</style>
+  // child's raw CSS text (cqh/rem numbers), a false failure. .innerText()
+  // reflects only what's actually rendered, dev/podium-subtitle-followup-check.ts's
+  // own corrected check A.
+  const podiumText = (await podiumRoot.innerText().catch(() => null)) ?? '';
   console.log(`podium committed text: "${podiumText}"`);
   const digitMatches = podiumText.match(/[0-9]/g) ?? [];
   check('1: the podium is showing', (await podiumRoot.count()) > 0);
@@ -495,7 +517,7 @@ async function main(): Promise<void> {
   check('3: every player starts game 2 at score 0', (state.firstStandings ?? []).every((s) => s.score === 0), JSON.stringify(state.firstStandings));
 
   await delay(7000);
-  const podium2Text = (await tvPage.locator('[data-testid="podium-root"]').textContent().catch(() => null)) ?? '';
+  const podium2Text = (await tvPage.locator('[data-testid="podium-root"]').innerText().catch(() => null)) ?? '';
   const podium2Digits = podium2Text.match(/[0-9]/g) ?? [];
   console.log(`game 2 podium text: "${podium2Text}"`);
   check('3: game 2 podium is correct and digit-free too', (await tvPage.locator('[data-testid="podium-root"]').count()) > 0 && podium2Digits.length === 0, `digits=${JSON.stringify(podium2Digits)}`);
