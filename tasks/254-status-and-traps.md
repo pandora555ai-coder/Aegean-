@@ -120,9 +120,9 @@ claim from either phone path as unproven until run.
 ## 5. Inverse criterion — what the commit touched
 
 ```
- CLAUDE.md                     |  44 ++++++++++++++
- tasks/254-status-and-traps.md | 141 ++++++++++++++++++++++++++++++++++
- 2 files changed
+ CLAUDE.md                     |  44 +++++++++++++++
+ tasks/254-status-and-traps.md | 128 ++++++++++++++++++++++++++++++++++
+ 2 files changed, 172 insertions(+)
 ```
 
 Nothing under `client/`, `server/`, `shared/` or `dev/`. No deploy.
