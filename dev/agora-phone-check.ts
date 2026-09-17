@@ -152,6 +152,7 @@ async function runAgoraFlow(): Promise<void> {
   if (!browser) throw new Error('browser not started');
   const hostPage = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   await hostPage.goto(`http://localhost:${CLIENT_PORT}/host`);
+  await hostPage.getByTestId('audio-gate').click();
   await hostPage.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = hostPage.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 15000 });
@@ -233,6 +234,7 @@ async function runQuizRegression(): Promise<void> {
   if (!browser) throw new Error('browser not started');
   const hostPage = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   await hostPage.goto(`http://localhost:${CLIENT_PORT}/host`);
+  await hostPage.getByTestId('audio-gate').click();
   await hostPage.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = hostPage.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 15000 });

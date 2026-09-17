@@ -313,6 +313,7 @@ async function main(): Promise<void> {
   // GAME_INTRO beats unattended. The two real phones ARE the roster (2,
   // meeting 'full' mode's own MIN_PLAYERS=2) - no bots needed at all.
   await tvPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
+  await tvPage.getByTestId('audio-gate').click();
   await tvPage.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = tvPage.getByTestId('room-code');
   await codeLocator.waitFor({ timeout: 15000 });

@@ -92,6 +92,7 @@ async function main() {
     const hostContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const hostPage = await hostContext.newPage();
     await hostPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=duel`);
+    await hostPage.getByTestId('audio-gate').click();
     await hostPage.getByRole('button', { name: 'Create Room' }).click();
     const codeLocator = hostPage.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });

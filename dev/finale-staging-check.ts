@@ -209,6 +209,7 @@ async function newRoom(browser: Browser, playerCount: number): Promise<{ page: P
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
   await page.goto(`http://localhost:${CLIENT_PORT}/host`);
+  await page.getByTestId('audio-gate').click();
   await page.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 20000 });

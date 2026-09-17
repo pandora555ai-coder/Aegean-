@@ -158,6 +158,7 @@ async function main(): Promise<void> {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     await page.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
+    await page.getByTestId('audio-gate').click();
     await page.getByRole('button', { name: 'Create Room' }).click();
     const codeLocator = page.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
@@ -274,6 +275,7 @@ async function main(): Promise<void> {
     const context2 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page2 = await context2.newPage();
     await page2.goto(`http://localhost:${CLIENT_PORT}/host?mode=quiz`);
+    await page2.getByTestId('audio-gate').click();
     await page2.getByRole('button', { name: 'Create Room' }).click();
     const code2Locator = page2.getByTestId('room-code');
     await code2Locator.waitFor({ state: 'visible', timeout: 20000 });

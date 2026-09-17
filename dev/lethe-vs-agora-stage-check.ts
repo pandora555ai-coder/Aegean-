@@ -108,6 +108,7 @@ async function main(): Promise<void> {
     page.on('pageerror', (err) => console.log(`[page error] ${err.message}`));
     page.on('close', () => console.log('[page closed]'));
     await page.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
+    await page.getByTestId('audio-gate').click();
     await page.getByRole('button', { name: 'Create Room' }).click();
     const codeLocator = page.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });

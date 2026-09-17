@@ -165,6 +165,7 @@ async function main() {
 
   const query = SCENARIO === 'A' ? '?bot=5&mode=full' : '?mode=blitz';
   await page.goto(`http://localhost:${CLIENT_PORT}/host${query}`);
+  if (SCENARIO !== 'A') await page.getByTestId('audio-gate').click();
   await page.getByRole('button', { name: 'Create Room' }).click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 15000 });
