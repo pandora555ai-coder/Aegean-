@@ -2,11 +2,40 @@
 // into client/public/voice/. Not part of any workspace build or deploy -
 // run manually, commit the resulting MP3s like any other static asset.
 //
-//   tsx dev/generate-voice-lines.ts             generate everything missing
-//   tsx dev/generate-voice-lines.ts --limit 3    generate at most 3 new files
+//   tsx dev/generate-voice-lines.ts
+//       DRY RUN (the default, no flags needed) - prints what would be
+//       generated (count, total characters, per-line list) and makes ZERO
+//       API calls. Safe to run any time.
+//
+//   tsx dev/generate-voice-lines.ts --generate --max-chars 5000
+//       Actually synthesizes the missing lines. BOTH flags are required:
+//       --generate is the explicit opt-in, --max-chars is the explicit
+//       budget. If the planned total exceeds --max-chars, the run REFUSES
+//       outright (prints the overage, makes zero API calls, writes zero
+//       clips) rather than generating a partial subset silently.
+//
+//   tsx dev/generate-voice-lines.ts --hashes abc123,def456
+//   tsx dev/generate-voice-lines.ts --names Άρης,Νίκη,Τάκης
+//       Restrict the plan (dry run) or the generation (with --generate
+//       --max-chars) to a named subset - specific lineHash values, or
+//       specific PRESET_NAMES entries resolved to their VOCATIVE clip
+//       (Task 263). Lets a handful of vocatives be recorded without
+//       touching the other ~195 missing lines. Combine with --generate/
+//       --max-chars exactly as the full run above.
+//
+//   tsx dev/generate-voice-lines.ts --generate --max-chars 500 --limit 3
+//       --limit caps the batch size after any --hashes/--names filtering.
+//
+// Task 264 - added the dry-run default and the budget refusal after a
+// single accidental `voice:generate` run would have synthesized 206
+// missing lines (~3,236 chars) against a ~1,300-char balance, writing
+// partial results straight into the production symlink (see the Voice
+// section of CLAUDE.md). Generation used to be the default with no budget
+// check at all; it no longer is.
 //
 // ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID come from the environment (or a
-// gitignored repo-root .env) - never committed.
+// gitignored repo-root .env) - never committed. Not read at all in dry-run
+// mode, so a plan can be printed with no credentials configured.
 //
 // Task 147 - three env-only overrides for an A/B voice comparison, none of
 // them touching the default (no env vars set) path above:
@@ -14,13 +43,13 @@
 //                    ELEVENLABS_VOICE_ID, for this run only.
 //   ALT_OUTPUT_DIR   write mp3s here instead of client/public/voice (which
 //                    stays agent/CI read-only - never targeted by this).
-//   ONLY_HASHES      comma-separated lineHash values; restrict generation to
-//                    exactly these lines regardless of what already exists
-//                    in the output dir (needed because ALT_OUTPUT_DIR starts
-//                    empty, so without this every line would look "missing").
+//   ONLY_HASHES      comma-separated lineHash values; same effect as
+//                    --hashes, kept as an env var too because ALT_OUTPUT_DIR
+//                    starts empty, so without this every line would look
+//                    "missing" against a fresh staging dir.
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
+import { AUDIO_BITRATE_KBPS, PRESET_NAMES, SOCRATES_MAX_DURATION_MS, getVocative } from '@game/shared';
 import { LINE_TAGS, collectVoiceLineEntries } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
@@ -67,17 +96,69 @@ if (process.env.ALT_VOICE_ID) {
   process.env.ELEVENLABS_VOICE_ID = process.env.ALT_VOICE_ID;
 }
 
-function parseLimit(argv: string[]): number | null {
-  const flag = argv.find((a) => a === '--limit' || a.startsWith('--limit='));
+function findFlagValue(argv: string[], name: string): string | null {
+  const flag = argv.find((a) => a === name || a.startsWith(`${name}=`));
   if (!flag) {
     return null;
   }
-  const value = flag.includes('=') ? flag.split('=')[1] : argv[argv.indexOf(flag) + 1];
+  const value = flag.includes('=') ? flag.split('=').slice(1).join('=') : argv[argv.indexOf(flag) + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`${name} requires a value`);
+  }
+  return value;
+}
+
+function parseLimit(argv: string[]): number | null {
+  const value = findFlagValue(argv, '--limit');
+  if (value === null) {
+    return null;
+  }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error(`Invalid --limit value: ${value}`);
   }
   return n;
+}
+
+function parseMaxChars(argv: string[]): number | null {
+  const value = findFlagValue(argv, '--max-chars');
+  if (value === null) {
+    return null;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid --max-chars value: ${value}`);
+  }
+  return n;
+}
+
+function parseCommaList(argv: string[], name: string): string[] | null {
+  const value = findFlagValue(argv, name);
+  if (value === null) {
+    return null;
+  }
+  const items = value
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean);
+  if (items.length === 0) {
+    throw new Error(`${name} was given but resolved to an empty list`);
+  }
+  return items;
+}
+
+// Task 264 - resolves a PRESET_NAMES entry to the lineHash of its VOCATIVE
+// clip (Task 263's coronationVocative/getVocative), so `--names` can target
+// exactly the clips a subset-recording session actually wants. Rejects
+// anything not verbatim in PRESET_NAMES rather than silently hashing an
+// arbitrary string that would never match a real missing line.
+function vocativeHashForName(name: string): string {
+  if (!PRESET_NAMES.includes(name)) {
+    throw new Error(`"${name}" is not a PRESET_NAMES entry`);
+  }
+  const template = getVocative(name);
+  const tag = LINE_TAGS[template] ?? null;
+  return lineHash(template, tag);
 }
 
 // Task 263 - this used to re-walk every pool by hand, which is why it could
@@ -95,7 +176,23 @@ function allLineTemplates(): string[] {
 }
 
 async function main() {
-  const limit = parseLimit(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const limit = parseLimit(argv);
+  const generate = argv.includes('--generate');
+  const maxChars = parseMaxChars(argv);
+  const hashesFlag = parseCommaList(argv, '--hashes');
+  const namesFlag = parseCommaList(argv, '--names');
+
+  // Task 264 - the subset filter is the union of every way to name one:
+  // the legacy ONLY_HASHES env var, --hashes, and --names (resolved through
+  // getVocative). Any of them present narrows the plan; none present means
+  // "every missing line", exactly as before this task.
+  const targetHashes = new Set<string>();
+  for (const h of ONLY_HASHES ?? []) targetHashes.add(h);
+  for (const h of hashesFlag ?? []) targetHashes.add(h);
+  for (const name of namesFlag ?? []) targetHashes.add(vocativeHashForName(name));
+  const hasSubsetFilter = ONLY_HASHES !== null || hashesFlag !== null || namesFlag !== null;
+
   mkdirSync(OUT_DIR, { recursive: true });
 
   const existing = new Set(readdirSync(OUT_DIR));
@@ -105,54 +202,87 @@ async function main() {
   // existing line's tag in socrates.ts changes ONLY that line's filename -
   // it's picked up here as "missing" (and generated fresh) without ever
   // touching the now-orphaned file the old tag produced.
-  const toGenerate: Array<{ template: string; tag: string | null; filename: string }> = [];
+  const toGenerate: Array<{ template: string; tag: string | null; filename: string; hash: string; spoken: string; chars: number }> = [];
   for (const template of templates) {
     const tag = LINE_TAGS[template] ?? null;
     const hash = lineHash(template, tag);
-    if (ONLY_HASHES && !ONLY_HASHES.has(hash)) {
+    if (hasSubsetFilter && !targetHashes.has(hash)) {
       continue;
     }
     const filename = `${hash}.mp3`;
-    if (!existing.has(filename)) {
-      toGenerate.push({ template, tag, filename });
+    if (existing.has(filename)) {
+      continue;
     }
+    const stripped = stripPlaceholders(template);
+    // Tag is spoken direction for the model only - never part of what's
+    // shown on screen (that stays `template`/`stripped`, untouched). It IS
+    // part of what's actually sent (and billed) per character, so it's
+    // counted here too.
+    const spoken = tag ? `${tag} ${stripped}` : stripped;
+    toGenerate.push({ template, tag, filename, hash, spoken, chars: spoken.length });
   }
 
   const batch = limit === null ? toGenerate : toGenerate.slice(0, limit);
+  const totalChars = batch.reduce((sum, item) => sum + item.chars, 0);
+
+  const printPlan = () => {
+    for (const { hash, chars, spoken } of batch) {
+      console.log(`  ${hash}.mp3  ${chars}ch  "${spoken}"`);
+    }
+  };
 
   if (batch.length === 0) {
-    console.log(`Nothing to generate (${templates.length} lines, all already have audio). 0 API calls.`);
-  } else {
-    const provider = createElevenLabsProvider();
-    console.log(`Generating ${batch.length} of ${toGenerate.length} missing line(s)...`);
-    for (const { template, tag, filename } of batch) {
-      const stripped = stripPlaceholders(template);
-      // Tag is spoken direction for the model only - never part of what's
-      // shown on screen (that stays `template`/`stripped`, untouched).
-      const spoken = tag ? `${tag} ${stripped}` : stripped;
-      const destPath = path.join(OUT_DIR, filename);
-      let attempt = 0;
-      for (;;) {
-        attempt++;
-        const audio = await provider.synthesize(spoken);
-        writeFileSync(destPath, audio);
-        const { ok, analysis } = checkTail(destPath);
-        if (ok) {
-          console.log(`  ${filename}  "${spoken}"`);
-          break;
-        }
-        const verdict = `ratio=${analysis.ratio.toFixed(2)} peak=${analysis.recentPeakRms.toFixed(0)}`;
-        if (attempt < MAX_SYNTHESIS_ATTEMPTS) {
-          console.warn(`  ${filename} failed the tail check (${verdict}) on attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS} - re-synthesizing`);
-          continue;
-        }
-        // Refuse to keep a clip this test would flag - regeneration next
-        // run is better than shipping a silently truncated line.
-        unlinkSync(destPath);
-        throw new Error(
-          `${filename} ("${spoken}") failed the tail check ${MAX_SYNTHESIS_ATTEMPTS} times in a row (${verdict}) - refusing to save a truncated clip`,
-        );
+    console.log(`Nothing to generate (${templates.length} line(s) known${hasSubsetFilter ? ', subset filter applied' : ''}, all already have audio). 0 API calls.`);
+    return;
+  }
+
+  if (!generate) {
+    // Task 264 - DRY RUN is the default. No provider is constructed, no
+    // network call is made, and ELEVENLABS_API_KEY is never even read.
+    console.log(`DRY RUN (default, no API calls) - pass --generate --max-chars <N> to actually synthesize.`);
+    console.log(`Would generate ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total.`);
+    printPlan();
+    return;
+  }
+
+  if (maxChars === null) {
+    throw new Error('--generate requires an explicit --max-chars <N> budget (e.g. --generate --max-chars 1300)');
+  }
+
+  if (totalChars > maxChars) {
+    const overage = totalChars - maxChars;
+    console.log(`Planned ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total:`);
+    printPlan();
+    console.error(`\nRefusing to generate: ${totalChars} chars exceeds --max-chars ${maxChars} by ${overage} char(s). 0 API calls made, 0 clips written.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const provider = createElevenLabsProvider();
+  console.log(`Generating ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total (budget ${maxChars})...`);
+  for (const { filename, spoken } of batch) {
+    const destPath = path.join(OUT_DIR, filename);
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      const audio = await provider.synthesize(spoken);
+      writeFileSync(destPath, audio);
+      const { ok, analysis } = checkTail(destPath);
+      if (ok) {
+        console.log(`  ${filename}  "${spoken}"`);
+        break;
       }
+      const verdict = `ratio=${analysis.ratio.toFixed(2)} peak=${analysis.recentPeakRms.toFixed(0)}`;
+      if (attempt < MAX_SYNTHESIS_ATTEMPTS) {
+        console.warn(`  ${filename} failed the tail check (${verdict}) on attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS} - re-synthesizing`);
+        continue;
+      }
+      // Refuse to keep a clip this test would flag - regeneration next
+      // run is better than shipping a silently truncated line.
+      unlinkSync(destPath);
+      throw new Error(
+        `${filename} ("${spoken}") failed the tail check ${MAX_SYNTHESIS_ATTEMPTS} times in a row (${verdict}) - refusing to save a truncated clip`,
+      );
     }
   }
 
