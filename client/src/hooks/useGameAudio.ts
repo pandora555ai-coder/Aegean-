@@ -207,6 +207,23 @@ export function useGameAudio() {
     return running;
   }
 
+  // Task 259 - the TV tap-to-start gate's own onClick calls this directly.
+  // getAudioCtx() is otherwise only ever reached from ROOM_CREATED's
+  // startKeepAliveAudio, which fires from a SOCKET ACK - a round trip after
+  // the click that triggered it, well outside that click's own user-
+  // activation window in a strict browser. Calling getAudioCtx() (which
+  // constructs the context for the first time) and awaiting its resume
+  // synchronously inside the gate's tap handler is what actually keeps the
+  // context out of 'suspended': the construction and the resume both happen
+  // inside the same trusted gesture, nothing async in between.
+  async function unlockAudioGate(): Promise<boolean> {
+    const ctx = getAudioCtx();
+    if (!ctx) {
+      return false;
+    }
+    return attemptResumeAudio();
+  }
+
   // Task 213 - a real restrictive browser can hand back a freshly
   // constructed AudioContext already 'suspended' with zero gesture (the
   // HOST_REJOIN path Task 212 found), and Web Audio never throws or emits
@@ -705,6 +722,7 @@ export function useGameAudio() {
     toggleMuted,
     audioSuspended,
     attemptResumeAudio,
+    unlockAudioGate,
     setCrowdVolume,
     setVoiceVolume,
     startKeepAliveAudio,

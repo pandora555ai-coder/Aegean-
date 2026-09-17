@@ -161,6 +161,36 @@ export const styles: Record<string, CSSProperties> = {
     pointerEvents: 'none',
     zIndex: 50,
   },
+  // Task 259 - the tap-to-start gate. A full-bleed BUTTON (not a div with a
+  // separate button inside it), so the entire safe area is one tap target -
+  // the dead zone this exists to defeat swallows a small target far more
+  // often than a large one. zIndex above every other chrome layer (50 is
+  // the previous ceiling) since this must intercept every click, including
+  // the mute/fullscreen toggles and Create Room underneath it.
+  audioGate: {
+    position: 'fixed',
+    inset: 'var(--tv-safe-top) 0 var(--tv-safe-bottom) 0',
+    background: 'var(--night-1)',
+    border: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '1.5rem',
+    cursor: 'pointer',
+    zIndex: 60,
+  },
+  audioGateTitle: {
+    fontSize: '4rem',
+    fontWeight: 900,
+    color: 'var(--marble)',
+    letterSpacing: '0.04em',
+  },
+  audioGateSubtitle: {
+    fontSize: '1.5rem',
+    fontWeight: 600,
+    color: 'var(--marble-3)',
+  },
   fullscreenToggle: {
     position: 'fixed',
     // Below the TV overscan crop (Task 112) - it is fixed to the viewport,

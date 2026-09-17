@@ -126,6 +126,10 @@ async function main(): Promise<void> {
     const tvCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const tvPage = await tvCtx.newPage();
     await tvPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
+    // Task 259 - no ?bot= here (two real phone pages join below), so the
+    // tap-to-start gate is NOT bypassed and covers "Create Room" until
+    // tapped once.
+    await tvPage.getByTestId('audio-gate').click();
     await tvPage.getByRole('button', { name: 'Create Room' }).click();
     const code = ((await tvPage.getByTestId('room-code').textContent({ timeout: 15000 })) ?? '').replace(/\s+/g, '');
     console.log(`room ${code} created`);
@@ -208,6 +212,9 @@ async function main(): Promise<void> {
     const tvCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const tvPage = await tvCtx.newPage();
     await tvPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=quiz`);
+    // Task 259 - see the C scenario's own comment above: no ?bot=, gate not
+    // bypassed.
+    await tvPage.getByTestId('audio-gate').click();
     await tvPage.getByRole('button', { name: 'Create Room' }).click();
     const code = ((await tvPage.getByTestId('room-code').textContent({ timeout: 15000 })) ?? '').replace(/\s+/g, '');
     console.log(`room ${code} created (standalone quiz)`);

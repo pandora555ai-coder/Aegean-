@@ -1078,6 +1078,54 @@ voice:index` builds the rating page.
 Pitch shift (Task 144) and EQ-only processing (Task 145) were both tried on
 this voice and REJECTED. Do not propose either again.
 
+**The TV tap-to-start gate (Task 259) fixes a real silent-cold-open bug.**
+getAudioCtx() (useGameAudio.ts) was only ever first reached from
+ROOM_CREATED's startKeepAliveAudio — a SOCKET ACK, a round trip after
+whatever click sent CREATE_ROOM, well outside that click's own
+user-activation window in a strict browser. A freshly constructed context
+born there commonly stayed 'suspended' with nothing left to ever resume it
+(Task 213's page-wide gesture listener only retries an EXISTING context;
+it never constructs one), so the whole ~80s GAME_INTRO_SEQUENCE played out
+SILENTLY and the per-beat backstop — not real audio — advanced every beat.
+It looked designed, not broken. `unlockAudioGate()` (useGameAudio.ts) now
+runs `getAudioCtx()` + `attemptResumeAudio()` SYNCHRONOUSLY inside a new
+gate's own onClick, so construction and resume both happen inside one
+trusted gesture. The gate itself
+(`data-testid="audio-gate"`, HostScreen.tsx, styled in hostStyles.ts's
+`audioGate`/`audioGateTitle`/`audioGateSubtitle`) is a full-bleed
+`position:fixed` BUTTON at `zIndex: 60` — above every other chrome
+layer — rendered whenever `roomCode === null && !audioGatePassed`; "Create
+Room" stays exactly as it was underneath, DOM-present but occluded (a real
+click on it times out/is intercepted, exactly as a real tap would land on
+the gate instead). `audioGatePassed` initializes to `botCount > 0`
+(HostScreen's own `?bot=N` state): an all-bot room self-starts the instant
+CREATE_ROOM spawns enough bots to hit minPlayers (Task 217) with no human
+ever present to tap anything, so the gate is skipped ENTIRELY for any
+bot-driven room — verified with `SCENARIO=B npx tsx
+dev/259-tap-to-start-check.ts` (`?bot=5&mode=full` to GAME_OVER, gate node
+count sampled every 2s, stays 0 throughout). `SCENARIO=A` (default) is the
+human-tap flow: gate present and "Create Room" unreachable before any tap,
+gate gone (0 nodes) and `AudioContext.state === 'running'` after exactly
+one, then a Web-Audio probe patched into the page (a raw JS string passed
+to `page.addInitScript`, NOT a TS closure — tsx/esbuild's keep-names
+support rewrites a named function into `function Patched(){} __name(Patched,
+"Patched")`, and shipping that via `Function.prototype.toString()` to the
+browser throws "__name is not defined" the instant it runs, silently
+killing the whole probe) confirms the first GAME_INTRO clip's PLAYED
+duration lands within ~6ms of its own decoded file duration — real
+playback, not the 7000ms backstop a suspended context would have silently
+fallen back to.
+Only two dev harnesses were required to keep working and were verified:
+`dev/climb-entry-check.ts` (already bypassed via its own `?bot=1`, unchanged)
+and `dev/podium-subtitle-followup-check.ts` (no `?bot=`, patched with one
+`page.getByTestId('audio-gate').click()` before each of its two "Create
+Room" clicks). Every OTHER dev harness that loads `/host` with no `?bot=`
+param (there are roughly fifteen, `screenshot-phases.ts` included) will now
+hang on its own "Create Room" click until it gets the same one-line gate
+tap — the Task 241/245 preset-names precedent applies verbatim: repair each
+ONE AT A TIME, only its own gate-tap line, only when it's next actually
+needed, never folded into an unrelated task.
+
 ## Crowd mood
 
 Server-derived mood (calm/tension/cheer/boo) via server/src/crowd.ts,

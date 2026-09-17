@@ -190,6 +190,13 @@ export default function HostScreen() {
     return param && (GAME_MODE_IDS as readonly string[]).includes(param) ? (param as GameModeId) : null;
   });
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
+  // Task 259 - the tap-to-start gate. Bypassed at mount whenever the room
+  // is bot-driven (`?bot=N`, N>0): an all-bot room self-starts the instant
+  // CREATE_ROOM spawns enough bots to hit minPlayers (Task 217), with no
+  // human ever present to tap anything, so gating start here would hang
+  // every bot run and every dev harness that passes ?bot= silently. A room
+  // with no bot count still shows the gate over "Create Room" until tapped.
+  const [audioGatePassed, setAudioGatePassed] = useState(() => botCount > 0);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   // Task 233b - the SERVER's phase, as last announced by phase:changed. What
   // the TV actually renders is `phase`, derived below: this one runs ahead of
@@ -349,6 +356,7 @@ export default function HostScreen() {
     muted,
     toggleMuted,
     audioSuspended,
+    unlockAudioGate,
     setCrowdVolume,
     setVoiceVolume,
     startKeepAliveAudio,
@@ -1834,6 +1842,14 @@ export default function HostScreen() {
     void loadCrowdSounds();
   }, [roomCode, phase]);
 
+  // Task 259 - the gate's own tap handler: resume (constructing, if this is
+  // the very first call) the AudioContext SYNCHRONOUSLY inside this click,
+  // await it, then dismiss. See unlockAudioGate's own comment for why this
+  // has to happen here rather than later, off ROOM_CREATED.
+  function handleAudioGateTap() {
+    void unlockAudioGate().finally(() => setAudioGatePassed(true));
+  }
+
   function handleCreateRoom() {
     // Task 232 - a real party (no ?bot, no ?mode) now creates straight into
     // 'full', the only game the simplified VIP screen offers. `?bot=N` alone
@@ -2686,6 +2702,27 @@ export default function HostScreen() {
         <div data-testid="audio-suspended-chip" style={hostStyles.audioSuspendedChip}>
           🔇 Άγγιξε την οθόνη για ήχο
         </div>
+      )}
+      {/* Task 259 - the tap-to-start gate: covers "Create Room" itself
+          (zIndex above every other chrome layer) until tapped, so the ONE
+          tap a fresh TV gets is the same tap that resumes the AudioContext
+          - rather than a resume attempted later, off a socket ack, with no
+          gesture behind it. `roomCode === null` scopes this to the
+          pre-room screen only; a rejoin that lands a roomCode before any
+          tap (HOST_REJOIN) clears it on its own, no tap required. Bot-
+          driven rooms never render this at all - audioGatePassed starts
+          true whenever botCount > 0. */}
+      {roomCode === null && !audioGatePassed && (
+        <button
+          type="button"
+          data-testid="audio-gate"
+          className="enter-pop"
+          onClick={handleAudioGateTap}
+          style={hostStyles.audioGate}
+        >
+          <span style={hostStyles.audioGateTitle}>Πάτα για να ξεκινήσεις</span>
+          <span style={hostStyles.audioGateSubtitle}>Ο Σωκράτης περιμένει</span>
+        </button>
       )}
       {/* Task 239 - the elapsed-game clock. Chrome-level, like the three
           chips above, so it survives every phase change without remounting;
