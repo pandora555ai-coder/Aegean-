@@ -4,12 +4,8 @@ import {
   CLIMB_STAGE_TITLE,
   CLIMB_TOP,
   POWER_UP_EFFECTS,
-  TRIAL_STAGE_TAGLINE,
-  TRIAL_STAGE_TITLE,
   firstQuestionIndexOfStage,
   stageForQuestionIndex,
-  trialDrainPerSec,
-  trialWrongHit,
   type ClimbQuestionShowHostPayload,
   type ClimbQuestionShowPlayerPayload,
   type ClimbRevealHostPayload,
@@ -36,10 +32,6 @@ import {
   type StealShowHostPayload,
   type StealShowPlayerPayload,
   type StealTarget,
-  type TrialLife,
-  type TrialQuestionShowHostPayload,
-  type TrialQuestionShowPlayerPayload,
-  type TrialRevealShowPayload,
 } from '@game/shared';
 import { resolveSocratesDurationMs } from './socratesAudio.js';
 // The registry only, a leaf module - nothing imports this file back, so the
@@ -52,37 +44,36 @@ import { remainingActiveTimerMs } from './timers.js';
 // The stage card the TV shows during the STAGE_ANNOUNCE beat. Derived
 // entirely from room.currentQuestionIndex, so the live emit and a
 // mid-announcement state:sync can never disagree.
-// Task 127: one branch for Η Δίκη. The trial is announced through this exact
-// phase rather than one of its own, so it inherits the held beat, the
-// pause-aware timer and the state:sync catch-up for free - and because the
-// branch is HERE rather than at the emit site, a TV reattaching mid-card gets
-// the trial card back, not stage 3's.
+// One branch for the FINALE (Task 127 for Η Δίκη, which Task 258 removed;
+// Η Ανάβασις inherited it). The finale is announced through this exact phase
+// rather than one of its own, so it inherits the held beat, the pause-aware
+// timer and the state:sync catch-up for free - and because the branch is HERE
+// rather than at the emit site, a TV reattaching mid-card gets the finale
+// card back, not the last quiz stage's.
 export function buildStageAnnounce(room: Room): StageAnnouncePayload {
   // Task 134 - the ROOM's table (the quiz's stages sliced by gameLength, or
-  // the full show's five), and Η Δίκη is the last ROW of it in either mode
-  // rather than an off-table +1. So totalStages is simply the table's length,
-  // and the "4/4, never 3/4" fix of Task 128 holds for free at "5/5" too.
+  // the full show's seven), and the finale is the last ROW of it in either
+  // mode rather than an off-table +1. So totalStages is simply the table's
+  // length, and the "4/4, never 3/4" fix of Task 128 holds for free at "7/7".
   const stages = stagesForRoom(room);
-  // Task 188a - the climb takes the trial's row (it IS the finale, just a
-  // different one) and only the card's words change.
-  if (room.trial || room.climb) {
-    const trialStage = stages[stages.length - 1].stage;
+  if (room.climb) {
+    const finaleStage = stages[stages.length - 1].stage;
     return {
-      stage: trialStage,
+      stage: finaleStage,
       totalStages: stages.length,
-      title: room.climb ? CLIMB_STAGE_TITLE : TRIAL_STAGE_TITLE,
-      tagline: room.climb ? CLIMB_STAGE_TAGLINE : TRIAL_STAGE_TAGLINE,
-      // Not a fixed run of questions like a quiz stage: the trial lasts until
-      // one player is left standing. 0 is what "there is no count to show".
+      title: CLIMB_STAGE_TITLE,
+      tagline: CLIMB_STAGE_TAGLINE,
+      // Not a fixed run of questions like a quiz stage: the finale lasts
+      // until one player is left standing. 0 is "there is no count to show".
       questionCount: 0,
       firstQuestionIndex: room.questions.length,
       totalQuestions: room.questions.length,
       gameStartedAt: room.gameStartedAt,
-      // Task 244 - the same room.climb/room.trial the card's words come from,
-      // told to the TV as a fact rather than left to be inferred from the
-      // title string. Read at BUILD time, so a state:sync mid-card carries it
-      // too (this function is the sync's builder as well - index.ts:447).
-      finale: room.climb ? 'climb' : 'trial',
+      // Task 244 - the same room.climb the card's words come from, told to
+      // the TV as a fact rather than left to be inferred from the title
+      // string. Read at BUILD time, so a state:sync mid-card carries it too
+      // (this function is the sync's builder as well - index.ts:447).
+      finale: 'climb',
     };
   }
   // Every non-quiz stage of the full show (the drawing round, the numeric
@@ -290,7 +281,7 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     // live beat and a state:sync of that same beat agree. True for every beat
     // inside the finale (its entry narration and the climb's own WINNER beat
     // alike), null for every beat before it.
-    finale: room.climb ? 'climb' : room.trial ? 'trial' : null,
+    finale: room.climb ? 'climb' : null,
     // WINNER plays after the final question is already scored, so it must
     // never share a contentKey (client-side) with that same question's own
     // REVEAL-moment beat - one past the last real index is a natural,
@@ -451,12 +442,12 @@ export function buildStealPlayerPayload(room: Room, playerId: string): StealShow
   };
 }
 
-// `winnerPlayerId` (Task 127) is the trial's verdict, and it OVERRIDES the
-// score ordering: a sudden death is won by the earliest correct lock-in
-// between players who are all at or below zero, so the winner is not
-// necessarily the highest score and there is no tie to declare. Null (every
-// caller before the trial existed) keeps the original behaviour exactly:
-// rank purely by score, ties shared.
+// `winnerPlayerId` is the FINALE's verdict, and it OVERRIDES the score
+// ordering: the climb is won by reaching the top (or by the duel, or by being
+// the last one the spear left standing), so the winner is not necessarily the
+// highest score and there is no tie to declare. Null (every caller before a
+// finale existed, and every game the climb declined) keeps the original
+// behaviour exactly: rank purely by score, ties shared.
 export function buildGameOver(room: Room, winnerPlayerId: string | null = null): GameOverPayload {
   const players = [...room.players.values()];
   const declaredWinner = winnerPlayerId !== null ? room.players.get(winnerPlayerId) : undefined;
@@ -516,52 +507,6 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
     };
   }
 
-  if (declaredWinner) {
-    // Task 137 - SURVIVAL order, not score order: the winner, then everyone
-    // else in REVERSE elimination order (most recently eliminated finishes
-    // furthest up the table). Score is life during the trial and can end
-    // negative, so GAME_OVER never ranks these by it.
-    const survivalOrder = [...(room.trial?.eliminationOrder ?? [])].reverse();
-    const rankedIds = new Set([declaredWinner.playerId, ...survivalOrder]);
-    // A player who was never eliminated and isn't the winner shouldn't
-    // happen (the trial only ends with exactly one survivor), but a
-    // disconnect before the trial began would leave them out of
-    // eliminationOrder too - fall back to score order at the bottom exactly
-    // as the pre-137 logic did for everyone.
-    const others = [
-      ...survivalOrder.flatMap((id) => {
-        const player = room.players.get(id);
-        return player ? [player] : [];
-      }),
-      ...players.filter((player) => !rankedIds.has(player.playerId)).sort((a, b) => b.score - a.score),
-    ];
-
-    const standings: GameOverStanding[] = [
-      {
-        playerId: declaredWinner.playerId,
-        name: declaredWinner.name,
-        avatarId: declaredWinner.avatarId,
-        score: declaredWinner.score,
-        rank: 1,
-      },
-      ...others.map((player, index) => ({
-        playerId: player.playerId,
-        name: player.name,
-        avatarId: player.avatarId,
-        score: player.score,
-        rank: index + 2,
-      })),
-    ];
-    return {
-      standings,
-      winnerName: declaredWinner.name,
-      isTie: false, // the trial decides between them - that is what it is for
-      isTrialResult: true,
-      totalQuestions: room.questions.length,
-      ...gameOverTiming,
-    };
-  }
-
   const ranks = computeCompetitionRanks(
     players,
     (player) => player.score,
@@ -587,105 +532,6 @@ export function buildGameOver(room: Room, winnerPlayerId: string | null = null):
     isTrialResult: false,
     totalQuestions: room.questions.length,
     ...gameOverTiming,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Η Δίκη (Task 127)
-// ---------------------------------------------------------------------------
-
-// Every player's life, alive-ness and whether they are in the question
-// currently on screen. Host-only information in aggregate (a phone gets its
-// own `yourLife` and nothing else), and built fresh on every send so a live
-// broadcast and a state:sync catch-up can never disagree.
-function trialLives(room: Room): TrialLife[] {
-  const trial = room.trial;
-  if (!trial) {
-    return [];
-  }
-  const living = new Set(trial.livingPlayerIds);
-  const onTrial = new Set(trial.suddenDeath ? trial.suddenDeathPlayerIds : trial.livingPlayerIds);
-  return [...room.players.values()].map((player) => ({
-    playerId: player.playerId,
-    name: player.name,
-    avatarId: player.avatarId,
-    life: player.score,
-    alive: living.has(player.playerId),
-    onTrial: onTrial.has(player.playerId),
-  }));
-}
-
-export function buildTrialQuestionHostPayload(room: Room): TrialQuestionShowHostPayload | null {
-  const trial = room.trial;
-  const question = trial?.questions[trial.questionIndex];
-  if (!trial || !question) {
-    return null;
-  }
-  return {
-    roundIndex: trial.questionIndex,
-    question: question.question,
-    options: question.options,
-    category: question.category,
-    questionTimeMs: room.settings.questionTimeMs,
-    durationMs: remainingActiveTimerMs(room),
-    drainPerSec: trialDrainPerSec(trial.referenceLife),
-    wrongHit: trialWrongHit(trial.referenceLife, true),
-    suddenDeath: trial.suddenDeath,
-    lives: trialLives(room),
-    // WHO has locked in, never what they picked - the same contract as
-    // answer:progress, and for the same reason: the host is a display.
-    lockedInPlayerIds: Array.from(trial.lockIns.keys()),
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-    standings: computeStandings(room),
-  };
-}
-
-// Per phone, never built once and reused: `yourLife`, `onTrial` and
-// `lockedIn` are this player's alone. No correct index, no question text and
-// nothing whatsoever about another player's lock-in - none of that is safe to
-// send until TRIAL_REVEAL.
-export function buildTrialQuestionPlayerPayload(room: Room, playerId: string): TrialQuestionShowPlayerPayload | null {
-  const trial = room.trial;
-  const question = trial?.questions[trial.questionIndex];
-  if (!trial || !question) {
-    return null;
-  }
-  const onTrial = trial.suddenDeath
-    ? trial.suddenDeathPlayerIds.includes(playerId)
-    : trial.livingPlayerIds.includes(playerId);
-  return {
-    roundIndex: trial.questionIndex,
-    options: question.options,
-    category: question.category,
-    questionTimeMs: room.settings.questionTimeMs,
-    durationMs: remainingActiveTimerMs(room),
-    drainPerSec: trialDrainPerSec(trial.referenceLife),
-    wrongHit: trialWrongHit(trial.referenceLife, true),
-    suddenDeath: trial.suddenDeath,
-    onTrial,
-    yourLife: room.players.get(playerId)?.score ?? 0,
-    lockedIn: trial.lockIns.has(playerId),
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-  };
-}
-
-// Public and symmetric, like reveal:show - one payload for the whole room.
-// Reads the frozen snapshot (taken the instant the round resolved) plus
-// whatever is live right now, so the fresh broadcast and a later state:sync
-// share one code path.
-export function buildTrialRevealPayload(room: Room): TrialRevealShowPayload | null {
-  const snapshot = room.trial?.lastReveal;
-  if (!snapshot) {
-    return null;
-  }
-  return {
-    ...snapshot,
-    autoAdvanceMs: remainingActiveTimerMs(room),
-    paused: room.paused,
-    pausedByName: room.pausedByName,
-    standings: computeStandings(room),
   };
 }
 

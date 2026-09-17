@@ -1,6 +1,6 @@
 // Task 242 item B, criterion 2's third surface - PodiumView (ΤΕΛΙΚΗ
 // ΚΑΤΑΤΑΞΗ), UNCHANGED, verify only. Split out of dev/242-name-clip-check.ts
-// so a slow quiz+trial run doesn't share a browser session with the
+// so a slow full-game run doesn't share a browser session with the
 // earlier (already-passing) duel/climb sections.
 //
 //   npx tsx dev/242-podium-name-check.ts
@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
-import { ClientEvents, ServerEvents, type GameModeId } from '@game/shared';
+import { ClientEvents, DUEL_WEAPONS, ServerEvents, type GameModeId } from '@game/shared';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLIENT_DIR = path.join(ROOT, 'client');
@@ -66,9 +66,17 @@ function wireBotLike(socket: Socket): void {
     if (!p.options) return;
     soon(() => socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: pick(p.options!.length) }));
   });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
+  // Task 258 - Η Δίκη is gone; Η Ανάβασις is the finale every game now ends
+  // on. Answering its questions (and picking a weapon in the duel it can end
+  // in) is what keeps this run short: a round ends the moment every climber
+  // has locked in, rather than riding the full 22s timer.
+  socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
+    if (!p.options || p.climbing === false || p.eliminated) return;
+    soon(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));
+  });
+  socket.on(ServerEvents.DUEL_PICK_SHOW, (p: { youDuel?: boolean; picked?: boolean }) => {
+    if (!p.youDuel || p.picked) return;
+    soon(() => socket.emit(ClientEvents.DUEL_PICK, { weapon: DUEL_WEAPONS[pick(DUEL_WEAPONS.length)] }));
   });
 }
 function connect(): Socket {
@@ -109,9 +117,15 @@ async function newTvPage(code: string): Promise<Page> {
   return page;
 }
 
-const NAME_4 = 'ΑΒΓΔ';
-const NAME_8 = 'ΔΗΜΗΤΡΗΣ';
-const NAME_12 = 'ΝΞΟΠΡΣΤΥΦΧΨΩ';
+// Task 258: these were synthetic width-test strings (ΑΒΓΔ / ΔΗΜΗΤΡΗΣ /
+// ΝΞΟΠΡΣΤΥΦΧΨΩ), which isValidPlayerName has rejected outright since Tasks
+// 241/245 made names PRESET-ONLY - every join here failed with INVALID_NAME
+// and the harness scored nothing. Real presets now, picked for the same
+// short/medium/long spread. No preset is 12 characters (the longest in the
+// catalogue is Κωνσταντίνα at 11), so the long case is 11, not 12.
+const NAME_4 = 'Άρης';
+const NAME_8 = 'Δημήτρης';
+const NAME_12 = 'Κωνσταντίνα';
 
 async function main(): Promise<void> {
   console.log('booting in-process server on', SERVER_PORT);
@@ -138,12 +152,17 @@ async function main(): Promise<void> {
   const page = await newTvPage(code);
   await Promise.all([
     waitFor(vip, ServerEvents.SETTINGS_UPDATED, 8000),
-    (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'trial' }))(),
+    (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short' }))(),
   ]);
   vip.emit(ClientEvents.VIP_START_GAME, {});
-  console.log('game started (quiz, short, finale=trial)\n');
+  console.log('game started (quiz, short, finale=Η Ανάβασις)\n');
 
-  await waitFor(host, ServerEvents.GAME_OVER, 240000);
+  // Task 258 - was 240000. Η Ανάβασις is the finale now, and with THREE
+  // players the spear rule is inert (CLIMB_SPEAR_MIN_PLAYERS = 4), so random
+  // answering drifts everyone around step 0 and the race runs to its 24-round
+  // cap rather than to an early arrival. That is a legitimate finale, just a
+  // long one - the deadline, not the game, was what was wrong.
+  await waitFor(host, ServerEvents.GAME_OVER, 600000);
   console.log('GAME_OVER received on host socket - waiting for podium (PODIUM_DELAY_MS + margin)');
   await delay(8000);
   await page.locator('[data-testid="podium-root"]').waitFor({ timeout: 20000 }).catch((e) => console.log('  podium-root wait failed:', e.message));
@@ -165,7 +184,7 @@ async function main(): Promise<void> {
     console.log(`  podium-name "${r.text}" fontSize=${r.fontSize} scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth} clipped=${clipped}`);
   }
   check('podium reached with all 3 names', rows.length === 3, JSON.stringify(rows.map((r) => r.text)));
-  check('no podium name clipped at 4/8/12 chars (unchanged, verify only)', rows.length === 3 && rows.every((r) => r.scrollWidth <= r.clientWidth));
+  check('no podium name clipped at 4/8/11 chars (unchanged, verify only)', rows.length === 3 && rows.every((r) => r.scrollWidth <= r.clientWidth));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   await page.close();

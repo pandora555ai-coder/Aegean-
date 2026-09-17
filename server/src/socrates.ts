@@ -452,8 +452,8 @@ export const GAME_INTRO_SEQUENCE: readonly string[] = [
 // ("Κοιτάξτε πού στέκεστε") does not state the rule at all, so picking one
 // of the three at random would leave a third of games never stating it.
 // All three play, in order; #21 carries the rule outright.
-// Its own const rather than a STAGE_INTRO_LINES entry, exactly as
-// TRIAL_INTRO_LINES is: that table is picked from one line at a time.
+// Its own const rather than a STAGE_INTRO_LINES entry: that table is picked
+// from one line at a time, and these three are sequential prose.
 export const ANAVASIS_INTRO_SEQUENCE: readonly string[] = [
   'Το θέατρο τελείωσε. Κοιτάξτε πού στέκεστε.',
   'Δεν είστε όλοι στο ίδιο ύψος. Ό,τι κερδίσατε απόψε, εκεί πήγε — όχι σε νίκη, σε σκαλιά.',
@@ -539,9 +539,9 @@ export const STAGE_INTRO_LINES: Partial<Record<StageIntroIdentity, readonly stri
   ],
   // Four new lines, plus the one old stage-3 line that was always about
   // stealing rather than the trial - kept VERBATIM (see ## Voice in
-  // CLAUDE.md). The five lines that literally say "Η Δίκη" moved to
-  // TRIAL_INTRO_LINES below, where the trial's own announcement now plays
-  // them.
+  // CLAUDE.md). The five lines that literally said "Η Δίκη" went to
+  // TRIAL_INTRO_LINES in Task 139 and were deleted with that finale in
+  // Task 258.
   steal: SYKOPHANTIA_INTRO_LINES,
   // Task 236 - the four non-quiz stages of the full show, which announced
   // their card and then went silent because full.ts's `beginStage` hook
@@ -567,21 +567,6 @@ export const STAGE_INTRO_LINES: Partial<Record<StageIntroIdentity, readonly stri
     'Θα σας δείξω, και μετά θα σας ρωτήσω. Ανάμεσα στα δύο, η Λήθη θα κάνει τη δουλειά της.',
   ],
 };
-
-// Task 139 - the trial's own announcement beat. These five lines are MOVED
-// verbatim from what was then STAGE_INTRO_LINES[3] (quiz's own numeric key
-// pre-Task-218; where they had been talking about the wrong stage since
-// Task 126 renamed it) - moved, not rewritten, because
-// each is lineHash-keyed to an already-generated mp3. Played by
-// endStageAnnounce's trial branch (phases.ts), which used to skip the intro
-// beat entirely.
-export const TRIAL_INTRO_LINES: readonly string[] = [
-  'Η Δίκη. Εδώ δεν υπερασπίζεστε γνώση, υπερασπίζεστε τον εαυτό σας.',
-  'Φτάσαμε στον τελευταίο γύρο, στη Δίκη. Ξέρω καλά πώς τελειώνουν οι δίκες σε αυτή την πόλη.',
-  'Η Δίκη. Επιτέλους κάτι που ξέρω από πρώτο χέρι.',
-  'Δεν υπάρχουν συμμαχίες πια. Ούτε υπήρξαν ποτέ.',
-  'Το τέλος πλησιάζει. Ποιος από εσάς θα το αντέξει;',
-];
 
 export const WINNER_LINES: readonly string[] = [
   'Βρήκα τον μαθητή μου. Η Αθήνα το είδε.',
@@ -1662,13 +1647,6 @@ export function pickWinnerLine(state: SocratesState): PickedLine | null {
   return pickLine(state, WINNER_LINES, {});
 }
 
-// Task 139 - the trial's announcement beat, keyed by nothing (the trial is
-// the same finale whatever number its card shows, quiz 4/4 or full 5/5), so
-// its pool is its own constant rather than a STAGE_INTRO_LINES entry.
-export function pickTrialIntroLine(state: SocratesState): PickedLine | null {
-  return pickLine(state, TRIAL_INTRO_LINES, {});
-}
-
 // ============================= draw / numeric (Task 138) =============================
 // Detection only - no lines exist yet (DRAW_LINES/NUMERIC_LINES above are all
 // empty), so every pickLine call here returns null and none of this ever
@@ -1904,7 +1882,6 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
   // them and drops the bytes, which is harmless, and the beat itself ends on
   // the immediate onEnded() ack rather than a backstop.
   add('CORONATION', Object.values(CORONATION_LINES));
-  add('TRIAL_INTRO', TRIAL_INTRO_LINES);
   for (const [moment, pool] of Object.entries(DRAW_LINES)) {
     add(moment, pool);
   }

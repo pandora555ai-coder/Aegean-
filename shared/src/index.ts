@@ -71,14 +71,11 @@ export const ClientEvents = {
   // Task 65 - the numeric-estimate mode. One event: the player's guess,
   // clamped server-side to 0..max - never rejected for being out of range.
   NUMERIC_SUBMIT: 'player:numeric_submit',
-  // Task 127 - Η Δίκη, the quiz finale. Its own event rather than a second
-  // meaning for SUBMIT_ANSWER: the trial has no sabotage, no shuffled option
-  // order and no per-question `answers` map, and what the server records is
-  // an elapsed-at-lock-in figure the quiz's own handler has no use for.
-  TRIAL_SUBMIT: 'player:trial_submit',
-  // Task 188a - the climb finale's lock-in. Its own event for the same reason
-  // TRIAL_SUBMIT is: the server records a pause-aware elapsed figure, and the
-  // phase guard is CLIMB_QUESTION, not QUESTION.
+  // Task 188a - the climb finale's lock-in. Its own event rather than a
+  // second meaning for SUBMIT_ANSWER: the finale has no sabotage, no shuffled
+  // option order and no per-question `answers` map, what the server records
+  // is a pause-aware elapsed-at-lock-in figure the quiz's own handler has no
+  // use for, and the phase guard is CLIMB_QUESTION, not QUESTION.
   CLIMB_SUBMIT: 'player:climb_submit',
   // Task 188b - a duelist's weapon pick in the climb's duel (DUEL_PICK). The
   // server records it and reveals NOTHING about it until DUEL_REVEAL.
@@ -89,7 +86,7 @@ export const ClientEvents = {
   // and never acks - the phone advances on its own, the truth stays here.
   BLITZ_SWIPE: 'player:blitz_swipe',
   // Task 207 - Η Μνήμη της Αγοράς. Its own event for the same reason
-  // TRIAL_SUBMIT/CLIMB_SUBMIT are: the phase guard is AGORA_QUESTION, there is
+  // CLIMB_SUBMIT is: the phase guard is AGORA_QUESTION, there is
   // no sabotage and no per-phone option shuffle, and the elapsed figure the
   // server records comes off the pause-aware shared timer.
   AGORA_SUBMIT: 'player:agora_submit',
@@ -152,18 +149,11 @@ export const ServerEvents = {
   // NUMERIC_REVEAL is the one place it becomes safe to send.
   NUMERIC_QUESTION_SHOW: 'numeric_question:show',
   NUMERIC_REVEAL_SHOW: 'numeric_reveal:show',
-  // Task 127 - Η Δίκη. TRIAL_QUESTION is asymmetric like question:show (the
-  // host gets the question text and WHO has locked in; a phone gets its own
-  // life and nothing about anyone else's); TRIAL_REVEAL is symmetric like
-  // reveal:show - that is the first moment the correct answer, every
-  // lock-in and every drain are safe to send.
-  TRIAL_QUESTION_SHOW: 'trial_question:show',
-  TRIAL_REVEAL_SHOW: 'trial_reveal:show',
   // Task 188a - the climb finale. CLIMB_QUESTION is asymmetric like
-  // trial_question:show (the TV gets the question and every step; a phone
-  // gets the options and its OWN step), and - unlike trial_reveal:show -
-  // CLIMB_REVEAL is asymmetric too: the TV gets every player's step, delta
-  // and fastest flag, a phone gets only its own step and delta.
+  // question:show (the TV gets the question and every step; a phone gets the
+  // options and its OWN step), and - unlike reveal:show - CLIMB_REVEAL is
+  // asymmetric too: the TV gets every player's step, delta and fastest flag,
+  // a phone gets only its own step and delta.
   CLIMB_QUESTION_SHOW: 'climb_question:show',
   CLIMB_REVEAL_SHOW: 'climb_reveal:show',
   // Task 188b - Η Μονομαχία, the climb's duel. DUEL_PICK is asymmetric (the
@@ -994,16 +984,11 @@ export type GamePhase =
   // into the quiz as a stage).
   | 'NUMERIC_QUESTION'
   | 'NUMERIC_REVEAL'
-  // Task 127 - Η Δίκη, the quiz mode's FINALE (not a mode of its own): the
-  // same four-option questions, but a score is now LIFE and it drains while
-  // the question is open. Reached after the last question of the last quiz
-  // stage, and left only for GAME_OVER.
-  | 'TRIAL_QUESTION'
-  | 'TRIAL_REVEAL'
-  // Task 188a - the CLIMB finale (Task 187's mechanic), the alternative to
-  // the trial when room.settings.finaleMode is 'climb': same four-option
-  // questions, but a race up CLIMB_TOP steps instead of a life drain.
-  // Reached from the same site as the trial and left only for GAME_OVER.
+  // Task 188a - the CLIMB finale (Task 187's mechanic), the quiz mode's
+  // FINALE and not a mode of its own: the same four-option questions, but a
+  // race up CLIMB_TOP steps. Reached after the last question of the last quiz
+  // stage, and left only for GAME_OVER. (Task 127's Η Δίκη, a life drain,
+  // was the other finale this slot could hold until Task 258 removed it.)
   | 'CLIMB_QUESTION'
   | 'CLIMB_REVEAL'
   // Task 188b - Η Μονομαχία, the climb's duel: two arrivals at CLIMB_TOP in
@@ -1030,7 +1015,7 @@ export type GamePhase =
 // of every mode's own timed round (quiz QUESTION, draw DRAW, numeric
 // NUMERIC_QUESTION); 'tension' covers the last third of that same timer plus
 // the whole POWER_UP/STEAL/GUESS phases; 'cheer'/'boo' fire at every mode's
-// reveal (REVEAL, GUESS_REVEAL, NUMERIC_REVEAL, TRIAL_REVEAL) depending on
+// reveal (REVEAL, GUESS_REVEAL, NUMERIC_REVEAL, CLIMB_REVEAL) depending on
 // whether most players/guessers answered correctly (or, for numeric, whether
 // anyone landed within half the answer), and 'boo' fires again whenever a
 // STEAL resolves.
@@ -1055,8 +1040,8 @@ export interface CrowdIntensityPayload {
 // deliberately NOT the whole Room (this stays a pure function, callable from
 // a dev tool with no room at all). `timerDurationMs` is the phase's own
 // timed-round length, for the phases that ramp across it (QUESTION/GUESS/
-// NUMERIC_QUESTION); `round` is the 1-based trial round number, for
-// TRIAL_QUESTION/TRIAL_REVEAL's escalating formula. The two booleans are
+// NUMERIC_QUESTION); `round` is the 1-based round number within a finale
+// (Η Δίκη used it for an escalating ramp until Task 258). The two booleans are
 // modifiers applied on top of whichever phase reads them.
 export interface CrowdIntensityContext {
   timerDurationMs?: number;
@@ -1134,10 +1119,6 @@ export function crowdIntensityFor(phase: GamePhase, ctx: CrowdIntensityContext =
       break;
     case 'NUMERIC_REVEAL':
       result = { value: 0.3, rampMs: 800 };
-      break;
-    case 'TRIAL_QUESTION':
-    case 'TRIAL_REVEAL':
-      result = { value: Math.min(0.9, 0.4 + 0.5 * ((ctx.round ?? 1) / 16)), rampMs: 800 };
       break;
     // Task 188a - the climb: a QUESTION-style ramp across its own (22s)
     // timer, a notch above the quiz's, then a step down for the reveal.
@@ -1354,26 +1335,33 @@ export function stageSegment(definition: StageDefinition): StageSegment {
   return definition.segment ?? 'quiz';
 }
 
-// Η Δίκη as a STAGE ROW. The trial has always been announced through the
+// The FINALE as a STAGE ROW. The finale has always been announced through the
 // STAGE_ANNOUNCE phase (Task 127) but was never IN a stage table - its number
 // was computed as "one past the quiz stages" at two separate call sites. It is
-// a row now, appended to whatever table a mode hands out, so "the trial is the
-// last card of the night" is one fact in one place and totalStages is simply
-// the table's length in every mode. `stage` is a parameter because the number
-// depends on how many stages precede it (4 for a medium quiz, 5 for the full
-// show).
+// a row now, appended to whatever table a mode hands out, so "the finale is
+// the last card of the night" is one fact in one place and totalStages is
+// simply the table's length in every mode. `stage` is a parameter because the
+// number depends on how many stages precede it (4 for a medium quiz, 7 for the
+// full show).
+//
+// Task 258: the name (and the `'trial'` segment value) is Η Δίκη's, the finale
+// this row was written for; that finale is gone and Η Ανάβασις is the only one
+// left, but renaming a wire-visible StageSegment value is its own task, so the
+// row keeps its name here and simply announces the climb. buildStageAnnounce
+// (server/src/payloads.ts) rebuilds the card off room.climb anyway - these two
+// strings are the fallback for a table read outside a live finale.
 export function trialStageRow(stage: number): StageDefinition {
   return {
     stage,
-    // Not a fixed run of questions: the trial lasts until one player is left
+    // Not a fixed run of questions: the finale lasts until one player is left
     // standing, so it draws nothing from room.questions and every quiz index
     // maps straight past it.
     questionCount: 0,
     segment: 'trial',
     powerUpBeforeEveryQuestion: false,
     stealAfterEveryQuestion: false,
-    title: TRIAL_STAGE_TITLE,
-    tagline: TRIAL_STAGE_TAGLINE,
+    title: CLIMB_STAGE_TITLE,
+    tagline: CLIMB_STAGE_TAGLINE,
   };
 }
 
@@ -1497,7 +1485,7 @@ export const FULL_STAGES: readonly StageDefinition[] = [
   },
   // Stage 7 is the finale row, built by fullStagesForLength - one definition
   // of that card, shared with the quiz mode. Which finale actually runs is
-  // room.settings.finaleMode (Η Ανάβασις by default since Task 214, Η Δίκη
+  // the finale (Η Ανάβασις - the only one since Task 258 removed Η Δίκη
   // when the VIP picks it); buildStageAnnounce swaps the card's words.
 ] as const;
 
@@ -1534,7 +1522,7 @@ export interface StageAnnouncePayload {
   // the clock falls back to a client-observed start there.
   gameStartedAt: number | null;
   // Task 244 - which finale this card announces, or null for every ordinary
-  // stage. The finale row's WORDS already swap off room.climb/room.trial
+  // stage. The finale row's WORDS already come off room.climb
   // (buildStageAnnounce), but which finale it is never left the server, so
   // the TV could not tell Η Ανάβασις' own announcement from any other
   // stage's until the first CLIMB payload arrived - three rule-line beats
@@ -1546,8 +1534,12 @@ export interface StageAnnouncePayload {
   // through that stage's own SOCRATES beats, so one field covers the whole
   // announce window, and state:sync rebuilds it for a TV that reloads
   // mid-card. Scoped to THIS game by construction - resetRoomForNewGame
-  // clears room.climb/room.trial, so game 2's stage 1 announces null again.
-  finale: FinaleMode | null;
+  // clears room.climb, so game 2's stage 1 announces null again.
+  // Task 258 - Η Δίκη is gone, so 'climb' is the only finale this can name;
+  // the field stays (the TV reads it to enter the Anavasis world) rather
+  // than becoming a bare boolean, since it is the wire's own answer to
+  // "which finale is this".
+  finale: 'climb' | null;
 }
 
 // How long the STAGE_ANNOUNCE phase lasts. A real beat, not a cosmetic
@@ -1868,16 +1860,7 @@ export type RoomSettings = {
   // this is also true. The sabotage machinery itself (ice/ink gates, the
   // host `sabotage` field, the FX) is untouched either way.
   powerUpsEnabled: boolean;
-  // Task 188a - which finale follows the last quiz question (see
-  // advanceToNextQuestionOrGameOver in server/src/phases.ts, the ONE site
-  // that branches on it): Η Δίκη's life drain, or the climb's step race.
-  // Task 214 flipped the default to 'climb' - Η Ανάβασις is the locked
-  // lineup's finale; Η Δίκη is still selectable and unchanged.
-  finaleMode: FinaleMode;
 };
-
-export type FinaleMode = 'trial' | 'climb';
-export const FINALE_MODE_OPTIONS: readonly FinaleMode[] = ['trial', 'climb'];
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   questionTimeMs: 20000,
@@ -1886,9 +1869,6 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
-  // Task 214 - the locked lineup ends on Η Ανάβασις, so the climb is now the
-  // DEFAULT finale. Η Δίκη stays fully implemented and one VIP toggle away.
-  finaleMode: 'climb',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,
@@ -2077,7 +2057,7 @@ export interface SocratesShowPayload {
   // three ANAVASIS_INTRO_SEQUENCE rule lines are plain SOCRATES beats, so a
   // TV reloading during them syncs into SOCRATES with no card and no CLIMB
   // payload, and without this would come back to the quiz's theatre.
-  finale: FinaleMode | null;
+  finale: 'climb' | null;
   questionIndex: number;
   totalQuestions: number;
   durationMs: number; // time STILL LEFT, so a reconnect picks up mid-beat
@@ -2427,20 +2407,10 @@ export type StateSyncNumericQuestionPlayerPayload = NumericQuestionShowPlayerPay
 };
 export type StateSyncNumericRevealPayload = NumericRevealShowPayload & { phase: 'NUMERIC_REVEAL' };
 
-// Task 127 - the trial's own state:sync shapes, same conventions as every
-// held phase above: remainingMs alongside the question's live durationMs, and
-// none on the reveal (TrialRevealShowPayload carries its own autoAdvanceMs).
-export type StateSyncTrialQuestionHostPayload = TrialQuestionShowHostPayload & {
-  phase: 'TRIAL_QUESTION';
-  remainingMs: number;
-};
-export type StateSyncTrialQuestionPlayerPayload = TrialQuestionShowPlayerPayload & {
-  phase: 'TRIAL_QUESTION';
-  remainingMs: number;
-};
-export type StateSyncTrialRevealPayload = TrialRevealShowPayload & { phase: 'TRIAL_REVEAL' };
-// Task 188a - the climb finale, same conventions as the trial's above; the
-// reveal is asymmetric here, so it has a host and a player shape.
+// Task 188a - the climb finale, the same conventions as every held phase
+// above: remainingMs alongside the question's live durationMs, and none on
+// the reveal (which carries its own autoAdvanceMs). The reveal is asymmetric
+// here, so it has a host and a player shape.
 export type StateSyncClimbQuestionHostPayload = ClimbQuestionShowHostPayload & {
   phase: 'CLIMB_QUESTION';
   remainingMs: number;
@@ -2485,9 +2455,6 @@ export type StateSyncPayload =
   | StateSyncNumericQuestionHostPayload
   | StateSyncNumericQuestionPlayerPayload
   | StateSyncNumericRevealPayload
-  | StateSyncTrialQuestionHostPayload
-  | StateSyncTrialQuestionPlayerPayload
-  | StateSyncTrialRevealPayload
   | StateSyncClimbQuestionHostPayload
   | StateSyncClimbQuestionPlayerPayload
   | StateSyncClimbRevealHostPayload
@@ -2935,61 +2902,12 @@ export interface NumericRevealShowPayload {
   standings: PlayerStanding[];
 }
 
-// ----------------------- Η Δίκη, the trial (Task 127) ---------------------
-// The quiz's FINALE, not a mode: after the last question of the last quiz
-// stage every player carries their accumulated score in as LIFE, and life
-// drains for as long as a trial question sits unanswered. Eliminations are
-// checked at TRIAL_REVEAL and nowhere else.
-
-// Task 185 - the deferred balance pass. Absolute constants (a flat 150 hit,
-// a flat 10/s drain) felt identical in a 400-point lobby trial and a
-// 9000-point blowout - fine for the first and nearly untouchable for the
-// second. Every trial figure now scales off `referenceLife`: the HIGHEST
-// entry score any contestant walked into the trial with, fixed once at
-// trial start (TrialState.referenceLife, server/src/state.ts) so a later
-// round's drain never moves its own yardstick. Lives here, not in
-// server/src/trial.ts, because the dev Monte Carlo harness (Task 184) and
-// the live game both need the same numbers without one importing the other.
-export const TRIAL_WRONG_ANSWER_HIT_PCT = 0.11; // locked in, but wrong
-export const TRIAL_NO_ANSWER_HIT_PCT = 0.23; // never locked in - also pays the FULL timer's drain
-export const TRIAL_DRAIN_PCT_PER_SEC = 0.0065; // per second a question stays open against you
-
-// The extra bite taken at TRIAL_REVEAL - two tiers by trigger condition,
-// unchanged from before this task: a wrong-but-locked-in answer costs less
-// than never answering at all.
-export function trialWrongHit(referenceLife: number, answered: boolean): number {
-  return Math.round(referenceLife * (answered ? TRIAL_WRONG_ANSWER_HIT_PCT : TRIAL_NO_ANSWER_HIT_PCT));
-}
-
-// How much life a living player loses per SECOND that a trial question
-// stays open against them - stopped the instant they lock an answer in.
-export function trialDrainPerSec(referenceLife: number): number {
-  return referenceLife * TRIAL_DRAIN_PCT_PER_SEC;
-}
-
-// How many questions the trial draws out of the UNUSED quiz pool when it
-// begins. A bound, not an expectation: the trial normally ends when one
-// player is left standing, and running this many rounds without that
-// happening is what "question pool exhausted -> highest score wins" is for.
-export const TRIAL_MAX_QUESTIONS = 16;
-
-// The stage card the TV shows as the trial begins - announced through the
-// EXISTING STAGE_ANNOUNCE phase (see buildStageAnnounce, server/src/
-// payloads.ts), so the trial gets the held beat, the pause-aware timer and
-// the state:sync catch-up every other stage already has. The stage NUMBER
-// is computed at announce time (one past however many quiz stages this
-// game's length includes), which is why only the text lives here.
-export const TRIAL_STAGE_TITLE = 'Η Δίκη';
-export const TRIAL_STAGE_TAGLINE =
-  'Η βαθμολογία σας είναι πλέον ζωή, και κυλάει όσο σωπαίνετε. Ένας θα μείνει όρθιος.';
-
 // --------------------- Climb finale mechanic (Task 187) -------------------
-// A prototype replacement for the trial above: a race up a ladder of steps
-// instead of a life drain. PURE NUMBERS ONLY at this stage - no UI, no Greek
-// text, no phase wiring, no live-path change. Lives here (not in
-// server/src/climb.ts) for the same reason trialWrongHit/trialDrainPerSec
-// do: the live game (eventually) and the dev Monte Carlo harness both need
-// the identical entry formula.
+// The quiz's FINALE, not a mode: after the last question of the last quiz
+// stage, a race up a ladder of steps. (It replaced Task 127's Η Δίκη, a life
+// drain off each player's accumulated score, which Task 258 removed.) Lives
+// here (not in server/src/climb.ts) because the live game and the dev Monte
+// Carlo harness both need the identical entry formula.
 export const CLIMB_TOP = 10;
 export const CLIMB_ENTRY_GAP = 3;
 export const CLIMB_ENTRY_BASE = 1;
@@ -3167,7 +3085,7 @@ export function isDuelRevealHostPayload(payload: DuelRevealPayload | DuelRevealH
 }
 
 // The stage card for the climb - the same held STAGE_ANNOUNCE beat the trial
-// gets (buildStageAnnounce branches on room.climb exactly as on room.trial).
+// gets (buildStageAnnounce branches on room.climb).
 export const CLIMB_STAGE_TITLE = 'Η Ανάβαση';
 // Task 237 - the old tagline promised only "whoever gets there first wins",
 // which is why a top-arrival duel read as the game stalling: two players stood
@@ -3296,114 +3214,6 @@ export function isClimbRevealHostPayload(payload: ClimbRevealPayload): payload i
   return 'results' in payload;
 }
 
-export interface TrialSubmitPayload {
-  choice: number; // 0-3, validated server-side
-}
-
-// One player's standing in the trial. `alive` goes false at the REVEAL that
-// takes them to zero or below and never comes back.
-export interface TrialLife {
-  playerId: string;
-  name: string;
-  avatarId: string;
-  life: number;
-  alive: boolean;
-  // Whether this player is in the question currently on screen. Always
-  // `alive` outside sudden death; during sudden death only the players the
-  // tie is between.
-  onTrial: boolean;
-}
-
-// The TV's view of a trial question. Carries WHO has locked in, never what
-// they picked and never the correct index - exactly the answer:progress
-// contract, and for the same reason: the host is a display.
-export interface TrialQuestionShowHostPayload {
-  roundIndex: number; // 0-based, within the trial
-  question: string;
-  options: string[];
-  category: string;
-  questionTimeMs: number;
-  durationMs: number; // time STILL LEFT, frozen while paused
-  // Both echoed so the TV can animate the drain locally against the same
-  // figures the server will use at reveal, rather than a second copy.
-  drainPerSec: number;
-  wrongHit: number;
-  suddenDeath: boolean;
-  lives: TrialLife[];
-  lockedInPlayerIds: string[];
-  paused: boolean;
-  pausedByName: string | null;
-  standings: PlayerStanding[];
-}
-
-// One phone's view. No question text (it reads it off the TV), no correct
-// index, and nothing at all about anyone else's lock-in.
-export interface TrialQuestionShowPlayerPayload {
-  roundIndex: number;
-  options: string[];
-  category: string;
-  questionTimeMs: number;
-  durationMs: number;
-  drainPerSec: number;
-  wrongHit: number;
-  suddenDeath: boolean;
-  // False for an eliminated player, and for anyone sitting a sudden-death
-  // round out - their phone shows a spectator view, and the server rejects
-  // a submit from them regardless.
-  onTrial: boolean;
-  yourLife: number;
-  lockedIn: boolean; // true on a state:sync catch-up after already locking in
-  paused: boolean;
-  pausedByName: string | null;
-}
-
-export type TrialQuestionShowPayload = TrialQuestionShowHostPayload | TrialQuestionShowPlayerPayload;
-
-export function isTrialQuestionHostPayload(
-  payload: TrialQuestionShowPayload,
-): payload is TrialQuestionShowHostPayload {
-  return 'question' in payload;
-}
-
-// One player's round, as the reveal reports it. The three figures are kept
-// separate rather than pre-summed so the TV can show the arithmetic:
-// lifeAfter === lifeBefore - drain - hit, always.
-export interface TrialRevealResult {
-  playerId: string;
-  name: string;
-  avatarId: string;
-  choice: number | null; // null = never locked in
-  correct: boolean;
-  timeMs: number | null; // elapsed at lock-in, from the pause-aware clock
-  answerRank: number | null; // 1-based among CORRECT lock-ins, by speed
-  lifeBefore: number;
-  drain: number; // round(elapsed_s * trialDrainPerSec(referenceLife)), full timer if no answer
-  hit: number; // trialWrongHit(referenceLife, answered) or 0
-  lifeAfter: number; // NOT clamped at 0 - the arithmetic is what it is
-  eliminated: boolean; // crossed to <= 0 in THIS reveal
-}
-
-// Public and symmetric, like reveal:show - the round is over, so the correct
-// answer and every player's lock-in and drain are finally safe to send to
-// everyone.
-export interface TrialRevealShowPayload {
-  roundIndex: number;
-  correctIndex: number;
-  correctOption: string;
-  suddenDeath: boolean; // whether the round being revealed WAS a decider
-  results: TrialRevealResult[];
-  survivorCount: number; // still above 0 after this reveal
-  // Set only on the reveal that ends the trial.
-  winnerPlayerId: string | null;
-  winnerName: string | null;
-  // True when this reveal sent everyone left to zero at once and the next
-  // question is the sudden-death decider between them.
-  nextSuddenDeath: boolean;
-  autoAdvanceMs: number;
-  paused: boolean;
-  pausedByName: string | null;
-  standings: PlayerStanding[];
-}
 
 // ----------------------- Blitz mode (Task 69) --------------------------
 // Solo swipe minigame: one statement at a time, swipe RIGHT for ΣΩΣΤΟ
@@ -4052,7 +3862,6 @@ export type ClientToServerEvents = {
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
-  [ClientEvents.TRIAL_SUBMIT]: (payload: TrialSubmitPayload) => void;
   [ClientEvents.CLIMB_SUBMIT]: (payload: ClimbSubmitPayload) => void;
   [ClientEvents.DUEL_PICK]: (payload: DuelPickPayload) => void;
   [ClientEvents.BLITZ_SWIPE]: (payload: BlitzSwipePayload) => void;
@@ -4096,8 +3905,6 @@ export type ServerToClientEvents = {
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
   [ServerEvents.NUMERIC_QUESTION_SHOW]: (payload: NumericQuestionShowPayload) => void;
   [ServerEvents.NUMERIC_REVEAL_SHOW]: (payload: NumericRevealShowPayload) => void;
-  [ServerEvents.TRIAL_QUESTION_SHOW]: (payload: TrialQuestionShowPayload) => void;
-  [ServerEvents.TRIAL_REVEAL_SHOW]: (payload: TrialRevealShowPayload) => void;
   [ServerEvents.CLIMB_QUESTION_SHOW]: (payload: ClimbQuestionShowPayload) => void;
   [ServerEvents.CLIMB_REVEAL_SHOW]: (payload: ClimbRevealPayload) => void;
   [ServerEvents.DUEL_PICK_SHOW]: (payload: DuelPickShowPayload) => void;

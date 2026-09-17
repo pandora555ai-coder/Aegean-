@@ -71,9 +71,11 @@ function wireBotLike(socket: Socket): void {
     if (!p.options) return;
     soon(() => socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: pick(p.options!.length) }));
   });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
+  // Task 258 - Η Δίκη is gone; answering the climb's questions is what keeps
+  // a game short now (all climbers locked in ends the round at once).
+  socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
+    if (!p.options || p.climbing === false || p.eliminated) return;
+    soon(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));
   });
   socket.on(ServerEvents.DRAW_SHOW, (p: { wordToDraw?: string }) => {
     if (!p.wordToDraw) return;
@@ -412,7 +414,7 @@ async function main(): Promise<void> {
     const vip = players[0];
     await Promise.all([
       waitFor(vip, ServerEvents.SETTINGS_UPDATED, 8000),
-      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'trial' }))(),
+      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short' }))(),
     ]);
     vip.emit(ClientEvents.VIP_START_GAME, {});
     console.log(`  game started, roster = ${JSON.stringify(roster)}`);

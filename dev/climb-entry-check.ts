@@ -360,10 +360,13 @@ async function main(): Promise<void> {
     }, 25);
 
     t0 = Date.now();
-    sims[0].socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'climb' });
+    // Task 258 - `finaleMode: 'climb'` dropped: the setting is gone with
+    // Η Δίκη, and Η Ανάβασις is the only finale, so this is now the default
+    // and the only possibility.
+    sims[0].socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short' });
     await delay(300);
     sims[0].socket.emit(ClientEvents.VIP_START_GAME, {});
-    console.log('game started (gameLength=short, finaleMode=climb)');
+    console.log('game started (gameLength=short, finale=Η Ανάβασις — the only one since Task 258)');
 
     // ---- criterion 3: reload ON the climb card, then again mid-narration ---
     const reloadReports: string[] = [];

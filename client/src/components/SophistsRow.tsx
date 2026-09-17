@@ -62,7 +62,7 @@ interface SophistsRowProps {
   standings: SophistStanding[];
   phase: GamePhase;
   // This beat's signed points per playerId (REVEAL/GUESS_REVEAL/STEAL/
-  // NUMERIC_REVEAL/TRIAL_REVEAL) - shown as an ember delta above the figure,
+  // NUMERIC_REVEAL/BLITZ_REVEAL) - shown as an ember delta above the figure,
   // the SIGN carrying direction. null everywhere else.
   deltas?: Record<string, number> | null;
   // Η Δίκη - who sinks+fades (.out). Can include a player who is NOT yet
@@ -75,7 +75,8 @@ interface SophistsRowProps {
   // go to the decider, not out). Removal from the row is scheduled off
   // THIS, never off eliminatedPlayerIds, or the winner vanishes.
   confirmedOutPlayerIds?: string[] | null;
-  // TRIAL_QUESTION only - whoever this payload already knows has locked in.
+  // AGORA_QUESTION only (Task 258 removed TRIAL_QUESTION, the other phase
+  // that filled this) - whoever this payload already knows has locked in.
   lockedInPlayerIds?: string[] | null;
   // STEAL - the two parties get a heavier name, nothing else.
   thiefPlayerId?: string | null;

@@ -39,7 +39,7 @@ Everything a new mode has to define, and nothing else:
 
 `full` is a mode that runs OTHER modes' mechanics as its own stages — the
 LOCKED lineup: quiz → blitz → drawing → numeric → agora → quiz-with-steal →
-the climb (or the trial, per `finaleMode`) → GAME_OVER. It copies nothing: it
+the climb → GAME_OVER. It copies nothing: it
 calls each mode's own entry points, and every standalone mode stays registered
 and VIP-selectable as the dev harness for its mechanic.
 

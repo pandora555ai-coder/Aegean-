@@ -103,10 +103,6 @@ function wireHuman(socket: Socket): void {
     if (p.submittedCount !== undefined || p.max === undefined) return;
     soon(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value: pick(p.max! + 1) }));
   });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
-  });
   socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
     if (!p.options || p.climbing === false || p.eliminated) return;
     soon(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));

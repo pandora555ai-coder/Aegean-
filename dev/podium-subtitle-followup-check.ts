@@ -6,7 +6,7 @@
 //      and .textContent() on an element includes a descendant <style> tag's
 //      raw CSS text (all those cqh/rem numbers) - unlike .innerText(), which
 //      reflects only what's actually rendered. Verified here with a FAST
-//      standalone quiz+trial game (not full+climb) so the fix can be
+//      standalone quiz game (not the full show) so the fix can be
 //      confirmed in ~1-2 minutes instead of re-running the full ~23 minute
 //      two-game harness.
 //   B. "stage card and subtitle overlap" FAILED, box {x:0,y:36,w:1280,h:648}
@@ -82,6 +82,14 @@ async function drivePhoneQuick(page: Page, stop: { stopped: boolean }): Promise<
           answeredKeys.add(key);
           await answerBtn.click({ timeout: 1500 }).catch(() => {});
         }
+      }
+      // Task 258 - the climb is the only finale now, and this run's two
+      // players reach its round cap, which settles in a duel. Picking a
+      // weapon turns a 20s pick timeout (plus a re-run on every tie) into a
+      // couple of seconds.
+      const weaponBtn = page.locator('[data-testid="duel-weapon-option"]:not([disabled])').first();
+      if ((await weaponBtn.count()) > 0) {
+        await weaponBtn.click({ timeout: 1500 }).catch(() => {});
       }
       const skipBtn = page.locator('[data-testid="continue-button"], [data-testid="socrates-skip-button"]').first();
       if ((await skipBtn.count()) > 0 && !(await skipBtn.isDisabled().catch(() => true))) {
@@ -192,9 +200,10 @@ async function main(): Promise<void> {
 
   // =========================================================================
   // A - the podium digit-check fix: .innerText() instead of .textContent(),
-  //     verified on a FAST standalone quiz+trial game (not full+climb).
+  //     verified on a FAST standalone quiz game (Task 258: quiz + the climb,
+  //     which is now the only finale).
   // =========================================================================
-  console.log('\n--- A: podium zero-digit check, corrected (.innerText, quiz+trial) ---');
+  console.log('\n--- A: podium zero-digit check, corrected (.innerText, standalone quiz) ---');
   {
     const tvCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const tvPage = await tvCtx.newPage();
@@ -225,10 +234,9 @@ async function main(): Promise<void> {
 
     await vipPage.getByTestId('setting-time-10000').click().catch(() => {});
     await vipPage.getByTestId('setting-length-short').click().catch(() => {});
-    await vipPage.getByTestId('setting-finale-trial').click().catch(() => {});
     await delay(300);
     await vipPage.getByTestId('start-button').click();
-    console.log('game started (quiz, short, finale=trial)\n');
+    console.log('game started (quiz, short, finale=Η Ανάβασις — the only finale since Task 258)\n');
 
     const stop = { stopped: false };
     const drivers = [drivePhoneQuick(vipPage, stop), drivePhoneQuick(otherPage, stop)];
@@ -242,7 +250,7 @@ async function main(): Promise<void> {
     stop.stopped = true;
     await Promise.allSettled(drivers);
     console.log(`reached GAME_OVER at t=${Math.round((Date.now() - t0) / 1000)}s: ${overNow ? 'yes' : 'TIMED OUT'}\n`);
-    check('A-setup: the quiz+trial game reached GAME_OVER', overNow);
+    check('A-setup: the standalone quiz game reached GAME_OVER', overNow);
 
     await delay(7000); // PODIUM_DELAY_MS + margin
     const podiumRoot = tvPage.locator('[data-testid="podium-root"]');

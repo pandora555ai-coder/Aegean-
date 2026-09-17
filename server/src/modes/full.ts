@@ -44,9 +44,8 @@ import type { GameMode } from './types.js';
 //   6  Η Συκοφαντία        quiz questions, each followed by a STEAL
 //   7  Η Ανάβασις          the climb finale (Task 188a), entered with the scores
 //                          everyone accumulated across stages 1-6 as the ladder's
-//                          entry order - or Η Δίκη (Task 127), which uses those
-//                          same scores as LIFE, when the VIP sets finaleMode
-//                          back to 'trial'
+//                          entry order. The ONLY finale since Task 258 removed
+//                          Η Δίκη, which used those same scores as LIFE.
 //
 // - and then GAME_OVER, the only one in the mode.
 //
@@ -94,9 +93,6 @@ const FULL_PHASES: readonly GamePhase[] = [
   // Task 188b - the climb's duel.
   'DUEL_PICK',
   'DUEL_REVEAL',
-  // ...or the trial, when finaleMode is 'trial'. Part of the quiz's own machine.
-  'TRIAL_QUESTION',
-  'TRIAL_REVEAL',
   'GAME_OVER',
 ];
 
@@ -177,9 +173,9 @@ function start(room: Room): void {
 }
 
 // Announces `stage` and holds on its card. Returns false for a stage the show
-// doesn't drive itself - past the end, and the trial, which phases.ts enters
-// through startTrial (it needs the unused question pool and the living-player
-// list, none of which is this file's business).
+// doesn't drive itself - past the end, and the FINALE row, which phases.ts
+// enters through startClimb (it needs the unused question pool and the
+// connected-player list, none of which is this file's business).
 function enterStage(room: Room, stage: number): boolean {
   const definition = stageDefinition(room, stage);
   if (!definition || stageSegment(definition) === 'trial') {
@@ -231,7 +227,7 @@ function beginStage(room: Room): boolean {
 // last question of a quiz stage. Moves the show to the next card. Returns
 // false only when the next card is the FINALE row, which hands the decision
 // back to the caller: for the quiz machine that means its existing "last
-// question -> startClimb/startTrial -> WINNER -> GAME_OVER" tail, the one path
+// question -> startClimb -> WINNER -> GAME_OVER" tail, the one path
 // this mode ends on.
 function advanceAfterSegment(room: Room): boolean {
   return enterStage(room, room.stage + 1);

@@ -322,16 +322,6 @@ export const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     maxWidth: '700px',
   },
-  // Η Δίκη (Task 128) - TRIAL_REVEAL's papyrus. No options grid: unlike
-  // RevealHostPayload, TrialRevealShowPayload carries only the one correct
-  // answer's text, not a per-option tally (Task 127 never built one), so the
-  // reveal reads as a single answer rather than a 2x2 aggregate.
-  trialOutcomeLine: {
-    fontSize: '1.5rem',
-    fontWeight: 700,
-    textAlign: 'center',
-    color: 'var(--wine-2)',
-  },
   progressBarFill: {
     height: '100%',
     background: 'var(--wine-2)',

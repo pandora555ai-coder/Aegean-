@@ -14,7 +14,6 @@ import {
   STAGE_ANNOUNCE_DURATION_MS,
   STEAL_ANNOUNCE_DURATION_MS,
   STEAL_DURATION_MS,
-  TRIAL_MAX_QUESTIONS,
   ServerEvents,
   climbEntryStep,
   genderForName,
@@ -26,7 +25,6 @@ import {
   type RevealPlayerResult,
   type RoomCode,
   type StageDefinition,
-  type TrialRevealResult,
 } from '@game/shared';
 import {
   getConnectedPlayers,
@@ -34,7 +32,6 @@ import {
   type ClimbState,
   type PendingSocratesBeat,
   type Room,
-  type TrialState,
 } from './state.js';
 // Task 238 - each Socrates beat's backstop is derived from ITS OWN clip's
 // length, so the phase machine has to ask how long this line actually runs.
@@ -46,12 +43,6 @@ import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from './time
 import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from './crowd.js';
 import { calculatePoints, sortAndRankResults } from './scoring.js';
 import { getUnusedQuestionSet } from './questions.js';
-import {
-  nextAfterSuddenDeath,
-  nextAfterTrialRound,
-  scoreTrialRound,
-  type TrialRoundEntry,
-} from './trial.js';
 import {
   applyClimbDuelResult,
   applyClimbRound,
@@ -73,7 +64,6 @@ import {
   pickGameIntroSequence,
   pickQuestionIntro,
   pickStageIntroLine,
-  pickTrialIntroLine,
   pickWinnerLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
@@ -95,9 +85,6 @@ import {
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
-  buildTrialQuestionHostPayload,
-  buildTrialQuestionPlayerPayload,
-  buildTrialRevealPayload,
   buildClimbQuestionHostPayload,
   buildClimbQuestionPlayerPayload,
   buildClimbRevealHostPayload,
@@ -125,13 +112,9 @@ export type QuizTimerKind =
   | 'STEAL'
   | 'STEAL_ANNOUNCE'
   | 'SOCRATES'
-  // Task 127 - Η Δίκη. The trial is part of the QUIZ (its finale), not a mode
-  // of its own, so its two timers belong to this same table and its two
+  // Task 188a - Η Ανάβασις. The climb is part of the QUIZ (its finale), not a
+  // mode of its own, so its two timers belong to this same table and its two
   // phases pause/resume through the same machinery as every other one.
-  | 'TRIAL_QUESTION'
-  | 'TRIAL_REVEAL'
-  // Task 188a - the climb finale, the trial's alternative: same table, same
-  // pause/resume machinery.
   | 'CLIMB_QUESTION'
   | 'CLIMB_REVEAL'
   // Task 188b - the climb's duel: the pick window, the early-lock beat's
@@ -283,19 +266,7 @@ function definitionForCurrentStage(room: Room): StageDefinition {
 // Split out of endStageAnnounce (Task 236) because the game intro now sits
 // between the two and has to be able to resume this from advanceFromSocrates.
 function resumeAfterStageAnnounce(room: Room): void {
-  // Task 127 - the trial announces itself through this same beat (see
-  // startTrial), so what follows the card is the first trial question, not a
-  // quiz round. Task 139 - it now gets its own intro beat too, from
-  // TRIAL_INTRO_LINES (the Δίκη lines that used to sit under quiz stage 3);
-  // advanceFromSocrates's STAGE_INTRO case routes back to startTrialQuestion.
-  if (room.trial) {
-    if (startSocratesBeat(room, 'STAGE_INTRO', pickTrialIntroLine(room.socrates))) {
-      return;
-    }
-    startTrialQuestion(room);
-    return;
-  }
-  // Task 188a - the climb announces itself through this beat too (startClimb).
+  // Task 188a - the climb announces itself through this beat (startClimb).
   // Task 236 - and it is no longer silent: Η Ανάβασις' own three-line
   // sequence is the ONE place the game explains that tonight's points only
   // set your starting STEP, which is why a player can lead all night and
@@ -437,14 +408,14 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
 // is not one identifiable person.
 //
 // The three WINNER beat sites reach this differently, which is exactly why
-// this lives in ONE place rather than at each of them: the climb and the
-// trial each declare a winner outright, while the plain quiz path (no finale
-// configured) has not computed one yet - there, the winner is whoever leads
+// this lives in ONE place rather than at each of them: the climb declares a
+// winner outright, while the plain quiz path (a game the climb declined) has
+// not computed one yet - there, the winner is whoever leads
 // on score, and ONLY if they lead alone. A shared top score is a tie, and a
 // tie has no single person to inflect a line for, so it returns null and
 // takes the fallback below rather than guessing at one of them.
 function winnerNameForBeat(room: Room): string | null {
-  const declaredId = room.climb?.winnerPlayerId ?? room.trial?.winnerPlayerId ?? null;
+  const declaredId = room.climb?.winnerPlayerId ?? null;
   if (declaredId) {
     return room.players.get(declaredId)?.name ?? null;
   }
@@ -1010,13 +981,7 @@ export function advanceFromSocrates(code: RoomCode): void {
         resumeAfterStageAnnounce(room);
         return;
       case 'STAGE_INTRO':
-        // Task 139 - the trial's card plays this same beat kind; what it
-        // begins is the first trial question, never a quiz round.
-        if (room.trial) {
-          startTrialQuestion(room);
-          return;
-        }
-        // Task 236 - and the climb's card plays it too now, so what follows
+        // Task 236 - the climb's card plays this same beat kind, so what follows
         // Η Ανάβασις' narration is its first question.
         if (room.climb) {
           startClimbQuestion(room);
@@ -1061,14 +1026,12 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
 
   const isLastQuestion = room.currentQuestionIndex >= room.questions.length - 1;
   if (isLastQuestion) {
-    // Task 127 - Η Δίκη sits HERE, between the last quiz question and the end
-    // of the game: the WINNER beat and GAME_OVER now come after the TRIAL
-    // rather than after the quiz. startTrial declines (and the game ends the
-    // way it always did) when there is nobody to put on trial.
-    // Task 188a - the ONE site that branches on finaleMode: the climb takes
-    // the trial's place here and nowhere else.
-    const startFinale = room.settings.finaleMode === 'climb' ? startClimb : startTrial;
-    if (startFinale(room)) {
+    // Η Ανάβασις sits HERE, between the last quiz question and the end of
+    // the game: the WINNER beat and GAME_OVER come after the FINALE rather
+    // than after the quiz. startClimb declines (and the game ends the way it
+    // always did) when there is nobody to race - Task 258 removed the other
+    // branch this site used to have, Η Δίκη.
+    if (startClimb(room)) {
       return; // the finale runs its own phases and ends the game itself
     }
     if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
@@ -1085,354 +1048,19 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
 }
 
 // ---------------------------------------------------------------------------
-// Η Δίκη (Task 127) - the quiz finale
+// The climb finale (Task 188a) - Η Ανάβασις
 // ---------------------------------------------------------------------------
-// Everything below is one continuous run of TRIAL_QUESTION -> TRIAL_REVEAL
-// that ends only at GAME_OVER. It does NOT go through continueAfterReveal:
-// that decision point is about quiz questions and the beats that hang off
-// them, and the trial has neither a steal nor per-round commentary. The pure
-// mechanic (drain, elimination, what comes next) is in trial.ts; this is the
-// phase/timer/socket shell around it.
-
-// Opens the trial after the last quiz question. Returns whether it began, so
-// the caller ends the game the old way when it didn't. Declines when there is
-// nobody to try (fewer than two connected players - a trial between one
-// person and themselves is just GAME_OVER with extra steps), when the trial
-// has already run, or when the question bank has nothing left unused.
-// Exported for the Monte Carlo harness (Task 184) only; the live game
-// reaches it solely through advanceToNextQuestionOrGameOver below.
-export function startTrial(room: Room): boolean {
-  if (room.trial) {
-    return false; // already had its turn - this game ends now
-  }
-  const contestants = getConnectedPlayers(room);
-  if (contestants.length < 2) {
-    console.log(`room ${room.code} skipping the trial — only ${contestants.length} connected player(s)`);
-    return false;
-  }
-  // The UNUSED pool, same difficulty mix as the quiz that just ran: the trial
-  // is that game's finale, not a different game.
-  const questions = getUnusedQuestionSet(
-    room.settings.difficultyMix,
-    room.questions.map((question) => question.id),
-    TRIAL_MAX_QUESTIONS,
-  );
-  if (questions.length === 0) {
-    console.log(`room ${room.code} skipping the trial — no unused questions left`);
-    return false;
-  }
-
-  const trial: TrialState = {
-    questions,
-    questionIndex: -1,
-    // The leader's entry score, converted to life - fixed here, once, per
-    // Task 185: every hit and the drain rate scale off this for the whole
-    // trial, whatever life the room's players end it at.
-    referenceLife: Math.max(...contestants.map((player) => player.score)),
-    // Everyone walks in alive, carrying the score they earned as LIFE -
-    // including a player sitting on 0, who simply has one round to fix that.
-    livingPlayerIds: contestants.map((player) => player.playerId),
-    suddenDeath: false,
-    suddenDeathPlayerIds: [],
-    lockIns: new Map(),
-    roundsPlayed: 0,
-    winnerPlayerId: null,
-    eliminationOrder: [],
-    lastReveal: null,
-  };
-  room.trial = trial;
-  // The trial is the last row of whichever table this room's mode hands out
-  // (see trialStageRow) - one past the quiz's stages for the quiz, stage 5 of
-  // 5 for the full show. enterStageAnnounce emits the card, which
-  // buildStageAnnounce builds as Η Δίκη because room.trial is set above, and
-  // holds the beat on the same pause-aware timer as every other stage.
-  enterStageAnnounce(room, trialStageNumber(room));
-  setCrowdMood(room, 'tension'); // not the calm every other card gets
-
-  console.log(
-    `room ${room.code} entering the trial — ${trial.livingPlayerIds.length} on trial, ` +
-      `${questions.length} unused question(s) drawn`,
-  );
-  return true;
-}
-
-// Whoever the question currently open is being asked of: everyone still
-// standing, or - in sudden death - only the players the tie is between.
-function trialParticipantIds(trial: TrialState): string[] {
-  return trial.suddenDeath ? trial.suddenDeathPlayerIds : trial.livingPlayerIds;
-}
-
-// The pause-aware clock, and the ONLY way elapsed time is measured in the
-// trial: the shared timer is what a pause freezes, so deriving elapsed from
-// what it says is LEFT means a pause cannot cost anyone life. A raw Date.now
-// delta against a start moment would keep draining through the break.
-function trialElapsedMs(room: Room): number {
-  const questionTimeMs = room.settings.questionTimeMs;
-  return Math.min(questionTimeMs, Math.max(0, questionTimeMs - remainingActiveTimerMs(room)));
-}
-
-// Starts the next trial question, or ends the trial when the drawn pool runs
-// out - which is the "question pool exhausted -> highest score wins" ending
-// (no verdict is recorded, so GAME_OVER ranks by score exactly as it always
-// has).
-function startTrialQuestion(room: Room): void {
-  const trial = room.trial;
-  if (!trial) {
-    return;
-  }
-  trial.questionIndex += 1;
-  if (trial.questionIndex >= trial.questions.length) {
-    console.log(
-      `room ${room.code} trial pool exhausted after ${trial.roundsPlayed} round(s) — highest score wins`,
-    );
-    endTrial(room);
-    return;
-  }
-  trial.lockIns.clear();
-
-  room.phase = 'TRIAL_QUESTION';
-  // Armed BEFORE the payloads are built - they report the timer's remaining
-  // time (and the drain is measured against it), so it has to exist first.
-  armQuizTimer(room, 'TRIAL_QUESTION', room.settings.questionTimeMs, () => endTrialQuestion(room.code));
-  setCrowdMood(room, 'tension'); // the whole trial is tension, start to finish
-
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  emitCrowdIntensity(room, { round: trial.questionIndex + 1 });
-  broadcastTrialQuestion(room);
-
-  console.log(
-    `room ${room.code} trial question ${trial.questionIndex + 1}/${trial.questions.length}` +
-      `${trial.suddenDeath ? ' (SUDDEN DEATH)' : ''} — ${trialParticipantIds(trial).length} on trial`,
-  );
-}
-
-// Per phone, never built once and reused: only the host payload carries the
-// question text, the lives table and who has locked in.
-function broadcastTrialQuestion(room: Room): void {
-  const hostPayload = buildTrialQuestionHostPayload(room);
-  if (hostPayload && room.hostSocketId) {
-    io.to(room.hostSocketId).emit(ServerEvents.TRIAL_QUESTION_SHOW, hostPayload);
-  }
-  for (const player of getConnectedPlayers(room)) {
-    const playerPayload = buildTrialQuestionPlayerPayload(room, player.playerId);
-    if (playerPayload) {
-      io.to(player.socketId).emit(ServerEvents.TRIAL_QUESTION_SHOW, playerPayload);
-    }
-  }
-}
-
-// Every participant who is still CONNECTED has locked in - identity-based for
-// the same reason as haveAllConnectedPlayersAnswered: a size comparison can
-// match while the specific players differ.
-function allConnectedParticipantsLockedIn(room: Room, trial: TrialState): boolean {
-  const connected = new Set(getConnectedPlayers(room).map((player) => player.playerId));
-  const waitingOn = trialParticipantIds(trial).filter((id) => connected.has(id));
-  return waitingOn.length > 0 && waitingOn.every((id) => trial.lockIns.has(id));
-}
-
-// Records one lock-in. Returns whether it was accepted - the caller (the
-// trial:submit handler in index.ts) logs on that. Every rule lives here:
-// the phase, the pause, a valid choice, being ON trial (an eliminated player,
-// or one sitting a sudden-death round out, is rejected server-side however
-// their phone behaves), and one lock-in per player per question.
-export function submitTrialAnswer(room: Room, playerId: string, choice: number): boolean {
-  if (room.phase !== 'TRIAL_QUESTION' || room.paused) {
-    return false;
-  }
-  const trial = room.trial;
-  if (!trial) {
-    return false;
-  }
-  if (!Number.isInteger(choice) || choice < 0 || choice > 3) {
-    return false;
-  }
-  if (!trialParticipantIds(trial).includes(playerId)) {
-    return false;
-  }
-  if (trial.lockIns.has(playerId)) {
-    return false;
-  }
-
-  // The whole point of the phase: the moment this is recorded, the drain
-  // against this player stops. It is charged once, at the reveal.
-  const elapsedMs = trialElapsedMs(room);
-  trial.lockIns.set(playerId, { choice, elapsedMs });
-  console.log(
-    `room ${room.code} trial lock-in from ${playerId} at ${elapsedMs}ms — ` +
-      `${trial.lockIns.size}/${trialParticipantIds(trial).length} locked in`,
-  );
-
-  if (allConnectedParticipantsLockedIn(room, trial)) {
-    endTrialQuestion(room.code);
-  }
-  return true;
-}
-
-// Re-run whenever a player disconnects - the player who just left might have
-// been the only one the question was still waiting on. A no-op outside
-// TRIAL_QUESTION.
-export function recheckTrialPhaseOnDisconnect(room: Room): void {
-  if (room.phase !== 'TRIAL_QUESTION' || !room.trial) {
-    return;
-  }
-  if (allConnectedParticipantsLockedIn(room, room.trial)) {
-    endTrialQuestion(room.code);
-  }
-}
-
-// Ends the trial question exactly once - guarded by the phase check, so
-// whichever of (every participant locked in) / (the timer fired) happens
-// first wins. THE one place life moves, and the one place elimination is
-// decided: never mid-question, however long someone sits there.
-export function endTrialQuestion(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'TRIAL_QUESTION') {
-    return;
-  }
-  const trial = room.trial;
-  if (!trial) {
-    return;
-  }
-  const question = trial.questions[trial.questionIndex];
-  const questionTimeMs = room.settings.questionTimeMs;
-  const wasSuddenDeath = trial.suddenDeath;
-
-  const entries: TrialRoundEntry[] = trialParticipantIds(trial).flatMap((playerId) => {
-    const player = room.players.get(playerId);
-    if (!player) {
-      return [];
-    }
-    const lockIn = trial.lockIns.get(playerId);
-    return [
-      {
-        playerId,
-        name: player.name,
-        avatarId: player.avatarId,
-        lifeBefore: player.score,
-        choice: lockIn ? lockIn.choice : null,
-        elapsedMs: lockIn ? lockIn.elapsedMs : null,
-      },
-    ];
-  });
-
-  const results: TrialRevealResult[] = scoreTrialRound(
-    entries,
-    question.correctIndex,
-    questionTimeMs,
-    wasSuddenDeath,
-    trial.referenceLife,
-  );
-  for (const result of results) {
-    const player = room.players.get(result.playerId);
-    if (player) {
-      player.score = result.lifeAfter;
-    }
-  }
-  trial.roundsPlayed += 1;
-
-  const next = wasSuddenDeath ? nextAfterSuddenDeath(results) : nextAfterTrialRound(results);
-  const winnerPlayerId = next.kind === 'WINNER' ? next.winnerPlayerId : null;
-  if (winnerPlayerId) {
-    trial.winnerPlayerId = winnerPlayerId;
-  }
-  // Recorded in results order (best-performing-of-the-doomed first when
-  // several fall in the same reveal) - Task 137's GAME_OVER reverses this
-  // whole list for survival-order ranking below the winner. Skipped
-  // entirely when THIS round is what declares sudden death: everyone who
-  // crossed zero together (the eventual winner very possibly included -
-  // hitting zero on your own correct, instant answer is normal when you
-  // walked in at exactly zero life) goes on to the decider, not out, so
-  // `results[].eliminated` here is provisional, not the real verdict.
-  if (next.kind !== 'SUDDEN_DEATH') {
-    trial.eliminationOrder.push(...results.filter((result) => result.eliminated).map((result) => result.playerId));
-  }
-  // Kept in join order (filtered, never rebuilt from the reveal's order) so
-  // the lives table reads the same way from round to round.
-  const stillIn = new Set(next.kind === 'WINNER' ? [next.winnerPlayerId] : next.playerIds);
-  if (next.kind !== 'SUDDEN_DEATH') {
-    trial.livingPlayerIds = trial.livingPlayerIds.filter((id) => stillIn.has(id));
-  }
-
-  // Snapshotted BEFORE `suddenDeath` is moved on below: this reveal describes
-  // the round that was just played, not the one it may be sending everyone to.
-  trial.lastReveal = {
-    roundIndex: trial.questionIndex,
-    correctIndex: question.correctIndex,
-    correctOption: question.options[question.correctIndex],
-    suddenDeath: wasSuddenDeath,
-    results,
-    survivorCount: results.filter((result) => result.lifeAfter > 0).length,
-    winnerPlayerId,
-    winnerName: winnerPlayerId ? (room.players.get(winnerPlayerId)?.name ?? null) : null,
-    nextSuddenDeath: next.kind === 'SUDDEN_DEATH',
-  };
-
-  trial.suddenDeath = next.kind === 'SUDDEN_DEATH';
-  trial.suddenDeathPlayerIds =
-    next.kind === 'SUDDEN_DEATH' ? trial.livingPlayerIds.filter((id) => stillIn.has(id)) : [];
-
-  room.phase = 'TRIAL_REVEAL';
-  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-  emitCrowdIntensity(room, { round: trial.roundsPlayed });
-  armQuizTimer(room, 'TRIAL_REVEAL', REVEAL_DURATION_MS, () => endTrialReveal(room.code));
-  setCrowdMood(room, results.some((result) => result.eliminated) ? 'boo' : 'cheer');
-
-  // Public and symmetric - the round is over, so the correct index, every
-  // lock-in and every drain are finally safe to send to the whole room.
-  const payload = buildTrialRevealPayload(room);
-  if (payload) {
-    io.to(room.code).emit(ServerEvents.TRIAL_REVEAL_SHOW, payload);
-  }
-
-  console.log(
-    `room ${room.code} trial round ${trial.roundsPlayed} revealed — correctIndex=${question.correctIndex}, ` +
-      `next=${next.kind}, results: ${JSON.stringify(results)}`,
-  );
-}
-
-// Ends the reveal beat exactly once - same one-shot discipline as every other
-// advanceFrom*/end*, guarded by the phase check, so the auto-advance timer and
-// a VIP skip can never both advance.
-export function endTrialReveal(code: RoomCode): void {
-  const room = getRoom(code);
-  if (!room || room.phase !== 'TRIAL_REVEAL') {
-    return;
-  }
-  const trial = room.trial;
-  if (!trial) {
-    return;
-  }
-  if (trial.winnerPlayerId) {
-    endTrial(room);
-    return;
-  }
-  startTrialQuestion(room);
-}
-
-// The trial is over, one way or another (a verdict, or the pool running out).
-// Socrates names the winner first, exactly as he did at the end of the quiz
-// before the trial existed - advanceFromSocrates's WINNER case calls
-// finishGame once the beat is done.
-function endTrial(room: Room): void {
-  if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
-    return;
-  }
-  finishGame(room);
-}
-
-// ---------------------------------------------------------------------------
-// The climb finale (Task 188a) - the trial's alternative
-// ---------------------------------------------------------------------------
-// The same shape as the trial section above: one continuous run of
+// One continuous run of
 // CLIMB_QUESTION -> CLIMB_REVEAL ending only at GAME_OVER, never through
 // continueAfterReveal. The pure mechanic (round scoring, what comes next) is
 // climb.ts (Task 187); this is the phase/timer/socket shell around it.
 // Steps live in room.climb.steps, never in player.score.
 
-// Opens the climb after the last quiz question. Same declines as startTrial:
-// already run, fewer than two connected players, or nothing unused to draw.
+// Opens the climb after the last quiz question. Declines when it has already
+// run, when there are fewer than two connected players, or when there is
+// nothing unused left to draw.
 export function startClimb(room: Room): boolean {
-  if (room.climb || room.trial) {
+  if (room.climb) {
     return false;
   }
   const contestants = getConnectedPlayers(room);
@@ -1480,7 +1108,7 @@ export function startClimb(room: Room): boolean {
     eliminationOrder: [],
   };
   room.climb = climb;
-  // The finale row of the room's table, same card beat as the trial;
+  // The finale row of the room's table, the same held card beat every stage gets;
   // buildStageAnnounce reads room.climb for the card's words.
   enterStageAnnounce(room, trialStageNumber(room));
   setCrowdMood(room, 'tension');
@@ -1492,7 +1120,7 @@ export function startClimb(room: Room): boolean {
   return true;
 }
 
-// The pause-aware clock, exactly as trialElapsedMs: elapsed is what the
+// The pause-aware clock: elapsed is what the
 // shared timer says is NOT left, so a pause never counts as thinking time.
 function climbElapsedMs(room: Room): number {
   return Math.min(CLIMB_QUESTION_TIME_MS, Math.max(0, CLIMB_QUESTION_TIME_MS - remainingActiveTimerMs(room)));
@@ -2091,7 +1719,7 @@ export function endDuelReveal(code: RoomCode): void {
 }
 
 // The climb is over (a verdict, or the pool running out): Socrates names the
-// winner, then finishGame - identical to endTrial.
+// winner, then finishGame.
 function endClimb(room: Room): void {
   if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
     return;
@@ -2116,12 +1744,12 @@ function finishGame(room: Room): void {
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
   setCrowdMood(room, 'calm');
-  // Task 127 - the trial's verdict wins over the score ordering when there is
-  // one: a sudden death is settled by the earliest correct lock-in between
-  // players who are all at or below zero. Null (no trial, or a trial that ran
-  // its pool out) leaves GAME_OVER ranking by score exactly as it always did.
-  // Task 188a - or the climb's verdict, the same way (at most one is set).
-  const gameOverPayload = buildGameOver(room, room.trial?.winnerPlayerId ?? room.climb?.winnerPlayerId ?? null);
+  // Task 188a - the climb's verdict wins over the score ordering when there
+  // is one: reaching the top (or the duel, or being the last one the spear
+  // left standing) decides it, not the highest score. Null - a game the climb
+  // declined, or one that ran its pool out - leaves GAME_OVER ranking by
+  // score exactly as it always did.
+  const gameOverPayload = buildGameOver(room, room.climb?.winnerPlayerId ?? null);
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} game over — final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   console.log(`room ${room.code} stage durations: ${JSON.stringify(gameOverPayload.stageDurations)}`);

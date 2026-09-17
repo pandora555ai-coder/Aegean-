@@ -16,8 +16,6 @@ import {
   endPowerUp,
   endQuestion,
   endStageAnnounce,
-  endTrialQuestion,
-  endTrialReveal,
   endClimbQuestion,
   endClimbReveal,
   endDuelPick,
@@ -43,12 +41,9 @@ const QUIZ_PHASES: readonly GamePhase[] = [
   'REVEAL',
   'STEAL',
   'SOCRATES',
-  // Task 127 - Η Δίκη, the quiz's finale. Two more phases of THIS mode, not a
-  // mode of their own: they are reached from the end of the quiz's own
+  // Task 188a - Η Ανάβασις, the quiz's finale. Two more phases of THIS mode,
+  // not a mode of their own: they are reached from the end of the quiz's own
   // question run (advanceToNextQuestionOrGameOver) and lead to GAME_OVER.
-  'TRIAL_QUESTION',
-  'TRIAL_REVEAL',
-  // Task 188a - the climb, the trial's alternative finale (finaleMode).
   'CLIMB_QUESTION',
   'CLIMB_REVEAL',
   // Task 188b - the climb's duel.
@@ -73,8 +68,6 @@ export const QUIZ_CONTINUATIONS: Record<QuizTimerKind, (room: Room) => void> = {
   STEAL: (room) => resolveSteal(room.code, null),
   STEAL_ANNOUNCE: (room) => advanceFromSteal(room.code),
   SOCRATES: (room) => advanceFromSocrates(room.code),
-  TRIAL_QUESTION: (room) => endTrialQuestion(room.code),
-  TRIAL_REVEAL: (room) => endTrialReveal(room.code),
   // Task 188a - the climb's two timers, so a pause mid-climb resumes.
   CLIMB_QUESTION: (room) => endClimbQuestion(room.code),
   CLIMB_REVEAL: (room) => endClimbReveal(room.code),

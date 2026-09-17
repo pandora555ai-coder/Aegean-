@@ -233,7 +233,7 @@ async function main(): Promise<void> {
 
     // One long sequence, exactly startSocratesSequence's own shape - a
     // trailing sentinel with no real mp3 so its 404 ends the run instead of
-    // cascading into real game logic (beginStageOrRound/startTrialQuestion/
+    // cascading into real game logic (beginStageOrRound/startClimbQuestion/
     // finishGame) once the queue drains.
     const lines = PLAN.map((p) => byHash.get(p.hash)!);
     const [first, ...rest] = lines;

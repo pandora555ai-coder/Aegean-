@@ -70,16 +70,13 @@ import { isValidAvatarId } from './avatars.js';
 import {
   endQuestion,
   endPowerUp,
-  endTrialReveal,
   endClimbReveal,
   endDuelReveal,
   onDuelAudioEnded,
   advanceFromReveal,
   advanceFromSteal,
-  recheckTrialPhaseOnDisconnect,
   recheckClimbPhaseOnDisconnect,
   resolveSteal,
-  submitTrialAnswer,
   submitClimbAnswer,
   submitDuelPick,
 } from './phases.js';
@@ -139,9 +136,6 @@ import {
   buildStageAnnounce,
   buildStealHostPayload,
   buildStealPlayerPayload,
-  buildTrialQuestionHostPayload,
-  buildTrialQuestionPlayerPayload,
-  buildTrialRevealPayload,
   buildClimbQuestionHostPayload,
   buildClimbQuestionPlayerPayload,
   buildClimbRevealHostPayload,
@@ -367,21 +361,10 @@ function buildStateSyncForPlayer(room: Room, playerId: string): StateSyncPayload
       const payload = buildNumericRevealShow(room);
       return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
     }
-    // Task 127 - Η Δίκη. Same reasoning as every phase above: the phone gets
-    // back exactly what a fresh trial_question:show would have sent it - its
-    // OWN life, whether it is on trial and whether it already locked in, all
-    // read live from room state so a reconnect can neither lose a lock-in nor
-    // be tricked into a second one.
-    case 'TRIAL_QUESTION': {
-      const payload = buildTrialQuestionPlayerPayload(room, playerId);
-      return payload ? { ...payload, phase: 'TRIAL_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
-    }
-    case 'TRIAL_REVEAL': {
-      const payload = buildTrialRevealPayload(room);
-      return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
-    }
-    // Task 188a - the climb finale, same reasoning as the trial's: the phone
-    // gets its OWN step (and its own round at the reveal), read live.
+    // Task 188a - the climb finale. Same reasoning as every phase above: the
+    // phone gets its OWN step (and its own round at the reveal), read live
+    // from room state so a reconnect can neither lose a lock-in nor be
+    // tricked into a second one.
     case 'CLIMB_QUESTION': {
       const payload = buildClimbQuestionPlayerPayload(room, playerId);
       return payload ? { ...payload, phase: 'CLIMB_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
@@ -515,18 +498,9 @@ function buildStateSyncForHost(room: Room): StateSyncPayload | null {
       const payload = buildNumericRevealShow(room);
       return payload ? { ...payload, phase: 'NUMERIC_REVEAL' } : null;
     }
-    // Task 127 - Η Δίκη, same builder-plus-remainingMs shape as every phase
-    // above, so a TV reattaching mid-trial restores the exact current screen
-    // (lives, who has locked in, what is left of the drain).
-    case 'TRIAL_QUESTION': {
-      const payload = buildTrialQuestionHostPayload(room);
-      return payload ? { ...payload, phase: 'TRIAL_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
-    }
-    case 'TRIAL_REVEAL': {
-      const payload = buildTrialRevealPayload(room);
-      return payload ? { ...payload, phase: 'TRIAL_REVEAL' } : null;
-    }
-    // Task 188a - the climb finale, same builder-plus-remainingMs shape.
+    // Task 188a - the climb finale, the same builder-plus-remainingMs shape
+    // as every phase above, so a TV reattaching mid-finale restores the exact
+    // current screen (steps, who has locked in, what is left of the timer).
     case 'CLIMB_QUESTION': {
       const payload = buildClimbQuestionHostPayload(room);
       return payload ? { ...payload, phase: 'CLIMB_QUESTION', remainingMs: remainingActiveTimerMs(room) } : null;
@@ -1312,18 +1286,10 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Task 127 - the trial's own reveal, same manual skip as REVEAL's above.
-    // TRIAL_QUESTION is deliberately NOT skippable: the drain is measured
-    // against that timer, so cutting it short would charge everyone who
-    // hadn't answered yet for time they were never given.
-    if (room.phase === 'TRIAL_REVEAL') {
-      console.log(`room ${room.code} skipped past trial reveal (VIP)`);
-      endTrialReveal(room.code);
-      return;
-    }
-
-    // Task 188a - the climb's reveal, same skip; CLIMB_QUESTION is not
-    // skippable for the trial's reason (speed is measured against the timer).
+    // Task 188a - the climb's reveal, same manual skip as REVEAL's above.
+    // CLIMB_QUESTION is deliberately NOT skippable: speed is measured against
+    // that timer, so cutting it short would charge everyone who hadn't
+    // answered yet for time they were never given.
     if (room.phase === 'CLIMB_REVEAL') {
       console.log(`room ${room.code} skipped past climb reveal (VIP)`);
       endClimbReveal(room.code);
@@ -1339,7 +1305,7 @@ io.on('connection', (socket) => {
     }
 
     console.log(
-      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES, TRIAL_REVEAL, CLIMB_REVEAL or DUEL_REVEAL`,
+      `rejected ${ClientEvents.VIP_NEXT} for room ${room.code}: phase is ${room.phase}, not REVEAL, STEAL, SOCRATES, CLIMB_REVEAL or DUEL_REVEAL`,
     );
   });
 
@@ -1467,29 +1433,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Task 127 - Η Δίκη. Its own event rather than a second meaning for
-  // SUBMIT_ANSWER (no sabotage, no shuffled order, and what is recorded is a
-  // pause-aware elapsed figure). Every rule - phase, pause, valid choice,
-  // being ON trial, one lock-in per question - lives in submitTrialAnswer,
-  // which also ends the question early once everyone has locked in.
-  socket.on(ClientEvents.TRIAL_SUBMIT, (payload) => {
-    const result = getPlayerRoomForSocket(socket, ClientEvents.TRIAL_SUBMIT);
-    if (!result) {
-      return;
-    }
-    const { room, playerId } = result;
-    if (!submitTrialAnswer(room, playerId, payload?.choice)) {
-      console.log(`rejected ${ClientEvents.TRIAL_SUBMIT} from player ${playerId} in room ${room.code}`);
-      return;
-    }
-    // Same ack the quiz question sends - the phone marks the button it
-    // pressed, and learns nothing else until TRIAL_REVEAL.
-    socket.emit(ServerEvents.ANSWER_ACCEPTED, { choice: payload.choice });
-  });
-
-  // Task 188a - the climb finale's lock-in, the TRIAL_SUBMIT shape exactly:
-  // every rule lives in submitClimbAnswer, which also ends the question early
-  // once every climber has locked in.
+  // Task 188a - the climb finale's lock-in. Its own event rather than a
+  // second meaning for SUBMIT_ANSWER (no sabotage, no shuffled order, and
+  // what is recorded is a pause-aware elapsed figure): every rule lives in
+  // submitClimbAnswer, which also ends the question early once every climber
+  // has locked in.
   socket.on(ClientEvents.CLIMB_SUBMIT, (payload) => {
     const result = getPlayerRoomForSocket(socket, ClientEvents.CLIMB_SUBMIT);
     if (!result) {
@@ -1828,17 +1776,11 @@ io.on('connection', (socket) => {
         recheckNumericPhaseOnDisconnect(room);
       }
 
-      // Task 127 - same reasoning again, for the trial. A no-op outside
-      // TRIAL_QUESTION. The player stays ON trial while disconnected (they
-      // simply never lock in, and pay the full timer's drain at the reveal
-      // like anyone who didn't answer) - dropping them from the trial would
-      // hand a win to whoever had the better connection.
-      if (room) {
-        recheckTrialPhaseOnDisconnect(room);
-      }
-
-      // Task 188a - and for the climb. A no-op outside CLIMB_QUESTION; the
-      // player stays in the race while disconnected, same reasoning.
+      // Task 188a - same reasoning again, for the climb. A no-op outside
+      // CLIMB_QUESTION; the player stays in the race while disconnected
+      // (they simply never lock in, and take the no-answer step at the
+      // reveal like anyone who didn't answer) - dropping them from the race
+      // would hand a win to whoever had the better connection.
       if (room) {
         recheckClimbPhaseOnDisconnect(room);
       }

@@ -3,7 +3,7 @@
 // raw socket created - duel-overlay-check.ts's own pattern, since only a
 // human-held socket can be VIP and a bots-only room self-starts, Task 217).
 // Player roster is raw socket.io-client connections with CONTROLLED names
-// (4/8/12 chars) - no server bots, so nothing else picks names for us.
+// (4/8/11 chars) - no server bots, so nothing else picks names for us.
 //
 //   npx tsx dev/242-name-clip-check.ts
 process.env.PORT = '3932';
@@ -73,9 +73,11 @@ function wireBotLike(socket: Socket): void {
     if (!p.options) return;
     soon(() => socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: pick(p.options!.length) }));
   });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
+  // Task 258 - Η Δίκη is gone; answering the climb's questions is what keeps
+  // a game short now (all climbers locked in ends the round at once).
+  socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
+    if (!p.options || p.climbing === false || p.eliminated) return;
+    soon(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));
   });
   socket.on(ServerEvents.DRAW_SHOW, (p: { wordToDraw?: string }) => {
     if (!p.wordToDraw) return;
@@ -132,14 +134,27 @@ async function newTvPage(code: string): Promise<Page> {
   return page;
 }
 
-// 4 / 8 / 12 char names, all uppercase Greek already (greekUpper is
-// idempotent on already-uppercase, tonos-free text) - ΔΗΜΗΤΡΗΣ is the
-// task's own reference (8 chars); the 4/12-char ones are Task 224/235's own
-// synthetic reference strings, 12 chosen wide-glyph like 235's own clip
-// repro (Ξ,Ο,Π,Ρ,Σ,Τ,Υ,Φ,Χ,Ψ,Ω).
-const NAME_4 = 'ΑΒΓΔ';
-const NAME_8 = 'ΔΗΜΗΤΡΗΣ';
-const NAME_12 = 'ΝΞΟΠΡΣΤΥΦΧΨΩ';
+// Short / medium / long names for the clip checks - the plaque and the podium
+// render them through greekUpper, so what is measured is the uppercased form.
+// Task 258: these were synthetic width-test strings (ΑΒΓΔ / ΔΗΜΗΤΡΗΣ /
+// ΝΞΟΠΡΣΤΥΦΧΨΩ), rejected by isValidPlayerName since Tasks 241/245 made names
+// PRESET-ONLY - every join here failed with INVALID_NAME. Real presets now,
+// same short/medium/long spread. No preset is 12 characters (Κωνσταντίνα, at
+// 11, is the longest), so the long case is 11, not 12.
+const NAME_4 = 'Άρης';
+const NAME_8 = 'Δημήτρης';
+const NAME_12 = 'Κωνσταντίνα';
+
+// Every on-screen plaque/podium row renders its name through greekUpper,
+// which uppercases AND drops the tonos ('Δημήτρης' -> 'ΔΗΜΗΤΡΗΣ'). The name
+// constants above are preset names in their natural case, so comparing DOM
+// text to them directly never matches - and plain toUpperCase() keeps the
+// tonos ('ΔΗΜΉΤΡΗΣ'), so it doesn't match either. Fold both away before
+// comparing. (Before Task 258 these constants were already-uppercase
+// synthetic strings, which is why a bare === used to work.)
+function foldName(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+}
 
 type Box = { x: number; y: number; width: number; height: number } | null;
 
@@ -181,7 +196,7 @@ async function main(): Promise<void> {
   console.log('client + browser ready\n');
 
   // =========================================================================
-  // 0 - baseline: plaques (SophistsRow), quick re-confirm at 4/8/12 chars.
+  // 0 - baseline: plaques (SophistsRow), quick re-confirm at 4/8/11 chars.
   // =========================================================================
   console.log('--- 0: plaques (SophistsRow) baseline, quiz mode ---');
   {
@@ -202,7 +217,7 @@ async function main(): Promise<void> {
       const clipped = r.scrollWidth > r.clientWidth;
       console.log(`  plaque "${r.text}" fontSize=${r.fontSize} scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth} clipped=${clipped}`);
     }
-    check('0: plaques - no name clipped at 4/8/12 chars', rows.every((r) => r.scrollWidth <= r.clientWidth));
+    check('0: plaques - no name clipped at 4/8/11 chars', rows.every((r) => r.scrollWidth <= r.clientWidth));
     await page.close();
     host.disconnect();
     p1.disconnect();
@@ -278,7 +293,11 @@ async function main(): Promise<void> {
     const players = [
       await joinPlayer(code, NAME_4, 0),
       await joinPlayer(code, NAME_8, 1),
-      await joinPlayer(code, 'ΝΙΚΟΛΑΟΣ', 2), // second 8-char name, distinct text
+      // Task 258 - was 'ΝΙΚΟΛΑΟΣ', not a preset, so this join was rejected and
+      // the harness died here on a player:joined timeout. Κυριάκος is a real
+      // preset and still a SECOND 8-char name distinct from Δημήτρης, which
+      // is all this slot needs.
+      await joinPlayer(code, 'Κυριάκος', 2),
       await joinPlayer(code, NAME_12, 3),
     ];
     const page = await newTvPage(code);
@@ -320,7 +339,7 @@ async function main(): Promise<void> {
       rows.every((r) => laneWidthPx === null || (r.box?.width ?? 0) <= laneWidthPx + 0.5),
       JSON.stringify(rows.map((r) => r.box?.width)),
     );
-    const dimitris = rows.find((r) => r.text === NAME_8);
+    const dimitris = rows.find((r) => foldName(r.text) === foldName(NAME_8));
     check(
       '2: the 8-char name (ΔΗΜΗΤΡΗΣ) fits WITHOUT needing the ellipsis backstop',
       dimitris ? dimitris.scrollWidth <= dimitris.clientWidth : false,
@@ -334,8 +353,9 @@ async function main(): Promise<void> {
 
   // =========================================================================
   // 3 - finale/ΤΕΛΙΚΗ ΚΑΤΑΤΑΞΗ (PodiumView) - UNCHANGED, verify only. Fast
-  // quiz+trial game (gameLength=short, finale=trial), bot-like automation,
-  // controlled 4/8/12-char names.
+  // quiz game (gameLength=short; Task 258 - the finale is Η Ανάβασις, kept
+  // short by the sims answering its questions), bot-like automation,
+  // controlled 4/8/11-char names.
   // =========================================================================
   console.log('\n--- 3: PodiumView (ΤΕΛΙΚΗ ΚΑΤΑΤΑΞΗ) - verify only, unchanged ---');
   {
@@ -350,12 +370,15 @@ async function main(): Promise<void> {
     const page = await newTvPage(code);
     await Promise.all([
       waitFor(vip, ServerEvents.SETTINGS_UPDATED, 8000),
-      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'trial' }))(),
+      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short' }))(),
     ]);
     vip.emit(ClientEvents.VIP_START_GAME, {});
-    console.log('  game started (quiz, short, finale=trial)');
+    console.log('  game started (quiz, short, finale=Η Ανάβασις)');
     let overNow = false;
-    const deadline = Date.now() + 180000;
+    // Task 258 - was 180000. Η Ανάβασις is the finale now, and with THREE
+    // players the spear rule is inert (CLIMB_SPEAR_MIN_PLAYERS = 4), so the
+    // race usually runs to its 24-round cap instead of an early arrival.
+    const deadline = Date.now() + 600000;
     while (!overNow && Date.now() < deadline) {
       await delay(1000);
       overNow = (await page.locator('[data-testid="podium-root"]').count()) > 0;
@@ -371,7 +394,7 @@ async function main(): Promise<void> {
       console.log(`  podium-name "${r.text}" fontSize=${r.fontSize} scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth} clipped=${clipped}`);
     }
     check('3: podium reached', rows.length > 0);
-    check('3: no podium name clipped at 4/8/12 chars (unchanged, verify only)', rows.length > 0 && rows.every((r) => r.scrollWidth <= r.clientWidth));
+    check('3: no podium name clipped at 4/8/11 chars (unchanged, verify only)', rows.length > 0 && rows.every((r) => r.scrollWidth <= r.clientWidth));
 
     await page.close();
     host.disconnect();

@@ -200,10 +200,6 @@ class Tracker {
       if (!p.results) return;
       for (const r of p.results) this.bump('quiz', r.playerId, r.correct);
     });
-    socket.on(ServerEvents.TRIAL_REVEAL_SHOW, (p: { results?: { playerId: string; correct: boolean }[] }) => {
-      if (!p.results) return;
-      for (const r of p.results) this.bump('trial', r.playerId, r.correct);
-    });
     socket.on(ServerEvents.CLIMB_REVEAL_SHOW, (p: { results?: { playerId: string; correct: boolean }[] }) => {
       if (!p.results) return;
       for (const r of p.results) this.bump('climb', r.playerId, r.correct);
@@ -288,9 +284,6 @@ async function main(): Promise<void> {
   human.on(ServerEvents.NUMERIC_QUESTION_SHOW, (p: { max?: number; submittedCount?: number }) => {
     if (p.submittedCount === undefined && p.max !== undefined) soon(() => human.emit(ClientEvents.NUMERIC_SUBMIT, { value: pick(p.max! + 1) }));
   });
-  human.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (p.options && p.onTrial !== false) soon(() => human.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
-  });
   human.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
     if (p.options && p.climbing !== false && !p.eliminated) soon(() => human.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));
   });
@@ -344,7 +337,7 @@ async function main(): Promise<void> {
   for (const [playerId, info] of bots) console.log(`  ${info.name} (${playerId.slice(0, 8)}): p=${info.accuracy.toFixed(3)} profile=${info.profile}`);
 
   console.log(`\n===== 1. ACCURACY HELD (observed correct rate per family) =====`);
-  for (const family of ['quiz', 'blitz', 'draw-guess', 'agora', 'climb', 'trial']) {
+  for (const family of ['quiz', 'blitz', 'draw-guess', 'agora', 'climb']) {
     const byPlayer = tracker.byFamily.get(family);
     if (!byPlayer || byPlayer.size === 0) continue;
     console.log(`  -- ${family} --`);

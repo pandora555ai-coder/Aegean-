@@ -14,7 +14,7 @@
 // resume it advanced against what the server said was left.
 //
 //   A  quiz      STAGE_ANNOUNCE, QUESTION, REVEAL, SOCRATES, POWER_UP, STEAL
-//   B  trial     TRIAL_QUESTION, TRIAL_REVEAL
+//   (B was the trial - removed with Η Δίκη in Task 258)
 //   C  climb     CLIMB_QUESTION, CLIMB_REVEAL, DUEL_PICK, DUEL_REVEAL
 //   D  blitz     BLITZ, BLITZ_REVEAL
 //   E  draw      DRAW, GUESS, GUESS_REVEAL
@@ -78,7 +78,6 @@ interface Row {
 const BAR: Record<string, { testid: string; totalMs: number }> = {
   REVEAL: { testid: 'reveal-progress', totalMs: REVEAL_DURATION_MS },
   AGORA_REVEAL: { testid: 'reveal-progress', totalMs: REVEAL_DURATION_MS },
-  TRIAL_REVEAL: { testid: 'trial-reveal-progress', totalMs: REVEAL_DURATION_MS },
   GUESS_REVEAL: { testid: 'guess-reveal-progress', totalMs: GUESS_REVEAL_DURATION_MS },
   NUMERIC_REVEAL: { testid: 'numeric-reveal-progress', totalMs: NUMERIC_REVEAL_DURATION_MS },
   BLITZ_REVEAL: { testid: 'blitz-reveal-progress', totalMs: BLITZ_REVEAL_DURATION_MS },
@@ -269,7 +268,7 @@ async function main() {
   await import('../server/src/index.js');
   const { getRoom } = await import('../server/src/state.js');
   const { remainingActiveTimerMs } = await import('../server/src/timers.js');
-  const { startClimb, startTrial } = await import('../server/src/phases.js');
+  const { startClimb } = await import('../server/src/phases.js');
   const { spawnBots } = await import('../server/src/bots.js');
   console.log(`in-process real server listening on ${SERVER_PORT}`);
 
@@ -311,17 +310,7 @@ async function main() {
       await close();
     }
 
-    // --------------------------------------------------------------- B trial
-    if (runs('B')) {
-      console.log('\n=== B. trial: TRIAL_QUESTION, TRIAL_REVEAL ===');
-      const { page, sims, code, close } = await newRoom(browser, 'quiz', 3);
-      const room = getRoom(code) as unknown as RoomLike;
-      room.gameIntroPlayed = true; // Task 237 - or GAME_INTRO_SEQUENCE fires here
-      startTrial(room as never);
-      await probe(room, page, sims[0], 'TRIAL_QUESTION', 3000, rem);
-      await probe(room, page, sims[0], 'TRIAL_REVEAL', 1500, rem);
-      await close();
-    }
+    // B was the trial's two phases - removed with Η Δίκη in Task 258.
 
     // --------------------------------------------------------------- C climb
     if (runs('C')) {

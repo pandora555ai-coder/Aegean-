@@ -15,12 +15,10 @@ import {
   type RoomSettings,
   type SabotageEffect,
   type StealResolvedPayload,
-  type TrialRevealShowPayload,
   DEFAULT_AUDIO_VOLUME,
   DEFAULT_ROOM_SETTINGS,
   DIFFICULTY_MIX_OPTIONS,
   DRAW_ROUNDS_OPTIONS,
-  FINALE_MODE_OPTIONS,
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
@@ -113,52 +111,23 @@ export interface RevealSnapshot {
   socratesLineTag: string | null;
 }
 
-// Η Δίκη (Task 127) - one player's lock-in on the trial question currently
-// open. `elapsedMs` is measured from the pause-aware shared timer clock
-// (questionTimeMs - remainingActiveTimerMs) at the moment the lock-in
-// arrives, so a pause freezes the drain instead of charging for it.
+// One player's lock-in on the finale question currently open. `elapsedMs` is
+// measured from the pause-aware shared timer clock (questionTimeMs -
+// remainingActiveTimerMs) at the moment the lock-in arrives, so a pause
+// freezes the clock instead of charging for it.
+// Named for Η Δίκη (Task 127), which introduced it; Task 258 removed that
+// finale but ClimbState.lockIns below uses this same shape, so the type
+// stays (renaming it is a separate, rename-only task).
 export interface TrialLockIn {
   choice: number;
   elapsedMs: number;
 }
 
-// The trial in flight - null until the last quiz question is done with, and
-// from then to GAME_OVER. Its own question list (drawn from the UNUSED quiz
-// pool) rather than more entries in room.questions: room.questions is what
-// "question 7 of 12" and every existing payload counts, and the trial is not
-// part of that count.
-export interface TrialState {
-  questions: Question[];
-  questionIndex: number; // -1 until the first trial question starts
-  // The highest entry score among the contestants at trial start (Task 185)
-  // - every penalty and the drain rate scale off this, fixed here so a
-  // later round's drain can never move its own yardstick.
-  referenceLife: number;
-  // Everyone still above zero, in join order. Shrinks only at a reveal.
-  livingPlayerIds: string[];
-  // Whether the question currently open is a sudden-death decider, and
-  // between whom. `suddenDeathPlayerIds` is empty outside one.
-  suddenDeath: boolean;
-  suddenDeathPlayerIds: string[];
-  lockIns: Map<string, TrialLockIn>; // THIS question only, cleared each round
-  roundsPlayed: number;
-  // Set once, by the reveal that ends the trial - read by finishGame so the
-  // GAME_OVER standings name the player the TRIAL decided on, which after a
-  // sudden death is not simply "the highest score".
-  winnerPlayerId: string | null;
-  // Chronological order players fell, oldest first - appended to at each
-  // reveal (Task 137). GAME_OVER's survival ranking is the winner, then this
-  // REVERSED: the most recently eliminated finished furthest up the table.
-  eliminationOrder: string[];
-  // Same reconnect discipline as Room.lastReveal: frozen the instant the
-  // round resolves, so a state:sync mid-reveal replays exactly what happened.
-  // autoAdvanceMs/paused/pausedByName/standings are always read live.
-  lastReveal: Omit<TrialRevealShowPayload, 'autoAdvanceMs' | 'paused' | 'pausedByName' | 'standings'> | null;
-}
-
-// The climb finale in flight (Task 188a) - the TrialState shape, minus what
-// the climb has no need of (no life, no sudden death). Null until the finale
-// begins, then set through GAME_OVER, since it holds the verdict. Steps live
+// The climb finale in flight (Task 188a). Null until the finale begins, then
+// set through GAME_OVER, since it holds the verdict. Its own question list
+// (drawn from the UNUSED quiz pool) rather than more entries in
+// room.questions: room.questions is what "question 7 of 12" and every
+// existing payload counts, and the finale is not part of that count. Steps live
 // HERE, never in player.score: a step is not a score, and GAME_OVER shows no
 // digits for this finale.
 export interface ClimbState {
@@ -389,12 +358,9 @@ export interface Room {
   // Set by startSteal, read by every steal payload builder, cleared the
   // moment the phase is left.
   steal: StealState | null;
-  // Η Δίκη (Task 127) - the trial, null until the quiz proper is over. Unlike
+  // Task 188a - the climb finale, null until the quiz proper is over. Unlike
   // `steal` this is NOT cleared when its phase ends: it stays set through
-  // GAME_OVER, since it holds who the trial declared the winner.
-  trial: TrialState | null;
-  // Task 188a - the climb finale, the trial's alternative (finaleMode
-  // 'climb'). Same lifetime as `trial`: at most one of the two is ever set.
+  // GAME_OVER, since it holds who the climb declared the winner.
   climb: ClimbState | null;
   // Crowd mood (Task 35) - server-derived, HOST ONLY. See server/src/crowd.ts.
   crowdMood: CrowdMood;
@@ -491,7 +457,6 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     powerUpChoices: new Map(),
     pendingPowerUpByTarget: new Map(),
     steal: null,
-    trial: null,
     climb: null,
     crowdMood: 'calm',
     crowdTensionTimer: null,
@@ -610,11 +575,6 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   // fields above; still validated by type rather than trusting the client.
   if (typeof partial.powerUpsEnabled === 'boolean') {
     room.settings.powerUpsEnabled = partial.powerUpsEnabled;
-  }
-  // Task 188a - which finale ends the game; an enum from an options list,
-  // validated like every field above.
-  if (partial.finaleMode !== undefined && FINALE_MODE_OPTIONS.includes(partial.finaleMode)) {
-    room.settings.finaleMode = partial.finaleMode;
   }
   return room.settings;
 }
@@ -911,9 +871,8 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingPowerUpByTarget.clear();
   // No half-finished theft survives into the next game.
   room.steal = null;
-  // Nor last game's trial - including whoever it crowned, which finishGame
+  // Nor last game's climb - including whoever it crowned, which finishGame
   // would otherwise still be reading at the NEXT game's GAME_OVER.
-  room.trial = null;
   room.climb = null;
   // Fresh game, fresh crowd - back to calm, and no leftover tension timer
   // from whatever question was in flight when this reset was triggered.

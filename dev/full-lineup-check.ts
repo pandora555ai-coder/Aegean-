@@ -14,12 +14,11 @@
 //                   standalone mode still start -> GAME_OVER, a
 //                   crowdIntensityFor sweep, and (run separately) typecheck
 //
-// Plus, from Task 214, a `finaleMode: 'trial'` context run - not one of 215's
-// own criteria, kept as a cheap check that the alternative finale 215 never
-// touches still works.
+// Task 258 removed the `finaleMode: 'trial'` context run along with Η Δίκη
+// itself - Η Ανάβασις is the only finale now, and the main run covers it.
 //
-//   npx tsx dev/full-lineup-check.ts              # both
-//   npx tsx dev/full-lineup-check.ts --only full  # one section: full|trial
+//   npx tsx dev/full-lineup-check.ts              # the full run
+//   npx tsx dev/full-lineup-check.ts --only full  # one section: full|short
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
@@ -54,8 +53,6 @@ const ALL_GAME_PHASES: readonly GamePhase[] = [
   'GUESS_REVEAL',
   'NUMERIC_QUESTION',
   'NUMERIC_REVEAL',
-  'TRIAL_QUESTION',
-  'TRIAL_REVEAL',
   'CLIMB_QUESTION',
   'CLIMB_REVEAL',
   'DUEL_PICK',
@@ -163,10 +160,6 @@ function wireHuman(socket: Socket): void {
   socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, (p: { max?: number; submittedCount?: number }) => {
     if (p.submittedCount !== undefined || p.max === undefined) return;
     soon(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value: pick(p.max! + 1) }));
-  });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
   });
   socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
     if (!p.options || p.climbing === false || p.eliminated) return;
@@ -432,7 +425,7 @@ async function criterion1(run: Run): Promise<void> {
     '  diff scope: shared/src/index.ts (FULL_AGORA_SCORE_SCALE added, FULL_DRAW_ROUNDS_BY_LENGTH retuned), ' +
       'server/src/modes/agora.ts (AgoraState.scoreScale threaded through calculatePoints - no scoring FORMULA change), ' +
       'server/src/modes/full.ts (pass the constant at the one beginStage call site). ' +
-      'shared/src/agora.ts (the pure generator), server/src/climb.ts, server/src/trial.ts, server/src/blitz.ts and ' +
+      'shared/src/agora.ts (the pure generator), server/src/climb.ts, server/src/blitz.ts and ' +
       'every other mode file are untouched — confirm with: git diff --stat 214-parent..HEAD',
   );
 }
@@ -563,19 +556,6 @@ function reportCrowd(run: Run): void {
   for (const hit of hits.slice(0, 5)) console.log(`    ${hit.trim()}`);
 }
 
-// Not one of 215's own criteria - kept from 214 as a cheap regression check
-// that finaleMode: 'trial' (the alternative Task 214 left in place) still
-// works after 215's changes, since neither touches it.
-async function finaleTrialContext(): Promise<void> {
-  console.log('\n===== FINALE=trial context (VIP flips finaleMode to trial) =====');
-  const run = await playRoom({ mode: 'full', botCount: 3, settings: { finaleMode: 'trial' }, timeoutMs: 900_000 });
-  const finaleCard = run.cards[run.cards.length - 1];
-  const phases = new Set(run.phases.map((p) => p.phase));
-  console.log(`  finale card: stage ${finaleCard.stage}/${finaleCard.totalStages} "${finaleCard.title}"`);
-  console.log(`  TRIAL_QUESTION=${run.phases.filter((p) => p.phase === 'TRIAL_QUESTION').length}`);
-  console.log(`  GAME_OVER reached: ${phases.has('GAME_OVER')}`);
-}
-
 async function main(): Promise<void> {
   const onlyIndex = process.argv.indexOf('--only');
   const only = onlyIndex >= 0 ? process.argv[onlyIndex + 1] : null;
@@ -587,7 +567,6 @@ async function main(): Promise<void> {
       await criterion2(run);
       await criterion3(run);
     }
-    if (!only || only === 'trial') await finaleTrialContext();
     if (only === 'short') {
       console.log('\n===== 2 supplement: Ζωγραφική round count at gameLength=short =====');
       const short = await drawRoundsShortLength();

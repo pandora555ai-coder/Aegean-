@@ -14,7 +14,8 @@
 // a real 'full' mode game to the climb finale and a duel.
 //
 //   npx tsx dev/duel-overlay-check.ts            # main climb/duel run
-//   npx tsx dev/duel-overlay-check.ts --sink      # supplementary trial-finale run (elimination sink only)
+// (--sink was a trial-finale supplement for SophistsRow's elimination sink -
+//  removed with Η Δίκη in Task 258, which left no phase that renders it.)
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -118,10 +119,6 @@ function wireBotLike(socket: Socket): void {
   socket.on(ServerEvents.NUMERIC_QUESTION_SHOW, (p: { max?: number; submittedCount?: number }) => {
     if (p.submittedCount !== undefined || p.max === undefined) return;
     soon(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value: pick(p.max! + 1) }));
-  });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
   });
   socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
     if (!p.options || p.climbing === false || p.eliminated) return;
@@ -355,77 +352,15 @@ async function runMainClimbDuel(): Promise<RunResult> {
   };
 }
 
-// Supplementary: finaleMode 'trial' so TRIAL_REVEAL's own elimination sink
-// (.out on a sophist figure) actually fires - the climb finale never
-// exercises this element (its own elimination visual lives on
-// AnavasisClimbers, not SophistsRow). Small room, quiz mode alone would
-// never reach the trial; use 'full' with finaleMode overridden.
-async function runTrialSinkSupplement(): Promise<{ sinkSeenThenZero: boolean; maxSinkOut: number }> {
-  const host = connect();
-  const created = waitFor<{ code: string }>(host, ServerEvents.ROOM_CREATED, 15000);
-  host.emit(ClientEvents.CREATE_ROOM, {});
-  const { code } = await created;
-
-  const players: Socket[] = [];
-  for (let i = 0; i < 4; i++) players.push(await joinPlayer(code, `Δικαστ${i}`, i));
-  const vip = players[0];
-  await Promise.all([
-    waitFor(vip, ServerEvents.SETTINGS_UPDATED, 8000),
-    (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'trial' } as Partial<RoomSettings>))(),
-  ]);
-  await Promise.all([
-    waitFor<{ mode: string }>(vip, ServerEvents.LOBBY_UPDATE, 8000, (p) => p.mode === 'full'),
-    (async () => vip.emit(ClientEvents.VIP_SET_MODE, { mode: 'full' as GameModeId }))(),
-  ]);
-
-  const page = await browser!.newPage({ viewport: { width: 1280, height: 720 } });
-  await page.addInitScript((c: string) => {
-    window.localStorage.setItem('hostRoomCode', c);
-  }, code);
-  await page.goto(`${CLIENT_ORIGIN}/host`);
-  await page.waitForSelector('[data-testid="room-code"], [data-testid="sophists-row"]', { timeout: 20000 }).catch(() => {});
-
-  let maxSinkOut = 0;
-  let seen = false;
-  let seenThenZero = false;
-  const poll = setInterval(async () => {
-    try {
-      const counts = await readDom(page);
-      maxSinkOut = Math.max(maxSinkOut, counts.sinkOut);
-      if (counts.sinkOut > 0) seen = true;
-      else if (seen) seenThenZero = true;
-    } catch {
-      // ignore mid-nav
-    }
-  }, 250);
-
-  const over = waitFor(vip, ServerEvents.GAME_OVER, 600_000);
-  vip.emit(ClientEvents.VIP_START_GAME, {});
-  await over;
-  await delay(2000);
-  clearInterval(poll);
-  await page.close().catch(() => {});
-  for (const s of sockets.splice(0)) s.disconnect();
-  return { sinkSeenThenZero: seenThenZero, maxSinkOut };
-}
-
 function fmt(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
 async function main(): Promise<void> {
-  const wantSink = process.argv.includes('--sink');
   await startServer();
   await startClient();
   browser = await chromium.launch();
   try {
-    if (wantSink) {
-      console.log('\n===== SUPPLEMENT: trial-finale elimination sink =====');
-      const r = await runTrialSinkSupplement();
-      console.log(`  max .out (sink) nodes observed: ${r.maxSinkOut}`);
-      console.log(`  sink appeared then returned to 0 before GAME_OVER: ${r.sinkSeenThenZero}`);
-      return;
-    }
     console.log('\n===== MAIN: full mode, 6 players, climb finale =====');
     const r = await runMainClimbDuel();
     console.log(`  total run: ${fmt(r.totalMs)}, GAME_OVER reached: ${r.gameOverReached}`);

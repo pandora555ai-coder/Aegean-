@@ -42,7 +42,6 @@ import {
   type RoomCode,
   type SocratesShowPayload,
   type StealShowPlayerPayload,
-  type TrialQuestionShowPayload,
 } from '@game/shared';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
 import { getRoom, removePlayer } from './state.js';
@@ -346,20 +345,9 @@ function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, ac
     setTimeout(() => socket.emit(ClientEvents.NUMERIC_SUBMIT, { value }), profileDelayMs(profile));
   });
 
-  // Η Δίκη answers over player:trial_submit, a separate event from the
-  // plain QUESTION phase's player:submit_answer (see shared/src/index.ts).
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (payload: TrialQuestionShowPayload) => {
-    if (!('options' in payload) || ('onTrial' in payload && !payload.onTrial)) {
-      return; // host-shaped payload, or an eliminated/spectating bot
-    }
-    const room = getRoom(code);
-    const correctIndex = room?.trial ? (room.trial.questions[room.trial.questionIndex]?.correctIndex ?? null) : null;
-    const choice = accurateChoice(payload.options.length, correctIndex, accuracy);
-    setTimeout(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice }), profileDelayMs(profile));
-  });
-
-  // Task 188a - the climb finale, answered exactly as a trial question:
-  // accuracy-weighted over player:climb_submit after the profile's delay.
+  // Task 188a - the climb finale, answered like a quiz question but over its
+  // own event: accuracy-weighted over player:climb_submit after the profile's
+  // delay.
   socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (payload: ClimbQuestionShowPayload) => {
     if (!('options' in payload) || ('climbing' in payload && !payload.climbing) || ('eliminated' in payload && payload.eliminated)) {
       return; // host-shaped payload, a spectating bot, or one the spear speared out (Task 205)

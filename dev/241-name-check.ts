@@ -71,9 +71,13 @@ function wireBotLike(socket: Socket): void {
     if (!p.options) return;
     soon(() => socket.emit(ClientEvents.SUBMIT_ANSWER, { choice: pick(p.options!.length) }));
   });
-  socket.on(ServerEvents.TRIAL_QUESTION_SHOW, (p: { options?: string[]; onTrial?: boolean }) => {
-    if (!p.options || p.onTrial === false) return;
-    soon(() => socket.emit(ClientEvents.TRIAL_SUBMIT, { choice: pick(p.options!.length) }));
+  // Task 258 - Η Δίκη is gone; Η Ανάβασις is the only finale. A sim that
+  // answers its questions is what keeps a game SHORT: every climber locking
+  // in ends the round immediately (submitClimbAnswer -> endClimbQuestion),
+  // so the finale costs ~3s a round instead of the full 22s timer.
+  socket.on(ServerEvents.CLIMB_QUESTION_SHOW, (p: { options?: string[]; climbing?: boolean; eliminated?: boolean }) => {
+    if (!p.options || p.climbing === false || p.eliminated) return;
+    soon(() => socket.emit(ClientEvents.CLIMB_SUBMIT, { choice: pick(p.options!.length) }));
   });
   socket.on(ServerEvents.DRAW_SHOW, (p: { wordToDraw?: string }) => {
     if (!p.wordToDraw) return;
@@ -348,7 +352,12 @@ async function main(): Promise<void> {
     const vip = players[0];
     await Promise.all([
       waitFor(vip, ServerEvents.SETTINGS_UPDATED, 8000),
-      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'short', finaleMode: 'trial' }))(),
+      // Task 258 - 'medium', not 'short'. GAME_LENGTH_STAGE_COUNT.short is 2,
+      // so a short quiz stops after Οι Σοφιστές and never reaches Η Συκοφαντία
+      // (stage 3) - the ONLY stage that fires a STEAL. This section's "STEAL
+      // banner reached" check was therefore unsatisfiable, and failing, long
+      // before this task; 'medium' gives it the three stages it needs.
+      (async () => vip.emit(ClientEvents.VIP_UPDATE_SETTINGS, { gameLength: 'medium' }))(),
     ]);
     vip.emit(ClientEvents.VIP_START_GAME, {});
     console.log(`  game started, roster = ${JSON.stringify(roster)}`);
@@ -384,7 +393,10 @@ async function main(): Promise<void> {
 
     // --- STEAL banner, nominative only ---
     let stealThiefTexts: string[] = [];
-    for (let i = 0; i < 60; i++) {
+    // Task 258 - was 60 (60s). Η Συκοφαντία is stage 3, so with a 7-player
+    // roster this poll has to outlast stages 1-2 (8 questions plus their
+    // cards and Socrates beats) before a STEAL can possibly appear.
+    for (let i = 0; i < 240; i++) {
       const count = await page.locator('[data-testid="steal-thief"]').count();
       if (count > 0) {
         const t = await page.locator('[data-testid="steal-thief"]').textContent();
@@ -403,7 +415,10 @@ async function main(): Promise<void> {
 
     // --- podium, nominative + long/medium/short-name fit ---
     let overNow = false;
-    const deadline = Date.now() + 240000;
+    // Task 258 - was 240000, and measured from AFTER the steal poll above.
+    // What still has to happen by then is stage 3's remaining questions plus
+    // the whole Η Ανάβασις finale.
+    const deadline = Date.now() + 600000;
     while (!overNow && Date.now() < deadline) {
       await delay(1000);
       overNow = (await page.locator('[data-testid="podium-root"]').count()) > 0;
@@ -510,7 +525,17 @@ async function main(): Promise<void> {
       await delay(700);
     }
     await page.locator('[data-testid="anavasis-climber-name"]').first().waitFor({ timeout: 15000 });
-    await delay(500);
+    // Task 258 - the plaques mount before their text paints, so a sample taken
+    // on element-presence plus a fixed delay catches rows that already have a
+    // fitted fontSize but no text yet (observed as ["ΚΥΡΙΑΚΟΣ","","",""], and
+    // a different name populated each run). That made this section's
+    // ΠΑΝΑΓΙΩΤΗΣ lookup miss at random, on a quiet box as well as a loaded
+    // one. Wait for the TEXT of all four, not just the first node.
+    for (let i = 0; i < 40; i++) {
+      const texts = await page.locator('[data-testid="anavasis-climber-name"]').allTextContents();
+      if (texts.length >= 4 && texts.every((t) => t.trim().length > 0)) break;
+      await delay(250);
+    }
     const rows = await measureNameBox(page, '[data-testid="anavasis-climber-name"]');
     for (const r of rows) {
       console.log(`  climber plaque "${r.text}" fontSize=${r.fontSize} scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth} box=${JSON.stringify(r.box)}`);
