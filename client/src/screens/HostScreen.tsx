@@ -730,9 +730,17 @@ export default function HostScreen() {
         // server's backstop is cut off mid-play, and this ack then arrives
         // with the next line already on screen; without the id the server
         // would advance that one too and swallow it.
-        playSocratesLine(payload.lineTemplate, payload.lineTag, () => {
-          socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, { beatId: payload.beatId });
-        });
+        playSocratesLine(
+          payload.lineTemplate,
+          payload.lineTag,
+          () => {
+            socket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, { beatId: payload.beatId });
+          },
+          // Task 263 - the coronation's vocative address, spliced ahead of
+          // line 1. Null on every other beat, and the ack above still fires
+          // exactly once either way.
+          payload.prefix,
+        );
       }
     }
 

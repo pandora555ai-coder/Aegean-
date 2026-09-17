@@ -35,7 +35,7 @@ import {
 } from './state.js';
 // Task 238 - each Socrates beat's backstop is derived from ITS OWN clip's
 // length, so the phase machine has to ask how long this line actually runs.
-import { socratesBackstopMs } from './socratesAudio.js';
+import { hasSocratesClip, socratesBackstopMs } from './socratesAudio.js';
 // The registry only - a leaf module (see modes/registry.ts), so this keeps the
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
@@ -57,9 +57,10 @@ import {
 } from './climb.js';
 import {
   LINES,
+  buildCoronationSequence,
+  coronationVocative,
   logMomentFireSummary,
   pickAnavasisIntroSequence,
-  pickCoronationLine,
   pickGameIntroLine,
   pickGameIntroSequence,
   pickQuestionIntro,
@@ -349,7 +350,18 @@ function startGameIntro(room: Room): boolean {
 export function enterSocratesBeat(
   room: Room,
   timerKind: string,
-  beat: { kind: PendingSocratesBeat['kind']; line: string; lineTemplate: string; lineTag: string | null },
+  beat: {
+    kind: PendingSocratesBeat['kind'];
+    line: string;
+    lineTemplate: string;
+    lineTag: string | null;
+    // Task 263 - an optional clip sounded ahead of this beat's own line,
+    // inside the same beat and under its single ack. Only the coronation's
+    // first line sets it; the backstop below is still armed against the LINE,
+    // since that is what the ack waits on.
+    prefixTemplate?: string | null;
+    prefixTag?: string | null;
+  },
   onFire: () => void,
 ): void {
   room.pendingSocratesBeat = beat;
@@ -378,9 +390,14 @@ export function enterSocratesBeat(
   // audio leaves an "ended (...)" line behind it, and one that does NOT is a
   // backstop firing, so these two lines together say which happened and what
   // the deadline actually was.
+  // Task 263 - a spliced prefix is stated here too. It is otherwise entirely
+  // invisible from outside: it carries no phase of its own, and with no clip
+  // recorded yet the beat it rides on ends within ~20ms, far too fast to
+  // observe by sampling the room.
+  const prefixNote = beat.prefixTemplate ? ` prefix="${beat.prefixTemplate}"` : '';
   console.log(
     `room ${room.code} Socrates (${beat.kind}) beat ${room.socratesBeatId} ` +
-      `backstop=${room.socratesBackstopMs}ms — "${beat.line}"`,
+      `backstop=${room.socratesBackstopMs}ms${prefixNote} — "${beat.line}"`,
   );
 }
 
@@ -433,9 +450,30 @@ function winnerNameForBeat(room: Room): string | null {
 // from NAME_GENDER) -> the original WINNER_LINES pool, which is fully voiced.
 // The degrade is therefore exactly what every winner heard before this task,
 // never a blank beat and never a guessed gender.
-function pickWinnerBeatLine(room: Room): PickedLine | null {
+// Task 263 - the coronation is a SEQUENCE now: three lines spoken back to
+// back, with the winner's vocative optionally spliced ahead of the first.
+// Returns the lines plus that prefix; empty `lines` means there was nothing to
+// say at all, and the caller ends the game directly.
+function pickWinnerBeatSequence(room: Room): {
+  lines: PickedLine[];
+  prefix: { template: string; tag: string | null } | null;
+} {
   const name = winnerNameForBeat(room);
-  return pickCoronationLine(name ? genderForName(name) : null) ?? pickWinnerLine(room.socrates);
+  const vocative = coronationVocative(name);
+  // The NAMED opener is playable only when that winner's vocative clip is
+  // genuinely on disk. None have been recorded yet, so the nameless variant
+  // is what actually runs - which is precisely why it, not the named one, is
+  // the default: 201 names will be without a clip for a long time.
+  const hasVocativeClip = vocative !== null && hasSocratesClip(vocative.template, vocative.tag);
+  const coronation = buildCoronationSequence(name ? genderForName(name) : null, name, hasVocativeClip);
+  if (coronation) {
+    return { lines: coronation, prefix: hasVocativeClip ? vocative : null };
+  }
+  // Task 247's degrade, unchanged: no single gendered winner (a tie, a name
+  // absent from NAME_GENDER) -> the original, fully-voiced WINNER_LINES pool,
+  // as the one line it has always been.
+  const fallback = pickWinnerLine(room.socrates);
+  return { lines: fallback ? [fallback] : [], prefix: null };
 }
 
 // Task 236 - the same beat, but several lines long: the opening narration
@@ -451,6 +489,10 @@ function startSocratesSequence(
   room: Room,
   kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER',
   picked: readonly PickedLine[],
+  // Task 263 - sounded ahead of the FIRST line only. A queued line never
+  // carries one: the vocative addresses the winner once, at the top of the
+  // coronation, not before every sentence of it.
+  prefix: { template: string; tag: string | null } | null = null,
 ): boolean {
   if (picked.length === 0) {
     return false;
@@ -464,7 +506,14 @@ function startSocratesSequence(
   enterSocratesBeat(
     room,
     'SOCRATES',
-    { kind, line: first.text, lineTemplate: first.template, lineTag: first.tag },
+    {
+      kind,
+      line: first.text,
+      lineTemplate: first.template,
+      lineTag: first.tag,
+      prefixTemplate: prefix?.template ?? null,
+      prefixTag: prefix?.tag ?? null,
+    },
     () => advanceFromSocrates(room.code),
   );
   return true;
@@ -1034,8 +1083,9 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
     if (startClimb(room)) {
       return; // the finale runs its own phases and ends the game itself
     }
-    if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
-      return; // advanceFromSocrates calls finishGame once the beat is over
+    const coronation = pickWinnerBeatSequence(room);
+    if (startSocratesSequence(room, 'WINNER', coronation.lines, coronation.prefix)) {
+      return; // advanceFromSocrates calls finishGame once the LAST line is over
     }
     finishGame(room);
     return;
@@ -1721,7 +1771,8 @@ export function endDuelReveal(code: RoomCode): void {
 // The climb is over (a verdict, or the pool running out): Socrates names the
 // winner, then finishGame.
 function endClimb(room: Room): void {
-  if (startSocratesBeat(room, 'WINNER', pickWinnerBeatLine(room))) {
+  const coronation = pickWinnerBeatSequence(room);
+  if (startSocratesSequence(room, 'WINNER', coronation.lines, coronation.prefix)) {
     return;
   }
   finishGame(room);

@@ -271,6 +271,11 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     line,
     lineTemplate,
     lineTag,
+    // Task 263 - the coronation's vocative address, on its FIRST line only
+    // and only when the server found that clip on disk. Rebuilt from the
+    // pending beat on every send, so a state:sync of a beat already in
+    // progress describes the same two clips the live broadcast did.
+    prefix: pending?.prefixTemplate ? { template: pending.prefixTemplate, tag: pending.prefixTag ?? null } : null,
     beatId: room.socratesBeatId,
     // Task 239 - 'REVEAL' is the ordinary post-question commentary (no
     // pending beat at all); every other value is the pending beat's own kind

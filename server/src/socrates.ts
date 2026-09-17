@@ -1,4 +1,13 @@
-import { lineHash, stageSegment, type Difficulty, type GameModeId, type StageDefinition } from '@game/shared';
+import {
+  PRESET_NAMES,
+  VOCATIVE_PLACEHOLDER,
+  getVocative,
+  lineHash,
+  stageSegment,
+  type Difficulty,
+  type GameModeId,
+  type StageDefinition,
+} from '@game/shared';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -612,6 +621,73 @@ export function pickCoronationLine(gender: 'm' | 'f' | null): PickedLine | null 
   return { template, text: template, tag: LINE_TAGS[template] ?? null };
 }
 
+// Task 263 - the coronation is THREE lines spoken back to back, not one. The
+// two above are its LAST line; these are the first two.
+//
+// Line 1 has two variants that differ only by the vocative address in front.
+// The NAMELESS one is the default and will stay the default for a long time:
+// the named variant is playable only for a winner whose vocative clip has
+// actually been recorded, and there are 201 names.
+//
+// {ΚΛΗΤΙΚΗ} is NEVER substituted into the template. The vocative is its own
+// separate clip spliced ahead of the line (see the beat's `prefix`), so line
+// 1 has exactly ONE mp3 regardless of who won - substituting here would
+// instead demand 201 recordings of the same sentence. The placeholder is
+// filled into the DISPLAY text only, exactly as {name} already is.
+export const CORONATION_OPENER_NAMED =
+  '{ΚΛΗΤΙΚΗ}. Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
+export const CORONATION_OPENER_PLAIN =
+  'Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
+export const CORONATION_LINE_TWO =
+  'Ήρθατε εδώ λέγοντας πως είστε σοφιστές. Το έλεγα κι εγώ όλη τη βραδιά — κοροϊδεύοντας.';
+
+// The vocative clip a given winner would be addressed with, as a (template,
+// tag) pair like any other line - `getVocative`'s first real call site
+// (it was dead code from Task 241 until this task). Untagged on purpose: the
+// bank has an 11-tag vocabulary and none of them is a name, so rather than
+// invent one, a vocative hashes as a plain tagless line.
+export function coronationVocative(name: string | null): { template: string; tag: string | null } | null {
+  if (!name) {
+    return null;
+  }
+  const vocative = getVocative(name);
+  return vocative ? { template: vocative, tag: null } : null;
+}
+
+// The whole coronation, in speaking order, or null when there is no single
+// gendered winner to speak it to (a tie, an unknown name) - in which case the
+// caller degrades to the fully-voiced WINNER_LINES pool exactly as Task 247
+// left it.
+//
+// `hasVocativeClip` is decided by the CALLER (which is where disk access
+// lives, socratesAudio.ts) so this stays a pure line-bank function like every
+// other pick* above.
+export function buildCoronationSequence(
+  gender: 'm' | 'f' | null,
+  name: string | null,
+  hasVocativeClip: boolean,
+): PickedLine[] | null {
+  const third = pickCoronationLine(gender);
+  if (!third) {
+    return null;
+  }
+  const useNamed = hasVocativeClip && name !== null;
+  const openerTemplate = useNamed ? CORONATION_OPENER_NAMED : CORONATION_OPENER_PLAIN;
+  const opener: PickedLine = {
+    template: openerTemplate,
+    // The ONLY place the winner's name enters this beat's text. The template
+    // above - the thing that names the mp3 - keeps the placeholder.
+    text: useNamed ? openerTemplate.replace(VOCATIVE_PLACEHOLDER, getVocative(name)) : openerTemplate,
+    tag: LINE_TAGS[openerTemplate] ?? null,
+  };
+  const second: PickedLine = {
+    template: CORONATION_LINE_TWO,
+    text: CORONATION_LINE_TWO,
+    tag: LINE_TAGS[CORONATION_LINE_TWO] ?? null,
+  };
+  return [opener, second, third];
+}
+
 // Task 138 built these pools empty (detection only); Task 139 wrote the
 // lines. Same craft rules as every pool above: name-free, short (the TTS
 // clip length is round time), an observation then a turn, landing on a
@@ -717,6 +793,16 @@ export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
 // dev/generate-voice-lines.ts, never to what's shown on screen or to
 // `text` below.
 export const LINE_TAGS: Partial<Record<string, string>> = {
+  // Task 263 - the coronation's first two lines. [serious]/[dry] are the
+  // bank's own vocabulary: the drafts said [solemn]/[dryly], which are not
+  // among the 11 tags, and were collapsed onto these exactly as Task 230
+  // already collapsed its own. Load-bearing like every entry here - the
+  // clip is found by lineHash(template, tag), so changing a tag renames the
+  // file. The coronation's THIRD line (CORONATION_LINES) stays untagged,
+  // exactly as Task 247 wrote it.
+  [CORONATION_OPENER_NAMED]: '[serious]',
+  [CORONATION_OPENER_PLAIN]: '[serious]',
+  [CORONATION_LINE_TWO]: '[dry]',
   // Task 236 - the 22 lines Task 230 generated, now wired into the pools
   // above. These tags are LOAD-BEARING, not decoration: the client finds a
   // clip by lineHash(template, tag), so a missing entry here would hash to
@@ -1881,7 +1967,21 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
   // simply missing from disk: the host's LOBBY prefetch (Task 154) 404s on
   // them and drops the bytes, which is harmless, and the beat itself ends on
   // the immediate onEnded() ack rather than a backstop.
+  add('CORONATION', [CORONATION_OPENER_NAMED, CORONATION_OPENER_PLAIN, CORONATION_LINE_TWO]);
   add('CORONATION', Object.values(CORONATION_LINES));
+  // Task 263 - the vocative address clips, one per PRESET_NAMES entry. These
+  // are what the coronation's named opener splices ahead of itself, and until
+  // this task they were not registered anywhere, so `voice:generate` had no
+  // way to produce them at all. Registering them does NOT generate them - it
+  // only makes them generatable (and listed in /dev/voice). Every one of them
+  // is missing from disk today, which is exactly why the NAMELESS opener is
+  // the branch that actually runs.
+  for (const name of PRESET_NAMES) {
+    const vocative = coronationVocative(name);
+    if (vocative) {
+      add('VOCATIVE', [vocative.template]);
+    }
+  }
   for (const [moment, pool] of Object.entries(DRAW_LINES)) {
     add(moment, pool);
   }

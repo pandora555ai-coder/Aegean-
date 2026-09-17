@@ -638,7 +638,33 @@ export function useGameAudio() {
   // instead. The caller (HostScreen) uses this to tell the server the beat
   // is really over, rather than the server guessing a fixed duration up
   // front and risking ending the phase mid-clip.
-  async function playSocratesLine(template: string, tag: string | null, onEnded: () => void) {
+  // Task 263 - fetch/decode/cache ONE clip, or null when it simply isn't
+  // there. Split out of playSocratesLine so a single beat can sound TWO clips
+  // (a vocative address spliced ahead of the line) through one code path
+  // rather than two copies of the same fetch.
+  async function loadSocratesBuffer(ctx: AudioContext, hash: string): Promise<AudioBuffer | null> {
+    const cached = socratesBufferCacheRef.current.get(hash);
+    if (cached) {
+      return cached;
+    }
+    const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);
+    if (!res.ok) {
+      console.warn(`[socrates-audio] fetch failed for ${hash}.mp3: HTTP ${res.status}`);
+      return null;
+    }
+    const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
+    socratesBufferCacheRef.current.set(hash, buffer);
+    return buffer;
+  }
+
+  async function playSocratesLine(
+    template: string,
+    tag: string | null,
+    onEnded: () => void,
+    // Task 263 - SocratesShowPayload.prefix: a clip to play IMMEDIATELY
+    // before `template`, inside this same beat.
+    prefix?: { template: string; tag: string | null } | null,
+  ) {
     const ctx = audioCtxRef.current;
     if (!ctx || mutedRef.current) {
       return;
@@ -648,33 +674,41 @@ export function useGameAudio() {
     // by the time this line actually schedules.
     await attemptResumeAudio();
     try {
-      const hash = lineHash(template, tag);
-      let buffer = socratesBufferCacheRef.current.get(hash);
+      const buffer = await loadSocratesBuffer(ctx, lineHash(template, tag));
       if (!buffer) {
-        const res = await fetch(`/${SOCRATES_VOICE_DIR}/${hash}.mp3`);
-        if (!res.ok) {
-          console.warn(`[socrates-audio] fetch failed for ${hash}.mp3: HTTP ${res.status}`);
-          onEnded(); // Task 154 - a missing clip ends the beat now, not at the backstop
-          return;
-        }
-        const arrayBuffer = await res.arrayBuffer();
-        buffer = await ctx.decodeAudioData(arrayBuffer);
-        socratesBufferCacheRef.current.set(hash, buffer);
+        onEnded(); // Task 154 - a missing clip ends the beat now, not at the backstop
+        return;
       }
+      // Task 263 - a missing PREFIX must never end the beat: the line is what
+      // the beat actually is, so an absent vocative is simply skipped and the
+      // line plays alone. That is also the ordinary case today - no vocative
+      // has been recorded yet - and it is why the server only sets `prefix`
+      // for a clip it already found on disk.
+      const prefixBuffer = prefix ? await loadSocratesBuffer(ctx, lineHash(prefix.template, prefix.tag)) : null;
       // The context (or the mute toggle) may have changed while the fetch/
       // decode above was in flight - re-check before actually sounding it.
       if (audioCtxRef.current !== ctx || mutedRef.current) {
         return;
       }
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.onended = onEnded;
-      // Task 36c - through the shared output gain, not ctx.destination
-      // directly, so the one mute toggle covers this too. Task 178 - via
-      // voiceGain first, so the VIP's voice slider applies without touching
-      // outputGain (mute stays a completely separate ramp on top).
-      source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
-      source.start();
+      const play = (buf: AudioBuffer, onended: () => void): void => {
+        const source = ctx.createBufferSource();
+        source.buffer = buf;
+        source.onended = onended;
+        // Task 36c - through the shared output gain, not ctx.destination
+        // directly, so the one mute toggle covers this too. Task 178 - via
+        // voiceGain first, so the VIP's voice slider applies without touching
+        // outputGain (mute stays a completely separate ramp on top).
+        source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
+        source.start();
+      };
+      // ONE ack either way: onEnded fires when the LINE finishes, never when
+      // the prefix does, so the server still sees exactly one completion per
+      // beat however many clips it took to speak it.
+      if (prefixBuffer) {
+        play(prefixBuffer, () => play(buffer, onEnded));
+      } else {
+        play(buffer, onEnded);
+      }
     } catch (err) {
       // Task 154 - a fetch/decode/start failure used to leave the phase
       // sitting silent until the server's SOCRATES_MAX_DURATION_MS backstop

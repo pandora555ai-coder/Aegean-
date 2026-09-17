@@ -12,7 +12,12 @@ export { lineHash } from '@game/shared';
 // entirely rather than spoken literally as "brace name brace".
 export function stripPlaceholders(template: string): string {
   return template
-    .replace(/\{\w+\}/g, '')
+    // Task 263 - `\w` is ASCII-only in JS, so the Greek placeholder
+    // {ΚΛΗΤΙΚΗ} (the coronation opener's vocative slot) sailed straight
+    // through this and would have been SPOKEN literally by the generator.
+    // Matching any braced run fixes that and leaves every ASCII placeholder
+    // ({name}/{n}/{category}) stripping exactly as before.
+    .replace(/\{[^}]+\}/g, '')
     .replace(/\s+([.,;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();

@@ -692,6 +692,15 @@ export function winnerTitleForName(name: string): string {
 }
 
 
+// Task 263 - the vocative placeholder inside the coronation's first line.
+// Deliberately NEVER substituted into the template that gets hashed: the
+// vocative is its own recorded clip, spliced ahead of the line (see
+// buildCoronationSequence, server/src/socrates.ts), so line 1 has exactly ONE
+// mp3 no matter who wins. Substituted into the DISPLAY text only, exactly the
+// way {name} already is - template is what names the file, text is what the
+// subtitle shows.
+export const VOCATIVE_PLACEHOLDER = '{ΚΛΗΤΙΚΗ}';
+
 // Looks up the vocative form for a preset name; falls back to the
 // nominative unchanged for anything not in the table (defensive only - a
 // name reaching this point that isn't in PRESET_NAMES shouldn't happen
@@ -2033,6 +2042,16 @@ export interface SocratesShowPayload {
   // (template, tag) pair the generator did - never rendered, never spoken
   // client-side (it's already baked into the pre-generated audio file).
   lineTag: string | null;
+  // Task 263 - an optional clip spliced AHEAD of this line's own audio and
+  // played as part of the SAME beat: one beat, two clips, ONE ack (the ack
+  // still fires when the main LINE finishes, never when the prefix does).
+  // The coronation's first line uses it to address the winner by name - the
+  // vocative is its own recorded clip rather than part of the line, which is
+  // what keeps that line's hash independent of who won. Null on every other
+  // beat. The server sets it only when the clip is genuinely on disk, so the
+  // client never second-guesses it; if the prefix fetch fails anyway, the
+  // main line still plays and the beat still ends exactly once.
+  prefix: { template: string; tag: string | null } | null;
   // Task 236 - which BEAT this is, monotonic per room. Echoed back on
   // socrates:audio_ended so the server can tell a real completion from a
   // STALE one: a clip whose real audio runs past SOCRATES_MAX_DURATION_MS is

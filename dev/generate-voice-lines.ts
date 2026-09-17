@@ -21,16 +21,7 @@
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, SOCRATES_MAX_DURATION_MS } from '@game/shared';
-import {
-  LINES,
-  INTRO_LINES,
-  LINE_TAGS,
-  GAME_INTRO_LINES,
-  STAGE_INTRO_LINES,
-  WINNER_LINES,
-  DRAW_LINES,
-  NUMERIC_LINES,
-} from '../server/src/socrates.ts';
+import { LINE_TAGS, collectVoiceLineEntries } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
 import { lineHash, stripPlaceholders } from './voice/text.ts';
@@ -89,43 +80,18 @@ function parseLimit(argv: string[]): number | null {
   return n;
 }
 
+// Task 263 - this used to re-walk every pool by hand, which is why it could
+// not see anything it hadn't been taught about: the two SEQUENCES (Task 236),
+// the duel pool, and - the reason this changed - the coronation lines and the
+// per-name VOCATIVE clips, none of which it would ever have generated.
+// collectVoiceLineEntries (server/src/socrates.ts) already IS the one
+// authoritative walk over every pool, used by /dev/voice and the voice index;
+// deriving from it means this script and those two listings can no longer
+// disagree about what an "active line" is. Tag resolution below is unchanged
+// (LINE_TAGS[template]), and an untagged line - every vocative - hashes
+// exactly as it always would have.
 function allLineTemplates(): string[] {
-  const templates = new Set<string>();
-  for (const pool of Object.values(LINES)) {
-    for (const line of pool) {
-      templates.add(line);
-    }
-  }
-  for (const pool of Object.values(INTRO_LINES)) {
-    for (const line of pool) {
-      templates.add(line);
-    }
-  }
-  // Task 48 - GAME_INTRO/STAGE_INTRO/WINNER, generated the same way as
-  // every other pool: one MP3 per (template, tag) pair.
-  for (const line of GAME_INTRO_LINES) {
-    templates.add(line);
-  }
-  for (const pool of Object.values(STAGE_INTRO_LINES)) {
-    for (const line of pool ?? []) {
-      templates.add(line);
-    }
-  }
-  for (const line of WINNER_LINES) {
-    templates.add(line);
-  }
-  // Task 139 - the draw/numeric moment pools.
-  for (const pool of Object.values(DRAW_LINES)) {
-    for (const line of pool) {
-      templates.add(line);
-    }
-  }
-  for (const pool of Object.values(NUMERIC_LINES)) {
-    for (const line of pool) {
-      templates.add(line);
-    }
-  }
-  return [...templates];
+  return [...new Set(collectVoiceLineEntries().map((entry) => entry.line))];
 }
 
 async function main() {

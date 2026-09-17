@@ -156,6 +156,9 @@ const socrates: SocratesShowPayload = {
   line: 'Η γνώση είναι η μόνη λεία που αξίζει να κλέψεις.',
   lineTemplate: 'Η γνώση είναι η μόνη λεία που αξίζει να κλέψεις.',
   lineTag: null,
+  // Task 263 - no spliced vocative in this static mock (that is the
+  // coronation's own beat, which this scene never shows).
+  prefix: null,
   // Task 236 - a static mock for this dev scene; nothing here acks.
   beatId: 1,
   // Task 239 - ordinary post-question commentary, the most common case.

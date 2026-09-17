@@ -213,6 +213,13 @@ export interface PendingSocratesBeat {
   line: string;
   lineTemplate: string;
   lineTag: string | null;
+  // Task 263 - a clip played AHEAD of this beat's own line, within the same
+  // beat and under the same single ack (the coronation's vocative address).
+  // Set on the FIRST line of the coronation sequence only, and only when that
+  // clip exists on disk; null/absent everywhere else, which is every other
+  // beat in the game.
+  prefixTemplate?: string | null;
+  prefixTag?: string | null;
 }
 
 // Task 239 - one open-or-closed slot in Room.stageTimings (see there).
