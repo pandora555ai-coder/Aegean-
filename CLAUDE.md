@@ -15,7 +15,8 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 
 - **/home/argyrios/Aegean is the ONLY place code is edited, run and committed.**
 - **All work runs as user `argyrios`, not root.**
-- **/opt/party-game is production.** It is written ONLY by deploy.sh.
+- **/opt/party-game is production.** It is written ONLY by
+  /usr/local/sbin/aegean-deploy.
   Never edit it, never run a dev server in it, never git in it.
 - Ports: production 3001 (127.0.0.1, Caddy-proxied), dev server 4001,
   Vite 5173. Never start anything on 3001.
@@ -25,12 +26,24 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
 - **Never use pkill or killall.** Find the PID (lsof -i :4001) and kill
   that exact PID. A pattern match protecting production by coincidence of
   path is not protection.
-- Deploy is `deploy/deploy.sh`, inside the repo (the only path DEPLOY.md
-  gives). Aborts loudly on a dirty tree. **Run it only when Argyrios says to
-  in that turn** — "deploy", "run deploy.sh". Never on your own initiative,
-  never rolled into another task because the work looks finished, and never
-  carried over from an earlier turn's permission. Anything else about
-  /opt/party-game stays off limits, deploy.sh included as a thing to edit.
+- **Deploy is `sudo /usr/local/sbin/aegean-deploy`, and nothing else.** A
+  root-owned wrapper (root:root 0755) that argyrios may invoke with no
+  password and no arguments. It aborts loudly on a dirty tree, refuses to
+  ship anything not already pushed to origin/main, never passes `--delete`,
+  and builds as `partygame` rather than root.
+  **Run it ONLY when Argyrios says so in that turn** — "deploy", "run
+  aegean-deploy". Never on your own initiative, never rolled into another
+  task because the work looks finished, and never carried over from an
+  earlier turn's permission. Having the privilege to deploy without a
+  password is NOT permission to decide when to deploy.
+- `deploy/deploy.sh` is **GONE**, removed in this commit: it did
+  `cd ~/Aegean-`, and no clone exists at that path (verified 2026-09-17), so
+  as root it aborted on line 7. Do not resurrect it, do not cite it as the
+  deploy path.
+- Human fallback: root runs the SAME wrapper by hand
+  (`/usr/local/sbin/aegean-deploy`). There is one deploy path, not two.
+- Anything else about /opt/party-game stays off limits, and
+  /usr/local/sbin/aegean-deploy is not a thing to edit.
 
 ## Visual verification
 

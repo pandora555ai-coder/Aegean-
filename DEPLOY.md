@@ -195,18 +195,40 @@ Port `3001` is intentionally never opened in ufw - it's only reachable via
 
 ## Updating the app later
 
-`deploy/deploy.sh` (run from the dev checkout, `/root/Aegean-`) is the
-**only supported update path**. It aborts on a dirty working tree or a
-failed `git pull --ff-only`, then rsyncs into `/opt/party-game`, rebuilds,
-and restarts the service.
+`sudo /usr/local/sbin/aegean-deploy` is the **only supported update path** -
+a root-owned wrapper (`root:root`, mode 0755) that takes no arguments and
+reads no configuration, so nothing in the repository can change what it does.
+It aborts on a dirty working tree, refuses to ship anything not already
+pushed to `origin/main`, rsyncs `/home/argyrios/Aegean` into
+`/opt/party-game`, hands the tree to `partygame`, builds the client **as
+`partygame` rather than as root**, then restarts the service and verifies it
+came back up.
+
+The voice bank is protected explicitly: `--delete` is never passed,
+`client/public/voice` and `client/public/voice-test` are both excluded *and*
+`protect`ed, and the mp3 count is checked before and after the rsync - a drop
+aborts the deploy loudly. `.git`, `.claude` and `.env` are excluded too, so
+production keeps its own config.
+
+Run it **only when Argyrios asks for it in that turn**. Having the privilege
+to deploy without a password is not permission to decide when to deploy.
+
+**Human fallback:** root runs the same wrapper by hand,
+`/usr/local/sbin/aegean-deploy`. There is one deploy path, not two.
 
 **`/opt/party-game` is NOT a git working copy.** Never `git pull`, `git`
-anything, or run a dev server there - it is written only by `deploy.sh`.
+anything, or run a dev server there - it is written only by the wrapper.
 
 ```bash
-cd /root/Aegean-
-./deploy/deploy.sh
+sudo /usr/local/sbin/aegean-deploy
 ```
+
+The old `deploy/deploy.sh` was removed in the same commit that introduced
+this section: it did `cd ~/Aegean-`, and no clone exists at that path
+(verified 2026-09-17), so as root it aborted on line 7. The agent's grant
+lives in `/etc/sudoers.d/aegean-deploy` and is revoked with
+`sudo rm -f /etc/sudoers.d/aegean-deploy`; the wrapper still works for root
+afterwards.
 
 ## Troubleshooting
 
