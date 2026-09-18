@@ -4,6 +4,7 @@ import DevNumericScreen from './screens/DevNumericScreen';
 import DevBlitzScreen from './screens/DevBlitzScreen';
 import DevSceneScreen from './screens/DevSceneScreen';
 import DevVoiceScreen from './screens/DevVoiceScreen';
+import DevVoiceAuditionScreen from './screens/DevVoiceAuditionScreen';
 import DevVoiceMatrixScreen from './screens/DevVoiceMatrixScreen';
 import DevVoiceEqScreen from './screens/DevVoiceEqScreen';
 import DevVoiceAbScreen from './screens/DevVoiceAbScreen';
@@ -51,6 +52,12 @@ export const DEV_ROUTES: DevRoute[] = [
     title: 'Φωνή Σωκράτη',
     description: 'Rate every Socrates voice line before an ElevenLabs batch (Task 142).',
     element: <DevVoiceScreen />,
+  },
+  {
+    path: '/dev/voice-audition',
+    title: 'Ακρόαση σταδίου',
+    description: 'Play any line from the bank AND/OR staging (Task 266), read-only, before swap-staging.sh moves anything (Task 269).',
+    element: <DevVoiceAuditionScreen />,
   },
   {
     path: '/dev/voice-matrix',

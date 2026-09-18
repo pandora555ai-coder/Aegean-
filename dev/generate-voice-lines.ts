@@ -88,7 +88,7 @@
 // the --generate branch".
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { AUDIO_BITRATE_KBPS, PRESET_NAMES, SOCRATES_MAX_DURATION_MS, getVocative } from '@game/shared';
+import { AUDIO_BITRATE_KBPS, PRESET_NAMES, SOCRATES_MAX_DURATION_MS, SOCRATES_VOICE_STAGING_DIR, getVocative } from '@game/shared';
 import { LINE_TAGS, collectVoiceLineEntries } from '../server/src/socrates.ts';
 import { loadDotEnvIfPresent } from './voice/env.ts';
 import { createElevenLabsProvider } from './voice/provider.ts';
@@ -130,9 +130,11 @@ process.env.ELEVENLABS_VOICE_ID ??= 'NOpBlnGInO9m6vDvFkFC';
 // Read after loadDotEnvIfPresent so a repo-root .env can set these too.
 // Task 266 - default is now the staging dir (swap-staging.sh's own default
 // STAGING_DIR), never client/public/voice, which is the prod symlink.
+// Task 269 - the literal moved into @game/shared (SOCRATES_VOICE_STAGING_DIR)
+// so the audition page's server-side handler names the same directory.
 const OUT_DIR = process.env.ALT_OUTPUT_DIR
   ? path.resolve(ROOT, process.env.ALT_OUTPUT_DIR)
-  : path.join(ROOT, 'client', 'public', 'voice-staging');
+  : path.join(ROOT, 'client', 'public', SOCRATES_VOICE_STAGING_DIR);
 
 const ONLY_HASHES = process.env.ONLY_HASHES
   ? new Set(

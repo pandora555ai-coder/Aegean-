@@ -63,6 +63,12 @@ export const ClientEvents = {
   // as DEV_GET_NUMERIC_QUESTIONS above: no room, no phase, just a request
   // for every Socrates line so it can be rated before an ElevenLabs batch.
   DEV_GET_VOICE_LINES: 'dev:get_voice_lines',
+  // Task 269 - dev-only audition harness (/dev/voice-audition). Same spirit
+  // as DEV_GET_VOICE_LINES above, but the response also reports whether
+  // each line's clip exists in the BANK, in STAGING (Task 266's
+  // client/public/voice-staging), or both - staging clips can't be heard
+  // any other way before a swap-staging.sh run moves them into the bank.
+  DEV_GET_VOICE_AUDITION: 'dev:get_voice_audition',
   // Task 56a - the real drawing mode. DRAW_SUBMIT carries the finished
   // picture, DRAW_GUESS carries one guesser's pick among that round's 4
   // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
@@ -138,6 +144,8 @@ export const ServerEvents = {
   DEV_NUMERIC_QUESTIONS: 'dev:numeric_questions',
   // Task 142 - the response half of DEV_GET_VOICE_LINES above.
   DEV_VOICE_LINES: 'dev:voice_lines',
+  // Task 269 - the response half of DEV_GET_VOICE_AUDITION above.
+  DEV_VOICE_AUDITION: 'dev:voice_audition',
   // Task 56a - the drawing mode's own phases. DRAW/GUESS are asymmetric like
   // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
   // is finally safe to send), like reveal:show.
@@ -2102,6 +2110,12 @@ export const SOCRATES_DURATION_MS = 4000;
 // one hashing rule both sides share, so they can never drift apart.
 export const SOCRATES_VOICE_DIR = 'voice';
 
+// Task 266 - where dev/generate-voice-lines.ts writes by default (never the
+// SOCRATES_VOICE_DIR symlink into /opt/party-game). Task 269 reads this too,
+// to check a clip's existence in staging alongside the bank - one constant,
+// so the generator and the audition page can never name it differently.
+export const SOCRATES_VOICE_STAGING_DIR = 'voice-staging';
+
 // Must match the bitrate baked into dev/voice/provider.ts's ElevenLabs
 // output_format (mp3_44100_64) - used server-side to estimate a clip's
 // duration from its file size (constant bitrate: seconds = bytes*8/bps)
@@ -2150,6 +2164,27 @@ export const SOCRATES_BACKSTOP_UNKNOWN_MS = 15000;
 export function lineHash(template: string, tag?: string | null): string {
   const key = tag ? `${tag} ${template}` : template;
   return sha256Hex(key).slice(0, 16);
+}
+
+// Task 269 - moved here from dev/voice/text.ts (which now just re-exports
+// it, exactly as it already did for lineHash above) so the audition page's
+// server-side handler can compute the EXACT spoken text - tag + stripped
+// template - without importing from dev/ (server never imports dev/ code;
+// dev/ imports server/shared, not the other way around) or duplicating this
+// regex a second time. Task 263's own bug was exactly a placeholder-regex
+// mismatch ({ΚΛΗΤΙΚΗ} sailing through an ASCII-only \w pattern) - one
+// definition, reused everywhere a "what did the API actually hear" string
+// is needed, is the point.
+//
+// {name}/{n}/{category}/... placeholders can't be resolved outside a real
+// game round, so the pre-generated audio is recorded with them removed
+// entirely rather than spoken literally as "brace name brace".
+export function stripPlaceholders(template: string): string {
+  return template
+    .replace(/\{[^}]+\}/g, '')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 const SHA256_K = new Uint32Array([
@@ -2540,6 +2575,31 @@ export interface DevNumericQuestionsPayload {
 // the hash its mp3 is named after (client/public/voice/<hash>.mp3).
 export interface DevVoiceLinesPayload {
   lines: { moment: string; line: string; tag: string | null; hash: string }[];
+}
+
+// Task 269 - the /dev/voice-audition page's own request/response pair.
+// Same source as DevVoiceLinesPayload (collectVoiceLineEntries - one walk
+// over every pool, never re-derived by hand) plus, per entry, whether its
+// clip exists in the BANK (client/public/voice) and/or STAGING
+// (client/public/voice-staging, Task 266) and that location's own duration
+// estimate (server/src/socratesAudio.ts's byte-size formula - same source
+// the live game's own backstop timing uses, not a separate measurement).
+// `template`/`tag` travel raw, same as DevVoiceLinesPayload's `line`/`tag` -
+// the client derives the exact spoken string (tag + stripPlaceholders(
+// template), both now in this module) itself, so this payload can't drift
+// from what a future page needs without another round trip.
+export interface DevVoiceAuditionEntry {
+  hash: string;
+  moment: string;
+  tag: string | null;
+  template: string;
+  inBank: boolean;
+  inStaging: boolean;
+  bankDurationMs: number | null;
+  stagingDurationMs: number | null;
+}
+export interface DevVoiceAuditionPayload {
+  entries: DevVoiceAuditionEntry[];
 }
 
 // ----------------------- Drawing mode (Task 56a) --------------------------
@@ -3878,6 +3938,7 @@ export type ClientToServerEvents = {
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
   [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
   [ClientEvents.DEV_GET_VOICE_LINES]: () => void;
+  [ClientEvents.DEV_GET_VOICE_AUDITION]: () => void;
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
@@ -3919,6 +3980,7 @@ export type ServerToClientEvents = {
   [ServerEvents.DEV_DRAWING_RECEIVED]: (payload: DevDrawingReceivedPayload) => void;
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DEV_VOICE_LINES]: (payload: DevVoiceLinesPayload) => void;
+  [ServerEvents.DEV_VOICE_AUDITION]: (payload: DevVoiceAuditionPayload) => void;
   [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;

@@ -5,20 +5,10 @@
 // lineHash itself lives in @game/shared (Task 42b), not here - it's the one
 // hashing rule both the generator AND the client resolve a line's audio
 // file with, so it can never drift between them.
-export { lineHash } from '@game/shared';
-
-// {name}/{n}/{category}/... placeholders can't be resolved outside a real
-// game round, so the pre-generated audio is recorded with them removed
-// entirely rather than spoken literally as "brace name brace".
-export function stripPlaceholders(template: string): string {
-  return template
-    // Task 263 - `\w` is ASCII-only in JS, so the Greek placeholder
-    // {ΚΛΗΤΙΚΗ} (the coronation opener's vocative slot) sailed straight
-    // through this and would have been SPOKEN literally by the generator.
-    // Matching any braced run fixes that and leaves every ASCII placeholder
-    // ({name}/{n}/{category}) stripping exactly as before.
-    .replace(/\{[^}]+\}/g, '')
-    .replace(/\s+([.,;:!?])/g, '$1')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
+//
+// Task 269 - stripPlaceholders moved into @game/shared alongside lineHash
+// (the audition page's server-side handler needs it too, and server never
+// imports from dev/ - dev/ imports server/shared, not the other way
+// around). Re-exported here unchanged so this file's own generator import
+// site didn't need to change at all.
+export { lineHash, stripPlaceholders } from '@game/shared';

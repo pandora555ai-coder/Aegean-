@@ -127,6 +127,7 @@ import {
   submitBlitzSwipe,
 } from './modes/blitz.js';
 import { collectVoiceLineEntries } from './socrates.js';
+import { collectVoiceAuditionEntries } from './voiceAudition.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -1389,6 +1390,15 @@ io.on('connection', (socket) => {
   // Socrates line so it can be rated before an ElevenLabs batch.
   socket.on(ClientEvents.DEV_GET_VOICE_LINES, () => {
     socket.emit(ServerEvents.DEV_VOICE_LINES, { lines: collectVoiceLineEntries() });
+  });
+
+  // Task 269 - dev-only sink for the /dev/voice-audition tool. Same spirit
+  // as DEV_GET_VOICE_LINES above: no room, no phase, just a read-only report
+  // of every line's clip - in the bank, in staging (Task 266's
+  // client/public/voice-staging), or both - so a freshly generated staging
+  // batch can be heard before deciding whether to swap it into the bank.
+  socket.on(ClientEvents.DEV_GET_VOICE_AUDITION, () => {
+    socket.emit(ServerEvents.DEV_VOICE_AUDITION, { entries: collectVoiceAuditionEntries() });
   });
 
   // Task 56a - the real DRAW phase. All validation (phase, pause, size cap,
