@@ -56,7 +56,7 @@ export const DEV_ROUTES: DevRoute[] = [
   {
     path: '/dev/voice-audition',
     title: 'Ακρόαση σταδίου',
-    description: 'Play any line from the bank AND/OR staging (Task 266), read-only, before swap-staging.sh moves anything (Task 269).',
+    description: 'Play, search, and delete/restore any line (bank/staging/deleted), with pool/tag filters and judged-progress tracking (Task 271).',
     element: <DevVoiceAuditionScreen />,
   },
   {

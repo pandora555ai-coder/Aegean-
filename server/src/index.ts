@@ -128,6 +128,7 @@ import {
 } from './modes/blitz.js';
 import { collectVoiceLineEntries } from './socrates.js';
 import { collectVoiceAuditionEntries } from './voiceAudition.js';
+import { deleteVoiceLine, markVoiceLine, restoreVoiceLine } from './voiceDeletions.js';
 import {
   buildRevealHostPayload,
   buildRevealPlayerPayload,
@@ -1398,6 +1399,52 @@ io.on('connection', (socket) => {
   // client/public/voice-staging), or both - so a freshly generated staging
   // batch can be heard before deciding whether to swap it into the bank.
   socket.on(ClientEvents.DEV_GET_VOICE_AUDITION, () => {
+    socket.emit(ServerEvents.DEV_VOICE_AUDITION, { entries: collectVoiceAuditionEntries() });
+  });
+
+  // Task 271 - the audition page's three mutating actions. Each replies
+  // with its own one-line result (ok/message, e.g. explaining a stalled
+  // bank move in plain words) THEN a fresh DEV_VOICE_AUDITION broadcast, so
+  // the list never needs a second round trip to reflect what just happened.
+  socket.on(ClientEvents.DEV_DELETE_VOICE_LINE, (payload) => {
+    const hash = payload?.hash;
+    if (typeof hash !== 'string') return;
+    const result = deleteVoiceLine(hash);
+    socket.emit(ServerEvents.DEV_VOICE_LINE_ACTION_RESULT, {
+      hash,
+      action: 'delete',
+      ok: result.ok,
+      message: result.ok
+        ? `deleted - bank:${result.record.bankMoveStatus ?? 'n/a'} staging:${result.record.stagingMoveStatus ?? 'n/a'}`
+        : result.error,
+    });
+    socket.emit(ServerEvents.DEV_VOICE_AUDITION, { entries: collectVoiceAuditionEntries() });
+  });
+
+  socket.on(ClientEvents.DEV_RESTORE_VOICE_LINE, (payload) => {
+    const hash = payload?.hash;
+    if (typeof hash !== 'string') return;
+    const result = restoreVoiceLine(hash);
+    socket.emit(ServerEvents.DEV_VOICE_LINE_ACTION_RESULT, {
+      hash,
+      action: 'restore',
+      ok: result.ok,
+      message: result.ok ? result.message : result.error,
+    });
+    socket.emit(ServerEvents.DEV_VOICE_AUDITION, { entries: collectVoiceAuditionEntries() });
+  });
+
+  socket.on(ClientEvents.DEV_MARK_VOICE_LINE, (payload) => {
+    const hash = payload?.hash;
+    const status = payload?.status;
+    if (typeof hash !== 'string' || (status !== 'kept' && status !== 'active')) return;
+    const result = markVoiceLine(hash, status);
+    socket.emit(ServerEvents.DEV_VOICE_LINE_ACTION_RESULT, {
+      hash,
+      action: 'mark',
+      ok: result.ok,
+      message: result.ok ? `marked ${status}` : result.error,
+    });
     socket.emit(ServerEvents.DEV_VOICE_AUDITION, { entries: collectVoiceAuditionEntries() });
   });
 

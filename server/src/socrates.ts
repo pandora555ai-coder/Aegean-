@@ -7,6 +7,7 @@ import {
   type GameModeId,
   type StageDefinition,
 } from '@game/shared';
+import { isLineDeleted } from './voiceDeletions.js';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -617,6 +618,11 @@ export function pickCoronationLine(gender: 'm' | 'f' | null): PickedLine | null 
     return null;
   }
   const template = CORONATION_LINES[gender];
+  // Task 271 - deleted degrades exactly like "gender unknown" does above:
+  // null, and the caller falls back to the fully-voiced WINNER_LINES pool.
+  if (isLineDeleted(template)) {
+    return null;
+  }
   return { template, text: template, tag: LINE_TAGS[template] ?? null };
 }
 
@@ -1313,7 +1319,13 @@ export interface PickedLine {
 // been used this game, this still returns null exactly as the old
 // first-unused-in-order version did.
 function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): PickedLine | null {
-  const unused = pool.filter((template) => !state.usedLines.has(template));
+  // Task 271 - deleted lines filtered out here, same "kept in the pool,
+  // filtered at pick time" idiom GAME_INTRO_LINES_EXCLUDED_IN_FULL/
+  // QUIZ_STAGE_INTRO_LINES_EXCLUDED_IN_FULL already use for mode exclusion
+  // below - one more reason a line can be unavailable this pick, checked
+  // alongside `state.usedLines` rather than requiring every caller to
+  // filter its own pool first.
+  const unused = pool.filter((template) => !state.usedLines.has(template) && !isLineDeleted(template));
   if (unused.length === 0) {
     return null; // this moment's whole pool is exhausted this game
   }
@@ -1712,12 +1724,17 @@ const GAME_INTRO_LINES_EXCLUDED_IN_FULL: ReadonlySet<string> = new Set([
 // nothing else can draw it later. Returns [] for an exhausted/empty pool, so
 // the caller falls through exactly like a null PickedLine.
 function pickSequence(state: SocratesState, pool: readonly string[]): PickedLine[] {
-  return pool.map((template) => {
-    state.usedLines.add(template);
-    // No {name}/{n}/{category} placeholders in either sequence, same as
-    // every other one-shot pool here - so text IS the template.
-    return { template, text: template, tag: LINE_TAGS[template] ?? null };
-  });
+  // Task 271 - a deleted line is simply SKIPPED, never played and never
+  // marked used - the narration just runs one line shorter rather than
+  // reading a missing clip's silence into the sequence.
+  return pool
+    .filter((template) => !isLineDeleted(template))
+    .map((template) => {
+      state.usedLines.add(template);
+      // No {name}/{n}/{category} placeholders in either sequence, same as
+      // every other one-shot pool here - so text IS the template.
+      return { template, text: template, tag: LINE_TAGS[template] ?? null };
+    });
 }
 
 export function pickGameIntroSequence(state: SocratesState): PickedLine[] {

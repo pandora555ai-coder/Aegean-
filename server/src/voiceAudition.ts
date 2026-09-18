@@ -3,12 +3,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUDIO_BITRATE_KBPS, SOCRATES_VOICE_DIR, SOCRATES_VOICE_STAGING_DIR, type DevVoiceAuditionEntry } from '@game/shared';
 import { collectVoiceLineEntries } from './socrates.js';
+import { DELETED_DIR, getRecord, getReviewStatus } from './voiceDeletions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Same two directories generate-voice-lines.ts reads/writes and Vite/Express
-// serve at /voice/* and /voice-staging/* respectively - this module only
-// ever STATs them (Task 269's own "never writes, deletes, moves or
-// generates" rule), never opens or copies a file.
+// Same directories generate-voice-lines.ts reads/writes, Vite/Express serve
+// at /voice/* etc., and voiceDeletions.ts moves files between - THIS module
+// still only ever STATs them (Task 269's own "never writes, deletes, moves
+// or generates" rule holds for voiceAudition.ts specifically; the mutating
+// half now lives entirely in voiceDeletions.ts).
 const BANK_DIR = path.join(__dirname, '../../client/public', SOCRATES_VOICE_DIR);
 const STAGING_DIR = path.join(__dirname, '../../client/public', SOCRATES_VOICE_STAGING_DIR);
 
@@ -35,6 +37,8 @@ export function collectVoiceAuditionEntries(): DevVoiceAuditionEntry[] {
   return collectVoiceLineEntries().map((entry) => {
     const bank = clipInfo(BANK_DIR, entry.hash);
     const staging = clipInfo(STAGING_DIR, entry.hash);
+    const deleted = clipInfo(DELETED_DIR, entry.hash);
+    const record = getRecord(entry.hash);
     return {
       hash: entry.hash,
       moment: entry.moment,
@@ -44,6 +48,11 @@ export function collectVoiceAuditionEntries(): DevVoiceAuditionEntry[] {
       inStaging: staging.exists,
       bankDurationMs: bank.durationMs,
       stagingDurationMs: staging.durationMs,
+      status: getReviewStatus(entry.hash),
+      inDeleted: deleted.exists,
+      deletedDurationMs: deleted.durationMs,
+      bankMoveStatus: record?.bankMoveStatus ?? null,
+      stagingMoveStatus: record?.stagingMoveStatus ?? null,
     };
   });
 }

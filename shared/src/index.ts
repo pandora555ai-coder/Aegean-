@@ -69,6 +69,15 @@ export const ClientEvents = {
   // client/public/voice-staging), or both - staging clips can't be heard
   // any other way before a swap-staging.sh run moves them into the bank.
   DEV_GET_VOICE_AUDITION: 'dev:get_voice_audition',
+  // Task 271 - the audition page's mutating actions. Delete moves the mp3
+  // to client/public/voice-deleted/ (SOCRATES_VOICE_DELETED_DIR) AND
+  // excludes the line from every pick* function in server/src/socrates.ts;
+  // restore reverses both; mark is the non-destructive "reviewed, keeping
+  // it" toggle for progress tracking. All three persist server-side
+  // (server/src/data/voice-line-review.json), never client-side.
+  DEV_DELETE_VOICE_LINE: 'dev:delete_voice_line',
+  DEV_RESTORE_VOICE_LINE: 'dev:restore_voice_line',
+  DEV_MARK_VOICE_LINE: 'dev:mark_voice_line',
   // Task 56a - the real drawing mode. DRAW_SUBMIT carries the finished
   // picture, DRAW_GUESS carries one guesser's pick among that round's 4
   // options. Both are phase-gated server-side exactly like SUBMIT_ANSWER.
@@ -146,6 +155,10 @@ export const ServerEvents = {
   DEV_VOICE_LINES: 'dev:voice_lines',
   // Task 269 - the response half of DEV_GET_VOICE_AUDITION above.
   DEV_VOICE_AUDITION: 'dev:voice_audition',
+  // Task 271 - the one-line-specific result of a delete/restore/mark
+  // action (see the ClientEvents trio above), always followed by a fresh
+  // DEV_VOICE_AUDITION broadcast.
+  DEV_VOICE_LINE_ACTION_RESULT: 'dev:voice_line_action_result',
   // Task 56a - the drawing mode's own phases. DRAW/GUESS are asymmetric like
   // question:show/steal:show; GUESS_REVEAL is symmetric (the correct index
   // is finally safe to send), like reveal:show.
@@ -2116,6 +2129,12 @@ export const SOCRATES_VOICE_DIR = 'voice';
 // so the generator and the audition page can never name it differently.
 export const SOCRATES_VOICE_STAGING_DIR = 'voice-staging';
 
+// Task 271 - where a deleted line's mp3 is MOVED to (never unlinked), so a
+// mistaken delete is recoverable by moving it back. Read by the audition
+// page's own <audio> src exactly like the two above - Vite/Express serve
+// anything under client/public/ automatically, no new static route needed.
+export const SOCRATES_VOICE_DELETED_DIR = 'voice-deleted';
+
 // Must match the bitrate baked into dev/voice/provider.ts's ElevenLabs
 // output_format (mp3_44100_64) - used server-side to estimate a clip's
 // duration from its file size (constant bitrate: seconds = bytes*8/bps)
@@ -2588,6 +2607,15 @@ export interface DevVoiceLinesPayload {
 // the client derives the exact spoken string (tag + stripPlaceholders(
 // template), both now in this module) itself, so this payload can't drift
 // from what a future page needs without another round trip.
+// Task 271 - `status` and the deleted-dir/move fields, plus the two new
+// request/response pairs below (delete/restore/mark), turn this from a
+// read-only listing into the deduplicate-and-cull tool: one row per LINE
+// already (collectVoiceLineEntries dedupes by exact line text - bank and
+// staging were NEVER two rows, see `inBank`/`inStaging` above), `status`
+// tells the page which of the two views (active/deleted) a row belongs in,
+// and `kept` records a listened-and-judged-fine line for progress tracking
+// without touching its file.
+export type VoiceLineReviewStatus = 'active' | 'deleted' | 'kept';
 export interface DevVoiceAuditionEntry {
   hash: string;
   moment: string;
@@ -2597,9 +2625,44 @@ export interface DevVoiceAuditionEntry {
   inStaging: boolean;
   bankDurationMs: number | null;
   stagingDurationMs: number | null;
+  status: VoiceLineReviewStatus;
+  // Only meaningful once `status === 'deleted'` - the moved file's own
+  // location/duration, and each location's own move outcome (a bank move
+  // can fail with 'pending-no-access' when the running process doesn't own
+  // /opt/party-game - see CLAUDE.md's Voice section - without that failing
+  // the delete itself: the line is excluded from selection either way).
+  inDeleted: boolean;
+  deletedDurationMs: number | null;
+  bankMoveStatus: 'moved' | 'not-present' | 'pending-no-access' | null;
+  stagingMoveStatus: 'moved' | 'not-present' | 'pending-no-access' | null;
 }
 export interface DevVoiceAuditionPayload {
   entries: DevVoiceAuditionEntry[];
+}
+
+// Task 271 - delete/restore/mark all take just the hash: the server looks
+// up moment/template/tag itself from collectVoiceLineEntries (the one
+// authoritative source, never trusted from the client) rather than the
+// client re-sending fields it could have gotten stale.
+export interface DevVoiceLineHashPayload {
+  hash: string;
+}
+export interface DevMarkVoiceLinePayload {
+  hash: string;
+  // 'kept' marks reviewed-and-fine; 'active' un-marks it (the toggle-off
+  // path) - never 'deleted', which goes through DEV_DELETE_VOICE_LINE
+  // instead, since only THAT path also moves a file.
+  status: 'kept' | 'active';
+}
+// One line's own outcome, always followed by a fresh DEV_VOICE_AUDITION
+// broadcast (the full, current list) - this is the human-readable half:
+// `message` is what the UI surfaces as a banner, e.g. explaining a
+// 'pending-no-access' bank move in plain words.
+export interface DevVoiceLineActionResultPayload {
+  hash: string;
+  action: 'delete' | 'restore' | 'mark';
+  ok: boolean;
+  message: string;
 }
 
 // ----------------------- Drawing mode (Task 56a) --------------------------
@@ -3939,6 +4002,9 @@ export type ClientToServerEvents = {
   [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
   [ClientEvents.DEV_GET_VOICE_LINES]: () => void;
   [ClientEvents.DEV_GET_VOICE_AUDITION]: () => void;
+  [ClientEvents.DEV_DELETE_VOICE_LINE]: (payload: DevVoiceLineHashPayload) => void;
+  [ClientEvents.DEV_RESTORE_VOICE_LINE]: (payload: DevVoiceLineHashPayload) => void;
+  [ClientEvents.DEV_MARK_VOICE_LINE]: (payload: DevMarkVoiceLinePayload) => void;
   [ClientEvents.DRAW_SUBMIT]: (payload: DrawSubmitPayload) => void;
   [ClientEvents.DRAW_GUESS]: (payload: DrawGuessPayload) => void;
   [ClientEvents.NUMERIC_SUBMIT]: (payload: NumericSubmitPayload) => void;
@@ -3981,6 +4047,7 @@ export type ServerToClientEvents = {
   [ServerEvents.DEV_NUMERIC_QUESTIONS]: (payload: DevNumericQuestionsPayload) => void;
   [ServerEvents.DEV_VOICE_LINES]: (payload: DevVoiceLinesPayload) => void;
   [ServerEvents.DEV_VOICE_AUDITION]: (payload: DevVoiceAuditionPayload) => void;
+  [ServerEvents.DEV_VOICE_LINE_ACTION_RESULT]: (payload: DevVoiceLineActionResultPayload) => void;
   [ServerEvents.DRAW_SHOW]: (payload: DrawShowPayload) => void;
   [ServerEvents.GUESS_SHOW]: (payload: GuessShowPayload) => void;
   [ServerEvents.GUESS_REVEAL_SHOW]: (payload: GuessRevealShowPayload) => void;
