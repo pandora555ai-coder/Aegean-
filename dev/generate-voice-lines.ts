@@ -1,6 +1,8 @@
 // Dev-only: generates one MP3 per Socrates line (server/src/socrates.ts)
-// into client/public/voice/. Not part of any workspace build or deploy -
-// run manually, commit the resulting MP3s like any other static asset.
+// into client/public/voice-staging/ by default (Task 266 - see below; never
+// client/public/voice, the symlink into production). Not part of any
+// workspace build or deploy - run manually, then move a verified batch into
+// production with dev/voice/swap-staging.sh (see Task 266's own note below).
 //
 //   tsx dev/generate-voice-lines.ts
 //       DRY RUN (the default, no flags needed) - prints what would be
@@ -41,12 +43,32 @@
 // them touching the default (no env vars set) path above:
 //   ALT_VOICE_ID     speak with this ElevenLabs voice instead of
 //                    ELEVENLABS_VOICE_ID, for this run only.
-//   ALT_OUTPUT_DIR   write mp3s here instead of client/public/voice (which
-//                    stays agent/CI read-only - never targeted by this).
+//   ALT_OUTPUT_DIR   write mp3s here instead of the default staging dir
+//                    below.
 //   ONLY_HASHES      comma-separated lineHash values; same effect as
 //                    --hashes, kept as an env var too because ALT_OUTPUT_DIR
 //                    starts empty, so without this every line would look
 //                    "missing" against a fresh staging dir.
+//
+// Task 266 - two fixes:
+//
+//   1. WRITE-BEFORE-PAY. A write failure used to surface only AFTER the paid
+//      API call, burning characters for a clip that then couldn't be saved.
+//      verifyWritable() below probes the output directory (create+delete a
+//      throwaway file) before ANYTHING is generated, and again before EVERY
+//      individual synthesize() call - cheap (one fs write+unlink), and it
+//      catches a directory that goes unwritable mid-run before the next
+//      clip's characters are spent, not just the first.
+//
+//   2. WRITE TO STAGING, NOT PROD. The default OUT_DIR is no longer
+//      client/public/voice (a SYMLINK straight into /opt/party-game's own
+//      voice dir - see CLAUDE.md's Voice section) - it is
+//      client/public/voice-staging, a plain gitignored directory this repo
+//      owns. dev/voice/swap-staging.sh already expects exactly this default
+//      and copies (never deletes) a verified, exact-count staging batch into
+//      the live symlink - that script is the one intended way a staged batch
+//      ever reaches production. ALT_OUTPUT_DIR still overrides this, as
+//      always.
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, PRESET_NAMES, SOCRATES_MAX_DURATION_MS, getVocative } from '@game/shared';
@@ -77,9 +99,11 @@ loadDotEnvIfPresent(path.join(ROOT, '.env'));
 process.env.ELEVENLABS_VOICE_ID ??= 'NOpBlnGInO9m6vDvFkFC';
 
 // Read after loadDotEnvIfPresent so a repo-root .env can set these too.
+// Task 266 - default is now the staging dir (swap-staging.sh's own default
+// STAGING_DIR), never client/public/voice, which is the prod symlink.
 const OUT_DIR = process.env.ALT_OUTPUT_DIR
   ? path.resolve(ROOT, process.env.ALT_OUTPUT_DIR)
-  : path.join(ROOT, 'client', 'public', 'voice');
+  : path.join(ROOT, 'client', 'public', 'voice-staging');
 
 const ONLY_HASHES = process.env.ONLY_HASHES
   ? new Set(
@@ -130,6 +154,23 @@ function parseMaxChars(argv: string[]): number | null {
     throw new Error(`Invalid --max-chars value: ${value}`);
   }
   return n;
+}
+
+// Task 266 - the write-before-pay guard. Creates and immediately deletes a
+// throwaway probe file in `dir`; throws with a clear, actionable message on
+// any failure (missing dir that can't be created, permission denied, read-
+// only filesystem, ...). Called once up front (before any budget check or
+// provider construction) and again before every individual synthesize()
+// call, so no API spend ever happens without a just-proven write path.
+function verifyWritable(dir: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+    const probePath = path.join(dir, `.write-probe-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    writeFileSync(probePath, '');
+    unlinkSync(probePath);
+  } catch (err) {
+    throw new Error(`Output directory is not writable: ${dir}\n  (${(err as Error).message})`);
+  }
 }
 
 function parseCommaList(argv: string[], name: string): string[] | null {
@@ -193,7 +234,12 @@ async function main() {
   for (const name of namesFlag ?? []) targetHashes.add(vocativeHashForName(name));
   const hasSubsetFilter = ONLY_HASHES !== null || hashesFlag !== null || namesFlag !== null;
 
-  mkdirSync(OUT_DIR, { recursive: true });
+  // Task 266 - proven BEFORE anything else: no budget check, no provider
+  // construction, no API call happens until this passes. Runs in dry-run
+  // mode too (cheap, and it's the "proof no spend can happen here" signal
+  // this task's own acceptance criteria check for), not just --generate.
+  verifyWritable(OUT_DIR);
+  console.log(`Write probe passed: ${path.relative(ROOT, OUT_DIR)} is writable.`);
 
   const existing = new Set(readdirSync(OUT_DIR));
   const templates = allLineTemplates();
@@ -265,6 +311,11 @@ async function main() {
     let attempt = 0;
     for (;;) {
       attempt++;
+      // Task 266 - re-proven right before THIS clip's paid call, not just
+      // once at the top of the run, so a directory that goes unwritable
+      // mid-run (disk full, permissions changed) aborts the whole run
+      // before spending this clip's characters too.
+      verifyWritable(OUT_DIR);
       const audio = await provider.synthesize(spoken);
       writeFileSync(destPath, audio);
       const { ok, analysis } = checkTail(destPath);

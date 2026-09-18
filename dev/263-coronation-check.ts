@@ -452,10 +452,18 @@ async function runStatic(): Promise<void> {
     say(`    winner=${name.padEnd(9)} hash=${lineHash(seq[0].template, seq[0].tag)}  text="${seq[0].text.slice(0, 26)}…"`);
   }
   check('D: one hash for line 1 across all winners', hashes.size === 1, `${hashes.size} distinct`);
+  // Task 266 - the placeholder is GONE by design (a post-263 fix,
+  // server/src/socrates.ts): the vocative is spliced ahead as its own clip
+  // (`prefix`), never substituted into this sentence's own template, so
+  // CORONATION_OPENER_NAMED no longer carries {ΚΛΗΤΙΚΗ} at all and is now
+  // byte-identical to CORONATION_OPENER_PLAIN (same tag, same hash, one
+  // mp3 serves both branches). The old assertion expected the opposite.
   check(
-    'D: placeholder stays literal in the hashed template',
-    CORONATION_OPENER_NAMED.includes(VOCATIVE_PLACEHOLDER),
-    VOCATIVE_PLACEHOLDER,
+    'D: CORONATION_OPENER_NAMED carries no placeholder and is byte-identical to PLAIN',
+    !CORONATION_OPENER_NAMED.includes(VOCATIVE_PLACEHOLDER) && CORONATION_OPENER_NAMED === CORONATION_OPENER_PLAIN,
+    CORONATION_OPENER_NAMED === CORONATION_OPENER_PLAIN
+      ? 'byte-identical, no placeholder'
+      : `still differs: "${CORONATION_OPENER_NAMED}"`,
   );
 
   const entries = collectVoiceLineEntries();
@@ -467,7 +475,11 @@ async function runStatic(): Promise<void> {
   say(`    VOCATIVE entries   : ${voc.length}  (PRESET_NAMES=${PRESET_NAMES.length}, distinct vocatives=${new Set(PRESET_NAMES.map(getVocative)).size})`);
   say(`    on disk (real dir) : coronation ${cor.filter((e) => existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))).length}/${cor.length}, vocative ${voc.filter((e) => existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))).length}/${voc.length}`);
   check('D: vocatives are registered for generation', voc.length > 0, `${voc.length}`);
-  check('D: all 5 coronation texts registered', cor.length === 5, `${cor.length}`);
+  // Task 266 - 4 now, not 5: collectVoiceLineEntries' `add` dedupes by exact
+  // line text (seenLines), and since CORONATION_OPENER_NAMED and
+  // CORONATION_OPENER_PLAIN are now the same string, the opener registers
+  // as ONE entry instead of two. opener + line2 + line3(m) + line3(f) = 4.
+  check('D: all 4 coronation texts registered (opener collapsed to 1 since NAMED===PLAIN)', cor.length === 4, `${cor.length}`);
   check(
     'D: ZERO coronation/vocative clips exist on disk',
     [...cor, ...voc].every((e) => !existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))),
