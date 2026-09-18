@@ -9,23 +9,27 @@
 //       generated (count, total characters, per-line list) and makes ZERO
 //       API calls. Safe to run any time.
 //
-//   tsx dev/generate-voice-lines.ts --generate --max-chars 5000
-//       Actually synthesizes the missing lines. BOTH flags are required:
-//       --generate is the explicit opt-in, --max-chars is the explicit
-//       budget. If the planned total exceeds --max-chars, the run REFUSES
-//       outright (prints the overage, makes zero API calls, writes zero
-//       clips) rather than generating a partial subset silently.
+//   tsx dev/generate-voice-lines.ts --generate --confirm-spend I-MEAN-TO-SPEND-REAL-MONEY --max-chars 5000
+//       Actually synthesizes the missing lines. ALL THREE are required:
+//       --generate is the dry-run opt-out, --confirm-spend <exact token>
+//       (Task 267) is a SECOND, independent gate proving real intent - it
+//       is not satisfied by --generate itself, so a test/control run that
+//       only ever types --generate (to exercise a later code path) still
+//       can't spend, even with real credentials loaded from .env - and
+//       --max-chars is the explicit budget. If the planned total exceeds
+//       --max-chars, the run REFUSES outright (prints the overage, makes
+//       zero API calls, writes zero clips) rather than generating a
+//       partial subset silently.
 //
 //   tsx dev/generate-voice-lines.ts --hashes abc123,def456
 //   tsx dev/generate-voice-lines.ts --names Άρης,Νίκη,Τάκης
 //       Restrict the plan (dry run) or the generation (with --generate
-//       --max-chars) to a named subset - specific lineHash values, or
-//       specific PRESET_NAMES entries resolved to their VOCATIVE clip
-//       (Task 263). Lets a handful of vocatives be recorded without
-//       touching the other ~195 missing lines. Combine with --generate/
-//       --max-chars exactly as the full run above.
+//       --confirm-spend ... --max-chars) to a named subset - specific
+//       lineHash values, or specific PRESET_NAMES entries resolved to
+//       their VOCATIVE clip (Task 263). Lets a handful of vocatives be
+//       recorded without touching the other ~195 missing lines.
 //
-//   tsx dev/generate-voice-lines.ts --generate --max-chars 500 --limit 3
+//   tsx dev/generate-voice-lines.ts --generate --confirm-spend I-MEAN-TO-SPEND-REAL-MONEY --max-chars 500 --limit 3
 //       --limit caps the batch size after any --hashes/--names filtering.
 //
 // Task 264 - added the dry-run default and the budget refusal after a
@@ -69,6 +73,19 @@
 //      the live symlink - that script is the one intended way a staged batch
 //      ever reaches production. ALT_OUTPUT_DIR still overrides this, as
 //      always.
+//
+// Task 267 - a THIRD guard, independent of both 266 fixes: --confirm-spend
+// <SPEND_CONFIRM_TOKEN>, required alongside --generate before any provider
+// is constructed. 266's own two guards (write-before-pay, staging-not-prod)
+// both protect WHERE/HOW a spend lands, not WHETHER one was actually meant
+// - and a real incident during 266 proved that gap: a control run typed
+// --generate only to reach an unrelated later failure, and with real
+// credentials sitting in .env it spent for real instead. --generate can't
+// be the only spend gate because it's also the flag every test/harness run
+// needs to reach the code paths it's testing. --confirm-spend is not that
+// flag renamed - it's a second, independent one that must be typed exactly,
+// so intent has to be spelled out, not inferred from "did this call take
+// the --generate branch".
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { AUDIO_BITRATE_KBPS, PRESET_NAMES, SOCRATES_MAX_DURATION_MS, getVocative } from '@game/shared';
@@ -87,6 +104,18 @@ import { checkTail } from './voice/tailCheck.ts';
 // API call, not a retried read of the same response) on failure rather than
 // silently kept.
 const MAX_SYNTHESIS_ATTEMPTS = 3;
+
+// Task 267 - a SECOND, independent opt-in, belt-and-braces with --generate,
+// not a rename of it. Task 266's own incident: a control/test run typed
+// --generate (to reach a LATER, unrelated failure) with real credentials
+// loaded from .env, and nothing stopped it from going all the way through
+// and spending. --generate alone can't be the only gate, because it's
+// exactly the flag every test/control/harness run ALSO needs to exercise
+// that code path. This token must be typed out in full on the command line
+// - never inferred from --generate, never defaulted, never satisfiable by
+// any other flag - so a run whose INTENT is a test can never carry it by
+// accident, even with valid credentials sitting in .env.
+const SPEND_CONFIRM_TOKEN = 'I-MEAN-TO-SPEND-REAL-MONEY';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -289,6 +318,19 @@ async function main() {
     console.log(`Would generate ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total.`);
     printPlan();
     return;
+  }
+
+  // Task 267 - the second, independent opt-in. Checked BEFORE the budget
+  // check and BEFORE the provider is ever constructed, so a run missing it
+  // refuses immediately regardless of what --max-chars says or whether
+  // credentials are even valid.
+  const confirmValue = findFlagValue(argv, '--confirm-spend');
+  if (confirmValue !== SPEND_CONFIRM_TOKEN) {
+    throw new Error(
+      `--generate also requires --confirm-spend ${SPEND_CONFIRM_TOKEN} (typed exactly - this is a ` +
+        `second, independent gate proving real intent to spend, not a rename of --generate; a test/` +
+        `control run should never carry it). 0 API calls made.`,
+    );
   }
 
   if (maxChars === null) {
