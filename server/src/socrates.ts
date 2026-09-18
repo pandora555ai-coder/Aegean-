@@ -1,6 +1,5 @@
 import {
   PRESET_NAMES,
-  VOCATIVE_PLACEHOLDER,
   getVocative,
   lineHash,
   stageSegment,
@@ -624,18 +623,32 @@ export function pickCoronationLine(gender: 'm' | 'f' | null): PickedLine | null 
 // Task 263 - the coronation is THREE lines spoken back to back, not one. The
 // two above are its LAST line; these are the first two.
 //
-// Line 1 has two variants that differ only by the vocative address in front.
-// The NAMELESS one is the default and will stay the default for a long time:
-// the named variant is playable only for a winner whose vocative clip has
-// actually been recorded, and there are 201 names.
+// Line 1 has two variants that differ only by the vocative address spoken
+// AHEAD of it - a separate spliced clip (the beat's `prefix`), never part of
+// this sentence's own audio. The NAMELESS one is the default and will stay
+// the default for a long time: the named variant is playable only for a
+// winner whose vocative clip has actually been recorded, and there are 201
+// names.
 //
-// {ΚΛΗΤΙΚΗ} is NEVER substituted into the template. The vocative is its own
-// separate clip spliced ahead of the line (see the beat's `prefix`), so line
-// 1 has exactly ONE mp3 regardless of who won - substituting here would
-// instead demand 201 recordings of the same sentence. The placeholder is
-// filled into the DISPLAY text only, exactly as {name} already is.
+// Fixed post-launch (a follow-up to Task 263): CORONATION_OPENER_NAMED used
+// to open with the literal placeholder `{ΚΛΗΤΙΚΗ}. `, which
+// stripPlaceholders (dev/voice/text.ts) strips to nothing but leaves the
+// bare ". " behind - lineHash(template, tag) then hashes THAT unstripped
+// template, so the AUDIO ACTUALLY GENERATED for this clip would have opened
+// on a stray spoken pause, never caught because nothing plays this clip back
+// for review before it ships. There is now no placeholder in this sentence
+// at all: the vocative's own word is the entire address, spliced ahead by
+// `prefix`, and this sentence starts clean at "Το πλήθος…". That makes this
+// constant BYTE-IDENTICAL to CORONATION_OPENER_PLAIN - same tag, same hash,
+// one mp3 literally serves both branches, `hasVocativeClip` only decides
+// whether `prefix` (the separate vocative clip) is spliced ahead of it.
+// Kept as two exports rather than collapsed into one: buildCoronationSequence
+// still branches on which name the caller passes, and a future re-divergence
+// (e.g. a genuinely different named sentence) shouldn't require re-adding a
+// second export from scratch. The vocative is still spliced into the DISPLAY
+// text below - that substitution no longer goes through the template.
 export const CORONATION_OPENER_NAMED =
-  '{ΚΛΗΤΙΚΗ}. Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
+  'Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
 export const CORONATION_OPENER_PLAIN =
   'Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
 export const CORONATION_LINE_TWO =
@@ -675,9 +688,13 @@ export function buildCoronationSequence(
   const openerTemplate = useNamed ? CORONATION_OPENER_NAMED : CORONATION_OPENER_PLAIN;
   const opener: PickedLine = {
     template: openerTemplate,
-    // The ONLY place the winner's name enters this beat's text. The template
-    // above - the thing that names the mp3 - keeps the placeholder.
-    text: useNamed ? openerTemplate.replace(VOCATIVE_PLACEHOLDER, getVocative(name)) : openerTemplate,
+    // The ONLY place the winner's name enters this beat's text - prepended
+    // here, not via a placeholder inside `openerTemplate` (removed in the
+    // follow-up to Task 263, see the constant's own comment above): the
+    // template that gets hashed and sent to TTS must stay exactly what's
+    // actually spoken as this sentence's OWN clip, with the vocative word
+    // itself carried separately by `prefix`.
+    text: useNamed ? `${getVocative(name)}. ${openerTemplate}` : openerTemplate,
     tag: LINE_TAGS[openerTemplate] ?? null,
   };
   const second: PickedLine = {
@@ -798,11 +815,18 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   // among the 11 tags, and were collapsed onto these exactly as Task 230
   // already collapsed its own. Load-bearing like every entry here - the
   // clip is found by lineHash(template, tag), so changing a tag renames the
-  // file. The coronation's THIRD line (CORONATION_LINES) stays untagged,
-  // exactly as Task 247 wrote it.
-  [CORONATION_OPENER_NAMED]: '[serious]',
+  // file. The coronation's THIRD line (CORONATION_LINES) was untagged as
+  // Task 247 wrote it; a follow-up to Task 263 gave both its gendered
+  // variants [warm] to match the rest of the bank's convention (every other
+  // line here carries a tag), completing the beat's tag sequence
+  // [serious] -> [dry] -> [warm] with no two adjacent beats sharing one.
+  // CORONATION_OPENER_NAMED and CORONATION_OPENER_PLAIN are now the same
+  // string (see CORONATION_OPENER_NAMED's own comment) - one entry, since
+  // TS rejects a literal object key repeated under two names.
   [CORONATION_OPENER_PLAIN]: '[serious]',
   [CORONATION_LINE_TWO]: '[dry]',
+  [CORONATION_LINES.m]: '[warm]',
+  [CORONATION_LINES.f]: '[warm]',
   // Task 236 - the 22 lines Task 230 generated, now wired into the pools
   // above. These tags are LOAD-BEARING, not decoration: the client finds a
   // clip by lineHash(template, tag), so a missing entry here would hash to
