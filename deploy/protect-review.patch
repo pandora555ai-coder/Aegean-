@@ -1,0 +1,17 @@
+--- a/usr/local/sbin/aegean-deploy
++++ b/usr/local/sbin/aegean-deploy
+@@ -128,8 +128,14 @@
+       --exclude='.env' \
+       --exclude='client/public/voice' \
+       --exclude='client/public/voice-test' \
++      --exclude='client/public/voice-deleted' \
++      --exclude='client/public/voice-staging' \
++      --exclude='server/src/data/voice-line-review.json' \
+       --filter='protect client/public/voice/***' \
+       --filter='protect client/public/voice-test/***' \
++      --filter='protect client/public/voice-deleted/***' \
++      --filter='protect client/public/voice-staging/***' \
++      --filter='protect server/src/data/voice-line-review.json' \
+       "$SRC/" "$PROD/"; then
+   recover
+   die "rsync failed"
