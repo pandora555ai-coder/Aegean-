@@ -713,13 +713,16 @@ export function winnerTitleForName(name: string): string {
 }
 
 
-// Task 263 - the vocative placeholder inside the coronation's first line.
-// Deliberately NEVER substituted into the template that gets hashed: the
-// vocative is its own recorded clip, spliced ahead of the line (see
-// buildCoronationSequence, server/src/socrates.ts), so line 1 has exactly ONE
-// mp3 no matter who wins. Substituted into the DISPLAY text only, exactly the
-// way {name} already is - template is what names the file, text is what the
-// subtitle shows.
+// Task 263 - the vocative placeholder the coronation was once written with.
+// It has been unused in game code since the follow-up to 263 removed it from
+// the line itself, and Task 278 did not bring it back: the vocative is its
+// own recorded clip, spliced onto a line rather than substituted into it (see
+// buildCoronationSequence, server/src/socrates.ts), so the line that names
+// the winner has exactly ONE mp3 no matter who wins. Since Task 278 that
+// splice is a SUFFIX on the last line of coronation set B, not a prefix on a
+// first line. The name still reaches the DISPLAY text only, exactly the way
+// {name} already does - template is what names the file, text is what the
+// subtitle shows. Kept as the one place that spelling is written down.
 export const VOCATIVE_PLACEHOLDER = '{ΚΛΗΤΙΚΗ}';
 
 // Looks up the vocative form for a preset name; falls back to the

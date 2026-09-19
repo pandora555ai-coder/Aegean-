@@ -588,77 +588,46 @@ export const WINNER_LINES: readonly string[] = [
   'Ο μαθητής βρέθηκε. Η γνώση, όπως πάντα, μας διέφυγε.',
 ];
 
-// Task 247 - the CORONATION line: what Socrates says to the one person left
-// standing. Two variants of the SAME line, not a pool of two - they differ
-// only where Greek forces them to (σοφιστή/σοφίστρια, κανέναν/καμία), so the
-// beat says one thing and simply inflects it for who is standing there.
-// Chosen by NAME_GENDER (shared), never by the name's ending.
+// Task 278 - the CORONATION: what Socrates says to the one person left
+// standing, rebuilt as TWO complete three-line SETS, one spoken per game.
 //
-// No audio exists for either yet (Task 247's own scope). Both therefore ride
-// Task 154's missing-clip path: the host's fetch 404s, it calls onEnded()
-// immediately, and the beat ends on that ack at ~0ms instead of waiting out
-// SOCRATES_BACKSTOP_UNKNOWN_MS. That is the intended interim behaviour, and
-// it is why the beat needs its subtitle to render on the FIRST frame.
-export const CORONATION_LINES: Readonly<Record<'m' | 'f', string>> = {
-  m: "Σ' εσένα το λέω σοβαρά. Σοφιστή. Δεν το έχω πει ποτέ σε κανέναν… Πήγαινε να το πουλήσεις. Απόψε αξίζει.",
-  f: "Σ' εσένα το λέω σοβαρά. Σοφίστρια. Δεν το έχω πει ποτέ σε καμία… Πήγαινε να το πουλήσεις. Απόψε αξίζει.",
-};
+// Everything gendered is GONE with this task: Task 247's σοφιστή/σοφίστρια
+// pair, and with it the NAME_GENDER branch that chose between them. Not one
+// line below inflects for who won, so a winner whose name this codebase has
+// never seen is addressed exactly as well as one it has - which is the whole
+// point, since the only thing that ever made the coronation unspeakable was
+// not knowing a name's gender. There is no longer any such thing as a winner
+// this beat cannot address.
+//
+// Each set is a SEQUENCE, not a pool: three sentences of ONE argument, in
+// order, exactly like GAME_INTRO_SEQUENCE/ANAVASIS_INTRO_SEQUENCE and for the
+// same reason - picking one of the six at random would be nonsense.
+//
+// SET B - "the name". Its last line is the entire point of the set: the
+// winner's own name, spoken AFTER that line as a separate spliced clip (Task
+// 277's `suffix`), never baked into this sentence's own audio and never
+// substituted into the template that gets hashed.
+export const CORONATION_SET_B: readonly string[] = [
+  'Το πλήθος ξεχνάει. Ονόματα, νίκες, ήττες — όλα σβήνουν πριν σβήσουν οι δάδες.',
+  'Απόψε είδα κάτι σπάνιο. Το θέατρο έμαθε ένα όνομα απέξω.',
+  'Το δικό σου.',
+];
 
-// Gender known -> that variant. Gender UNKNOWN (a name absent from
-// NAME_GENDER, or a tie, whose winner is not one person) -> null, and the
-// caller falls back to the fully-voiced WINNER_LINES pool. That is the
-// degrade path: an unknown winner hears exactly what every winner heard
-// before this task, rather than a blank beat or a guessed gender.
-//
-// `state.usedLines` is deliberately NOT consulted or written: this beat fires
-// once per game by construction, and the two variants are mutually exclusive,
-// so pool-exhaustion bookkeeping has nothing to track here.
-export function pickCoronationLine(gender: 'm' | 'f' | null): PickedLine | null {
-  if (!gender) {
-    return null;
-  }
-  const template = CORONATION_LINES[gender];
-  // Task 271 - deleted degrades exactly like "gender unknown" does above:
-  // null, and the caller falls back to the fully-voiced WINNER_LINES pool.
-  if (isLineDeleted(template)) {
-    return null;
-  }
-  return { template, text: template, tag: LINE_TAGS[template] ?? null };
-}
+// SET C - "the silence". No name anywhere in it, by construction: nothing is
+// ever spliced onto any of its three lines, and it reads and sounds
+// identically for every winner in the game.
+export const CORONATION_SET_C: readonly string[] = [
+  'Ήρθα απόψε να κοροϊδέψω σοφιστές. Εύκολη δουλειά, συνήθως.',
+  'Κοιτάζω το σκορ σου και δεν βρίσκω τίποτα να κοροϊδέψω. Πρώτη φορά.',
+  'Η ειρωνεία μου σωπαίνει μπροστά σου. Μεγαλύτερο έπαθλο δεν έχω δώσει ποτέ.',
+];
 
-// Task 263 - the coronation is THREE lines spoken back to back, not one. The
-// two above are its LAST line; these are the first two.
-//
-// Line 1 has two variants that differ only by the vocative address spoken
-// AHEAD of it - a separate spliced clip (the beat's `prefix`), never part of
-// this sentence's own audio. The NAMELESS one is the default and will stay
-// the default for a long time: the named variant is playable only for a
-// winner whose vocative clip has actually been recorded, and there are 201
-// names.
-//
-// Fixed post-launch (a follow-up to Task 263): CORONATION_OPENER_NAMED used
-// to open with the literal placeholder `{ΚΛΗΤΙΚΗ}. `, which
-// stripPlaceholders (dev/voice/text.ts) strips to nothing but leaves the
-// bare ". " behind - lineHash(template, tag) then hashes THAT unstripped
-// template, so the AUDIO ACTUALLY GENERATED for this clip would have opened
-// on a stray spoken pause, never caught because nothing plays this clip back
-// for review before it ships. There is now no placeholder in this sentence
-// at all: the vocative's own word is the entire address, spliced ahead by
-// `prefix`, and this sentence starts clean at "Το πλήθος…". That makes this
-// constant BYTE-IDENTICAL to CORONATION_OPENER_PLAIN - same tag, same hash,
-// one mp3 literally serves both branches, `hasVocativeClip` only decides
-// whether `prefix` (the separate vocative clip) is spliced ahead of it.
-// Kept as two exports rather than collapsed into one: buildCoronationSequence
-// still branches on which name the caller passes, and a future re-divergence
-// (e.g. a genuinely different named sentence) shouldn't require re-adding a
-// second export from scratch. The vocative is still spliced into the DISPLAY
-// text below - that substitution no longer goes through the template.
-export const CORONATION_OPENER_NAMED =
-  'Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
-export const CORONATION_OPENER_PLAIN =
-  'Το πλήθος αγάπησε το όνομά σου νωρίς. Συνήθως το ξεχνάει πριν αδειάσει το θέατρο. Απόψε δεν θα το ξεχάσει.';
-export const CORONATION_LINE_TWO =
-  'Ήρθατε εδώ λέγοντας πως είστε σοφιστές. Το έλεγα κι εγώ όλη τη βραδιά — κοροϊδεύοντας.';
+export const CORONATION_SETS: readonly (readonly string[])[] = [CORONATION_SET_B, CORONATION_SET_C];
+
+// The ONE line in either set that the winner's name is spliced onto - set B's
+// last. Exported so both the builder below and the check harness name it the
+// same way instead of re-deriving "the third line of B" by index.
+export const CORONATION_NAME_LINE = CORONATION_SET_B[2];
 
 // The vocative clip a given winner would be addressed with, as a (template,
 // tag) pair like any other line - `getVocative`'s first real call site
@@ -673,42 +642,57 @@ export function coronationVocative(name: string | null): { template: string; tag
   return vocative ? { template: vocative, tag: null } : null;
 }
 
-// The whole coronation, in speaking order, or null when there is no single
-// gendered winner to speak it to (a tie, an unknown name) - in which case the
-// caller degrades to the fully-voiced WINNER_LINES pool exactly as Task 247
-// left it.
+// Which set this game speaks. A plain uniform pick among CORONATION_SETS:
+// nothing about the winner is consulted here at all, so BOTH sets are
+// reachable on every game for every winner - there is no name, gender or
+// clip condition that can make one of them unreachable.
 //
-// `hasVocativeClip` is decided by the CALLER (which is where disk access
-// lives, socratesAudio.ts) so this stays a pure line-bank function like every
-// other pick* above.
-export function buildCoronationSequence(
-  gender: 'm' | 'f' | null,
-  name: string | null,
-  hasVocativeClip: boolean,
-): PickedLine[] | null {
-  const third = pickCoronationLine(gender);
-  if (!third) {
-    return null;
+// Dev-only determinism hook, the same shape and the same NODE_ENV gate as
+// questions.ts's FORCE_QUESTION_ID (and kept for the same reason): a check
+// harness must be able to watch a NAMED ceremony and a NAMELESS one on
+// demand, rather than replaying whole games until the coin lands the way it
+// needs. Never fires in production even if the variable leaks there.
+export function pickCoronationSet(): readonly string[] {
+  const forced = !isProduction ? process.env.FORCE_CORONATION_SET : undefined;
+  if (forced === 'B') {
+    return CORONATION_SET_B;
   }
-  const useNamed = hasVocativeClip && name !== null;
-  const openerTemplate = useNamed ? CORONATION_OPENER_NAMED : CORONATION_OPENER_PLAIN;
-  const opener: PickedLine = {
-    template: openerTemplate,
-    // The ONLY place the winner's name enters this beat's text - prepended
-    // here, not via a placeholder inside `openerTemplate` (removed in the
-    // follow-up to Task 263, see the constant's own comment above): the
-    // template that gets hashed and sent to TTS must stay exactly what's
-    // actually spoken as this sentence's OWN clip, with the vocative word
-    // itself carried separately by `prefix`.
-    text: useNamed ? `${getVocative(name)}. ${openerTemplate}` : openerTemplate,
-    tag: LINE_TAGS[openerTemplate] ?? null,
-  };
-  const second: PickedLine = {
-    template: CORONATION_LINE_TWO,
-    text: CORONATION_LINE_TWO,
-    tag: LINE_TAGS[CORONATION_LINE_TWO] ?? null,
-  };
-  return [opener, second, third];
+  if (forced === 'C') {
+    return CORONATION_SET_C;
+  }
+  return CORONATION_SETS[Math.floor(Math.random() * CORONATION_SETS.length)];
+}
+
+// The whole coronation, in speaking order: one set, three lines. Null only if
+// every line of the chosen set has been deleted (Task 271) - there is no
+// "unspeakable winner" case any more, and with it no WINNER_LINES fallback.
+//
+// The winner's NAME enters the DISPLAY text here and nowhere else, and only
+// on CORONATION_NAME_LINE. It is deliberately NOT conditioned on whether a
+// vocative clip exists: the subtitle says the name either way (that is what
+// makes set B still land today, with zero vocative clips recorded for any of
+// the 201 names), while the separate vocative CLIP is spliced on only when it
+// is genuinely on disk - a decision the CALLER makes, since disk access lives
+// in socratesAudio.ts and this stays a pure line-bank function like every
+// other pick* above. A missing clip therefore silences the splice, never the
+// name.
+//
+// `name` null (a tie, whose winner is not one person) simply leaves the line
+// as its bare self: "Το δικό σου." still reads, and no placeholder or stray
+// punctuation is left behind, which is the {ΚΛΗΤΙΚΗ} lesson of Task 270.
+export function buildCoronationSequence(name: string | null): PickedLine[] | null {
+  // Task 271's deletion rule, applied exactly as pickSequence applies it to
+  // the other two sequences: a deleted line is SKIPPED, never played and
+  // never marked used, so the ceremony runs one line shorter rather than
+  // reading a missing clip's silence into it.
+  const lines = pickCoronationSet()
+    .filter((template) => !isLineDeleted(template))
+    .map<PickedLine>((template) => ({
+      template,
+      text: template === CORONATION_NAME_LINE && name ? `${template} ${getVocative(name)}.` : template,
+      tag: LINE_TAGS[template] ?? null,
+    }));
+  return lines.length > 0 ? lines : null;
 }
 
 // Task 138 built these pools empty (detection only); Task 139 wrote the
@@ -816,23 +800,19 @@ export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
 // dev/generate-voice-lines.ts, never to what's shown on screen or to
 // `text` below.
 export const LINE_TAGS: Partial<Record<string, string>> = {
-  // Task 263 - the coronation's first two lines. [serious]/[dry] are the
-  // bank's own vocabulary: the drafts said [solemn]/[dryly], which are not
-  // among the 11 tags, and were collapsed onto these exactly as Task 230
-  // already collapsed its own. Load-bearing like every entry here - the
-  // clip is found by lineHash(template, tag), so changing a tag renames the
-  // file. The coronation's THIRD line (CORONATION_LINES) was untagged as
-  // Task 247 wrote it; a follow-up to Task 263 gave both its gendered
-  // variants [warm] to match the rest of the bank's convention (every other
-  // line here carries a tag), completing the beat's tag sequence
-  // [serious] -> [dry] -> [warm] with no two adjacent beats sharing one.
-  // CORONATION_OPENER_NAMED and CORONATION_OPENER_PLAIN are now the same
-  // string (see CORONATION_OPENER_NAMED's own comment) - one entry, since
-  // TS rejects a literal object key repeated under two names.
-  [CORONATION_OPENER_PLAIN]: '[serious]',
-  [CORONATION_LINE_TWO]: '[dry]',
-  [CORONATION_LINES.m]: '[warm]',
-  [CORONATION_LINES.f]: '[warm]',
+  // Task 278 - the coronation's two three-line sets, replacing Task 263's
+  // opener/line-two and Task 247's gendered last line. Every tag here is from
+  // the bank's own 11-tag vocabulary. Load-bearing like every entry in this
+  // map - the clip is found by lineHash(template, tag), so changing a tag
+  // renames the file. Each set keeps the "no two adjacent beats share a tag"
+  // shape the beat has always had: B runs [thoughtful] -> [serious] ->
+  // [warm], C runs [sarcastic] -> [sighs] -> [serious].
+  [CORONATION_SET_B[0]]: '[thoughtful]',
+  [CORONATION_SET_B[1]]: '[serious]',
+  [CORONATION_SET_B[2]]: '[warm]',
+  [CORONATION_SET_C[0]]: '[sarcastic]',
+  [CORONATION_SET_C[1]]: '[sighs]',
+  [CORONATION_SET_C[2]]: '[serious]',
   // Task 236 - the 22 lines Task 230 generated, now wired into the pools
   // above. These tags are LOAD-BEARING, not decoration: the client finds a
   // clip by lineHash(template, tag), so a missing entry here would hash to
@@ -1770,9 +1750,13 @@ export function pickStageIntroLine(state: SocratesState, identity: StageIntroIde
   return pickLine(state, pool, {});
 }
 
-export function pickWinnerLine(state: SocratesState): PickedLine | null {
-  return pickLine(state, WINNER_LINES, {});
-}
+// Task 278 - pickWinnerLine is GONE with the coronation rebuild. It had
+// exactly one call site (phases.ts's pickWinnerBeatSequence), as the degrade
+// for a winner whose gender was unknown, and the rebuilt coronation has no
+// such case left to degrade from: both sets address anyone. WINNER_LINES
+// itself stays exactly where it is, still registered for generation below -
+// its eight clips are real files in the bank, and deleting the pool would
+// orphan them for nothing.
 
 // ============================= draw / numeric (Task 138) =============================
 // Detection only - no lines exist yet (DRAW_LINES/NUMERIC_LINES above are all
@@ -2003,13 +1987,13 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
     add(`STAGE_INTRO (stage ${identity})`, pool);
   }
   add('WINNER', WINNER_LINES);
-  // Task 247 - registered so `npm run voice:generate` will produce clips for
-  // the two coronation variants when the time comes. Until then both are
-  // simply missing from disk: the host's LOBBY prefetch (Task 154) 404s on
-  // them and drops the bytes, which is harmless, and the beat itself ends on
-  // the immediate onEnded() ack rather than a backstop.
-  add('CORONATION', [CORONATION_OPENER_NAMED, CORONATION_OPENER_PLAIN, CORONATION_LINE_TWO]);
-  add('CORONATION', Object.values(CORONATION_LINES));
+  // Task 278 - the two coronation SETS, six lines, registered so
+  // `npm run voice:generate` will produce their clips when the time comes.
+  // Until then all six are simply missing from disk: the host's LOBBY
+  // prefetch (Task 154) 404s on them and drops the bytes, which is harmless,
+  // and each beat ends on the immediate onEnded() ack rather than a backstop.
+  add('CORONATION', CORONATION_SET_B);
+  add('CORONATION', CORONATION_SET_C);
   // Task 263 - the vocative address clips, one per PRESET_NAMES entry. These
   // are what the coronation's named opener splices ahead of itself, and until
   // this task they were not registered anywhere, so `voice:generate` had no

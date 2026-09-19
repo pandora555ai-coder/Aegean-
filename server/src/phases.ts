@@ -16,7 +16,6 @@ import {
   STEAL_DURATION_MS,
   ServerEvents,
   climbEntryStep,
-  genderForName,
   stageForQuestionIndex,
   type ClimbRevealHostResult,
   type CrowdIntensityContext,
@@ -56,6 +55,7 @@ import {
   type ClimbRoundEntry,
 } from './climb.js';
 import {
+  CORONATION_NAME_LINE,
   LINES,
   buildCoronationSequence,
   coronationVocative,
@@ -65,7 +65,6 @@ import {
   pickGameIntroSequence,
   pickQuestionIntro,
   pickStageIntroLine,
-  pickWinnerLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
   stageIntroIdentity,
@@ -463,35 +462,36 @@ function winnerNameForBeat(room: Room): string | null {
   return leaders.length === 1 ? leaders[0].name : null;
 }
 
-// The line that beat speaks. Gender known -> the coronation variant for it;
-// gender unknown for ANY reason (a tie, a disconnected winner, a name absent
-// from NAME_GENDER) -> the original WINNER_LINES pool, which is fully voiced.
-// The degrade is therefore exactly what every winner heard before this task,
-// never a blank beat and never a guessed gender.
-// Task 263 - the coronation is a SEQUENCE now: three lines spoken back to
-// back, with the winner's vocative optionally spliced ahead of the first.
-// Returns the lines plus that prefix; empty `lines` means there was nothing to
-// say at all, and the caller ends the game directly.
+// Task 278 - the coronation is one of two three-line SETS, chosen at build
+// time, and there is no longer any winner it cannot address: the gender
+// branch and the WINNER_LINES degrade both go with this task, because the
+// only thing that ever made a winner unspeakable was not knowing their name's
+// gender, and nothing here asks any more.
+//
+// Returns the lines plus the winner's vocative as a SUFFIX (Task 277) -
+// spliced after the set's LAST line, which in set B is the one line that
+// names them, and only when that clip is genuinely on disk. Empty `lines`
+// means there was nothing to say at all (every line of the chosen set
+// deleted), and the caller ends the game directly.
 function pickWinnerBeatSequence(room: Room): {
   lines: PickedLine[];
-  prefix: { template: string; tag: string | null } | null;
+  suffix: { template: string; tag: string | null } | null;
 } {
   const name = winnerNameForBeat(room);
-  const vocative = coronationVocative(name);
-  // The NAMED opener is playable only when that winner's vocative clip is
-  // genuinely on disk. None have been recorded yet, so the nameless variant
-  // is what actually runs - which is precisely why it, not the named one, is
-  // the default: 201 names will be without a clip for a long time.
-  const hasVocativeClip = vocative !== null && hasSocratesClip(vocative.template, vocative.tag);
-  const coronation = buildCoronationSequence(name ? genderForName(name) : null, name, hasVocativeClip);
-  if (coronation) {
-    return { lines: coronation, prefix: hasVocativeClip ? vocative : null };
+  const coronation = buildCoronationSequence(name);
+  if (!coronation) {
+    return { lines: [], suffix: null };
   }
-  // Task 247's degrade, unchanged: no single gendered winner (a tie, a name
-  // absent from NAME_GENDER) -> the original, fully-voiced WINNER_LINES pool,
-  // as the one line it has always been.
-  const fallback = pickWinnerLine(room.socrates);
-  return { lines: fallback ? [fallback] : [], prefix: null };
+  // The name is ALREADY in that line's subtitle text whenever there is a name
+  // at all (buildCoronationSequence puts it there unconditionally); this
+  // decides only whether it is also SPOKEN. No vocative clip has been
+  // recorded for any of the 201 names yet, so today this is always null: the
+  // ceremony is READ with the winner's name and HEARD without it, which is
+  // the intended interim behaviour rather than a silent beat.
+  const vocative = coronationVocative(name);
+  const namesTheWinner = coronation[coronation.length - 1]?.template === CORONATION_NAME_LINE;
+  const hasVocativeClip = vocative !== null && hasSocratesClip(vocative.template, vocative.tag);
+  return { lines: coronation, suffix: namesTheWinner && hasVocativeClip ? vocative : null };
 }
 
 // Task 236 - the same beat, but several lines long: the opening narration
@@ -1123,7 +1123,7 @@ function advanceToNextQuestionOrGameOver(room: Room): void {
       return; // the finale runs its own phases and ends the game itself
     }
     const coronation = pickWinnerBeatSequence(room);
-    if (startSocratesSequence(room, 'WINNER', coronation.lines, coronation.prefix)) {
+    if (startSocratesSequence(room, 'WINNER', coronation.lines, null, coronation.suffix)) {
       return; // advanceFromSocrates calls finishGame once the LAST line is over
     }
     finishGame(room);
@@ -1811,7 +1811,7 @@ export function endDuelReveal(code: RoomCode): void {
 // winner, then finishGame.
 function endClimb(room: Room): void {
   const coronation = pickWinnerBeatSequence(room);
-  if (startSocratesSequence(room, 'WINNER', coronation.lines, coronation.prefix)) {
+  if (startSocratesSequence(room, 'WINNER', coronation.lines, null, coronation.suffix)) {
     return;
   }
   finishGame(room);

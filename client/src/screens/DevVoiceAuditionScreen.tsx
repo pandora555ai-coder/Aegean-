@@ -19,7 +19,7 @@ import { useSocketConnection } from '../useSocketConnection';
 // Task 271 - now also the line audition & DELETION tool. Deleting a line
 // does two independent things, both server-side (server/src/voiceDeletions.ts):
 // (1) excludes the line's TEMPLATE from every pick* function in
-// server/src/socrates.ts (pickLine/pickSequence/pickCoronationLine) so it
+// server/src/socrates.ts (pickLine/pickSequence/buildCoronationSequence) so it
 // can never be selected in a game again, in THIS process, immediately - no
 // restart needed; (2) moves (never unlinks) its mp3 out of bank/staging
 // into client/public/voice-deleted/, so a mistake is recoverable via

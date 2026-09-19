@@ -1,30 +1,40 @@
-// Task 263 - the coronation as a SERIAL beat: three lines spoken back to
-// back, with the winner's vocative optionally spliced ahead of line 1.
+// Task 278 - the coronation rebuilt: TWO agender three-line sets, no gender
+// branch, no WINNER_LINES fallback, and the winner's name spliced onto set
+// B's last line as a Task 277 SUFFIX.
 //
-// Same infra as dev/247-winner-gender-check.ts (which this descends from):
-// the REAL server in-process on a throwaway port set BEFORE the import, a
-// throwaway Vite serving the real client, a real browser TV, real player
-// sockets. The climb is SEEDED (startClimb, then one player forced to the
-// top) rather than played out over ~14 minutes - the coronation is the last
-// thing before GAME_OVER either way, and the game genuinely ends here.
+// Descended from the Task 263 harness this file used to be (and reusing its
+// infra verbatim): the REAL server in-process on a throwaway port set BEFORE
+// the import, a throwaway Vite serving the real client, a real browser TV,
+// real player sockets. The climb is SEEDED (startClimb, then one player
+// forced to the top) rather than played out over ~14 minutes - the coronation
+// is the last thing before GAME_OVER either way, and the game genuinely ends
+// here.
 //
-// FOUR things drive the shape of this harness:
+// FIVE things drive the shape of this harness:
 //
-//   1. NO AUDIO EXISTS for any coronation line, by design (Task 263 generates
-//      nothing). A missing clip makes the host call onEnded() at once (Task
-//      154), so every beat ends on a real ack at ~0ms rather than its
-//      backstop. That is what makes the SEQUENCING observable without sound,
-//      and it is the whole point of building this before the recordings.
-//   2. Proving the NAMED line-1 branch needs a vocative clip "on disk" - but
-//      in this checkout client/public/voice is a SYMLINK into /opt/party-game.
+//   1. NO AUDIO EXISTS for any of the six coronation lines, by design (Task
+//      278 generates nothing). A missing clip makes the host call onEnded()
+//      at once (Task 154), so every beat ends on a real ack at ~0ms rather
+//      than its backstop. That is what makes the SEQUENCING observable
+//      without sound, and it is the whole point of building this before the
+//      recordings.
+//   2. Proving the SUFFIX branch needs a vocative clip "on disk" - but in
+//      this checkout client/public/voice is a SYMLINK into /opt/party-game.
 //      So the server is booted with AEGEAN_DEV_VOICE_DIR (Task 263, dev-only,
 //      searched BEFORE the real dir) pointed at a throwaway directory, and
 //      scenario B writes ONE dummy file there and deletes it again. Nothing
 //      is ever written under /opt/party-game.
-//   3. The TV page IS the host display. A second raw socket emitting
+//   3. The set is a UNIFORM RANDOM pick per game, so a live scenario pins it
+//      with FORCE_CORONATION_SET (Task 278's dev-only hook, the same NODE_ENV
+//      gate as questions.ts's FORCE_QUESTION_ID) rather than replaying games
+//      until the coin lands. Scenario D measures the UNFORCED distribution.
+//   4. The TV page IS the host display. A second raw socket emitting
 //      HOST_REJOIN would steal it, so each beat's LINE is read from the
-//      server's own log via a console.log tee, not from a socket.
-//   4. Task 259's tap-to-start gate covers /host for any room without ?bot=,
+//      server's own log via a console.log tee, not from a socket. Subtitles
+//      are captured by a MutationObserver installed in the page (a RAW JS
+//      STRING - Task 259's `__name` trap), because with no clips these beats
+//      end in ~20ms and a 50ms DOM poll misses them outright.
+//   5. Task 259's tap-to-start gate covers /host for any room without ?bot=,
 //      so the gate is tapped before anything else can be clicked.
 //
 //   npx tsx dev/263-coronation-check.ts            all scenarios
@@ -39,11 +49,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
-import { ClientEvents, ServerEvents, CLIMB_TOP, NAME_GENDER, PRESET_NAMES, lineHash, getVocative, VOCATIVE_PLACEHOLDER } from '@game/shared';
+import { ClientEvents, ServerEvents, CLIMB_TOP, NAME_GENDER, PRESET_NAMES, lineHash, getVocative, stripPlaceholders } from '@game/shared';
 
 // The dev-only voice search path MUST be set before the server (and with it
 // socratesAudio.ts, which reads it once at module load) is imported below.
-const DEV_VOICE_DIR = mkdtempSync(path.join(tmpdir(), 'aegean-263-voice-'));
+const DEV_VOICE_DIR = mkdtempSync(path.join(tmpdir(), 'aegean-278-voice-'));
 process.env.AEGEAN_DEV_VOICE_DIR = DEV_VOICE_DIR;
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -147,6 +157,48 @@ function joinPlayer(code: string, name: string, avatarIndex: number): Promise<So
   return done.then(() => s);
 }
 
+// Every subtitle this page EVER renders, captured by a MutationObserver
+// rather than polled. With no clip on disk each coronation beat ends in
+// ~20ms, far faster than any practical poll interval - the Task 263 harness
+// polled at 50ms and could only ever see whichever beat it happened to catch.
+//
+// A RAW JS STRING, never a TS closure: tsx/esbuild's keep-names support
+// rewrites a named function into `function P(){} __name(P,"P")`, and shipping
+// that into the browser throws "__name is not defined" and silently kills the
+// whole probe (Task 259's own trap, documented in CLAUDE.md).
+// Observes `document`, NOT document.documentElement: an init script runs at
+// document-start, where documentElement can still be null, and observe(null)
+// throws - which kills the rest of this IIFE while leaving the array above
+// assigned, so the probe reports an empty result rather than an error. That
+// is exactly how this harness's first run came back "0 subtitles" on beats
+// that demonstrably render them.
+//
+// Belt and braces, because a beat with no clip ends in ~15ms: the observer
+// catches every mutation, AND a 5ms in-page interval catches anything React
+// commits and tears down between microtask checkpoints (an out-of-process
+// Playwright poll could never run tight enough to see these at all).
+const SUBTITLE_PROBE = `
+  window.__aegeanSubs = [];
+  (function () {
+    var collect = function () {
+      var nodes = document.querySelectorAll('[data-testid="socrates-subtitle"]');
+      for (var i = 0; i < nodes.length; i++) {
+        var t = (nodes[i].textContent || '').trim();
+        if (t && window.__aegeanSubs.indexOf(t) === -1) window.__aegeanSubs.push(t);
+      }
+    };
+    try {
+      new MutationObserver(collect).observe(document, {
+        childList: true, subtree: true, characterData: true,
+      });
+    } catch (e) {
+      window.__aegeanProbeError = String(e);
+    }
+    setInterval(collect, 5);
+    collect();
+  })();
+`;
+
 async function newTvPage(code: string): Promise<Page> {
   const page = await browser!.newPage({ viewport: { width: 1280, height: 720 } });
   await page.addInitScript((c: string) => {
@@ -156,6 +208,7 @@ async function newTvPage(code: string): Promise<Page> {
       /* opaque origin - the real navigation re-runs this */
     }
   }, code);
+  await page.addInitScript({ content: SUBTITLE_PROBE });
   // Task 243 - ?clock=off, exactly as dev/climb-ceremony-check.ts does it:
   // Task 239's GameClock renders an mm:ss readout, so a page-wide digit sweep
   // would otherwise pick up cosmetic chrome and read as a ceremony violation.
@@ -176,7 +229,7 @@ type RoomLike = {
   phase: string;
   gameIntroPlayed: boolean;
   players: Map<string, { playerId: string; name: string }>;
-  pendingSocratesBeat: { line: string; lineTemplate: string; prefixTemplate?: string | null } | null;
+  socrates: { usedLines: Set<string> };
   climb: {
     questions: Array<{ correctIndex: number }>;
     questionIndex: number;
@@ -198,6 +251,7 @@ interface Beat {
   backstopMs: number;
   line: string;
   prefix: string | null;
+  suffix: string | null;
   startTs: number;
   endTs: number | null;
   endedBy: string | null;
@@ -207,19 +261,18 @@ interface LiveResult {
   winnerName: string;
   beats: Beat[];
   subtitles: string[];
-  anavasisSamples: number[];
-  socratesLefts: string[];
-  sceneDigits: string;
-  pageDigits: string;
-  cornerRoomCode: string;
+  usedWinnerPoolLines: string[];
   winnerTitle: string;
-  prefixSeen: string | null;
 }
 
 // One whole game: a seeded climb whose named player is forced to the top,
 // then the coronation and GAME_OVER.
-async function runLive(winnerName: string, others: string[]): Promise<LiveResult> {
+async function runLive(winnerName: string, others: string[], forcedSet: 'B' | 'C'): Promise<LiveResult> {
   const logMark = serverLog.length;
+  // Task 278's dev-only hook - read by pickCoronationSet at ceremony BUILD
+  // time, which happens inside endClimb below.
+  process.env.FORCE_CORONATION_SET = forcedSet;
+
   const host = connect();
   const created = waitFor<{ code: string }>(host, ServerEvents.ROOM_CREATED, 15000);
   host.emit(ClientEvents.CREATE_ROOM, { mode: 'quiz' });
@@ -236,39 +289,6 @@ async function runLive(winnerName: string, others: string[]): Promise<LiveResult
   const room = getRoom(code) as unknown as RoomLike;
   room.gameIntroPlayed = true; // Task 237 - or GAME_INTRO_SEQUENCE plays here instead
 
-  // Sample the TV while the coronation plays: the subtitle text (Task 247),
-  // whether the Anavasis world stays committed (Task 237 - Socrates must not
-  // walk back to the theatre for this beat), and Socrates' own computed left.
-  const subtitles: string[] = [];
-  const anavasisSamples: number[] = [];
-  const socratesLefts = new Set<string>();
-  let sampling = true;
-  const sampler = (async () => {
-    const seen = new Set<string>();
-    while (sampling) {
-      try {
-        for (const raw of await page.locator('[data-testid="socrates-subtitle"]').allTextContents()) {
-          const t = raw.trim();
-          if (t && !seen.has(t)) {
-            seen.add(t);
-            subtitles.push(t);
-          }
-        }
-        if (room.phase === 'SOCRATES' || room.phase === 'GAME_OVER') {
-          anavasisSamples.push(await page.locator('[data-testid="anavasis-scene-container"]').count());
-          const fig = page.locator('[data-testid="socrates-figure"]').first();
-          if ((await fig.count()) > 0) {
-            const left = await fig.evaluate((el) => getComputedStyle(el as HTMLElement).left);
-            socratesLefts.add(left);
-          }
-        }
-      } catch {
-        /* page busy - keep sampling */
-      }
-      await delay(50);
-    }
-  })();
-
   startClimb(room as never);
   await waitForPhase(room, 'CLIMB_QUESTION');
 
@@ -280,7 +300,9 @@ async function runLive(winnerName: string, others: string[]): Promise<LiveResult
   players[0].emit(ClientEvents.CLIMB_SUBMIT, { choice: correct });
 
   await waitForPhase(room, 'GAME_OVER', 120000);
-  await delay(400);
+  await delay(600);
+
+  const subtitles = (await page.evaluate('window.__aegeanSubs')) as string[];
 
   // The crowning is up; PodiumView replaces it 6s later, so read it now.
   let winnerTitle = '(never rendered)';
@@ -291,34 +313,26 @@ async function runLive(winnerName: string, others: string[]): Promise<LiveResult
     }
     await delay(100);
   }
-  // Task 225's own two-part definition of "the ceremony shows no digits",
-  // copied from dev/climb-ceremony-check.ts rather than reinvented: the SCENE
-  // container must contain no digit at all, while the whole PAGE is allowed
-  // exactly the corner room code (chrome, not a result). innerText, never
-  // textContent - the latter sweeps up the <style> tags' own CSS numbers, the
-  // trap Task 239's follow-up documented.
-  const sceneText = (await page.getByTestId('anavasis-scene-container').innerText()) ?? '';
-  const pageText = (await page.locator('body').innerText()) ?? '';
-  const cornerRoomCode =
-    (await page.getByTestId('corner-room-code').count()) > 0
-      ? ((await page.getByTestId('corner-room-code').textContent()) ?? '').trim()
-      : '';
-  const sceneDigits = (sceneText.match(/\d/g) ?? []).join('');
-  const pageDigits = (pageText.match(/\d/g) ?? []).join('');
 
-  sampling = false;
-  await sampler;
+  // Did the ceremony consult the OLD fallback pool at all? pickLine marks
+  // every line it returns in state.usedLines, so a WINNER_LINES entry landing
+  // there is the fingerprint of the degrade path Task 278 deleted.
+  const { WINNER_LINES } = await import('../server/src/socrates.js');
+  const usedWinnerPoolLines = WINNER_LINES.filter((line) => room.socrates.usedLines.has(line));
 
   // Rebuild the beat timeline from the server's own log.
   const beats: Beat[] = [];
   for (const { ts, text } of serverLog.slice(logMark)) {
-    const start = text.match(/Socrates \(WINNER\) beat (\d+) backstop=(\d+)ms(?: prefix="([^"]*)")? — "(.*)"$/);
+    const start = text.match(
+      /Socrates \(WINNER\) beat (\d+) backstop=(\d+)ms(?: prefix="([^"]*)")?(?: suffix="([^"]*)")? — "(.*)"$/,
+    );
     if (start) {
       beats.push({
         id: Number(start[1]),
         backstopMs: Number(start[2]),
         prefix: start[3] ?? null,
-        line: start[4],
+        suffix: start[4] ?? null,
+        line: start[5],
         startTs: ts,
         endTs: null,
         endedBy: null,
@@ -335,158 +349,233 @@ async function runLive(winnerName: string, others: string[]): Promise<LiveResult
     }
   }
 
-  // Read off the server's own log, NOT by sampling room.pendingSocratesBeat:
-  // with no clip recorded these beats end in ~20ms, so a 50ms poll misses the
-  // splice entirely (it did, in this harness's first run).
-  const prefixSeen = beats[0]?.prefix ?? null;
-
   await page.close();
   host.disconnect();
   for (const p of players) p.disconnect();
+  delete process.env.FORCE_CORONATION_SET;
 
-  return {
-    winnerName,
-    beats,
-    subtitles,
-    anavasisSamples,
-    socratesLefts: [...socratesLefts],
-    sceneDigits,
-    pageDigits,
-    cornerRoomCode,
-    winnerTitle,
-    prefixSeen,
-  };
+  return { winnerName, beats, subtitles, usedWinnerPoolLines, winnerTitle };
 }
 
-async function reportLive(title: string, r: LiveResult, expectNamed: boolean): Promise<void> {
-  const { CORONATION_OPENER_NAMED, CORONATION_OPENER_PLAIN, CORONATION_LINE_TWO, CORONATION_LINES } = await import(
-    '../server/src/socrates.js'
-  );
+async function reportLive(
+  title: string,
+  r: LiveResult,
+  expectSet: 'B' | 'C',
+  expectSuffix: boolean,
+): Promise<void> {
+  const { CORONATION_SET_B, CORONATION_SET_C, CORONATION_NAME_LINE } = await import('../server/src/socrates.js');
+  const set = expectSet === 'B' ? CORONATION_SET_B : CORONATION_SET_C;
+  const vocative = getVocative(r.winnerName);
+
   say(`\n=== ${title} ===`);
-  say(`  winner: ${r.winnerName}  (NAME_GENDER=${(NAME_GENDER as Record<string, string>)[r.winnerName] ?? 'ABSENT'})`);
+  say(`  winner: ${r.winnerName}  (vocative "${vocative}", NAME_GENDER=${(NAME_GENDER as Record<string, string>)[r.winnerName] ?? 'ABSENT'})`);
   say(`  beats emitted: ${r.beats.length}`);
   for (const [i, b] of r.beats.entries()) {
     const held = b.endTs === null ? '(never ended)' : `${b.endTs - b.startTs}ms`;
-    say(`    #${i + 1} id=${b.id} backstop=${b.backstopMs}ms held=${held} endedBy=${b.endedBy ?? 'BACKSTOP'}`);
+    say(`    #${i + 1} id=${b.id} backstop=${b.backstopMs}ms held=${held} endedBy=${b.endedBy ?? 'BACKSTOP'} suffix=${b.suffix === null ? 'none' : `"${b.suffix}"`}`);
     say(`        "${b.line}"`);
   }
   check(`${title}: exactly 3 beats`, r.beats.length === 3, `${r.beats.length}`);
-  const helds = r.beats.filter((b) => b.endTs !== null).map((b) => b.endTs! - b.startTs);
+  check(
+    `${title}: the three beats ARE set ${expectSet}, in order`,
+    r.beats.length === 3 && r.beats.every((b, i) => b.line.startsWith(set[i])),
+    r.beats.map((b) => b.line.slice(0, 18) + '…').join(' | '),
+  );
   check(
     `${title}: every beat ended on a real audio ack`,
     r.beats.length > 0 && r.beats.every((b) => b.endedBy === ClientEvents.SOCRATES_AUDIO_ENDED),
     r.beats.map((b) => b.endedBy ?? 'BACKSTOP').join(', '),
   );
-  check(`${title}: each beat held < 1000ms (missing clips ack at ~0ms)`, helds.every((h) => h < 1000), `held = ${helds.join(', ')}ms`);
-
-  const line1 = r.beats[0]?.line ?? '';
-  const isNamed = line1.endsWith(CORONATION_OPENER_PLAIN) && line1 !== CORONATION_OPENER_PLAIN;
-  const isPlain = line1 === CORONATION_OPENER_PLAIN;
-  say(`  line-1 variant selected: ${isNamed ? 'NAMED (vocative substituted)' : isPlain ? 'NAMELESS fallback' : '(neither!)'}`);
-  say(`  beat-1 spliced prefix  : ${r.prefixSeen === null ? 'null (no splice)' : `"${r.prefixSeen}"`}`);
-  check(`${title}: line-1 variant is ${expectNamed ? 'NAMED' : 'NAMELESS'}`, expectNamed ? isNamed : isPlain, line1.slice(0, 40) + '…');
+  const helds = r.beats.filter((b) => b.endTs !== null).map((b) => b.endTs! - b.startTs);
   check(
-    `${title}: prefix ${expectNamed ? 'present' : 'absent'}`,
-    expectNamed ? r.prefixSeen !== null : r.prefixSeen === null,
-    String(r.prefixSeen),
+    `${title}: each beat held < 1000ms (missing clips ack at ~0ms, no backstop)`,
+    helds.length === r.beats.length && helds.every((h) => h < 1000),
+    `held = ${helds.join(', ')}ms against backstops ${r.beats.map((b) => b.backstopMs).join(', ')}ms`,
   );
-  check(`${title}: beat 2 is coronation line 2`, r.beats[1]?.line === CORONATION_LINE_TWO, (r.beats[1]?.line ?? '').slice(0, 40) + '…');
-  const gender = (NAME_GENDER as Record<string, 'm' | 'f'>)[r.winnerName];
-  say(`  line-3 variant: ${r.beats[2]?.line === CORONATION_LINES.m ? '3α (m)' : r.beats[2]?.line === CORONATION_LINES.f ? '3β (f)' : '(neither!)'}`);
-  check(`${title}: beat 3 is the ${gender} variant`, r.beats[2]?.line === CORONATION_LINES[gender], (r.beats[2]?.line ?? '').slice(0, 40) + '…');
 
-  // INVERSE (criterion 4)
+  // The SUFFIX - the spliced vocative clip, the only audio that ever carries
+  // the name.
+  const last = r.beats[r.beats.length - 1];
+  check(
+    `${title}: spliced suffix ${expectSuffix ? `present ("${vocative}")` : 'ABSENT (no vocative clip on disk)'}`,
+    expectSuffix ? last?.suffix === vocative : r.beats.every((b) => b.suffix === null),
+    r.beats.map((b) => (b.suffix === null ? 'none' : `"${b.suffix}"`)).join(', '),
+  );
+  check(
+    `${title}: no beat carries a PREFIX (Task 278 moved the splice to the end)`,
+    r.beats.every((b) => b.prefix === null),
+    r.beats.map((b) => String(b.prefix)).join(', '),
+  );
+
+  // The SUBTITLE - which must carry the name in set B whether or not any clip
+  // exists, since that is the whole fallback rule.
+  say(`  subtitles rendered (${r.subtitles.length}):`);
+  for (const s of r.subtitles) say(`      "${s}"`);
+  const nameLineSubtitle = r.subtitles.find((s) => s.startsWith(CORONATION_NAME_LINE));
+  if (expectSet === 'B') {
+    check(
+      `${title}: the name line's SUBTITLE shows the winner's name`,
+      nameLineSubtitle === `${CORONATION_NAME_LINE} ${vocative}.`,
+      `"${nameLineSubtitle ?? '(not rendered)'}" vs expected "${CORONATION_NAME_LINE} ${vocative}."`,
+    );
+  } else {
+    check(
+      `${title}: NO subtitle anywhere mentions the winner's name`,
+      r.subtitles.every((s) => !s.includes(vocative) && !s.includes(r.winnerName)),
+      `${r.subtitles.length} subtitles, none containing "${vocative}"/"${r.winnerName}"`,
+    );
+  }
+  check(
+    `${title}: every rendered coronation subtitle belongs to set ${expectSet}`,
+    r.subtitles.filter((s) => set.some((line) => s.startsWith(line))).length === 3,
+    `${r.subtitles.filter((s) => set.some((line) => s.startsWith(line))).length}/3 matched`,
+  );
+
+  // The removed fallback.
+  check(
+    `${title}: the WINNER_LINES pool was never consulted`,
+    r.usedWinnerPoolLines.length === 0,
+    r.usedWinnerPoolLines.length === 0 ? '0 WINNER_LINES entries marked used' : r.usedWinnerPoolLines.join(' | '),
+  );
+
+  // INVERSE - the gendered winner-screen title is UNTOUCHED by this task.
+  const expectTitle = (NAME_GENDER as Record<string, string>)[r.winnerName] === 'f' ? 'Η ΣΟΦΙΣΤΡΙΑ' : 'Ο ΣΟΦΙΣΤΗΣ';
   say(`  ceremony winner-title  : "${r.winnerTitle}"`);
-  say(`  digits IN THE SCENE    : ${r.sceneDigits === '' ? 'NONE' : `"${r.sceneDigits}"`}`);
-  say(`  digits on the WHOLE page: ${r.pageDigits === '' ? 'NONE' : `"${r.pageDigits}"`} (corner room code = "${r.cornerRoomCode}")`);
-  say(`  subtitles rendered     : ${r.subtitles.length} ${JSON.stringify(r.subtitles.map((s) => s.slice(0, 28) + '…'))}`);
-  say(`  anavasis container     : ${r.anavasisSamples.length} samples, min=${Math.min(...r.anavasisSamples)}, max=${Math.max(...r.anavasisSamples)}`);
-  say(`  socrates computed left : ${JSON.stringify(r.socratesLefts)}`);
-  check(`${title}: ceremony scene shows ZERO digits`, r.sceneDigits === '', r.sceneDigits === '' ? '0 digits' : `found "${r.sceneDigits}"`);
   check(
-    `${title}: the only digits on the whole page are the room code`,
-    r.pageDigits === r.cornerRoomCode.replace(/\D/g, ''),
-    `page "${r.pageDigits}" vs room code "${r.cornerRoomCode}"`,
+    `${title}: the gendered winner-screen title still renders (${expectTitle})`,
+    r.winnerTitle.replace(/\s+/g, ' ').includes(expectTitle),
+    `"${r.winnerTitle}"`,
   );
-  check(
-    `${title}: Anavasis world never dropped during the beats`,
-    r.anavasisSamples.length > 0 && r.anavasisSamples.every((n) => n === 1),
-    `min=${Math.min(...r.anavasisSamples)}`,
-  );
-  check(`${title}: at least one coronation subtitle rendered`, r.subtitles.length > 0, `${r.subtitles.length}`);
 }
 
 // --------------------------------------------------------------------------
-// D - the static facts: hashes, name-independence, what is registered.
+// D - the static facts: the six texts, their hashes, what is registered, and
+// how the set is chosen.
 // --------------------------------------------------------------------------
 async function runStatic(): Promise<void> {
   const {
-    CORONATION_OPENER_NAMED,
-    CORONATION_OPENER_PLAIN,
-    CORONATION_LINE_TWO,
-    CORONATION_LINES,
+    CORONATION_SET_B,
+    CORONATION_SET_C,
+    CORONATION_SETS,
+    CORONATION_NAME_LINE,
+    WINNER_LINES,
     LINE_TAGS,
     buildCoronationSequence,
-    coronationVocative,
     collectVoiceLineEntries,
   } = await import('../server/src/socrates.js');
 
-  say('\n=== D: the four texts, their hashes, and what is on disk ===');
+  const ALL = [...CORONATION_SET_B, ...CORONATION_SET_C];
   const h = (t: string) => lineHash(t, LINE_TAGS[t] ?? null);
   const onDisk = (t: string) => existsSync(path.join(REAL_VOICE_DIR, `${h(t)}.mp3`));
-  for (const [label, t] of [
-    ['line1 named', CORONATION_OPENER_NAMED],
-    ['line1 plain', CORONATION_OPENER_PLAIN],
-    ['line2      ', CORONATION_LINE_TWO],
-    ['line3 α (m)', CORONATION_LINES.m],
-    ['line3 β (f)', CORONATION_LINES.f],
-  ] as const) {
-    say(`  ${label}  tag=${String(LINE_TAGS[t] ?? 'null').padEnd(10)} hash=${h(t)}  onDisk=${onDisk(t)}`);
+
+  say('\n=== D: the six texts, their tags and hashes ===');
+  for (const [i, t] of CORONATION_SET_B.entries()) {
+    say(`  B${i + 1}  tag=${String(LINE_TAGS[t] ?? 'null').padEnd(13)} hash=${h(t)}  onDisk=${onDisk(t)}  "${t}"`);
+  }
+  for (const [i, t] of CORONATION_SET_C.entries()) {
+    say(`  C${i + 1}  tag=${String(LINE_TAGS[t] ?? 'null').padEnd(13)} hash=${h(t)}  onDisk=${onDisk(t)}  "${t}"`);
   }
 
-  say('\n  line-1 hash is NAME-INDEPENDENT:');
+  check('D: all six lines carry a tag', ALL.every((t) => Boolean(LINE_TAGS[t])), ALL.map((t) => LINE_TAGS[t]).join(' '));
+  check('D: six DISTINCT hashes', new Set(ALL.map(h)).size === 6, `${new Set(ALL.map(h)).size} distinct`);
+  // The {ΚΛΗΤΙΚΗ} lesson of Task 270: what gets hashed is what gets SPOKEN,
+  // so a placeholder (or the punctuation left behind when one is stripped)
+  // would be recorded into the clip itself.
+  check(
+    'D: ZERO placeholders in any hashed text',
+    ALL.every((t) => !/\{[^}]+\}/.test(t)),
+    'no {...} in any of the six',
+  );
+  check(
+    'D: stripping placeholders changes NOTHING (no stray punctuation)',
+    ALL.every((t) => stripPlaceholders(t) === t),
+    'stripPlaceholders(t) === t for all six',
+  );
+  check(
+    'D: no hashed text contains any preset NAME or vocative',
+    ALL.every((t) => !PRESET_NAMES.some((n) => t.includes(n) || t.includes(getVocative(n)))),
+    `checked all ${PRESET_NAMES.length} preset names + vocatives against all six`,
+  );
+  check(
+    'D: ZERO coronation clips exist on disk',
+    ALL.every((t) => !onDisk(t)),
+    `${ALL.filter(onDisk).length}/6 present in ${REAL_VOICE_DIR}`,
+  );
+
+  const cor = collectVoiceLineEntries().filter((e) => e.moment === 'CORONATION');
+  say(`\n  collectVoiceLineEntries CORONATION entries: ${cor.length}`);
+  check('D: exactly the six lines are registered for generation', cor.length === 6, `${cor.length}`);
+  check(
+    'D: every registered CORONATION hash matches the computed one',
+    ALL.every((t) => cor.some((e) => e.hash === h(t))),
+    cor.map((e) => e.hash).join(' '),
+  );
+
+  // --- set selection -------------------------------------------------------
+  say('\n  set selection (UNFORCED), 40 ceremony builds:');
+  delete process.env.FORCE_CORONATION_SET;
+  const counts = { B: 0, C: 0, other: 0 };
+  const namedTexts = new Set<string>();
+  let winnerPoolLeak = 0;
+  for (let i = 0; i < 40; i++) {
+    const seq = buildCoronationSequence('Νίκος')!;
+    if (seq[0].template === CORONATION_SET_B[0]) counts.B++;
+    else if (seq[0].template === CORONATION_SET_C[0]) counts.C++;
+    else counts.other++;
+    namedTexts.add(seq[seq.length - 1].text);
+    if (seq.some((l) => (WINNER_LINES as readonly string[]).includes(l.template))) winnerPoolLeak++;
+  }
+  say(`    set B: ${counts.B}   set C: ${counts.C}   neither: ${counts.other}`);
+  check('D: both sets are reachable (each drawn at least once in 40)', counts.B > 0 && counts.C > 0, `B=${counts.B}, C=${counts.C}`);
+  check('D: every build is one of the two sets', counts.other === 0, `${counts.other} builds matched neither`);
+  check('D: no build ever contains a WINNER_LINES entry', winnerPoolLeak === 0, `${winnerPoolLeak}/40`);
+  check('D: exactly 2 sets registered', CORONATION_SETS.length === 2, `${CORONATION_SETS.length}`);
+
+  // --- the forcing hook, and where the name goes ---------------------------
+  process.env.FORCE_CORONATION_SET = 'B';
+  const b = buildCoronationSequence('Νίκος')!;
+  process.env.FORCE_CORONATION_SET = 'C';
+  const c = buildCoronationSequence('Νίκος')!;
+  delete process.env.FORCE_CORONATION_SET;
+  check('D: FORCE_CORONATION_SET=B selects set B', b[0].template === CORONATION_SET_B[0], b[0].template.slice(0, 24) + '…');
+  check('D: FORCE_CORONATION_SET=C selects set C', c[0].template === CORONATION_SET_C[0], c[0].template.slice(0, 24) + '…');
+
+  say('\n  where the winner\'s name goes (set B, winner Νίκος):');
+  for (const l of b) say(`    template="${l.template.slice(0, 26)}…"  text="${l.text.slice(0, 34)}…"`);
+  check(
+    'D: the name is in the last line\'s TEXT but never its TEMPLATE',
+    b[2].text === `${CORONATION_NAME_LINE} Νίκο.` && b[2].template === CORONATION_NAME_LINE,
+    `text="${b[2].text}" template="${b[2].template}"`,
+  );
+  check(
+    'D: set B\'s other two lines are untouched by the name',
+    b[0].text === b[0].template && b[1].text === b[1].template,
+    'text === template for B1 and B2',
+  );
+  check(
+    'D: set C carries the name NOWHERE',
+    c.every((l) => l.text === l.template),
+    'text === template for all three C lines',
+  );
+  // A TIE has no single winner to name. The line must degrade to its bare
+  // self - no placeholder, no dangling separator (the Task 270 lesson again).
+  process.env.FORCE_CORONATION_SET = 'B';
+  const tie = buildCoronationSequence(null)!;
+  delete process.env.FORCE_CORONATION_SET;
+  check(
+    'D: a nameless winner (a tie) leaves the line bare, no stray punctuation',
+    tie[2].text === CORONATION_NAME_LINE,
+    `"${tie[2].text}"`,
+  );
+  // The hash is what names the mp3, so it must not move with the winner.
   const hashes = new Set<string>();
-  for (const name of ['Νίκος', 'Μαρία', 'Φίλιππος', 'Ξενοφών']) {
-    const seq = buildCoronationSequence((NAME_GENDER as Record<string, 'm' | 'f'>)[name], name, true)!;
-    hashes.add(lineHash(seq[0].template, seq[0].tag));
-    say(`    winner=${name.padEnd(9)} hash=${lineHash(seq[0].template, seq[0].tag)}  text="${seq[0].text.slice(0, 26)}…"`);
+  for (const name of ['Νίκος', 'Μαρία', 'Άρης', 'Χαρά']) {
+    process.env.FORCE_CORONATION_SET = 'B';
+    const seq = buildCoronationSequence(name)!;
+    delete process.env.FORCE_CORONATION_SET;
+    hashes.add(seq.map((l) => lineHash(l.template, l.tag)).join(','));
   }
-  check('D: one hash for line 1 across all winners', hashes.size === 1, `${hashes.size} distinct`);
-  // Task 266 - the placeholder is GONE by design (a post-263 fix,
-  // server/src/socrates.ts): the vocative is spliced ahead as its own clip
-  // (`prefix`), never substituted into this sentence's own template, so
-  // CORONATION_OPENER_NAMED no longer carries {ΚΛΗΤΙΚΗ} at all and is now
-  // byte-identical to CORONATION_OPENER_PLAIN (same tag, same hash, one
-  // mp3 serves both branches). The old assertion expected the opposite.
-  check(
-    'D: CORONATION_OPENER_NAMED carries no placeholder and is byte-identical to PLAIN',
-    !CORONATION_OPENER_NAMED.includes(VOCATIVE_PLACEHOLDER) && CORONATION_OPENER_NAMED === CORONATION_OPENER_PLAIN,
-    CORONATION_OPENER_NAMED === CORONATION_OPENER_PLAIN
-      ? 'byte-identical, no placeholder'
-      : `still differs: "${CORONATION_OPENER_NAMED}"`,
-  );
-
-  const entries = collectVoiceLineEntries();
-  const voc = entries.filter((e) => e.moment === 'VOCATIVE');
-  const cor = entries.filter((e) => e.moment === 'CORONATION');
-  say('\n  collectVoiceLineEntries:');
-  say(`    total entries      : ${entries.length}`);
-  say(`    CORONATION entries : ${cor.length}`);
-  say(`    VOCATIVE entries   : ${voc.length}  (PRESET_NAMES=${PRESET_NAMES.length}, distinct vocatives=${new Set(PRESET_NAMES.map(getVocative)).size})`);
-  say(`    on disk (real dir) : coronation ${cor.filter((e) => existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))).length}/${cor.length}, vocative ${voc.filter((e) => existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))).length}/${voc.length}`);
-  check('D: vocatives are registered for generation', voc.length > 0, `${voc.length}`);
-  // Task 266 - 4 now, not 5: collectVoiceLineEntries' `add` dedupes by exact
-  // line text (seenLines), and since CORONATION_OPENER_NAMED and
-  // CORONATION_OPENER_PLAIN are now the same string, the opener registers
-  // as ONE entry instead of two. opener + line2 + line3(m) + line3(f) = 4.
-  check('D: all 4 coronation texts registered (opener collapsed to 1 since NAMED===PLAIN)', cor.length === 4, `${cor.length}`);
-  check(
-    'D: ZERO coronation/vocative clips exist on disk',
-    [...cor, ...voc].every((e) => !existsSync(path.join(REAL_VOICE_DIR, `${e.hash}.mp3`))),
-    'none present',
-  );
-  const v = coronationVocative('Νίκος')!;
-  say(`    vocative for Νίκος : "${v.template}" tag=${v.tag} hash=${lineHash(v.template, v.tag)}`);
+  check('D: set B hashes identically for every winner', hashes.size === 1, `${hashes.size} distinct hash-triples`);
 }
 
 async function main(): Promise<void> {
@@ -508,8 +597,8 @@ async function main(): Promise<void> {
   if (run('D')) await runStatic();
 
   if (run('A')) {
-    say('\n--- A: no vocative clip anywhere (the real, shipping case) ---');
-    await reportLive('A (Νίκος, no clip)', await runLive('Νίκος', ['Μαρία', 'Άρης']), false);
+    say('\n--- A: set B, no vocative clip anywhere (the real, shipping case) ---');
+    await reportLive('A (Νίκος, set B, no clip)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', false);
   }
 
   if (run('B')) {
@@ -519,15 +608,15 @@ async function main(): Promise<void> {
     const v = coronationVocative('Νίκος')!;
     const dummy = path.join(DEV_VOICE_DIR, `${lineHash(v.template, v.tag)}.mp3`);
     writeFileSync(dummy, Buffer.alloc(8000));
-    say(`\n--- B: a dummy vocative clip for Νίκος ("${v.template}") at ${dummy} ---`);
-    await reportLive('B (Νίκος, clip present)', await runLive('Νίκος', ['Μαρία', 'Άρης']), true);
+    say(`\n--- B: set B with a dummy vocative clip for Νίκος ("${v.template}") at ${dummy} ---`);
+    await reportLive('B (Νίκος, set B, clip present)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', true);
     rmSync(dummy);
     say(`  dummy deleted; dev voice dir now holds: ${JSON.stringify(readdirSync(DEV_VOICE_DIR))}`);
   }
 
   if (run('C')) {
-    say('\n--- C: a FEMALE winner (line 3β) ---');
-    await reportLive('C (Μαρία, no clip)', await runLive('Μαρία', ['Νίκος', 'Άρης']), false);
+    say('\n--- C: set C (no name anywhere), and a FEMALE winner for the title ---');
+    await reportLive('C (Μαρία, set C)', await runLive('Μαρία', ['Νίκος', 'Άρης'], 'C'), 'C', false);
   }
 
   say(`\n${passed} passed, ${failed} failed`);
