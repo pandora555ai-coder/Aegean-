@@ -16,11 +16,18 @@
 //       is not satisfied by --generate itself, so a test/control run that
 //       only ever types --generate (to exercise a later code path) still
 //       can't spend, even with real credentials loaded from .env - and
-//       --max-chars is the explicit budget. If the planned total exceeds
-//       --max-chars, the run REFUSES outright (prints the overage, makes
-//       zero API calls, writes zero clips) rather than generating a
-//       partial subset silently.
+//       --max-chars is the explicit budget. Task 287 - the guard is now
+//       PER REQUEST: billed-so-far + this request's chars is checked
+//       against --max-chars before every synthesize() call, first attempts
+//       AND tail-check retries alike, and the whole run stops the moment
+//       one would breach it (see generateBatch below). A plan whose very
+//       first line already exceeds the budget still refuses before any
+//       spend, same as before; a plan that only breaches the cap partway
+//       through (an early line, or a retry) now stops there instead of
+//       either refusing everything up front or - the Task 279 bug this
+//       replaces - letting an unmetered retry blow past the cap entirely.
 //
+
 //   tsx dev/generate-voice-lines.ts --hashes abc123,def456
 //   tsx dev/generate-voice-lines.ts --names Άρης,Νίκη,Τάκης
 //       Restrict the plan (dry run) or the generation (with --generate
@@ -103,7 +110,7 @@ import { checkTail } from './voice/tailCheck.ts';
 // same test Task 249 diagnosed the defect with, and re-synthesized (a fresh
 // API call, not a retried read of the same response) on failure rather than
 // silently kept.
-const MAX_SYNTHESIS_ATTEMPTS = 3;
+export const MAX_SYNTHESIS_ATTEMPTS = 3;
 
 // Task 267 - a SECOND, independent opt-in, belt-and-braces with --generate,
 // not a rename of it. Task 266's own incident: a control/test run typed
@@ -202,6 +209,107 @@ function verifyWritable(dir: string): void {
   } catch (err) {
     throw new Error(`Output directory is not writable: ${dir}\n  (${(err as Error).message})`);
   }
+}
+
+// Task 287 - a single item this generator can bill for: enough to check
+// and spend against the budget, nothing about WHY it's in the batch (the
+// filename/lineHash/template plumbing stays in `toGenerate` below).
+export interface GenerationBatchItem {
+  filename: string;
+  spoken: string;
+  chars: number;
+}
+
+// Task 287 - the dependencies the actual spend loop needs, injected so the
+// budget guard below can be exercised with zero API calls and zero real
+// filesystem writes (dev/287-voice-budget-check.ts mocks all five). main()
+// wires these to the real ElevenLabs provider, the real checkTail, and the
+// real fs calls; nothing else in this file constructs a provider.
+export interface GenerationDeps {
+  synthesize: (text: string) => Promise<Buffer>;
+  checkTail: (mp3Path: string) => ReturnType<typeof checkTail>;
+  writeFile: (path: string, data: Buffer) => void;
+  unlinkFile: (path: string) => void;
+  verifyWritable: (dir: string) => void;
+}
+
+export interface GenerationResult {
+  billed: number;
+  refusedByBudget: boolean;
+  generated: string[];
+}
+
+// Task 287 - the fix. Task 264's old gate compared the PLANNED total
+// (one synthesize() per line) against --max-chars exactly once, before
+// generation started. But a tail-check retry (Task 251) is a fresh,
+// separately-billed API call - `provider.synthesize` is invoked again,
+// full price, for the same line - and nothing re-checked the budget before
+// that second (or third) request went out. A line that retries twice bills
+// 3x its planned chars with no gate at all.
+//
+// The fix tracks billedSoFar and checks it immediately before EVERY
+// synthesize() call - the loop's only call site, first attempt and every
+// retry alike (line ~ the `if (billedSoFar + chars > maxChars)` check
+// directly above the one `deps.synthesize(spoken)` line below). A request
+// that would breach the cap is refused and the WHOLE run stops there
+// (labeled `outer` break) rather than skipping ahead to a later, smaller
+// line - once a refusal has happened the plan can no longer be trusted to
+// fit, so nothing further gets spent this run.
+export async function generateBatch(
+  batch: GenerationBatchItem[],
+  maxChars: number,
+  outDir: string,
+  deps: GenerationDeps,
+): Promise<GenerationResult> {
+  let billedSoFar = 0;
+  let refusedByBudget = false;
+  const generated: string[] = [];
+
+  outer: for (const { filename, spoken, chars } of batch) {
+    const destPath = path.join(outDir, filename);
+    let attempt = 0;
+    for (;;) {
+      attempt++;
+      // Task 287 - THE check. Runs before every request this loop can ever
+      // make, so a retry can't sneak past it the way it used to.
+      if (billedSoFar + chars > maxChars) {
+        console.error(
+          `\nRefusing ${filename} attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS}: billed-so-far ${billedSoFar} + ` +
+            `${chars} char(s) would exceed --max-chars ${maxChars}. Stopping run. ` +
+            `${billedSoFar} char(s) billed so far, 0 more API calls made.`,
+        );
+        refusedByBudget = true;
+        break outer;
+      }
+      // Task 266 - re-proven right before THIS clip's paid call, not just
+      // once at the top of the run, so a directory that goes unwritable
+      // mid-run (disk full, permissions changed) aborts the whole run
+      // before spending this clip's characters too.
+      deps.verifyWritable(outDir);
+      const audio = await deps.synthesize(spoken);
+      billedSoFar += chars;
+      deps.writeFile(destPath, audio);
+      const { ok, analysis } = deps.checkTail(destPath);
+      if (ok) {
+        console.log(`  ${filename}  "${spoken}"`);
+        generated.push(filename);
+        break;
+      }
+      const verdict = `ratio=${analysis.ratio.toFixed(2)} peak=${analysis.recentPeakRms.toFixed(0)}`;
+      if (attempt < MAX_SYNTHESIS_ATTEMPTS) {
+        console.warn(`  ${filename} failed the tail check (${verdict}) on attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS} - re-synthesizing`);
+        continue;
+      }
+      // Refuse to keep a clip this test would flag - regeneration next
+      // run is better than shipping a silently truncated line.
+      deps.unlinkFile(destPath);
+      throw new Error(
+        `${filename} ("${spoken}") failed the tail check ${MAX_SYNTHESIS_ATTEMPTS} times in a row (${verdict}) - refusing to save a truncated clip`,
+      );
+    }
+  }
+
+  return { billed: billedSoFar, refusedByBudget, generated };
 }
 
 function parseCommaList(argv: string[], name: string): string[] | null {
@@ -339,46 +447,29 @@ async function main() {
     throw new Error('--generate requires an explicit --max-chars <N> budget (e.g. --generate --max-chars 1300)');
   }
 
-  if (totalChars > maxChars) {
-    const overage = totalChars - maxChars;
-    console.log(`Planned ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total:`);
-    printPlan();
-    console.error(`\nRefusing to generate: ${totalChars} chars exceeds --max-chars ${maxChars} by ${overage} char(s). 0 API calls made, 0 clips written.`);
-    process.exitCode = 1;
-    return;
-  }
+  // Task 287 - the old one-time `totalChars > maxChars` gate is gone. It
+  // only ever compared the PLAN (one synthesize() per line) and could not
+  // see a retry's extra billed request; printing the plan and refusing
+  // when the plan alone already tops the budget is now just what happens
+  // when generateBatch's per-request check hits the very first request.
+  console.log(`Planned ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total (budget ${maxChars}):`);
+  printPlan();
 
   const provider = createElevenLabsProvider();
-  console.log(`Generating ${batch.length} of ${toGenerate.length} missing line(s), ${totalChars} char(s) total (budget ${maxChars})...`);
-  for (const { filename, spoken } of batch) {
-    const destPath = path.join(OUT_DIR, filename);
-    let attempt = 0;
-    for (;;) {
-      attempt++;
-      // Task 266 - re-proven right before THIS clip's paid call, not just
-      // once at the top of the run, so a directory that goes unwritable
-      // mid-run (disk full, permissions changed) aborts the whole run
-      // before spending this clip's characters too.
-      verifyWritable(OUT_DIR);
-      const audio = await provider.synthesize(spoken);
-      writeFileSync(destPath, audio);
-      const { ok, analysis } = checkTail(destPath);
-      if (ok) {
-        console.log(`  ${filename}  "${spoken}"`);
-        break;
-      }
-      const verdict = `ratio=${analysis.ratio.toFixed(2)} peak=${analysis.recentPeakRms.toFixed(0)}`;
-      if (attempt < MAX_SYNTHESIS_ATTEMPTS) {
-        console.warn(`  ${filename} failed the tail check (${verdict}) on attempt ${attempt}/${MAX_SYNTHESIS_ATTEMPTS} - re-synthesizing`);
-        continue;
-      }
-      // Refuse to keep a clip this test would flag - regeneration next
-      // run is better than shipping a silently truncated line.
-      unlinkSync(destPath);
-      throw new Error(
-        `${filename} ("${spoken}") failed the tail check ${MAX_SYNTHESIS_ATTEMPTS} times in a row (${verdict}) - refusing to save a truncated clip`,
-      );
-    }
+  console.log(`\nGenerating (budget ${maxChars})...`);
+  const result = await generateBatch(batch, maxChars, OUT_DIR, {
+    synthesize: (text) => provider.synthesize(text),
+    checkTail,
+    writeFile: writeFileSync,
+    unlinkFile: unlinkSync,
+    verifyWritable,
+  });
+
+  console.log(
+    `\nPlanned ${totalChars} char(s), billed ${result.billed} char(s), refused-by-budget: ${result.refusedByBudget}.`,
+  );
+  if (result.refusedByBudget) {
+    process.exitCode = 1;
   }
 
   const files = readdirSync(OUT_DIR).filter((f) => f.endsWith('.mp3'));
@@ -402,7 +493,15 @@ async function main() {
   console.log(`Longest clip: ~${Math.round(longestMs)}ms (${longestFile})${capWarning}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+// Task 287 - guarded so dev/287-voice-budget-check.ts can `import` this
+// module (for generateBatch/MAX_SYNTHESIS_ATTEMPTS) without also kicking
+// off a real dry-run scan of the whole voice line pool as a side effect of
+// import. `tsx dev/generate-voice-lines.ts` still runs main() exactly as
+// before - process.argv[1] is this file's own path only when it's the
+// entry point, never when another module imports it.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
