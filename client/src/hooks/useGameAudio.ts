@@ -664,6 +664,10 @@ export function useGameAudio() {
     // Task 263 - SocratesShowPayload.prefix: a clip to play IMMEDIATELY
     // before `template`, inside this same beat.
     prefix?: { template: string; tag: string | null } | null,
+    // Task 277 - SocratesShowPayload.suffix: a clip to play immediately AFTER
+    // `template`, inside this same beat. Independent of `prefix`, so all four
+    // combinations are legal.
+    suffix?: { template: string; tag: string | null } | null,
   ) {
     const ctx = audioCtxRef.current;
     if (!ctx || mutedRef.current) {
@@ -684,7 +688,32 @@ export function useGameAudio() {
       // line plays alone. That is also the ordinary case today - no vocative
       // has been recorded yet - and it is why the server only sets `prefix`
       // for a clip it already found on disk.
-      const prefixBuffer = prefix ? await loadSocratesBuffer(ctx, lineHash(prefix.template, prefix.tag)) : null;
+      // Task 277 - a SPLICE must never abort the beat it is decorating, so
+      // each one loads in its OWN try and degrades to null, which simply
+      // drops it from the chain below.
+      //
+      // loadSocratesBuffer returns null on a 404, but it THROWS on a decode
+      // failure - and a missing .mp3 is not always a 404: any host with an
+      // SPA fallback (the Vite dev server, for one) answers it with 200 and
+      // index.html, which decodeAudioData rejects. Sharing the outer try with
+      // the LINE meant that exception skipped the line as well and ended the
+      // beat in silence. Measured before this guard, on a beat whose own line
+      // was present and playable: ZERO clips played and the ack landed at
+      // 93ms, i.e. the room heard nothing at all.
+      const loadSpliceBuffer = async (splice: { template: string; tag: string | null }): Promise<AudioBuffer | null> => {
+        try {
+          return await loadSocratesBuffer(ctx, lineHash(splice.template, splice.tag));
+        } catch (err) {
+          console.warn('[socrates-audio] spliced clip failed to load; playing the line without it', err);
+          return null;
+        }
+      };
+      const prefixBuffer = prefix ? await loadSpliceBuffer(prefix) : null;
+      // The same rule on the other side: a suffix that cannot be fetched or
+      // decoded is dropped, the ack binds to the line instead and fires the
+      // moment the line ends - never a silent skip, and never a beat left
+      // waiting on its backstop.
+      const suffixBuffer = suffix ? await loadSpliceBuffer(suffix) : null;
       // The context (or the mute toggle) may have changed while the fetch/
       // decode above was in flight - re-check before actually sounding it.
       if (audioCtxRef.current !== ctx || mutedRef.current) {
@@ -701,14 +730,23 @@ export function useGameAudio() {
         source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
         source.start();
       };
-      // ONE ack either way: onEnded fires when the LINE finishes, never when
-      // the prefix does, so the server still sees exactly one completion per
-      // beat however many clips it took to speak it.
-      if (prefixBuffer) {
-        play(prefixBuffer, () => play(buffer, onEnded));
-      } else {
-        play(buffer, onEnded);
-      }
+      // Task 277 - ONE ack in all four combinations, bound to the LAST clip
+      // that actually plays. The chain is built from whatever resolved:
+      //   none     [line]                 ack at the line's end
+      //   prefix   [prefix, line]         ack at the line's end (as Task 263)
+      //   suffix   [line, suffix]         ack at the suffix's end
+      //   both     [prefix, line, suffix] ack at the suffix's end
+      // A clip that failed to load is absent from the chain rather than a
+      // silent gap in it, so the ack simply moves to whatever really is last
+      // and the server still sees exactly one completion per beat.
+      const chain: AudioBuffer[] = [];
+      if (prefixBuffer) chain.push(prefixBuffer);
+      chain.push(buffer);
+      if (suffixBuffer) chain.push(suffixBuffer);
+      const playFrom = (index: number): void => {
+        play(chain[index], index === chain.length - 1 ? onEnded : () => playFrom(index + 1));
+      };
+      playFrom(0);
     } catch (err) {
       // Task 154 - a fetch/decode/start failure used to leave the phase
       // sitting silent until the server's SOCRATES_MAX_DURATION_MS backstop

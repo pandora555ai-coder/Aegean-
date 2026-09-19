@@ -361,6 +361,12 @@ export function enterSocratesBeat(
     // since that is what the ack waits on.
     prefixTemplate?: string | null;
     prefixTag?: string | null;
+    // Task 277 - the mirror: a clip sounded AFTER this beat's own line, still
+    // inside the same beat and under its single ack. Unlike the prefix, this
+    // one IS counted by the backstop below, because the ack now waits on it -
+    // it is the last clip the chain plays.
+    suffixTemplate?: string | null;
+    suffixTag?: string | null;
   },
   onFire: () => void,
 ): void {
@@ -374,7 +380,15 @@ export function enterSocratesBeat(
   // a flat ceiling, so a long clip is no longer cut off mid-word. Recorded on
   // the room because buildSocratesPayload needs to know what the span was in
   // order to derive elapsed-since-armed from what the timer says is left.
-  room.socratesBackstopMs = socratesBackstopMs(beat.lineTemplate || null, beat.lineTag);
+  // Task 277 - plus a spliced SUFFIX's own clip when there is one, since the
+  // ack arrives only once that has finished too. No suffix -> the same value
+  // this line has always produced.
+  room.socratesBackstopMs = socratesBackstopMs(
+    beat.lineTemplate || null,
+    beat.lineTag,
+    beat.suffixTemplate ?? null,
+    beat.suffixTag ?? null,
+  );
   armActiveTimer(room, timerKind, room.socratesBackstopMs, onFire);
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -394,10 +408,14 @@ export function enterSocratesBeat(
   // invisible from outside: it carries no phase of its own, and with no clip
   // recorded yet the beat it rides on ends within ~20ms, far too fast to
   // observe by sampling the room.
+  // Task 277 - and a spliced SUFFIX likewise, appended after the prefix note
+  // so a beat with neither prints exactly the line it always did (which is
+  // what dev/263-coronation-check.ts's own log regex reads).
   const prefixNote = beat.prefixTemplate ? ` prefix="${beat.prefixTemplate}"` : '';
+  const suffixNote = beat.suffixTemplate ? ` suffix="${beat.suffixTemplate}"` : '';
   console.log(
     `room ${room.code} Socrates (${beat.kind}) beat ${room.socratesBeatId} ` +
-      `backstop=${room.socratesBackstopMs}ms${prefixNote} — "${beat.line}"`,
+      `backstop=${room.socratesBackstopMs}ms${prefixNote}${suffixNote} — "${beat.line}"`,
   );
 }
 
@@ -493,14 +511,21 @@ function startSocratesSequence(
   // carries one: the vocative addresses the winner once, at the top of the
   // coronation, not before every sentence of it.
   prefix: { template: string; tag: string | null } | null = null,
+  // Task 277 - the mirror, sounded after the LAST line only: a closing
+  // address belongs at the end of the narration, not after every sentence of
+  // it. A one-line sequence is both first and last, so it can carry both.
+  suffix: { template: string; tag: string | null } | null = null,
 ): boolean {
   if (picked.length === 0) {
     return false;
   }
-  room.pendingSocratesQueue = picked.slice(1).map((line) => ({
+  const lastIndex = picked.length - 1;
+  room.pendingSocratesQueue = picked.slice(1).map((line, i) => ({
     line: line.text,
     lineTemplate: line.template,
     lineTag: line.tag,
+    // i is an index into the TAIL, so i + 1 is its index in `picked`.
+    ...(suffix && i + 1 === lastIndex ? { suffixTemplate: suffix.template, suffixTag: suffix.tag } : {}),
   }));
   const [first] = picked;
   enterSocratesBeat(
@@ -513,6 +538,8 @@ function startSocratesSequence(
       lineTag: first.tag,
       prefixTemplate: prefix?.template ?? null,
       prefixTag: prefix?.tag ?? null,
+      suffixTemplate: lastIndex === 0 ? (suffix?.template ?? null) : null,
+      suffixTag: lastIndex === 0 ? (suffix?.tag ?? null) : null,
     },
     () => advanceFromSocrates(room.code),
   );
@@ -1015,7 +1042,19 @@ export function advanceFromSocrates(code: RoomCode): void {
     enterSocratesBeat(
       room,
       'SOCRATES',
-      { kind: pending.kind, line: next.line, lineTemplate: next.lineTemplate, lineTag: next.lineTag },
+      {
+        kind: pending.kind,
+        line: next.line,
+        lineTemplate: next.lineTemplate,
+        lineTag: next.lineTag,
+        // Task 277 - a queued line is an ordinary beat, so it carries whatever
+        // splices it was queued with (startSocratesSequence puts a suffix on
+        // the last line). Absent on every queued line before this task.
+        prefixTemplate: next.prefixTemplate ?? null,
+        prefixTag: next.prefixTag ?? null,
+        suffixTemplate: next.suffixTemplate ?? null,
+        suffixTag: next.suffixTag ?? null,
+      },
       () => advanceFromSocrates(room.code),
     );
     return;

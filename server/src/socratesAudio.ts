@@ -105,7 +105,35 @@ export function resolveSocratesDurationMs(template: string | null, tag: string |
 // This does NOT slow the missing-clip case down in practice: a missing file
 // makes the CLIENT call onEnded() immediately (Task 154, useGameAudio.ts), so
 // that beat still ends on an ack at ~0ms and never reaches this timer.
-export function socratesBackstopMs(template: string | null, tag: string | null = null): number {
+//
+// Task 277 - a beat may splice a second clip AFTER its line (the suffix), and
+// the ack then waits on THAT clip, not the line. So the two spans are summed,
+// each resolved on its own: a measurable component contributes its real
+// length, an unmeasurable one the flat SOCRATES_BACKSTOP_UNKNOWN_MS, for the
+// same reason as above (it may still be a long clip, and cutting it off is the
+// truncation this scheme exists to avoid). The MARGIN is added once, by the
+// line component, since it covers the one fetch/decode gap before the chain
+// starts playing rather than one per clip.
+//
+// A beat with no suffix (every beat in the game today) is arithmetically
+// identical to what this function returned before this task: the suffix
+// component is 0.
+//
+// The PREFIX is deliberately still not counted, exactly as Task 263 left it.
+// It shifts the line later rather than extending what the ack waits on, and
+// counting it would change the armed value of beats that exist today - out of
+// this task's scope, which is the suffix path.
+export function socratesBackstopMs(
+  template: string | null,
+  tag: string | null = null,
+  suffixTemplate: string | null = null,
+  suffixTag: string | null = null,
+): number {
   const clip = resolveSocratesClip(template, tag);
-  return clip.known ? clip.durationMs + SOCRATES_BACKSTOP_MARGIN_MS : SOCRATES_BACKSTOP_UNKNOWN_MS;
+  const lineSpan = clip.known ? clip.durationMs + SOCRATES_BACKSTOP_MARGIN_MS : SOCRATES_BACKSTOP_UNKNOWN_MS;
+  if (!suffixTemplate) {
+    return lineSpan;
+  }
+  const suffixClip = resolveSocratesClip(suffixTemplate, suffixTag);
+  return lineSpan + (suffixClip.known ? suffixClip.durationMs : SOCRATES_BACKSTOP_UNKNOWN_MS);
 }

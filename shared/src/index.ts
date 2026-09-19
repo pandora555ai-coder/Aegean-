@@ -2073,6 +2073,20 @@ export interface SocratesShowPayload {
   // client never second-guesses it; if the prefix fetch fails anyway, the
   // main line still plays and the beat still ends exactly once.
   prefix: { template: string; tag: string | null } | null;
+  // Task 277 - the same splice on the OTHER side: a clip played immediately
+  // AFTER this line's own audio, still inside the same beat and still under
+  // its single ack. Prefix and suffix are independent, so a beat may carry
+  // neither, either, or both; the ack always binds to the LAST clip that
+  // actually plays, which is the suffix when there is one and the line when
+  // there is not.
+  //
+  // OPTIONAL, not `| null` like `prefix` above, and deliberately so: the
+  // field is OMITTED entirely on every beat that has no suffix, which is
+  // every beat that exists today. A beat carrying only a prefix therefore
+  // serialises byte-for-byte as it did before this task, so nothing that
+  // reads or records this payload (the 236/263 harnesses included) sees any
+  // change at all until a suffix is genuinely spliced.
+  suffix?: { template: string; tag: string | null } | null;
   // Task 236 - which BEAT this is, monotonic per room. Echoed back on
   // socrates:audio_ended so the server can tell a real completion from a
   // STALE one: a clip whose real audio runs past SOCRATES_MAX_DURATION_MS is

@@ -740,6 +740,10 @@ export default function HostScreen() {
           // line 1. Null on every other beat, and the ack above still fires
           // exactly once either way.
           payload.prefix,
+          // Task 277 - and the closing splice, absent on every beat that
+          // carries none. The single ack above moves to whichever clip
+          // genuinely ends the chain.
+          payload.suffix,
         );
       }
     }

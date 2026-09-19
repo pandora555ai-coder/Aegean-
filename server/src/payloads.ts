@@ -33,7 +33,7 @@ import {
   type StealShowPlayerPayload,
   type StealTarget,
 } from '@game/shared';
-import { resolveSocratesDurationMs } from './socratesAudio.js';
+import { resolveSocratesClip, resolveSocratesDurationMs } from './socratesAudio.js';
 // The registry only, a leaf module - nothing imports this file back, so the
 // graph stays acyclic (see the note in modes/types.ts).
 import { stagesForRoom } from './modes/registry.js';
@@ -254,7 +254,18 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
   // Recomputed from the same template every call (live broadcast AND a later
   // state:sync alike) rather than read off the timer, which only ever holds
   // what's LEFT of a DIFFERENT span now (Task 42c below).
-  const totalDurationMs = resolveSocratesDurationMs(lineTemplate || null, lineTag);
+  // Task 277 - a spliced SUFFIX is part of this beat's audio, so the span the
+  // TV renders its progress bar against covers both clips (and with it the
+  // wait a socket-only harness host sits out before acking - bots.ts's
+  // wireHostSocratesAck reads exactly this field). An UNMEASURABLE suffix adds
+  // 0 rather than resolveSocratesDurationMs' 4000ms floor: a suffix with no
+  // file on disk plays for no time at all, since the client falls straight
+  // through it to the ack. No suffix -> arithmetically unchanged.
+  const suffixClip = pending?.suffixTemplate
+    ? resolveSocratesClip(pending.suffixTemplate, pending.suffixTag ?? null)
+    : null;
+  const totalDurationMs =
+    resolveSocratesDurationMs(lineTemplate || null, lineTag) + (suffixClip?.known ? suffixClip.durationMs : 0);
   // The phase's REAL timer is armed at a BACKSTOP (room.socratesBackstopMs -
   // this line's own clip plus a margin since Task 238, a flat ceiling before
   // that), not at this line's expected length, so its own remaining time is
@@ -276,6 +287,14 @@ export function buildSocratesPayload(room: Room): SocratesShowPayload | null {
     // pending beat on every send, so a state:sync of a beat already in
     // progress describes the same two clips the live broadcast did.
     prefix: pending?.prefixTemplate ? { template: pending.prefixTemplate, tag: pending.prefixTag ?? null } : null,
+    // Task 277 - the closing splice, rebuilt from the pending beat on every
+    // send exactly as the prefix is, so a state:sync of a beat in progress
+    // describes the same chain the live broadcast did. OMITTED, not null,
+    // when there is none: a beat that carries no suffix serialises byte-for-
+    // byte as it did before this task.
+    ...(pending?.suffixTemplate
+      ? { suffix: { template: pending.suffixTemplate, tag: pending.suffixTag ?? null } }
+      : {}),
     beatId: room.socratesBeatId,
     // Task 239 - 'REVEAL' is the ordinary post-question commentary (no
     // pending beat at all); every other value is the pending beat's own kind

@@ -206,6 +206,15 @@ export interface QueuedSocratesLine {
   line: string;
   lineTemplate: string;
   lineTag: string | null;
+  // Task 277 - a queued line becomes an ordinary beat when the drain reaches
+  // it (advanceFromSocrates -> enterSocratesBeat), so it can carry the same
+  // optional spliced clips any other beat can. Absent on every queued line
+  // today; startSocratesSequence sets the suffix on the LAST line of a
+  // sequence, which is where a closing address belongs.
+  prefixTemplate?: string | null;
+  prefixTag?: string | null;
+  suffixTemplate?: string | null;
+  suffixTag?: string | null;
 }
 
 export interface PendingSocratesBeat {
@@ -220,6 +229,11 @@ export interface PendingSocratesBeat {
   // beat in the game.
   prefixTemplate?: string | null;
   prefixTag?: string | null;
+  // Task 277 - the mirror of the two above: a clip played AFTER this beat's
+  // own line, inside the same beat and under the same single ack. The two
+  // are independent - a beat may carry neither, either, or both.
+  suffixTemplate?: string | null;
+  suffixTag?: string | null;
 }
 
 // Task 239 - one open-or-closed slot in Room.stageTimings (see there).
