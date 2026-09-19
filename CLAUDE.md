@@ -44,6 +44,11 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
   (`/usr/local/sbin/aegean-deploy`). There is one deploy path, not two.
 - Anything else about /opt/party-game stays off limits, and
   /usr/local/sbin/aegean-deploy is not a thing to edit.
+- VOICE_MIN=100 since 2026-09-20 (was 283); deploy script also protects
+  voice-line-review.json, voice-deleted, voice-staging (6 rsync guard
+  lines). Voice file moves go through sudo -n aegean-ops (stage-clips |
+  promote-to-bank <hashes>), both requiring --confirm ARGYRIOS-SAID-GO;
+  promote refuses existing targets.
 
 ## Visual verification
 
@@ -468,9 +473,7 @@ beat's own kind) lets the TV tell an announce beat (GAME_INTRO/STAGE_INTRO)
 apart from every other kind, so it keeps the stage-announce card up
 underneath the subtitle for those — `stageAnnounce` client state was
 already never cleared on entering SOCRATES. The climb's own WINNER beat
-(`isClimbSocratesBeat`) still renders no subtitle, deliberately left alone
-to avoid touching Task 237's staging invariants for a beat no acceptance
-criterion named specifically.
+(`isClimbSocratesBeat`) renders the subtitle too, since Task 247.
 Check: `dev/end-state-timer-subtitles-check.ts` (real server/browser, TWO
 real phones as the whole roster — bots were tried and rejected: any bot
 count meeting minPlayers self-starts an all-bot room, Task 217, the INSTANT
