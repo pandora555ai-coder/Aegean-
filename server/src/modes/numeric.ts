@@ -25,9 +25,10 @@ import {
   type NumericQuestion,
   type NumericSubmission,
 } from '../numeric.js';
-import { enterSocratesBeat } from '../phases.js';
+import { enterSocratesBeat, startSpeechSlotBeat } from '../phases.js';
 import { recordNumericRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { recordLedgerNumericRound } from '../stageLedger.js';
+import { speechV2 } from '../speechSlots.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -147,6 +148,13 @@ function currentQuestion(state: NumericState): NumericQuestion {
 function startNumericQuestion(room: Room, state: NumericState): void {
   state.questionIndex += 1;
   if (state.questionIndex >= state.questions.length) {
+    // Task 294 - Εκτίμηση's CLOSE slot: the segment is over, so this is the
+    // last moment the stage's own ledger is still the live one (the next
+    // stage's card clears it). The beat holds the room and
+    // advanceFromNumericSocrates ends the segment once it is acked.
+    if (speechV2(room) && startSpeechSlotBeat(room, 'NUMERIC_SOCRATES', 'NUMERIC_CLOSE', () => advanceFromNumericSocrates(room.code))) {
+      return;
+    }
     finishGame(room);
     return;
   }
@@ -338,10 +346,17 @@ export function endNumericQuestion(code: RoomCode): void {
   // that call throws them away - `results` carries playerId AND distance.
   recordLedgerNumericRound(room.socrates.ledger, state.questionIndex, results);
 
-  state.pendingSocratesLine = recordNumericRoundAndPickLine(room.socrates, {
-    answer: question.answer,
-    values: Array.from(state.submissions.values()),
-  });
+  // Task 294 - THE v2 gate for this mode's per-reveal beat. Gated at the
+  // PICKER, not at the beat: leaving the picker running would consume lines
+  // out of pools the v2 slots draw from (usedLines is game-scoped), so a
+  // retired beat would still quietly empty the reservoir. v1 is the exact
+  // original call, unchanged.
+  state.pendingSocratesLine = speechV2(room)
+    ? null
+    : recordNumericRoundAndPickLine(room.socrates, {
+        answer: question.answer,
+        values: Array.from(state.submissions.values()),
+      });
 
   room.phase = 'NUMERIC_REVEAL';
   armNumericTimer(room, 'NUMERIC_REVEAL', NUMERIC_REVEAL_DURATION_MS, () => endNumericReveal(room.code));
@@ -439,7 +454,15 @@ export function advanceFromNumericSocrates(code: RoomCode): void {
     return;
   }
   const state = requireNumericState(room);
+  const pending = room.pendingSocratesBeat;
   room.pendingSocratesBeat = null;
+  // Task 294 - the CLOSE slot is the segment's last beat, so it resumes into
+  // the end of the segment rather than into another question (there is none:
+  // startNumericQuestion is what fired it, having already run out).
+  if (pending?.kind === 'SPEECH_SLOT') {
+    finishGame(room);
+    return;
+  }
   startNumericQuestion(room, state);
 }
 

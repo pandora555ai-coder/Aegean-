@@ -90,10 +90,31 @@ export interface StageLedger {
   // what no caller has to pass in.
   quizQuestionsSeen: number;
   entries: Map<string, StageLedgerEntry>;
+  // Task 294 - the v2 slot engine's per-stage bookkeeping, deliberately HERE
+  // rather than on SocratesState beside usedLines: both of these must reset at
+  // the stage boundary, and that is exactly what this structure already does
+  // (resetStageLedger, called from phases.ts's recordStageStart). Nothing in
+  // v1 reads either.
+  //
+  // Who has already been spoken ABOUT this stage - the "never the same target
+  // twice per stage" rule, which is the whole reason a stage's mid and close
+  // slots land on two different people.
+  targetedThisStage: Set<string>;
+  // Which slots have already been ATTEMPTED this stage (fired or skipped),
+  // so a fixed moment of the show can never come round twice.
+  firedSlots: Set<string>;
 }
 
 export function createStageLedger(): StageLedger {
-  return { stage: 0, title: '', segment: null, quizQuestionsSeen: 0, entries: new Map() };
+  return {
+    stage: 0,
+    title: '',
+    segment: null,
+    quizQuestionsSeen: 0,
+    entries: new Map(),
+    targetedThisStage: new Set(),
+    firedSlots: new Set(),
+  };
 }
 
 // Mutates in place rather than returning a fresh object: SocratesState holds
@@ -110,6 +131,11 @@ export function resetStageLedger(
   ledger.segment = segment;
   ledger.quizQuestionsSeen = 0;
   ledger.entries.clear();
+  // Task 294 - the stage boundary is what makes "never the same target twice
+  // per stage" and "each slot once per stage" true without either of them
+  // needing a lifetime of their own.
+  ledger.targetedThisStage.clear();
+  ledger.firedSlots.clear();
 }
 
 function entryFor(ledger: StageLedger, playerId: string, name: string): StageLedgerEntry {

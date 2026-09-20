@@ -81,6 +81,11 @@ import {
   recordLedgerSteal,
   resetStageLedger,
 } from './stageLedger.js';
+// Task 294 - the v2 speech policy. `speechV2` is the gate every retired v1
+// site and every new slot reads; `pickSpeechSlot` decides whether a given
+// slot has anything to say and about whom. A leaf (no io, no timers), so the
+// graph stays acyclic even though the modes import THIS file.
+import { isQuizMidpoint, pickSpeechSlot, speechV2, type SpeechSlotId } from './speechSlots.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -456,6 +461,89 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
   return true;
 }
 
+// Task 294 - the shared entry for EVERY v2 slot beat, in every mode. The slot
+// engine (speechSlots.ts) decides whether there is a line and who it is
+// about; this is the one place one becomes a held phase, so a slot beat is a
+// beat like any other - the same enterSocratesBeat, the same audio ack, the
+// same backstop, the same pause behaviour.
+//
+// `timerKind` is the CALLING MODE's own kind ('SOCRATES' for the quiz,
+// 'BLITZ_SOCRATES', 'DRAW_SOCRATES', ...), because the ack path resolves its
+// continuation out of the room's mode table by that kind
+// (modes/registry.ts's continuationForActiveTimer) rather than through the
+// closure passed here - so a slot beat armed under a kind its mode's table
+// does not claim would end the show. Every kind used by a call site below is
+// in its mode's continuations table.
+//
+// Returns whether a beat began, so a caller falls through to whatever it
+// would have done anyway when the slot stays silent - the same "no line, no
+// phase" discipline as startSocratesBeat above.
+export function startSpeechSlotBeat(
+  room: Room,
+  timerKind: string,
+  slot: SpeechSlotId,
+  onFire: () => void,
+): boolean {
+  const beat = pickSpeechSlot(room, slot);
+  if (!beat) {
+    return false;
+  }
+  enterSocratesBeat(
+    room,
+    timerKind,
+    {
+      kind: 'SPEECH_SLOT',
+      line: beat.picked.text,
+      lineTemplate: beat.picked.template,
+      lineTag: beat.picked.tag,
+    },
+    onFire,
+  );
+  return true;
+}
+
+// Task 294 - the quiz machine's own slots, all of which resolve at the ONE
+// post-REVEAL decision point below. Three can be due, in this order:
+//
+//   SYKO_FIRST_STEAL  the first theft of a stealing stage (Η Συκοφαντία),
+//                     latched to once per stage by the ledger, read off the
+//                     steal columns Task 293 books on both sides
+//   QUIZ_CLOSE /      the stage's last reveal, before the next card
+//   SYKO_CLOSE
+//   QUIZ_MID          the reveal that completes a plain quiz stage's first
+//                     half (a stealing stage spends its mid moment on the
+//                     first theft instead)
+//
+// At most ONE beat per reveal: each branch returns as soon as a slot speaks.
+function startQuizSlotBeatIfDue(room: Room): boolean {
+  if (!speechV2(room)) {
+    return false;
+  }
+  const definition = definitionForCurrentStage(room);
+  if (stageSegment(definition) !== 'quiz') {
+    return false;
+  }
+  const ledger = room.socrates.ledger;
+  const resume = () => advanceFromSocrates(room.code);
+  const steals = definition.stealAfterEveryQuestion;
+
+  if (
+    steals &&
+    !ledger.firedSlots.has('SYKO_FIRST_STEAL') &&
+    [...ledger.entries.values()].some((entry) => entry.stealTaken > 0) &&
+    startSpeechSlotBeat(room, 'SOCRATES', 'SYKO_FIRST_STEAL', resume)
+  ) {
+    return true;
+  }
+  if (ledger.quizQuestionsSeen >= definition.questionCount) {
+    return startSpeechSlotBeat(room, 'SOCRATES', steals ? 'SYKO_CLOSE' : 'QUIZ_CLOSE', resume);
+  }
+  if (!steals && isQuizMidpoint(ledger, definition.questionCount)) {
+    return startSpeechSlotBeat(room, 'SOCRATES', 'QUIZ_MID', resume);
+  }
+  return false;
+}
+
 // Task 247 - who the WINNER beat is actually speaking to, or null when that
 // is not one identifiable person.
 //
@@ -793,12 +881,20 @@ export function endQuestion(code: RoomCode): void {
   recordLedgerQuizRound(room.socrates.ledger, socratesInputs, definition.questionCount);
 
   // Pure/synchronous - can never delay the REVEAL broadcast that follows.
-  const pickedLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions: room.questions.length,
-    difficulty: question.difficulty,
-    stage: definition.stage,
-  });
+  // Task 294 - THE v2 gate for the quiz's per-reveal beat, the v1 engine
+  // itself. Gated at the PICKER rather than at startSocratesIfLineFired
+  // below: the picker CONSUMES lines (state.usedLines is game-scoped), and
+  // several v2 slots draw from those same reservoir pools, so leaving it
+  // running would empty the reservoir for beats that never play. v1 is the
+  // exact original call, untouched.
+  const pickedLine = speechV2(room)
+    ? null
+    : recordRoundAndPickLine(room.socrates, socratesInputs, {
+        questionIndex: room.currentQuestionIndex,
+        totalQuestions: room.questions.length,
+        difficulty: question.difficulty,
+        stage: definition.stage,
+      });
 
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -995,6 +1091,14 @@ function continueAfterReveal(room: Room): void {
   if (room.phase !== 'SOCRATES' && startSocratesIfLineFired(room)) {
     return; // advanceFromSocrates comes back through here once the beat is over
   }
+  // Task 294 - the v2 slots sit at this same decision point, and under the
+  // same re-entrancy guard: the beat comes back through here once it is
+  // acked, and `room.phase` is still SOCRATES then, so neither this nor the
+  // v1 call above can fire a second beat on the way out. In v1 this is a
+  // single boolean check that returns false immediately.
+  if (room.phase !== 'SOCRATES' && startQuizSlotBeatIfDue(room)) {
+    return;
+  }
   advanceToNextQuestionOrGameOver(room);
 }
 
@@ -1119,6 +1223,14 @@ export function advanceFromSocrates(code: RoomCode): void {
         return;
       case 'WINNER':
         finishGame(room);
+        return;
+      // Task 294 - a quiz-machine slot beat is part of the post-REVEAL
+      // sequence, so it leaves through the same one decision point every
+      // other beat there does. The phase is still SOCRATES on this pass,
+      // which is exactly what makes that call advance rather than start a
+      // second beat.
+      case 'SPEECH_SLOT':
+        continueAfterReveal(room);
         return;
     }
   }

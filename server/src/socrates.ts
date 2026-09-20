@@ -800,6 +800,104 @@ export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
   ],
 };
 
+// Task 294 - the v2 speech policy's own pools, copied VERBATIM from
+// content/speech-policy-lines.md (T-D, locked 2026-09-20): 36 lines, 12
+// pools, three lines each. Counted against the source file: 36 spoken lines,
+// 12 pool headers.
+//
+// Deliberately a SEPARATE table from LINES/DRAW_LINES/NUMERIC_LINES above,
+// not new entries inside them: v1 must stay byte-identical, and v1 reaches a
+// line only through the pools it already names. Nothing in the v1 picker can
+// see this table, so registering it cannot change a v1 show's beats.
+//
+// DUEL_LOCKED here is NOT the empty DUEL_LINES.DUEL_LOCKED pool above: that
+// one is read by v1's lockDuel, and writing lines into it would make the
+// early-lock beat audible in v1 too (the very thing Task 188b's "empty by
+// design" note warns about). These three lines are registered for generation
+// and wait for their own v2 wiring; the same is true of SPEAR_OUT, which has
+// no hook in the phase machine yet (tasks/291 §4).
+//
+// NO mp3s exist for any of these until the October generation pass, and that
+// is the accepted interim state: the host's LOBBY prefetch 404s on them, so
+// each beat ends on the client's immediate onEnded() ack (Task 154) rather
+// than on the unknown-clip backstop.
+export type SpeechSlotPool =
+  | 'PALAISTRA_MID_BEST'
+  | 'PALAISTRA_MID_WORST'
+  | 'PALAISTRA_CLOSE_BEST'
+  | 'PALAISTRA_CLOSE_WORST'
+  | 'LITHI_CLOSE_OBSERVER'
+  | 'LITHI_CLOSE_BLIND'
+  | 'SYKO_FIRST_STEAL'
+  | 'SYKO_CLOSE_THIEF'
+  | 'SYKO_CLOSE_VICTIM'
+  | 'AGORA_WORST'
+  | 'DUEL_LOCKED'
+  | 'SPEAR_OUT';
+
+export const SPEECH_V2_LINES: Record<SpeechSlotPool, readonly string[]> = {
+  PALAISTRA_MID_BEST: [
+    'Δώδεκα κρίσεις, καμία λάθος. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.',
+    'Ο γύρος πέρασε και δεν σε άγγιξε κανείς. Οι θεατές αρχίζουν να στοιχηματίζουν επάνω σου.',
+    "Αποφασίζεις πιο γρήγορα απ' όσο σκέφτεσαι. Έτσι νικούν οι παλαιστές. Και οι ανόητοι, αλλά ας μη χαλάσουμε τη στιγμή.",
+  ],
+  PALAISTRA_MID_WORST: [
+    'Δίστασες. Στην Παλαίστρα ο δισταγμός μετράει ως πτώση.',
+    'Ο πρώτος γύρος σε έριξε στο χώμα. Τα καλά νέα: το χώμα δεν έχει πιο κάτω.',
+    'Μην απελπίζεσαι. Ο δεύτερος γύρος υπάρχει ακριβώς για ανθρώπους σαν εσένα.',
+  ],
+  PALAISTRA_CLOSE_BEST: [
+    'Πάλεψες με τα ψέματά μου και δεν έπεσες. Αυτό δεν το λέω συχνά.',
+    'Η Παλαίστρα σε στεφανώνει. Μικρό στεφάνι, αλλά δικό σου.',
+    'Έπεσαν όλοι εκτός από εσένα. Χάρου το απόψε. Αύριο δεν θα το θυμάται κανείς.',
+  ],
+  PALAISTRA_CLOSE_WORST: [
+    'Η Παλαίστρα τελείωσε και το χώμα έχει το σχήμα σου. Τουλάχιστον άφησες σημάδι.',
+    'Έχασες κάθε πάλη, μα σηκώθηκες κάθε φορά. Οι φιλόσοφοι το λένε αρετή. Οι παλαιστές, πείσμα.',
+    'Σε είδα να ψάχνεις την αλήθεια εκεί που δεν ήταν. Συμβαίνει και στους καλύτερους. Σπανίως τόσες φορές.',
+  ],
+  LITHI_CLOSE_OBSERVER: [
+    'Πέρασες από την Αγορά μία φορά και θυμάσαι περισσότερα από τους εμπόρους της. Ανησυχητικό χάρισμα.',
+    'Η Λήθη δεν βρήκε τίποτα δικό σου να πάρει. Έφυγε με άδεια χέρια, πρώτη φορά.',
+    'Τρεις ερωτήσεις, τρεις σωστές. Ή έχεις μάτια παντού, ή έστησες τον πάγκο εσύ.',
+  ],
+  LITHI_CLOSE_BLIND: [
+    'Πέρασες από την Αγορά και δεν είδες τίποτα. Η Λήθη σε ευχαριστεί για τη συνεργασία.',
+    'Κοιτούσες την Αγορά όλη την ώρα. Πού ταξίδευε ο νους σου, δεν θα ρωτήσω.',
+    'Θυμάσαι λιγότερα κι από τους ψαράδες μετά το κρασί. Τουλάχιστον εκείνοι έχουν δικαιολογία.',
+  ],
+  SYKO_FIRST_STEAL: [
+    'Μόλις έβγαλες ψωμί από κατηγορία. Οι συκοφάντες της πόλης σε καμαρώνουν από κάτω.',
+    'Το πρώτο κλεμμένο είναι πάντα το πιο γλυκό. Τα επόμενα είναι απλώς επάγγελμα.',
+    'Δεν ρώτησες αν είναι δίκαιο. Ρώτησες μόνο πόσα. Θα πας μακριά σε αυτή την πόλη.',
+  ],
+  SYKO_CLOSE_THIEF: [
+    'Μάζεψες περισσότερα από κατηγορίες παρά από απαντήσεις. Στην Αθήνα αυτό λέγεται καριέρα.',
+    'Οι άλλοι έπαιζαν το παιχνίδι. Εσύ έπαιζες τους άλλους. Σημείωσα τη διαφορά.',
+    'Κέρδισες με ξένους πόντους. Δεν σε κατηγορώ — απλώς θα κάθομαι πιο μακριά σου στο συμπόσιο.',
+  ],
+  SYKO_CLOSE_VICTIM: [
+    "Σου πήραν περισσότερα απ' όσα κέρδισες. Στην Αθήνα αυτό το λέμε φορολογία.",
+    'Σε έγδυσαν οι κατήγοροι απόψε. Παρηγορήσου: κυνηγούν μόνο όποιον έχει κάτι να χάσει.',
+    'Όλοι διάλεξαν εσένα. Κάτι ξέρουν, ή κάτι φοβούνται. Και τα δύο κολακευτικά, με τον τρόπο τους.',
+  ],
+  AGORA_WORST: [
+    'Η Αγορά δεν σε αγάπησε ακόμα. Έχεις πέντε ερωτήσεις να την κάνεις να το μετανιώσει.',
+    'Κάθε αγορά έχει κάποιον που πληρώνει ακριβά και φεύγει με άδειο καλάθι. Απόψε κρατάς εσύ το καλάθι.',
+    'Οι απαντήσεις σου έχουν θάρρος. Η ακρίβεια θα έβλαπτε; Όχι. Δοκίμασέ τη.',
+  ],
+  DUEL_LOCKED: [
+    'Δύο στην κορυφή. Η Αθήνα δοκίμασε κάποτε δύο άρχοντες. Κράτησε μία μέρα.',
+    'Φτάσατε μαζί. Κρίμα — το σκαλί χωράει έναν. Διαλέξτε όπλο.',
+    'Μοιραστήκατε την ανάβαση. Τη νίκη δεν τη μοιράζεται κανείς. Εμπρός.',
+  ],
+  SPEAR_OUT: [
+    'Το δόρυ βρήκε στόχο. Το θέατρο σε αποχαιρετά — κάποιοι ανεβαίνουν με τα πόδια, εσύ έφυγες ιπτάμενος.',
+    'Δύο γύρους ρίζωσες στο ίδιο σκαλί. Η Ανάβαση δεν ανέχεται αγάλματα.',
+    'Έπεσες πολεμώντας στο πρώτο σκαλί. Κάπου πρέπει να στέκεται και ο φύλακας της βάσης.',
+  ],
+};
+
 // ============================= selection logic =============================
 
 // Task 43: optional eleven_v3 emotion/non-verbal tags ("[sarcastic]",
@@ -1165,6 +1263,48 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   "Φτάσαμε στη Συκοφαντία, το θέμα που ξέρω καλύτερα απ' όσο θα ήθελα. Προσέξτε ποιον κοιτάτε στα μάτια από δω και πέρα.": '[serious]',
   'Στην Αθήνα μια κατηγορία δεν χρειαζόταν αποδείξεις, μόνο κοινό. Έχετε και τα δύο απόψε.': '[dry]',
   'Η Συκοφαντία αρχίζει, και μαζί της τελειώνει η ευγένεια. Θα δούμε πόσο γρήγορα ξεχνάτε ότι ήρθατε μαζί.': '[amused]',
+  // Task 294 - the 36 v2 slot lines (SPEECH_V2_LINES above). LOAD-BEARING
+  // exactly as the Task 236 block is: the clip is found by
+  // lineHash(template, tag), so these tags decide the filenames the October
+  // generation pass will produce, and a missing entry here would hash to
+  // lineHash(template, null) and 404 forever.
+  'Δώδεκα κρίσεις, καμία λάθος. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.': '[dry]',
+  'Ο γύρος πέρασε και δεν σε άγγιξε κανείς. Οι θεατές αρχίζουν να στοιχηματίζουν επάνω σου.': '[amused]',
+  "Αποφασίζεις πιο γρήγορα απ' όσο σκέφτεσαι. Έτσι νικούν οι παλαιστές. Και οι ανόητοι, αλλά ας μη χαλάσουμε τη στιγμή.":
+    '[thoughtful]',
+  'Δίστασες. Στην Παλαίστρα ο δισταγμός μετράει ως πτώση.': '[sighs]',
+  'Ο πρώτος γύρος σε έριξε στο χώμα. Τα καλά νέα: το χώμα δεν έχει πιο κάτω.': '[dry]',
+  'Μην απελπίζεσαι. Ο δεύτερος γύρος υπάρχει ακριβώς για ανθρώπους σαν εσένα.': '[warm]',
+  'Πάλεψες με τα ψέματά μου και δεν έπεσες. Αυτό δεν το λέω συχνά.': '[serious]',
+  'Η Παλαίστρα σε στεφανώνει. Μικρό στεφάνι, αλλά δικό σου.': '[amused]',
+  'Έπεσαν όλοι εκτός από εσένα. Χάρου το απόψε. Αύριο δεν θα το θυμάται κανείς.': '[dry]',
+  'Η Παλαίστρα τελείωσε και το χώμα έχει το σχήμα σου. Τουλάχιστον άφησες σημάδι.': '[dry]',
+  'Έχασες κάθε πάλη, μα σηκώθηκες κάθε φορά. Οι φιλόσοφοι το λένε αρετή. Οι παλαιστές, πείσμα.': '[amused]',
+  'Σε είδα να ψάχνεις την αλήθεια εκεί που δεν ήταν. Συμβαίνει και στους καλύτερους. Σπανίως τόσες φορές.': '[sighs]',
+  'Πέρασες από την Αγορά μία φορά και θυμάσαι περισσότερα από τους εμπόρους της. Ανησυχητικό χάρισμα.': '[thoughtful]',
+  'Η Λήθη δεν βρήκε τίποτα δικό σου να πάρει. Έφυγε με άδεια χέρια, πρώτη φορά.': '[dry]',
+  'Τρεις ερωτήσεις, τρεις σωστές. Ή έχεις μάτια παντού, ή έστησες τον πάγκο εσύ.': '[amused]',
+  'Πέρασες από την Αγορά και δεν είδες τίποτα. Η Λήθη σε ευχαριστεί για τη συνεργασία.': '[dry]',
+  'Κοιτούσες την Αγορά όλη την ώρα. Πού ταξίδευε ο νους σου, δεν θα ρωτήσω.': '[sighs]',
+  'Θυμάσαι λιγότερα κι από τους ψαράδες μετά το κρασί. Τουλάχιστον εκείνοι έχουν δικαιολογία.': '[amused]',
+  'Μόλις έβγαλες ψωμί από κατηγορία. Οι συκοφάντες της πόλης σε καμαρώνουν από κάτω.': '[amused]',
+  'Το πρώτο κλεμμένο είναι πάντα το πιο γλυκό. Τα επόμενα είναι απλώς επάγγελμα.': '[dry]',
+  'Δεν ρώτησες αν είναι δίκαιο. Ρώτησες μόνο πόσα. Θα πας μακριά σε αυτή την πόλη.': '[thoughtful]',
+  'Μάζεψες περισσότερα από κατηγορίες παρά από απαντήσεις. Στην Αθήνα αυτό λέγεται καριέρα.': '[dry]',
+  'Οι άλλοι έπαιζαν το παιχνίδι. Εσύ έπαιζες τους άλλους. Σημείωσα τη διαφορά.': '[amused]',
+  'Κέρδισες με ξένους πόντους. Δεν σε κατηγορώ — απλώς θα κάθομαι πιο μακριά σου στο συμπόσιο.': '[serious]',
+  "Σου πήραν περισσότερα απ' όσα κέρδισες. Στην Αθήνα αυτό το λέμε φορολογία.": '[sighs]',
+  'Σε έγδυσαν οι κατήγοροι απόψε. Παρηγορήσου: κυνηγούν μόνο όποιον έχει κάτι να χάσει.': '[warm]',
+  'Όλοι διάλεξαν εσένα. Κάτι ξέρουν, ή κάτι φοβούνται. Και τα δύο κολακευτικά, με τον τρόπο τους.': '[dry]',
+  'Η Αγορά δεν σε αγάπησε ακόμα. Έχεις πέντε ερωτήσεις να την κάνεις να το μετανιώσει.': '[warm]',
+  'Κάθε αγορά έχει κάποιον που πληρώνει ακριβά και φεύγει με άδειο καλάθι. Απόψε κρατάς εσύ το καλάθι.': '[dry]',
+  'Οι απαντήσεις σου έχουν θάρρος. Η ακρίβεια θα έβλαπτε; Όχι. Δοκίμασέ τη.': '[thoughtful]',
+  'Δύο στην κορυφή. Η Αθήνα δοκίμασε κάποτε δύο άρχοντες. Κράτησε μία μέρα.': '[serious]',
+  'Φτάσατε μαζί. Κρίμα — το σκαλί χωράει έναν. Διαλέξτε όπλο.': '[amused]',
+  'Μοιραστήκατε την ανάβαση. Τη νίκη δεν τη μοιράζεται κανείς. Εμπρός.': '[dry]',
+  'Το δόρυ βρήκε στόχο. Το θέατρο σε αποχαιρετά — κάποιοι ανεβαίνουν με τα πόδια, εσύ έφυγες ιπτάμενος.': '[sighs]',
+  'Δύο γύρους ρίζωσες στο ίδιο σκαλί. Η Ανάβαση δεν ανέχεται αγάλματα.': '[dry]',
+  'Έπεσες πολεμώντας στο πρώτο σκαλί. Κάπου πρέπει να στέκεται και ο φύλακας της βάσης.': '[warm]',
 };
 
 // Task 62: a quality rating side table, same shape and rationale as
@@ -1334,6 +1474,18 @@ function pickLine(state: SocratesState, pool: readonly string[], vars: Record<st
   }
   state.usedLines.add(chosen);
   return { template: chosen, text: substitute(chosen, vars), tag: LINE_TAGS[chosen] ?? null };
+}
+
+// Task 294 - the v2 slot engine's picker (speechSlots.ts decides WHICH pool;
+// this is how it draws from one). Deliberately the SAME pickLine above, not a
+// second implementation: a slot line must obey the identical weighting,
+// never-repeat-a-line-this-game and deleted-line rules every other pool does,
+// and a slot drawing from a RESERVOIR pool (LINES.RUNAWAY_LEAD and friends)
+// shares `usedLines` with v1 by construction. No vars: every v2 line is
+// written in the second person with no {name} slot to fill - the winner's
+// name is spliced as its own clip, never baked into the text.
+export function pickSpeechLine(state: SocratesState, pool: readonly string[]): PickedLine | null {
+  return pickLine(state, pool, {});
 }
 
 // Tied scores share the same rank (1,1,3 - not 1,2,3), same convention used
@@ -2027,6 +2179,13 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
   }
   for (const [moment, pool] of Object.entries(DUEL_LINES)) {
     add(moment, pool);
+  }
+  // Task 294 - the twelve v2 slot pools, registered so `npm run voice:generate`
+  // produces their clips in the October pass and /dev/voice lists them.
+  // Registering does NOT generate: all 36 are missing from disk today, which
+  // is why a v2 beat currently ends on the client's immediate 404 ack.
+  for (const [pool, lines] of Object.entries(SPEECH_V2_LINES)) {
+    add(`SLOT (${pool})`, lines);
   }
   return entries;
 }

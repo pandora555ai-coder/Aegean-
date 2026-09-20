@@ -819,6 +819,13 @@ export interface HostCreateRoomPayload {
   // Validated server-side against the mode registry; anything unknown is
   // ignored and the room keeps DEFAULT_GAME_MODE.
   mode?: GameModeId;
+  // Task 294 - ?speech=v2: the speech policy the room is CREATED with, for
+  // the SAME reason `mode` above exists. An all-bot room self-starts with no
+  // VIP, so vip:update_settings can never reach it and every bot room would
+  // play v1 regardless of what was being tested. Validated server-side by
+  // updateRoomSettings against SPEECH_POLICY_OPTIONS; anything unknown is
+  // ignored and the room keeps DEFAULT_ROOM_SETTINGS.speechPolicy.
+  speechPolicy?: SpeechPolicy;
 }
 
 export interface RoomCreatedPayload {
@@ -2059,7 +2066,12 @@ export type SocratesBeatKind =
   | 'DRAW_MOMENT'
   | 'DRAW_WINNER'
   | 'NUMERIC_MOMENT'
-  | 'AGORA_MOMENT';
+  | 'AGORA_MOMENT'
+  // Task 294 - the v2 speech policy's per-stage SLOT beat (speechSlots.ts).
+  // One kind for every slot, deliberately: the TV treats it exactly as it
+  // treats a REVEAL-moment beat (subtitle, no announce card), and the slot's
+  // own identity is a server-side concern. Additive - v1 never emits it.
+  | 'SPEECH_SLOT';
 
 // Socrates (Task 39) - HOST ONLY, the phones never show commentary; they
 // stay on their own reveal result while this beat plays. The round's single

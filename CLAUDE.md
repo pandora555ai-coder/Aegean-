@@ -133,7 +133,47 @@ server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering. Also holds
                          FORCE_QUESTION_ID — dev hook pinning the served question, NODE_ENV-guarded. Keep it.
-server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS
+server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
+                         Also SPEECH_V2_LINES (Task 294) — the twelve v2 slot pools,
+                         36 lines copied verbatim from content/speech-policy-lines.md,
+                         a SEPARATE table from LINES/DRAW_LINES/NUMERIC_LINES so no v1
+                         picker can reach them. Their 36 LINE_TAGS entries are
+                         load-bearing (the clip is lineHash(template, tag)); no mp3
+                         exists for any of them until the October pass, so a v2 beat
+                         404s and ends on the client's immediate ack (Task 154).
+                         `DUEL_LOCKED` here is NOT DUEL_LINES.DUEL_LOCKED, which stays
+                         empty by design — writing into that one would make v1's
+                         early-lock beat audible.
+server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure decision
+                         layer, no io/timers/phases. v2 (room.settings.speechPolicy,
+                         Task 292) RETIRES per-reveal speech and speaks at fixed
+                         per-stage SLOTS instead: quiz mid/close, blitz between-rounds
+                         /close, draw between-rounds, Εκτίμηση close, Η Λήθη close,
+                         Η Συκοφαντία first-steal/close. The four retired v1 sites are
+                         gated at the PICKER, not the beat (phases.ts:890,
+                         modes/agora.ts:427, modes/draw.ts:908, modes/numeric.ts:354) —
+                         a picker left running consumes usedLines out of pools the
+                         slots draw from. KEPT in v2: GAME_INTRO, every STAGE_INTRO,
+                         the anavasis sequence, the coronation, DRAW_WINNER, and
+                         DRAW_INTRO once per STAGE rather than per cycle.
+                         Targets come from Task 293's stageExtremes; a stage's mid and
+                         close prefer OPPOSITE ends (the alternation), with
+                         ledger.targetedThisStage as the hard "never the same target
+                         twice per stage" guarantee. A tie, or no untargeted standout
+                         with a line, SKIPS — silence, never GENERIC_TRANSITION.
+                         Slot beats ride the ordinary beat path (startSpeechSlotBeat,
+                         phases.ts) under the CALLING MODE's own timer kind, because
+                         the ack resolves its continuation from the mode's
+                         continuations table by kind (modes/registry.ts) and not from
+                         the closure — which is why BLITZ_SOCRATES had to join
+                         BLITZ_CONTINUATIONS. Reservoir-backed slots (RUNAWAY_LEAD 1
+                         line alive, STUCK_IN_LAST 3, after the deletion filter) go
+                         silent once spent; the eight new-pool slots do not.
+                         `speechPolicy` rides host:create_room (Task 222's precedent):
+                         an all-bot room self-starts with no VIP, so
+                         vip:update_settings is unreachable there.
+                         Check: `npx tsx dev/294-slot-probe.ts` (pure, 16/16) and
+                         `SCENARIO=V2 npx tsx dev/294-speech-policy-check.ts`.
 server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal's
                          correct-by-speed order and answerRank; quiz AND trial)
 server/src/numeric.ts    maxForAnswer, clamping, scoring, pure payload builders. MODE-AGNOSTIC — keep it that way.

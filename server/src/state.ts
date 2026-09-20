@@ -219,7 +219,19 @@ export interface QueuedSocratesLine {
 }
 
 export interface PendingSocratesBeat {
-  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT' | 'AGORA_MOMENT';
+  // Task 294 - 'SPEECH_SLOT' is the v2 policy's per-stage slot beat. Each
+  // mode's own advanceFrom* routes it (see speechSlots.ts), which is why it
+  // needs no per-slot kinds of its own.
+  kind:
+    | 'GAME_INTRO'
+    | 'STAGE_INTRO'
+    | 'WINNER'
+    | 'DRAW_INTRO'
+    | 'DRAW_MOMENT'
+    | 'DRAW_WINNER'
+    | 'NUMERIC_MOMENT'
+    | 'AGORA_MOMENT'
+    | 'SPEECH_SLOT';
   line: string;
   lineTemplate: string;
   lineTag: string | null;
