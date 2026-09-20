@@ -26,6 +26,7 @@ import { calculatePoints, sortAndRankResults } from '../scoring.js';
 import { buildAgoraProof, drawAgoraSeed, toAgoraRenderSpec } from '../agora.js';
 import { enterSocratesBeat } from '../phases.js';
 import { LINES, recordRoundAndPickLine, type PickedLine, type SocratesPlayerRoundInput } from '../socrates.js';
+import { recordLedgerQuizRound } from '../stageLedger.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -401,6 +402,13 @@ export function endAgoraQuestion(code: RoomCode): void {
       answerCounts[result.choice] += 1;
     }
   }
+
+  // Task 293 - Η Λήθη's capture site. The same recorder the quiz uses, fed the
+  // same inputs: agora's round shape IS SocratesPlayerRoundInput, so the stage
+  // needs no recorder of its own. The stage's question count comes from its
+  // own tuple (AGORA_QUESTIONS_PER_ROUND), not from a stage-table row, since
+  // every agora row carries questionCount 0.
+  recordLedgerQuizRound(room.socrates.ledger, socratesInputs, state.questions.length);
 
   // D1 - the quiz's GENERIC round-moment detection, nothing agora-specific:
   // whatever fires here fires exactly as it would on a plain quiz question

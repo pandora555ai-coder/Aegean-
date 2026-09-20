@@ -27,6 +27,7 @@ import {
 } from '../numeric.js';
 import { enterSocratesBeat } from '../phases.js';
 import { recordNumericRoundAndPickLine, type PickedLine } from '../socrates.js';
+import { recordLedgerNumericRound } from '../stageLedger.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -331,6 +332,12 @@ export function endNumericQuestion(code: RoomCode): void {
   // once NUMERIC_REVEAL's own timer ends. Non-submitters are excluded (Task
   // 133 already scores them at 0 and out of ranking) - only genuine
   // submitted values are what a moment like WILDLY_OFF is about.
+  // Task 293 - the numeric capture site, and THE playerId rescue: the context
+  // below is { answer, values } with no id at all, so a numeric moment
+  // structurally cannot name anyone. The ids are right here, one frame before
+  // that call throws them away - `results` carries playerId AND distance.
+  recordLedgerNumericRound(room.socrates.ledger, state.questionIndex, results);
+
   state.pendingSocratesLine = recordNumericRoundAndPickLine(room.socrates, {
     answer: question.answer,
     values: Array.from(state.submissions.values()),

@@ -27,6 +27,7 @@ import {
   tallyBlitzSwipes,
   type BlitzSwipe,
 } from '../blitz.js';
+import { recordLedgerBlitzRound } from '../stageLedger.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -284,6 +285,12 @@ export function endBlitz(code: RoomCode): void {
       totalScore: player.score,
     };
   });
+
+  // Task 293 - the blitz capture site, and it has to be HERE: this round's
+  // tallies live only in state.lastReveal, which startNextBlitzRound nulls
+  // (:129 pre-293) the moment the stage's next window opens. Captured before
+  // that null, the stage's BLITZ_ROUND_COUNT windows are comparable at close.
+  recordLedgerBlitzRound(room.socrates.ledger, state.roundIndex + 1, results);
 
   // Snapshotted BEFORE the phase/timer changes below - frozen the instant
   // the round resolves, exactly like Room.lastReveal.

@@ -33,6 +33,7 @@ import {
 } from '../crowd.js';
 import { enterSocratesBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
+import { recordLedgerDrawRound } from '../stageLedger.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -874,6 +875,20 @@ export function endGuessRound(code: RoomCode): void {
   // Task 138 - detected (and logged) here, at the moment the round resolves,
   // exactly like the quiz's recordRoundAndPickLine in endQuestion. Consumed
   // by continueAfterGuessReveal once GUESS_REVEAL's own timer ends.
+  // Task 293 - the draw capture site. DrawGuessRoundContext below carries
+  // counts and the drawer's NAME only, so no guesser could ever be named and
+  // the per-DRAWER outcome was unrecoverable once the round passed. Captured
+  // at the call site rather than by widening that context, so the v1 detector
+  // it feeds is untouched.
+  recordLedgerDrawRound(room.socrates.ledger, {
+    drawerPlayerId: drawerId,
+    drawerName: drawer?.name ?? '',
+    drawerPoints: drawerPointsAwarded,
+    correctGuessers,
+    eligibleGuessers,
+    guessers: results,
+  });
+
   const distractorsHit = wrongChoiceCounts.filter((count) => count > 0).length;
   state.pendingSocratesLine = recordDrawGuessRoundAndPickLine(room.socrates, {
     correctGuessers,

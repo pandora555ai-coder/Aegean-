@@ -17,6 +17,7 @@ import {
   ServerEvents,
   climbEntryStep,
   stageForQuestionIndex,
+  stageSegment,
   type ClimbRevealHostResult,
   type CrowdIntensityContext,
   type QuestionShowHostPayload,
@@ -71,6 +72,15 @@ import {
   type PickedLine,
   type SocratesPlayerRoundInput,
 } from './socrates.js';
+// Task 293 - the per-stage ledger: written at the quiz's and the steal's own
+// scoring sites below, reset at the stage boundary, dumped at every stage
+// close. Data only; nothing here reads it back to decide anything.
+import {
+  dumpStageLedger,
+  recordLedgerQuizRound,
+  recordLedgerSteal,
+  resetStageLedger,
+} from './stageLedger.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -192,6 +202,10 @@ function announceStageIfChanged(room: Room): boolean {
 // when there is nothing open yet) and opens a fresh one for the stage it's
 // entering. finishGame closes the final entry the same way, since there's no
 // "next" stage to trigger that close.
+// Task 293 - THE stage boundary, and therefore the ledger's clear point too
+// (tasks/291 §4). The stage being LEFT is dumped before the ledger is reset for
+// the stage being entered, so the dump always describes a stage that is over.
+// The very first call has nothing to dump (ledger.stage is 0) and only opens.
 function recordStageStart(room: Room, stage: number, title: string): void {
   const now = Date.now();
   const open = room.stageTimings[room.stageTimings.length - 1];
@@ -199,6 +213,10 @@ function recordStageStart(room: Room, stage: number, title: string): void {
     open.endTs = now;
   }
   room.stageTimings.push({ stage, title, startTs: now, endTs: null });
+
+  dumpStageLedger(room.socrates.ledger, room.code, room.requestedBotCount > 0);
+  const definition = stagesForRoom(room).find((entry) => entry.stage === stage);
+  resetStageLedger(room.socrates.ledger, stage, title, definition ? stageSegment(definition) : null);
 }
 
 export function enterStageAnnounce(room: Room, stage: number): void {
@@ -767,12 +785,19 @@ export function endQuestion(code: RoomCode): void {
 
   const correctOption = question.options[question.correctIndex];
 
+  const definition = stageOfQuestion(room, room.currentQuestionIndex);
+  // Task 293 - the quiz capture site, fed the SAME per-player inputs the
+  // picker below gets (they already carry scoreBefore/scoreAfter and the
+  // speed rank). The stage's own questionCount is what splits this question
+  // into the stage's first or second half.
+  recordLedgerQuizRound(room.socrates.ledger, socratesInputs, definition.questionCount);
+
   // Pure/synchronous - can never delay the REVEAL broadcast that follows.
   const pickedLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
     questionIndex: room.currentQuestionIndex,
     totalQuestions: room.questions.length,
     difficulty: question.difficulty,
-    stage: stageOfQuestion(room, room.currentQuestionIndex).stage,
+    stage: definition.stage,
   });
 
   room.phase = 'REVEAL';
@@ -915,6 +940,18 @@ export function resolveSteal(code: RoomCode, victimPlayerId: string | null): voi
   const steal = room.steal;
   steal.chosenTargetPlayerId = victimPlayerId;
   steal.resolved = applySteal(room, steal, victimPlayerId);
+
+  // Task 293 - the steal capture site. Nothing accumulated theft before this:
+  // room.steal is nulled at advanceFromSteal and STEAL_RESOLVED is
+  // fire-and-forget, so given/taken totals existed nowhere. Recorded on both
+  // sides, from the resolved payload applySteal just returned.
+  recordLedgerSteal(room.socrates.ledger, {
+    thiefPlayerId: steal.resolved.thiefPlayerId,
+    thiefName: steal.resolved.thiefName,
+    victimPlayerId: steal.resolved.victimPlayerId,
+    victimName: steal.resolved.victimName,
+    stolenAmount: steal.resolved.stolenAmount,
+  });
 
   armQuizTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
   // Crowd mood (Task 35) - a steal resolving is always a boo, win or not.
@@ -1831,6 +1868,11 @@ function finishGame(room: Room): void {
   if (openTiming && openTiming.endTs === null) {
     openTiming.endTs = Date.now();
   }
+  // Task 293 - the LAST stage's ledger dump, for the same reason the timing
+  // above is closed here: no next stage will ever announce itself and trigger
+  // the boundary. Left intact (not reset) so play-again's resetSocratesState
+  // is the one place it is cleared for a new game.
+  dumpStageLedger(room.socrates.ledger, room.code, room.requestedBotCount > 0);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
   setCrowdMood(room, 'calm');

@@ -8,6 +8,10 @@ import {
   type StageDefinition,
 } from '@game/shared';
 import { isLineDeleted } from './voiceDeletions.js';
+// Task 293 - the per-stage ledger rides on SocratesState (see below), so it
+// resets for free with resetSocratesState on play-again, exactly like
+// usedLines/momentFireCounts. A leaf module: it imports nothing back.
+import { createStageLedger, resetStageLedger, type StageLedger } from './stageLedger.js';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -134,16 +138,24 @@ export interface SocratesState {
   // share the exact same cap and the exact same map - one room, one game,
   // one set of moment budgets, regardless of which mode is running.
   momentFireCounts: Map<Moment | DrawMoment | NumericMoment | DuelMoment, number>;
+  // Task 293 - the cumulative per-STAGE, per-player record (stageLedger.ts).
+  // Everything above is scoped to the whole GAME; this one is cleared at every
+  // stage boundary (phases.ts's recordStageStart), which is what lets a v2
+  // slot ask "who had the best/worst stage" and "who has already been named
+  // this stage". Nothing in v1 reads it - it is written and dumped only.
+  ledger: StageLedger;
 }
 
 export function createSocratesState(): SocratesState {
-  return { players: new Map(), usedLines: new Set(), momentFireCounts: new Map() };
+  return { players: new Map(), usedLines: new Set(), momentFireCounts: new Map(), ledger: createStageLedger() };
 }
 
 export function resetSocratesState(state: SocratesState): void {
   state.players.clear();
   state.usedLines.clear();
   state.momentFireCounts.clear();
+  // Back to "no stage yet" - the next game's first stage card opens its own.
+  resetStageLedger(state.ledger, 0, '', null);
 }
 
 const MAX_NAME_DISPLAY_LENGTH = 12;
