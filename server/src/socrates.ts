@@ -646,12 +646,20 @@ export const CORONATION_NAME_LINE = CORONATION_SET_B[2];
 // (it was dead code from Task 241 until this task). Untagged on purpose: the
 // bank has an 11-tag vocabulary and none of them is a name, so rather than
 // invent one, a vocative hashes as a plain tagless line.
-export function coronationVocative(name: string | null): { template: string; tag: string | null } | null {
+// Task 296 - generalised off coronationVocative (which now delegates here and
+// keeps its name for the ceremony's own call sites): the spear's elimination
+// beat addresses the player it struck in exactly the same way, so "the clip
+// that says this person's name" is one function rather than two.
+export function vocativeClipFor(name: string | null): { template: string; tag: string | null } | null {
   if (!name) {
     return null;
   }
   const vocative = getVocative(name);
   return vocative ? { template: vocative, tag: null } : null;
+}
+
+export function coronationVocative(name: string | null): { template: string; tag: string | null } | null {
+  return vocativeClipFor(name);
 }
 
 // Which set this game speaks. A plain uniform pick among CORONATION_SETS:
@@ -757,11 +765,23 @@ export const DRAW_LINES: Record<DrawMoment, readonly string[]> = {
   ],
 };
 
-// Task 188b - empty by design (see DuelMoment). Writing a line here makes the
-// early-lock beat audible with no other change: phases.ts already waits for
-// the host's audio_ended once a line fires.
+// Task 188b built this empty by design; Task 296 WROTE the three lines, which
+// is exactly the "no other change needed" switch that note described: phases.ts
+// already waits for the host's audio_ended once a line fires here, so the duel's
+// early-lock beat is audible from this edit alone.
+//
+// Deliberately under BOTH speech policies (Argyrios's rule, superseding Task
+// 138's silent-duel decision for this one case): Η Μονομαχία is a unique
+// mechanic and deserves a line whether the room plays v1 or v2. This pool is
+// the single source of the three lines - SPEECH_V2_LINES.DUEL_LOCKED below
+// aliases THIS array rather than restating it, so the two can never drift and
+// `usedLines` cannot let one policy repeat what the other already spoke.
 export const DUEL_LINES: Record<DuelMoment, readonly string[]> = {
-  DUEL_LOCKED: [],
+  DUEL_LOCKED: [
+    'Δύο στην κορυφή. Η Αθήνα δοκίμασε κάποτε δύο άρχοντες. Κράτησε μία μέρα.',
+    'Φτάσατε μαζί. Κρίμα — το σκαλί χωράει έναν. Διαλέξτε όπλο.',
+    'Μοιραστήκατε την ανάβαση. Τη νίκη δεν τη μοιράζεται κανείς. Εμπρός.',
+  ],
 };
 
 export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
@@ -802,25 +822,33 @@ export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
 
 // Task 294 - the v2 speech policy's own pools, copied VERBATIM from
 // content/speech-policy-lines.md (T-D, locked 2026-09-20): 36 lines, 12
-// pools, three lines each. Counted against the source file: 36 spoken lines,
-// 12 pool headers.
+// pools, three lines each. Task 296 appended the 13th, QUIZ_BEST, to that same
+// file and to this table. Counted against the source file: 39 spoken lines,
+// 13 pool headers.
 //
 // Deliberately a SEPARATE table from LINES/DRAW_LINES/NUMERIC_LINES above,
 // not new entries inside them: v1 must stay byte-identical, and v1 reaches a
 // line only through the pools it already names. Nothing in the v1 picker can
 // see this table, so registering it cannot change a v1 show's beats.
 //
-// DUEL_LOCKED here is NOT the empty DUEL_LINES.DUEL_LOCKED pool above: that
-// one is read by v1's lockDuel, and writing lines into it would make the
-// early-lock beat audible in v1 too (the very thing Task 188b's "empty by
-// design" note warns about). These three lines are registered for generation
-// and wait for their own v2 wiring; the same is true of SPEAR_OUT, which has
-// no hook in the phase machine yet (tasks/291 §4).
+// DUEL_LOCKED and SPEAR_OUT are the TWO EXCEPTIONS to that separation, both
+// wired by Task 296 and both deliberately audible under v1 as well: they belong
+// to unique MECHANICS (Η Μονομαχία's early lock, Η Λόγχη's strike) rather than
+// to a stage's structural slot, and a unique mechanic gets a line whatever
+// policy the room plays. DUEL_LOCKED is literally the same array as v1's
+// DUEL_LINES.DUEL_LOCKED (aliased below, so one `usedLines` entry covers both
+// names), and SPEAR_OUT is read by phases.ts's own endClimbReveal branch
+// through recordSpearOutAndPickLine - neither goes anywhere near
+// pickSpeechSlot, so neither is gated on room.settings.speechPolicy. The
+// tasks/291 §4 note that "no hook exists" for SPEAR_OUT is what Task 296
+// closed.
 //
 // NO mp3s exist for any of these until the October generation pass, and that
 // is the accepted interim state: the host's LOBBY prefetch 404s on them, so
 // each beat ends on the client's immediate onEnded() ack (Task 154) rather
-// than on the unknown-clip backstop.
+// than on the unknown-clip backstop. That is equally true of the two mechanic
+// beats Task 296 wired - a real TV ends them in milliseconds today, which is
+// exactly why neither can stall the climb or the duel.
 export type SpeechSlotPool =
   | 'PALAISTRA_MID_BEST'
   | 'PALAISTRA_MID_WORST'
@@ -833,7 +861,12 @@ export type SpeechSlotPool =
   | 'SYKO_CLOSE_VICTIM'
   | 'AGORA_WORST'
   | 'DUEL_LOCKED'
-  | 'SPEAR_OUT';
+  | 'SPEAR_OUT'
+  // Task 296 - the 13th pool, appended to content/speech-policy-lines.md by
+  // that task. The quiz stage's BEST side, which Task 294 left null: its mid
+  // and close slots could only ever speak about the player having the worst of
+  // it (AGORA_WORST) or out of a v1 reservoir.
+  | 'QUIZ_BEST';
 
 export const SPEECH_V2_LINES: Record<SpeechSlotPool, readonly string[]> = {
   PALAISTRA_MID_BEST: [
@@ -886,15 +919,19 @@ export const SPEECH_V2_LINES: Record<SpeechSlotPool, readonly string[]> = {
     'Κάθε αγορά έχει κάποιον που πληρώνει ακριβά και φεύγει με άδειο καλάθι. Απόψε κρατάς εσύ το καλάθι.',
     'Οι απαντήσεις σου έχουν θάρρος. Η ακρίβεια θα έβλαπτε; Όχι. Δοκίμασέ τη.',
   ],
-  DUEL_LOCKED: [
-    'Δύο στην κορυφή. Η Αθήνα δοκίμασε κάποτε δύο άρχοντες. Κράτησε μία μέρα.',
-    'Φτάσατε μαζί. Κρίμα — το σκαλί χωράει έναν. Διαλέξτε όπλο.',
-    'Μοιραστήκατε την ανάβαση. Τη νίκη δεν τη μοιράζεται κανείς. Εμπρός.',
-  ],
+  // Task 296 - the SAME array as v1's pool above, not a copy: one mechanic,
+  // one set of three lines, one usedLines entry per line whichever policy
+  // spoke it. Only lockDuel reads either name.
+  DUEL_LOCKED: DUEL_LINES.DUEL_LOCKED,
   SPEAR_OUT: [
     'Το δόρυ βρήκε στόχο. Το θέατρο σε αποχαιρετά — κάποιοι ανεβαίνουν με τα πόδια, εσύ έφυγες ιπτάμενος.',
     'Δύο γύρους ρίζωσες στο ίδιο σκαλί. Η Ανάβαση δεν ανέχεται αγάλματα.',
     'Έπεσες πολεμώντας στο πρώτο σκαλί. Κάπου πρέπει να στέκεται και ο φύλακας της βάσης.',
+  ],
+  QUIZ_BEST: [
+    'Η Αγορά έχει χίλιες φωνές. Απόψε ακούγεται κυρίως η δική σου.',
+    'Απαντάς σαν να έχεις ξαναδεί τις ερωτήσεις. Δεν σε κατηγορώ. Σε παρακολουθώ.',
+    'Οι έμποροι ρωτούν ποιος είσαι. Οι σοφιστές ρωτούν πόσο χρεώνεις.',
   ],
 };
 
@@ -1305,6 +1342,11 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   'Το δόρυ βρήκε στόχο. Το θέατρο σε αποχαιρετά — κάποιοι ανεβαίνουν με τα πόδια, εσύ έφυγες ιπτάμενος.': '[sighs]',
   'Δύο γύρους ρίζωσες στο ίδιο σκαλί. Η Ανάβαση δεν ανέχεται αγάλματα.': '[dry]',
   'Έπεσες πολεμώντας στο πρώτο σκαλί. Κάπου πρέπει να στέκεται και ο φύλακας της βάσης.': '[warm]',
+  // Task 296 - QUIZ_BEST, the 13th pool. Load-bearing exactly like every
+  // entry above: the clip is lineHash(template, tag).
+  'Η Αγορά έχει χίλιες φωνές. Απόψε ακούγεται κυρίως η δική σου.': '[dry]',
+  'Απαντάς σαν να έχεις ξαναδεί τις ερωτήσεις. Δεν σε κατηγορώ. Σε παρακολουθώ.': '[thoughtful]',
+  'Οι έμποροι ρωτούν ποιος είσαι. Οι σοφιστές ρωτούν πόσο χρεώνεις.': '[amused]',
 };
 
 // Task 62: a quality rating side table, same shape and rationale as
@@ -2082,6 +2124,36 @@ export function recordDuelLockedAndPickLine(state: SocratesState, duelistNames: 
   return line;
 }
 
+// Task 296 - Η Λόγχη's own beat: the spear has just taken someone out of the
+// climb. Fires under BOTH speech policies, so it draws with pickSpeechLine (the
+// plain pool picker) rather than through the v2 slot engine - that one is gated
+// on room.settings.speechPolicy and targets a player off the stage ledger's
+// extremes, neither of which fits here: the target is not the stage's standout,
+// it is the person the mechanic just struck.
+//
+// The NAME enters the DISPLAY text here and nowhere else, exactly as the
+// coronation's does (buildCoronationSequence): as the vocative, and
+// unconditionally, so the subtitle addresses them whether or not a clip exists.
+// `template` is left untouched - it is what hashes to the mp3 - and whether the
+// name is also SPOKEN (a spliced prefix clip) is the CALLER's decision, since
+// disk access lives in socratesAudio.ts and this stays a pure line-bank
+// function like every other pick*/record* here.
+//
+// No MOMENT_FIRE_CAP bookkeeping: one line per game is guaranteed upstream by
+// the caller's own latch (ClimbState.spearBeatPlayed), which means this is
+// never even asked a second time.
+export function recordSpearOutAndPickLine(state: SocratesState, name: string): PickedLine | null {
+  logDrawNumericDetection('climb', 'SPEAR_OUT', `speared=${name}`);
+  const picked = pickSpeechLine(state, SPEECH_V2_LINES.SPEAR_OUT);
+  if (!picked) {
+    return null; // every line used or deleted - silence, never a repeat
+  }
+  if (!isProduction) {
+    console.log(`[socrates] fired moment=SPEAR_OUT lineHash=${lineHash(picked.template, picked.tag)}`);
+  }
+  return { ...picked, text: `${getVocative(name)}. ${picked.text}` };
+}
+
 // Task 61, dev-only: called once at GAME_OVER. Prints every Moment from
 // LINES (so rarer moments that never fired still show up as 0) alongside
 // how many times it actually got picked this game - the whole point being
@@ -2180,10 +2252,16 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
   for (const [moment, pool] of Object.entries(DUEL_LINES)) {
     add(moment, pool);
   }
-  // Task 294 - the twelve v2 slot pools, registered so `npm run voice:generate`
-  // produces their clips in the October pass and /dev/voice lists them.
-  // Registering does NOT generate: all 36 are missing from disk today, which
-  // is why a v2 beat currently ends on the client's immediate 404 ack.
+  // Task 294 - the v2 slot pools (twelve then, THIRTEEN since Task 296's
+  // QUIZ_BEST), registered so `npm run voice:generate` produces their clips in
+  // the October pass and /dev/voice lists them. Registering does NOT generate:
+  // all 39 are missing from disk today, which is why a v2 beat currently ends
+  // on the client's immediate 404 ack.
+  //
+  // DUEL_LOCKED adds no row here: its three lines are the SAME array as
+  // DUEL_LINES.DUEL_LOCKED, already added by the loop just above, and `add`
+  // dedups on line text. So Task 296's net effect on this listing is QUIZ_BEST's
+  // three lines, not nine - the other six were already registered by 294.
   for (const [pool, lines] of Object.entries(SPEECH_V2_LINES)) {
     add(`SLOT (${pool})`, lines);
   }

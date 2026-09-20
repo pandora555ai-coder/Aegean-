@@ -76,7 +76,13 @@ console.log('\n1. A plain quiz stage: mid speaks to the WORST, close to the BEST
   check('QUIZ_MID target', mid?.target, 'ΓΑΜΑ');
   check('QUIZ_MID pool', mid?.pool, 'AGORA_WORST');
   check('QUIZ_CLOSE target', close?.target, 'ΑΛΦΑ');
-  check('QUIZ_CLOSE pool', close?.pool, 'RUNAWAY_LEAD (reservoir)');
+  // Task 296 - was 'RUNAWAY_LEAD (reservoir)'. That reservoir was only ever
+  // standing in for a quiz-stage BEST pool nobody had written; QUIZ_BEST is
+  // that pool, so both quiz slots name it on the best side now
+  // (speechSlots.ts's SLOT_SPECS). The reservoir is still live elsewhere -
+  // STUCK_IN_LAST on this same slot's worst side, and both ends of
+  // DRAW_MID/NUMERIC_CLOSE.
+  check('QUIZ_CLOSE pool', close?.pool, 'QUIZ_BEST');
   check('the two slots named two different people', mid?.target !== close?.target, true);
 }
 

@@ -75,11 +75,23 @@ interface SlotSpec {
 
 const SLOT_SPECS: Record<Exclude<SpeechSlotId, 'SYKO_FIRST_STEAL' | 'SYKO_CLOSE'>, SlotSpec> = {
   // Η Αγορά's midpoint is written for the player having the WORST of it -
-  // AGORA_WORST is the one new quiz pool, and it reads as an aside to
-  // someone still in the stage ("you have questions left to make it regret
-  // that"). The close then goes to the other end, out of the reservoir.
-  QUIZ_MID: { prefer: 'worst', best: null, worst: slot('AGORA_WORST') },
-  QUIZ_CLOSE: { prefer: 'best', best: reservoir('RUNAWAY_LEAD'), worst: reservoir('STUCK_IN_LAST') },
+  // AGORA_WORST reads as an aside to someone still in the stage ("you have
+  // questions left to make it regret that") - and its close for the BEST,
+  // which is where Task 296's QUIZ_BEST landed: Task 294 had no written pool
+  // for a quiz stage's best side at all (`best: null` on the mid, a v1
+  // reservoir on the close), so the one stage with two slots could only ever
+  // speak about the leader in borrowed words.
+  //
+  // Both quiz slots name QUIZ_BEST rather than just the close, because
+  // `prefer` is only a preference: when the mid's own end is a tie it falls
+  // through to the other one, and a stage that opens on a tie should still be
+  // able to say something about whoever is ahead. The reservoir pools are NOT
+  // removed anywhere - STUCK_IN_LAST still covers this stage's worst side at
+  // the close, and DRAW_MID/NUMERIC_CLOSE below are still wholly
+  // reservoir-backed - so v1's own line bank stays in play as extra variety
+  // exactly as Task 294 left it.
+  QUIZ_MID: { prefer: 'worst', best: slot('QUIZ_BEST'), worst: slot('AGORA_WORST') },
+  QUIZ_CLOSE: { prefer: 'best', best: slot('QUIZ_BEST'), worst: reservoir('STUCK_IN_LAST') },
   BLITZ_MID: { prefer: 'best', best: slot('PALAISTRA_MID_BEST'), worst: slot('PALAISTRA_MID_WORST') },
   BLITZ_CLOSE: { prefer: 'worst', best: slot('PALAISTRA_CLOSE_BEST'), worst: slot('PALAISTRA_CLOSE_WORST') },
   DRAW_MID: { prefer: 'best', best: reservoir('RUNAWAY_LEAD'), worst: reservoir('STUCK_IN_LAST') },

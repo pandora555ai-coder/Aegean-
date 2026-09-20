@@ -1336,8 +1336,10 @@ io.on('connection', (socket) => {
     }
     // Task 188b - the duel's early-lock beat plays its line INSIDE
     // DUEL_PICK (the phase never changes), so its audio_ended is routed to
-    // the duel rather than rejected. Today the pool is empty and this branch
-    // only ever sees an ack for a line that never fired - a no-op there.
+    // the duel rather than rejected. Load-bearing since Task 296 wrote
+    // DUEL_LINES.DUEL_LOCKED: this branch is now what releases the duel's
+    // reveal once the line has actually finished, rather than a no-op seeing
+    // acks for a line that never fired.
     if (room.phase === 'DUEL_PICK') {
       onDuelAudioEnded(room);
       return;

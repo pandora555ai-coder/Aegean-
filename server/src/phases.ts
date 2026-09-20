@@ -68,7 +68,9 @@ import {
   pickStageIntroLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
+  recordSpearOutAndPickLine,
   stageIntroIdentity,
+  vocativeClipFor,
   type PickedLine,
   type SocratesPlayerRoundInput,
 } from './socrates.js';
@@ -1232,6 +1234,14 @@ export function advanceFromSocrates(code: RoomCode): void {
       case 'SPEECH_SLOT':
         continueAfterReveal(room);
         return;
+      // Task 296 - the spear's beat sits INSIDE the climb loop, between a
+      // reveal and whatever that reveal decided, so it leaves through the
+      // climb's own routing. NOT continueAfterReveal: that one belongs to the
+      // quiz's post-REVEAL sequence and would walk the finale into
+      // advanceToNextQuestionOrGameOver.
+      case 'SPEAR_OUT':
+        resumeAfterClimbReveal(room);
+        return;
     }
   }
 
@@ -1343,6 +1353,7 @@ export function startClimb(room: Room): boolean {
     lastCorrectIndex: null,
     duel: null,
     spearCounters: new Map(),
+    spearBeatPlayed: false,
     eliminationOrder: [],
   };
   room.climb = climb;
@@ -1677,6 +1688,30 @@ export function endClimbReveal(code: RoomCode): void {
   if (!climb) {
     return;
   }
+  // Task 296 - Η Λόγχη speaks BEFORE this reveal routes anywhere, at most once
+  // a game. It cannot stall the climb: the beat is an ordinary held SOCRATES
+  // phase armed under the quiz's own 'SOCRATES' timer kind (which is in
+  // QUIZ_CONTINUATIONS, so a pause resumes it and the host's ack finds a
+  // continuation), and every way out of it - the ack, that ack arriving
+  // immediately on a missing clip (Task 154), the per-beat backstop, a VIP
+  // skip - lands in advanceFromSocrates, which calls resumeAfterClimbReveal
+  // below: the exact routing this function would otherwise have done itself.
+  if (startSpearOutBeatIfDue(room, climb)) {
+    return;
+  }
+  resumeAfterClimbReveal(room);
+}
+
+// What a finished CLIMB_REVEAL leads to. This is endClimbReveal's own former
+// body, MOVED here unchanged (Task 296) so the spear's beat can sit in front of
+// it and hand back to ONE routing decision rather than a second copy of it -
+// the same "one function decides what follows" rule the quiz's own
+// continueAfterReveal keeps.
+function resumeAfterClimbReveal(room: Room): void {
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
   if (climb.winnerPlayerId) {
     endClimb(room);
     return;
@@ -1686,6 +1721,67 @@ export function endClimbReveal(code: RoomCode): void {
     return;
   }
   startClimbQuestion(room);
+}
+
+// Task 296 - the spear's elimination beat, the hook tasks/291 §4 found missing.
+// ONE per game (ClimbState.spearBeatPlayed): on a DOUBLE spear the first player
+// struck is spoken about and the second is silent, which is the latch doing
+// precisely what it exists for - two strikes in one reveal are one dramatic
+// beat, not two lines back to back.
+//
+// Who was struck comes off THIS round's own rows (lastResults' `eliminated`
+// flags, which endClimbQuestion writes for that round only) intersected with
+// eliminationOrder, whose push order is nextAfterSpearRound's own
+// fastest-reacting-first - so "the first" is a real order rather than a Map's.
+// A spear DUEL's loser is eliminated later, in endDuelReveal, which never
+// passes through here and therefore never speaks: deliberate, the beat belongs
+// to the strike itself, not to the duel that settles who survives it.
+//
+// LATCHES ON ATTEMPT, the same discipline as pickSpeechSlot: an exhausted pool
+// spends the latch rather than leaving a retry armed for the next strike.
+function startSpearOutBeatIfDue(room: Room, climb: ClimbState): boolean {
+  if (climb.spearBeatPlayed) {
+    return false;
+  }
+  const struckThisRound = new Set(
+    (climb.lastResults ?? []).filter((result) => result.eliminated).map((result) => result.playerId),
+  );
+  const struckId = climb.eliminationOrder.find((playerId) => struckThisRound.has(playerId));
+  const name = struckId ? room.players.get(struckId)?.name : undefined;
+  if (!struckId || !name) {
+    return false;
+  }
+  climb.spearBeatPlayed = true;
+  const picked = recordSpearOutAndPickLine(room.socrates, name);
+  if (!picked) {
+    return false;
+  }
+  // The name is ALREADY in the subtitle (recordSpearOutAndPickLine puts it
+  // there unconditionally); this decides only whether it is also SPOKEN, as a
+  // clip sounded AHEAD of the line inside the same beat and under its single
+  // ack (Task 263's prefix). No vocative clip has been recorded for any preset
+  // name yet, so today this is always absent: the strike is READ with the name
+  // and HEARD without it, the coronation's own interim behaviour.
+  const vocative = vocativeClipFor(name);
+  const hasVocativeClip = vocative !== null && hasSocratesClip(vocative.template, vocative.tag);
+  console.log(
+    `room ${room.code} climb: Η Λόγχη struck ${name} out — Socrates beat firing ` +
+      `(vocative clip ${hasVocativeClip ? 'spliced' : 'absent'})`,
+  );
+  enterSocratesBeat(
+    room,
+    'SOCRATES',
+    {
+      kind: 'SPEAR_OUT',
+      line: picked.text,
+      lineTemplate: picked.template,
+      lineTag: picked.tag,
+      prefixTemplate: hasVocativeClip ? vocative.template : null,
+      prefixTag: hasVocativeClip ? vocative.tag : null,
+    },
+    () => advanceFromSocrates(room.code),
+  );
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1785,10 +1881,15 @@ export function submitDuelPick(room: Room, playerId: string, weapon: unknown): b
 // whoever stayed online.
 
 // The early-lock beat: both picks are in, so the reveal is scheduled for
-// max(the DUEL_LOCK_FLOOR_MS floor, Socrates' line ending) - the same
-// "moment detected, pool empty, beat stays silent" pattern as Task 138, so
-// today the floor alone carries it. Host-only DUEL_LOCKED goes out at once;
-// the weapons still don't.
+// max(the DUEL_LOCK_FLOOR_MS floor, Socrates' line ending). Task 188b shipped
+// with DUEL_LINES.DUEL_LOCKED empty (the Task 138 pattern), so the floor alone
+// carried it; Task 296 WROTE those three lines, so a line now fires here on
+// every duel lock and the floor has gone back to being what its name says - a
+// minimum, not the whole wait. Nothing else about this function changed: the
+// "waiting on Socrates too" path was already built and already waited for the
+// host's ack. Host-only DUEL_LOCKED goes out at once; the weapons still don't,
+// and DUEL_PICK's own 20s input window (DUEL_PICK_TIME_MS, armed in startDuel)
+// is untouched - this beat only ever runs AFTER both picks are already in.
 function lockDuel(room: Room): void {
   const duel = room.climb?.duel;
   if (!duel || duel.lock) {

@@ -57,6 +57,7 @@ function start(room: Room): void {
     lastCorrectIndex: null,
     duel: null,
     spearCounters: new Map(),
+    spearBeatPlayed: false,
     eliminationOrder: [],
   };
   room.climb = climb;

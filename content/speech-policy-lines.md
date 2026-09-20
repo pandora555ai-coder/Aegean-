@@ -1,7 +1,10 @@
 # Speech-policy v2 — new line pools (T-D, locked 2026-09-20)
-36 lines, 12 pools, ~3,400 chars. Rules: 2nd person, stage-level verdicts,
+39 lines, 13 pools. Rules: 2nd person, stage-level verdicts,
 agender, no ellipses, no "μαθητ", one tag each, names spliced never baked.
 SPEAR_OUT replaces SPEAR_WARNING (post-strike). Generation: October reset.
+Task 296 appended the 13th pool, QUIZ_BEST (the quiz stage's best side, which
+the original twelve left unwritten), and wired DUEL_LOCKED/SPEAR_OUT into the
+phase machine under BOTH policies.
 
 PALAISTRA_MID_BEST:
 [dry] Δώδεκα κρίσεις, καμία λάθος. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.
@@ -62,3 +65,8 @@ SPEAR_OUT:
 [sighs] Το δόρυ βρήκε στόχο. Το θέατρο σε αποχαιρετά — κάποιοι ανεβαίνουν με τα πόδια, εσύ έφυγες ιπτάμενος.
 [dry] Δύο γύρους ρίζωσες στο ίδιο σκαλί. Η Ανάβαση δεν ανέχεται αγάλματα.
 [warm] Έπεσες πολεμώντας στο πρώτο σκαλί. Κάπου πρέπει να στέκεται και ο φύλακας της βάσης.
+
+QUIZ_BEST:
+[dry] Η Αγορά έχει χίλιες φωνές. Απόψε ακούγεται κυρίως η δική σου.
+[thoughtful] Απαντάς σαν να έχεις ξαναδεί τις ερωτήσεις. Δεν σε κατηγορώ. Σε παρακολουθώ.
+[amused] Οι έμποροι ρωτούν ποιος είσαι. Οι σοφιστές ρωτούν πόσο χρεώνεις.

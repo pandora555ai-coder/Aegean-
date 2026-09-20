@@ -2094,7 +2094,14 @@ export type SocratesBeatKind =
   // One kind for every slot, deliberately: the TV treats it exactly as it
   // treats a REVEAL-moment beat (subtitle, no announce card), and the slot's
   // own identity is a server-side concern. Additive - v1 never emits it.
-  | 'SPEECH_SLOT';
+  | 'SPEECH_SLOT'
+  // Task 296 - Η Λόγχη struck someone out of the climb (server/src/climb.ts's
+  // own rule, spoken from phases.ts's endClimbReveal). Fires under BOTH speech
+  // policies, unlike SPEECH_SLOT: a unique mechanic gets a line whatever the
+  // policy. The TV treats it as an ordinary subtitled beat - and since it can
+  // only ever play inside the finale, `finale` below is always 'climb' on it,
+  // which is what keeps the Anavasis world on screen (Task 237).
+  | 'SPEAR_OUT';
 
 // Socrates (Task 39) - HOST ONLY, the phones never show commentary; they
 // stay on their own reveal result while this beat plays. The round's single

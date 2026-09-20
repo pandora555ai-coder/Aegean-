@@ -134,22 +134,38 @@ server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering. Also holds
                          FORCE_QUESTION_ID — dev hook pinning the served question, NODE_ENV-guarded. Keep it.
 server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
-                         Also SPEECH_V2_LINES (Task 294) — the twelve v2 slot pools,
-                         36 lines copied verbatim from content/speech-policy-lines.md,
-                         a SEPARATE table from LINES/DRAW_LINES/NUMERIC_LINES so no v1
-                         picker can reach them. Their 36 LINE_TAGS entries are
+                         Also SPEECH_V2_LINES (Task 294, a THIRTEENTH pool added by
+                         296) — 39 lines copied verbatim from
+                         content/speech-policy-lines.md, a SEPARATE table from
+                         LINES/DRAW_LINES/NUMERIC_LINES so no v1 picker can reach
+                         them. Their 39 LINE_TAGS entries are
                          load-bearing (the clip is lineHash(template, tag)); no mp3
                          exists for any of them until the October pass, so a v2 beat
                          404s and ends on the client's immediate ack (Task 154).
-                         `DUEL_LOCKED` here is NOT DUEL_LINES.DUEL_LOCKED, which stays
-                         empty by design — writing into that one would make v1's
-                         early-lock beat audible.
+                         TWO EXCEPTIONS to that separation, both wired by Task 296
+                         and both audible under v1 TOO, because they belong to unique
+                         MECHANICS rather than to a stage's structural slot:
+                         `DUEL_LOCKED` here IS DUEL_LINES.DUEL_LOCKED — literally the
+                         same array, aliased, so one usedLines entry covers both names
+                         (296 wrote the three lines 188b left empty; do NOT restore
+                         that emptiness) — and `SPEAR_OUT` is read by phases.ts's
+                         endClimbReveal through recordSpearOutAndPickLine. Neither
+                         goes near pickSpeechSlot, so neither is gated on
+                         room.settings.speechPolicy. QUIZ_BEST is the 13th pool,
+                         the quiz stage's best side (see speechSlots.ts below).
 server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure decision
                          layer, no io/timers/phases. v2 (room.settings.speechPolicy,
                          Task 292) RETIRES per-reveal speech and speaks at fixed
                          per-stage SLOTS instead: quiz mid/close, blitz between-rounds
                          /close, draw between-rounds, Εκτίμηση close, Η Λήθη close,
-                         Η Συκοφαντία first-steal/close. The four retired v1 sites are
+                         Η Συκοφαντία first-steal/close. The quiz stage's two slots
+                         draw from AGORA_WORST (worst side) and — since Task 296 —
+                         QUIZ_BEST (best side, on BOTH the mid and the close). Before
+                         296 the mid's best side was `null` and the close's was the
+                         RUNAWAY_LEAD reservoir, so a stage whose WORST end was a tie
+                         could say nothing at all. Reservoir pools stay live as extra
+                         variety: STUCK_IN_LAST on the close's worst side,
+                         DRAW_MID/NUMERIC_CLOSE wholly reservoir-backed. The four retired v1 sites are
                          gated at the PICKER, not the beat (phases.ts:890,
                          modes/agora.ts:427, modes/draw.ts:908, modes/numeric.ts:354) —
                          a picker left running consumes usedLines out of pools the
@@ -637,9 +653,14 @@ reveal payload comes from the frozen duel.lastReveal. DUEL_PICK is 20s
 (DUEL_PICK_TIME_MS) on the quiz continuations table; the second pick fires
 the host-only `duel:locked` beat and re-arms the timer as 'DUEL_LOCKED'
 (DUEL_LOCK_FLOOR_MS = 2000, then the audio backstop only if a line fired —
-DUEL_LINES.DUEL_LOCKED is EMPTY by design, the 138 pattern, so the floor
-alone carries it; `socrates:audio_ended` during DUEL_PICK routes to
-onDuelAudioEnded). Timeout assigns a uniform-random weapon flagged
+**Task 296 WROTE DUEL_LINES.DUEL_LOCKED's three lines**, so a line now fires on
+every lock and the floor is back to being a MINIMUM rather than the whole wait:
+measured lock -> DUEL_REVEAL at 2002ms against that 2000ms floor, i.e. the ack
+lands inside it and the 11s backstop never applies. The beat plays INSIDE
+DUEL_PICK (no SOCRATES phase, 0 measured) and `socrates:audio_ended` during
+DUEL_PICK routes to onDuelAudioEnded, which is load-bearing now rather than a
+no-op. **DUEL_PICK's own 20s input window is untouched** — the beat only ever
+runs after both picks are already in. Timeout assigns a uniform-random weapon flagged
 `assigned: true`. Same weapon = tie: DUEL_PICK again, no cap, tieCount in
 the host payload. Bots pick at random after 400–1500ms. The Monte Carlo
 harness (seed 187, 0.7/0.5 skill) puts rounds-to-verdict at median 8, p99
@@ -656,8 +677,10 @@ beating whichever actually lost, never assuming a fixed side. Fixes a bug
 where the old inline version always narrated from `weaponA` regardless of
 the real winner, and had `WEAPON_BEATEN` keyed backwards from
 `DUEL_BEATS`'s real cycle — wrong pair on nearly every reveal. `DUEL_LINES.
-DUEL_LOCKED` (socrates.ts:543) is still an empty array by design (the 138
-pattern) — silent until content is written for it, not a bug.
+DUEL_LOCKED` is NO LONGER empty: Task 296 wrote its three lines (and
+SPEECH_V2_LINES.DUEL_LOCKED aliases that same array), so the early-lock beat is
+audible under BOTH policies. Every earlier "empty by design / the 138 pattern"
+note about THIS pool is historical.
 **Η Μονομαχία is ALSO its own standalone GameModeId** since Task 191
 (server/src/modes/duel.ts) — the same dev-harness pattern draw/numeric
 follow: zero mechanic of its own, `phases` = LOBBY -> DUEL_PICK ->
@@ -674,7 +697,29 @@ lives in server/src/climb.ts (`applyClimbSpearRound`/`nextAfterSpearRound`/
 (`server/scripts/trial-montecarlo.ts --spear on|off|auto`) and unit check
 (`npm run climb:spear-check`, 17/17 checks), and Task 205/205b wired it into
 the real phase machine: `endClimbQuestion` (phases.ts:1487) calls
-`applyClimbSpearRound` every reveal. (This paragraph said "a PURE MECHANIC
+`applyClimbSpearRound` every reveal. **Task 296 gave the strike a VOICE** — the
+hook tasks/291 §4 recorded as missing: `startSpearOutBeatIfDue`, called from
+`endClimbReveal` BEFORE it routes anywhere, fires ONE `SPEAR_OUT` beat about the
+first player that round struck out (`lastResults`' `eliminated` flags ∩
+`eliminationOrder`), under BOTH speech policies. Latch
+`ClimbState.spearBeatPlayed`, once per GAME and set on ATTEMPT — NOT the stage
+ledger's firedSlots, which clears at every stage boundary, and the climb is one
+stage; it resets for free because resetRoomForNewGame nulls room.climb. On a
+DOUBLE spear only the first speaks. It CANNOT stall the climb: an ordinary held
+SOCRATES phase under the quiz's own 'SOCRATES' timer kind (already in
+QUIZ_CONTINUATIONS, so pause resumes it), and every exit — ack, the immediate
+404 ack, the backstop, vip:skip_socrates — lands in advanceFromSocrates's
+`case 'SPEAR_OUT'` -> `resumeAfterClimbReveal`, which is endClimbReveal's own
+former body MOVED, so there is still exactly ONE routing decision after a climb
+reveal. Measured: CLIMB_REVEAL@11188ms -> SOCRATES@17192ms ->
+CLIMB_QUESTION@17194ms, the climb carrying on. A spear DUEL's loser is
+eliminated in endDuelReveal, which never passes through endClimbReveal, so it
+never speaks — deliberate. The line addresses the player by name in the
+SUBTITLE unconditionally (the template stays unsubstituted, since that is what
+hashes to the mp3) and splices the vocative CLIP only when hasSocratesClip finds
+it; no vocative clip exists for any preset name yet, so today it is READ with
+the name and HEARD without it. Check: `npx tsx dev/296-spear-duel-check.ts`
+(SCENARIO=A|B|C, socket-only, 34/34). (This paragraph said "a PURE MECHANIC
 ONLY — NOT wired into the live climb" until Task 225, which watched real
 reveals strike real players out over real sockets — it had been stale since
 205.) The rule: auto-gated to
