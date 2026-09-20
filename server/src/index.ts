@@ -39,6 +39,7 @@ import {
   getConnectedPlayers,
   haveAllConnectedPlayersAnswered,
   haveAllConnectedPlayersChosenPowerUp,
+  skipVotePassed,
   getPlayer,
   getRoom,
   isAvatarTaken,
@@ -75,6 +76,12 @@ import {
   onDuelAudioEnded,
   advanceFromReveal,
   advanceFromSteal,
+  // Task 300 - the skip vote's three server-side entry points. The mechanic
+  // itself lives in phases.ts beside the sequence machinery it interrupts; this
+  // file only authorises the event and re-runs the tally on a disconnect.
+  emitSkipVoteProgress,
+  recheckSkipVoteOnDisconnect,
+  startSequenceSkip,
   recheckClimbPhaseOnDisconnect,
   resolveSteal,
   submitClimbAnswer,
@@ -588,9 +595,24 @@ function getVipRoomForSocket(
 // an absent id means "whatever is current" - which is what a client that sends
 // none (bots.ts's harness ack, vip:next) has always meant, and is what makes a
 // VIP who reconnected mid-beat still able to skip it.
-function endSocratesBeat(room: Room, beatId: unknown, source: string): void {
+// Task 300 - `skip` separates the two kinds of caller this function has always
+// had: the host's audio ack, which reports that the line genuinely FINISHED,
+// and a VIP press, which cuts it short. Only the latter can be refused by the
+// unskippable rule below - an ack must always be able to end its own beat, or
+// the interruption beat would hold the phase to its backstop.
+function endSocratesBeat(room: Room, beatId: unknown, source: string, options: { skip: boolean }): void {
   if (room.phase !== 'SOCRATES') {
     console.log(`rejected ${source} for room ${room.code}: phase is ${room.phase}, not SOCRATES`);
+    return;
+  }
+  // Task 300 - the interruption beat a passed skip vote produces is the one
+  // beat in the game nothing may skip, by vote OR by the VIP's Παράλειψη. The
+  // room has just voted Socrates quiet; his answer to that is four words long
+  // and is the entire payoff of the feature. The vote itself cannot reach this
+  // beat at all (room.skipVote is latched resolved), so this guard is what
+  // covers the OTHER skip - Task 238's.
+  if (options.skip && room.pendingSocratesBeat?.unskippable) {
+    console.log(`rejected ${source} for room ${room.code}: this beat is unskippable`);
     return;
   }
   // A suspended AudioContext can't fire an ack - genuinely can't happen - but
@@ -856,6 +878,16 @@ io.on('connection', (socket) => {
         if (syncPayload) {
           socket.emit(ServerEvents.STATE_SYNC, syncPayload);
         }
+        // Task 300 - THE reconnect case for the skip vote, and the one that
+        // actually matters: this branch returns below, so the resend on the
+        // new-join path further down is never reached by a returning phone.
+        // state:sync cannot carry the vote either - SOCRATES has no
+        // player-facing sync case at all, the line being host-only - so this
+        // targeted emit is the only way a phone that blipped mid-narration
+        // gets its button and counter back. `youVoted` travels here and
+        // nowhere else: the tally is keyed by playerId, so the vote cast
+        // before the blip is still theirs and the button must stay down.
+        emitSkipVoteProgress(room, { socketId: socket.id, playerId });
       }
       // A reconnect mid-STEAL adds a name back to the thief's target list -
       // re-send it, so they can rob someone who just walked back in.
@@ -933,6 +965,15 @@ io.on('connection', (socket) => {
       if (syncPayload) {
         socket.emit(ServerEvents.STATE_SYNC, syncPayload);
       }
+      // Task 300 - a phone rejoining MID-NARRATION needs the vote back, and
+      // state:sync cannot carry it: SOCRATES has no player-facing sync case at
+      // all (the line is host-only), so this is its own targeted resend. It is
+      // the one place `youVoted` travels, which is what stops a returning
+      // voter from being shown a button they already pressed - the tally is
+      // keyed by playerId, so the vote they cast before the blip is still
+      // theirs. A room with no vote open sends the closed state, which is
+      // exactly what a fresh phone should render.
+      emitSkipVoteProgress(room, { socketId: socket.id, playerId });
     }
   });
 
@@ -1296,7 +1337,7 @@ io.on('connection', (socket) => {
       // and vip:skip_socrates do. No beat id: this event carries none and
       // never has, which reads as "whatever is on screen" - unchanged
       // behaviour, now expressed as the same call everything else makes.
-      endSocratesBeat(room, undefined, `${ClientEvents.VIP_NEXT} (VIP skip past Socrates)`);
+      endSocratesBeat(room, undefined, `${ClientEvents.VIP_NEXT} (VIP skip past Socrates)`, { skip: true });
       return;
     }
 
@@ -1347,7 +1388,9 @@ io.on('connection', (socket) => {
     // Task 236's phase/pause/stale-beat rules all live in endSocratesBeat as
     // of Task 238 - shared verbatim with the VIP skip below, so the two can
     // never drift into validating the same ack differently.
-    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.SOCRATES_AUDIO_ENDED);
+    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.SOCRATES_AUDIO_ENDED, {
+      skip: false,
+    });
   });
 
   // Task 238 - the VIP cuts the beat currently on screen short from their own
@@ -1362,7 +1405,64 @@ io.on('connection', (socket) => {
     if (!room) {
       return;
     }
-    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.VIP_SKIP_SOCRATES);
+    endSocratesBeat(room, (payload as { beatId?: unknown } | undefined)?.beatId, ClientEvents.VIP_SKIP_SOCRATES, {
+      skip: true,
+    });
+  });
+
+  // Task 300 - ANY connected player votes to cut a multi-line narration short.
+  // Deliberately open to everyone, not just the VIP (getPlayerRoomForSocket,
+  // the same authorisation game:pause uses): sitting through a narration you
+  // have heard is a room-wide complaint, and a room where only one phone can
+  // register it is the situation this feature exists to fix. One vote per
+  // player per sequence, no un-voting, and the SERVER decides when it passes -
+  // a phone only ever says "me too".
+  socket.on(ClientEvents.SKIP_VOTE, (payload) => {
+    const result = getPlayerRoomForSocket(socket, ClientEvents.SKIP_VOTE);
+    if (!result) {
+      return;
+    }
+    const { room, playerId } = result;
+
+    if (room.phase !== 'SOCRATES') {
+      console.log(`rejected ${ClientEvents.SKIP_VOTE} for room ${room.code}: phase is ${room.phase}, not SOCRATES`);
+      return;
+    }
+    // No vote is open: this beat is not part of a skippable narration (a
+    // one-line stage intro, a reveal moment, the coronation), or the vote has
+    // already passed and the interruption beat is on screen. The latter is the
+    // once-per-sequence latch doing its job - a second round inside one
+    // narration is impossible, not merely unlikely.
+    if (!room.skipVote || room.skipVote.resolved) {
+      console.log(`rejected ${ClientEvents.SKIP_VOTE} for room ${room.code}: no open skip vote`);
+      return;
+    }
+    if (room.paused) {
+      console.log(`rejected ${ClientEvents.SKIP_VOTE} for room ${room.code}: game is paused`);
+      return;
+    }
+    // Task 238's staleness rule, verbatim: an id naming a beat that is no
+    // longer on screen is a press against something already gone. An ABSENT id
+    // still means "whatever is current", which is what lets a phone that
+    // reconnected mid-narration vote at all.
+    const votedBeatId = (payload as { beatId?: unknown } | undefined)?.beatId;
+    if (typeof votedBeatId === 'number' && votedBeatId !== room.socratesBeatId) {
+      console.log(
+        `rejected ${ClientEvents.SKIP_VOTE} for room ${room.code}: stale beat ${votedBeatId}, current is ${room.socratesBeatId}`,
+      );
+      return;
+    }
+    if (room.skipVote.voters.has(playerId)) {
+      console.log(`rejected ${ClientEvents.SKIP_VOTE} from player ${playerId}: already voted this sequence`);
+      return;
+    }
+
+    room.skipVote.voters.add(playerId);
+    console.log(`player ${playerId} voted to skip in room ${room.code}`);
+    emitSkipVoteProgress(room);
+    if (skipVotePassed(room)) {
+      startSequenceSkip(room);
+    }
   });
 
   // Task 53 - dev-only sink for the /dev/draw harness. No room and no
@@ -1864,6 +1964,16 @@ io.on('connection', (socket) => {
       // Task 207 - same reasoning, for the agora. A no-op outside AGORA_QUESTION.
       if (room) {
         recheckAgoraPhaseOnDisconnect(room);
+      }
+
+      // Task 300 - and the same reasoning once more for the skip vote, with one
+      // difference worth stating: the others re-ask "is everyone done?", while
+      // this one re-asks a question whose ANSWER MOVED. The threshold is a
+      // fraction of the connected roster, so a player leaving lowers the bar -
+      // two votes that were short of three can clear a bar that just became
+      // two, with nobody voting again. A no-op outside a live narration vote.
+      if (room) {
+        recheckSkipVoteOnDisconnect(room);
       }
     }
   });

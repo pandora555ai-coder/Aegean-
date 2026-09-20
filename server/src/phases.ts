@@ -24,11 +24,18 @@ import {
   type QuestionShowPlayerPayload,
   type RevealPlayerResult,
   type RoomCode,
+  type SkipVoteProgressPayload,
   type StageDefinition,
 } from '@game/shared';
 import {
   getConnectedPlayers,
   getRoom,
+  // Task 300 - the skip vote's three pure readers. The DECISION lives in
+  // state.ts beside the roster it is measured against, so the vote handler and
+  // the disconnect recheck can never disagree about what "passed" means.
+  liveSkipVotes,
+  skipVotePassed,
+  skipVoteThreshold,
   type ClimbState,
   type PendingSocratesBeat,
   type Room,
@@ -65,6 +72,7 @@ import {
   pickGameIntroLine,
   pickGameIntroSequence,
   pickQuestionIntro,
+  pickSkipInterruptedLine,
   pickStageIntroLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
@@ -391,6 +399,10 @@ export function enterSocratesBeat(
     // it is the last clip the chain plays.
     suffixTemplate?: string | null;
     suffixTag?: string | null;
+    // Task 300 - carried straight through onto room.pendingSocratesBeat below,
+    // where endSocratesBeat reads it to refuse a SKIP. Set only by
+    // startSequenceSkip's interruption beat.
+    unskippable?: boolean;
   },
   onFire: () => void,
 ): void {
@@ -635,6 +647,16 @@ function startSocratesSequence(
     // i is an index into the TAIL, so i + 1 is its index in `picked`.
     ...(suffix && i + 1 === lastIndex ? { suffixTemplate: suffix.template, suffixTag: suffix.tag } : {}),
   }));
+  // Task 300 - a narration the room may vote quiet. The two SKIPPABLE kinds
+  // are exactly the two multi-line narrations the spec names: the opening
+  // GAME_INTRO_SEQUENCE and Η Ανάβασις' ANAVASIS_INTRO_SEQUENCE (which enters
+  // as STAGE_INTRO). 'WINNER' also arrives here - the coronation is a sequence
+  // too - and deliberately opens NO vote: it plays after the game is already
+  // decided, it is the winner's own moment, and there is nothing left for a
+  // skip to get back to.
+  if (kind === 'GAME_INTRO' || kind === 'STAGE_INTRO') {
+    openSkipVote(room, kind, picked.length);
+  }
   const [first] = picked;
   enterSocratesBeat(
     room,
@@ -652,6 +674,131 @@ function startSocratesSequence(
     () => advanceFromSocrates(room.code),
   );
   return true;
+}
+
+// ======================= Task 300: the skip vote ==========================
+// A multi-line narration is the one place the show talks for a long time with
+// nothing else happening, so it is the one place the ROOM can cut it short. The
+// vote belongs to the NARRATION, not to a line: it is opened once when the
+// sequence starts, survives every line boundary inside it, and closes when the
+// sequence routes onward. Everything below is confined to that window - outside
+// it room.skipVote is null and every function here is a no-op.
+
+// Room-wide, counts only (never who voted). `target` makes it a targeted
+// resend instead, which is what a phone reconnecting mid-vote gets: only there
+// is `youVoted` meaningful, and only there is it sent - broadcasting it would
+// be false for everyone but one recipient.
+export function emitSkipVoteProgress(room: Room, target?: { socketId: string; playerId: string }): void {
+  const payload: SkipVoteProgressPayload = {
+    votes: liveSkipVotes(room),
+    needed: skipVoteThreshold(room),
+    connected: getConnectedPlayers(room).length,
+    open: room.skipVote !== null && !room.skipVote.resolved,
+  };
+  if (target) {
+    io.to(target.socketId).emit(ServerEvents.SKIP_VOTE_PROGRESS, {
+      ...payload,
+      youVoted: room.skipVote?.voters.has(target.playerId) ?? false,
+    });
+    return;
+  }
+  io.to(room.code).emit(ServerEvents.SKIP_VOTE_PROGRESS, payload);
+}
+
+function openSkipVote(room: Room, kind: string, lineCount: number): void {
+  room.skipVote = { voters: new Set(), resolved: false };
+  console.log(
+    `room ${room.code} skip vote OPEN for ${kind} (${lineCount} lines, ` +
+      `${skipVoteThreshold(room)} of ${getConnectedPlayers(room).length} needed)`,
+  );
+  emitSkipVoteProgress(room);
+}
+
+// The narration is over (naturally or by interruption) and the flow is about to
+// route onward. Nulling the state is what makes the counter come down on the TV
+// and every phone's button stay down until the NEXT sequence opens its own vote.
+function closeSkipVote(room: Room): void {
+  if (!room.skipVote) {
+    return;
+  }
+  room.skipVote = null;
+  emitSkipVoteProgress(room);
+}
+
+// The vote has passed. 299's proposed sequence, in its order: discard the queue,
+// stop the live clip, suppress (never synthesise) its ack, then ONE interruption
+// beat carrying the ORIGINAL kind so the existing switch in advanceFromSocrates
+// resumes exactly where the narration's own end would have led - zero new
+// routing. The suppression is the host's half: socrates:stop nulls that source's
+// onended BEFORE stopping it (useGameAudio.stopSocratesLine), so the ack that
+// would have fired never exists; and even if one escaped, enterSocratesBeat
+// below bumps socratesBeatId, so it arrives stale and is refused at the door
+// (index.ts's endSocratesBeat) - the same guard Task 236 built for an over-cap
+// clip.
+export function startSequenceSkip(room: Room): void {
+  const pending = room.pendingSocratesBeat;
+  if (!pending || !room.skipVote || room.skipVote.resolved || room.phase !== 'SOCRATES') {
+    return;
+  }
+  // Latched BEFORE any of the work it triggers, so a second caller arriving in
+  // the same tick (a vote and a disconnect recheck can both decide at once)
+  // finds it already resolved and does nothing.
+  room.skipVote.resolved = true;
+  const stoppedBeatId = room.socratesBeatId;
+  const discarded = room.pendingSocratesQueue.length;
+  room.pendingSocratesQueue = [];
+  console.log(
+    `room ${room.code} skip vote PASSED on beat ${stoppedBeatId} ` +
+      `(${liveSkipVotes(room)}/${skipVoteThreshold(room)}) - ${discarded} queued line(s) discarded`,
+  );
+  // The button goes down on every phone the moment it passes; the TV keeps the
+  // final tally up (votes are unchanged, `open` is now false) through the
+  // interruption beat that follows.
+  emitSkipVoteProgress(room);
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(ServerEvents.SOCRATES_STOP, { beatId: stoppedBeatId });
+  }
+  const picked = pickSkipInterruptedLine(room.socrates);
+  if (!picked) {
+    // Pool spent (two skipped sequences in one game is the most that can
+    // happen, and there are four lines) - silence, never a repeat. Route where
+    // the narration's end would have gone: the phase is still SOCRATES and the
+    // queue is now empty, so this falls straight into the kind switch.
+    advanceFromSocrates(room.code);
+    return;
+  }
+  enterSocratesBeat(
+    room,
+    'SOCRATES',
+    {
+      kind: pending.kind,
+      line: picked.text,
+      lineTemplate: picked.template,
+      lineTag: picked.tag,
+      unskippable: true,
+    },
+    () => advanceFromSocrates(room.code),
+  );
+}
+
+// Task 300 - the disconnect half of "more than half of CURRENTLY-connected".
+// A no-op outside a live narration vote, and placed with the rest of the
+// recheck family in index.ts's disconnect handler for the same reason they are:
+// the player who just left may have been the only one holding the vote back.
+// It must be able to pass the vote with NO new vote cast - a 3rd of 4 leaving
+// takes the bar from 3 to 2, which two existing votes already clear.
+export function recheckSkipVoteOnDisconnect(room: Room): void {
+  if (!room.skipVote || room.skipVote.resolved || room.phase !== 'SOCRATES') {
+    return;
+  }
+  // The bar itself moved, so say so even when that changes nothing else.
+  emitSkipVoteProgress(room);
+  if (room.paused) {
+    return; // nothing advances past a pause, the same rule a vote itself obeys
+  }
+  if (skipVotePassed(room)) {
+    startSequenceSkip(room);
+  }
 }
 
 // Everything the gate does once any stage announcement is out of the way -
@@ -1204,6 +1351,11 @@ export function advanceFromSocrates(code: RoomCode): void {
   }
   if (pending) {
     room.pendingSocratesBeat = null;
+    // Task 300 - the narration is over (its last line acked, or the
+    // interruption beat that replaced it did) and the flow is about to leave.
+    // Closing here rather than at each routing target keeps it to ONE site, the
+    // same discipline the switch below already follows.
+    closeSkipVote(room);
     switch (pending.kind) {
       case 'GAME_INTRO':
         // Task 236 - the card is already up (endStageAnnounce showed it

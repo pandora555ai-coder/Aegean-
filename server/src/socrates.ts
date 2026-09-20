@@ -784,6 +784,29 @@ export const DUEL_LINES: Record<DuelMoment, readonly string[]> = {
   ],
 };
 
+// Task 300 - what Socrates says when the room VOTES him quiet mid-narration.
+// ONE line plays, once per skipped sequence, and it is the only thing between
+// the discarded narration and whatever that narration was leading to.
+//
+// Under BOTH speech policies, for the same reason DUEL_LOCKED and SPEAR_OUT are
+// (Task 296): this belongs to a MECHANIC - the room's own interruption - not to
+// a stage's structural slot, so it never goes near pickSpeechSlot and is never
+// gated on room.settings.speechPolicy. Four lines rather than three because a
+// game can hold two skippable sequences (the opening narration and Η Ανάβασις'
+// announcement) and `usedLines` must still have something unrepeated to draw
+// for the second.
+//
+// No mp3 exists for any of these until the October pass, which is the accepted
+// interim every unrecorded pool has: the host's LOBBY prefetch 404s, the client
+// acks at once (Task 154), and the beat is subtitle-only. That is exactly why
+// this beat cannot strand a room that has just asked for the talking to stop.
+export const SKIP_INTERRUPTED_LINES: readonly string[] = [
+  'Καλά. Ούτε στη δίκη μου δεν με διέκοψαν τόσο γρήγορα.',
+  'Μιλούσα. Ψηφίσατε. Δημοκρατία — το χειρότερο πολίτευμα, εκτός από όσα δοκιμάσαμε.',
+  'Η Εκκλησία του Δήμου αποφάσισε να σωπάσω. Πρώτη φορά συμφωνώ με απόφασή της τόσο απρόθυμα.',
+  'Σημειώνω τα ονόματα όσων ψήφισαν. Δεν θα το ξεχάσω. Παίξτε.',
+];
+
 export const NUMERIC_LINES: Record<NumericMoment, readonly string[]> = {
   EXACT_HIT: [
     'Κάποιος βρήκε τον αριθμό ακριβώς. Δεν πιστεύω στην τύχη τόσο πολύ — άρα μου κρύβετε πράγματα.',
@@ -1347,6 +1370,14 @@ export const LINE_TAGS: Partial<Record<string, string>> = {
   'Η Αγορά έχει χίλιες φωνές. Απόψε ακούγεται κυρίως η δική σου.': '[dry]',
   'Απαντάς σαν να έχεις ξαναδεί τις ερωτήσεις. Δεν σε κατηγορώ. Σε παρακολουθώ.': '[thoughtful]',
   'Οι έμποροι ρωτούν ποιος είσαι. Οι σοφιστές ρωτούν πόσο χρεώνεις.': '[amused]',
+  // Task 300 - SKIP_INTERRUPTED, the 14th pool. Same load-bearing role: the
+  // clip is lineHash(template, tag), so these four tags decide the filenames
+  // the October pass produces, and a missing entry here would hash to
+  // lineHash(template, null) and 404 forever.
+  'Καλά. Ούτε στη δίκη μου δεν με διέκοψαν τόσο γρήγορα.': '[dry]',
+  'Μιλούσα. Ψηφίσατε. Δημοκρατία — το χειρότερο πολίτευμα, εκτός από όσα δοκιμάσαμε.': '[sighs]',
+  'Η Εκκλησία του Δήμου αποφάσισε να σωπάσω. Πρώτη φορά συμφωνώ με απόφασή της τόσο απρόθυμα.': '[amused]',
+  'Σημειώνω τα ονόματα όσων ψήφισαν. Δεν θα το ξεχάσω. Παίξτε.': '[deadpan]',
 };
 
 // Task 62: a quality rating side table, same shape and rationale as
@@ -2154,6 +2185,21 @@ export function recordSpearOutAndPickLine(state: SocratesState, name: string): P
   return { ...picked, text: `${getVocative(name)}. ${picked.text}` };
 }
 
+// Task 300 - the interruption line, drawn once per skipped sequence. Plain
+// pickSpeechLine (never the v2 slot engine) for the same reason
+// recordSpearOutAndPickLine is: this fires under BOTH policies, and its subject
+// is the room's own decision rather than a stage's standout. Null when every
+// line has been used or deleted - the caller then routes onward in silence
+// rather than repeating one, the same "no line, no phase" discipline as
+// everywhere else here.
+export function pickSkipInterruptedLine(state: SocratesState): PickedLine | null {
+  const picked = pickSpeechLine(state, SKIP_INTERRUPTED_LINES);
+  if (picked && !isProduction) {
+    console.log(`[socrates] fired moment=SKIP_INTERRUPTED lineHash=${lineHash(picked.template, picked.tag)}`);
+  }
+  return picked;
+}
+
 // Task 61, dev-only: called once at GAME_OVER. Prints every Moment from
 // LINES (so rarer moments that never fired still show up as 0) alongside
 // how many times it actually got picked this game - the whole point being
@@ -2265,5 +2311,11 @@ export function collectVoiceLineEntries(): VoiceLineEntry[] {
   for (const [pool, lines] of Object.entries(SPEECH_V2_LINES)) {
     add(`SLOT (${pool})`, lines);
   }
+  // Task 300 - the skip-vote interruption pool, registered here for the same
+  // reason every pool above is: `voice:generate` produces a clip only for a
+  // line this function returns, and /dev/voice can only list what it sees.
+  // Four NEW rows (nothing else shares these lines), so this listing goes
+  // 517 -> 521.
+  add('SKIP_INTERRUPTED', SKIP_INTERRUPTED_LINES);
   return entries;
 }

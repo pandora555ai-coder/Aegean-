@@ -225,6 +225,17 @@ export interface QueuedSocratesLine {
   suffixTag?: string | null;
 }
 
+// Task 300 - one narration's skip vote. `voters` is keyed by playerId (identity,
+// never socketId - the Core rule), so a phone that reconnects mid-sequence
+// still holds the vote it cast.
+export interface SkipVoteState {
+  voters: Set<string>;
+  // The once-per-sequence latch. Set the instant the vote PASSES, before any
+  // of the work it triggers, so nothing can pass twice: a second round inside
+  // one narration is impossible by construction rather than by timing.
+  resolved: boolean;
+}
+
 export interface PendingSocratesBeat {
   // Task 294 - 'SPEECH_SLOT' is the v2 policy's per-stage slot beat. Each
   // mode's own advanceFrom* routes it (see speechSlots.ts), which is why it
@@ -247,6 +258,14 @@ export interface PendingSocratesBeat {
   line: string;
   lineTemplate: string;
   lineTag: string | null;
+  // Task 300 - this beat may not be cut short by ANY skip: not the VIP's
+  // Παράλειψη (vip:skip_socrates / vip:next), and not the room's skip vote.
+  // Set on the ONE interruption beat a passed vote produces, and nowhere else.
+  // The room has just voted to stop Socrates talking; his four-word reply to
+  // that is the whole payoff, and a second press landing on it would swallow
+  // it. Its own audio ack still ends it normally - unskippable is about
+  // SKIPPING, not about holding the phase open.
+  unskippable?: boolean;
   // Task 263 - a clip played AHEAD of this beat's own line, within the same
   // beat and under the same single ack (the coronation's vocative address).
   // Set on the FIRST line of the coronation sequence only, and only when that
@@ -349,6 +368,14 @@ export interface Room {
   // line gets its own held phase and its own audio ack - phase length still
   // follows the audio, never a timer.
   pendingSocratesQueue: QueuedSocratesLine[];
+  // Task 300 - the skip vote for the narration currently in flight, null
+  // whenever no vote is open (which is every beat that is not part of a
+  // SEQUENCE, and every phase that is not SOCRATES). Opened by
+  // startSocratesSequence, closed when the sequence's last line routes onward,
+  // and carried across the lines of one sequence - the vote belongs to the
+  // narration, not to a line, which is why it is NOT reset per beat the way
+  // the VIP's own skip guard is.
+  skipVote: SkipVoteState | null;
   // Task 236 - monotonic id of the Socrates beat currently on screen, echoed
   // by the host on socrates:audio_ended so a stale ack (one belonging to a
   // beat the backstop already cut off) can be told apart from a real one.
@@ -493,6 +520,7 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     socrates: createSocratesState(),
     gameIntroPlayed: false,
     pendingSocratesQueue: [],
+    skipVote: null,
     socratesBeatId: 0,
     socratesBackstopMs: SOCRATES_MAX_DURATION_MS,
     gameStartedAt: null,
@@ -767,6 +795,36 @@ export function haveAllConnectedPlayersChosenPowerUp(room: Room): boolean {
   return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.powerUpChoices.has(player.playerId));
 }
 
+// Task 300 - strictly MORE than half of whoever is connected right now: 3 of 5,
+// 3 of 4, 2 of 3, 2 of 2. Deliberately recomputed from the live roster on every
+// read rather than frozen when the vote opened, so a disconnect lowers the bar
+// it is measured against (see skipVotePassed).
+export function skipVoteThreshold(room: Room): number {
+  return Math.floor(getConnectedPlayers(room).length / 2) + 1;
+}
+
+// Task 300 - how many of the votes cast are still in the room. Identity-based
+// for exactly the reason haveAllConnectedPlayersAnswered is: counting raw
+// `voters.size` would let a player who voted and then left keep pushing the
+// room past a threshold they are no longer part of.
+export function liveSkipVotes(room: Room): number {
+  if (!room.skipVote) {
+    return 0;
+  }
+  return getConnectedPlayers(room).filter((player) => room.skipVote!.voters.has(player.playerId)).length;
+}
+
+// Task 300 - the decision, in one place so the vote handler and the disconnect
+// recheck can never disagree about what "passed" means. An already-resolved
+// vote never passes again (the once-per-sequence latch).
+export function skipVotePassed(room: Room): boolean {
+  if (!room.skipVote || room.skipVote.resolved) {
+    return false;
+  }
+  const connectedCount = getConnectedPlayers(room).length;
+  return connectedCount > 0 && liveSkipVotes(room) >= skipVoteThreshold(room);
+}
+
 // Task 172 - how long a LOBBY player who disconnects stays reserved a seat
 // (identity, avatar, score, VIP) before being dropped from the roster for
 // good. Long enough to survive a phone lock or a page refresh; short enough
@@ -908,6 +966,9 @@ export function resetRoomForNewGame(room: Room): void {
   room.pendingSocratesBeat = null;
   // Task 236 - no half-played narration survives into the next game.
   room.pendingSocratesQueue = [];
+  // Task 300 - nor a vote against one. A fresh game opens a fresh narration
+  // with a fresh vote, so game 2 can skip its own intro exactly as game 1 could.
+  room.skipVote = null;
   room.socratesBeatId = 0;
   room.socratesBackstopMs = SOCRATES_MAX_DURATION_MS;
   // Task 239 - no residue from the game that just ended: a fresh "play

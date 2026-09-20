@@ -49,18 +49,48 @@ const barStyle: CSSProperties = {
   textShadow: '0 2px 8px rgba(0,0,0,.8)',
 };
 
+// Task 300 - the skip vote's live tally, in the subtitle's own band. It belongs
+// HERE rather than in a band of its own because it is about the thing the
+// subtitle is showing: the room is voting on THIS narration, and the counter
+// dies with it. Null whenever no vote is running or none has been cast yet, so
+// an unskipped narration renders exactly the bar it always did.
+const counterStyle: CSSProperties = {
+  marginTop: '1cqh',
+  // The chip treatment the corner controls use (hostStyles.ts's SURFACE_GLOW
+  // family) - not restated from there, since this file already owns the bar's
+  // own copy of that look above.
+  display: 'inline-block',
+  padding: '0.6cqh 1.6cqh',
+  borderRadius: '0.6cqh',
+  background: 'color-mix(in srgb, var(--night-1) 85%, transparent)',
+  border: '1px solid color-mix(in srgb, var(--ember) 55%, transparent)',
+  color: 'var(--ember)',
+  fontSize: '2.2cqh',
+  fontWeight: 700,
+};
+
 interface SocratesSubtitleProps {
   text: string;
+  // Task 300 - {votes, needed} while a skip vote is worth showing, else null.
+  // The caller decides that (HostScreen): the counter stays up through the
+  // interruption beat that a passed vote produces, which is why this is not
+  // simply "is the vote open".
+  skipVote?: { votes: number; needed: number } | null;
 }
 
 // Deliberately NOT aria-hidden, unlike SpeechSlab's decorative narration
 // panels: this text is the whole point of the feature (a caption standing in
 // for audio), so it must be readable content, not decoration.
-export function SocratesSubtitle({ text }: SocratesSubtitleProps) {
+export function SocratesSubtitle({ text, skipVote = null }: SocratesSubtitleProps) {
   return (
     <div style={rootStyle}>
       <div style={barStyle} data-testid="socrates-subtitle">
         {text}
+        {skipVote && (
+          <div style={counterStyle} data-testid="skip-vote-counter">
+            Παράλειψη {skipVote.votes}/{skipVote.needed}
+          </div>
+        )}
       </div>
     </div>
   );
