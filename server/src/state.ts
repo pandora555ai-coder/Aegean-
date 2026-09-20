@@ -22,6 +22,7 @@ import {
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
+  SPEECH_POLICY_OPTIONS,
   DEFAULT_GAME_MODE,
   SOCRATES_MAX_DURATION_MS,
   sanitizeCustomName,
@@ -596,6 +597,11 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   // fields above; still validated by type rather than trusting the client.
   if (typeof partial.powerUpsEnabled === 'boolean') {
     room.settings.powerUpsEnabled = partial.powerUpsEnabled;
+  }
+  // Task 292 - enum-validated like gameLength above. No behaviour reads
+  // this field yet.
+  if (partial.speechPolicy !== undefined && SPEECH_POLICY_OPTIONS.includes(partial.speechPolicy)) {
+    room.settings.speechPolicy = partial.speechPolicy;
   }
   return room.settings;
 }

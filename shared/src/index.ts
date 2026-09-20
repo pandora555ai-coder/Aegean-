@@ -1419,10 +1419,13 @@ export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
 // Task 215 - short/medium retuned 1 -> 2, matching the locked lineup's own
 // "Ζωγραφική x2 rounds" (Task 214's tasks/214-compose-locked-lineup.md).
 // Standalone draw's own room.settings.drawRounds setting is untouched.
+// Task 292 - long retuned 3 -> 2, so every gameLength now runs Ζωγραφική
+// x2 rounds; part of the speech-policy v2 groundwork (fewer round-boundary
+// beats to slot), unrelated to gameLength itself.
 export const FULL_DRAW_ROUNDS_BY_LENGTH: Record<GameLength, number> = {
   short: 2,
   medium: 2,
-  long: 3,
+  long: 2,
 };
 
 // Fixed, not gameLength-dependent - the show's shape is the show's shape.
@@ -1882,6 +1885,13 @@ export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
 // every mode's own knobs, and each mode reads only the ones it owns.
 export const DRAW_ROUNDS_OPTIONS = [1, 2] as const;
 
+// Task 292 - v1 is the existing per-reveal Socrates picker; v2 is the
+// fixed per-stage slot engine (see tasks/291-speech-policy-diagnosis.md).
+// Room-scoped, LOBBY-only, frozen for the whole game once it starts. No
+// behaviour reads this yet - the v2 slot engine lands in a later task.
+export type SpeechPolicy = 'v1' | 'v2';
+export const SPEECH_POLICY_OPTIONS: readonly SpeechPolicy[] = ['v1', 'v2'];
+
 export type RoomSettings = {
   questionTimeMs: number;
   difficultyMix: DifficultyMix;
@@ -1893,6 +1903,8 @@ export type RoomSettings = {
   // this is also true. The sabotage machinery itself (ice/ink gates, the
   // host `sabotage` field, the FX) is untouched either way.
   powerUpsEnabled: boolean;
+  // Task 292 - see SpeechPolicy above.
+  speechPolicy: SpeechPolicy;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -1902,6 +1914,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
+  // Task 292 - v1 stays the default until the v2 slot engine ships.
+  speechPolicy: 'v1',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,

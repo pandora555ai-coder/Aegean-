@@ -108,11 +108,13 @@ server/src/modes/full.ts   Full mode (Task 134, relined by Task 214): COMPOSES
 server/src/payloads.ts   REVEAL / GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/steal.ts      STEAL thief selection + the clamped point transfer
-server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
-                         what the next round must be. No Room, no io, no timers; the phase
-                         shell around it is in phases.ts.
-server/src/climb.ts      Η Ανάβαση (the trial's ALTERNATIVE finale, Task 187/188a) — pure
-                         mechanic only, same no-Room/io/timers discipline as trial.ts: round
+server/src/trial.ts      REMOVED (Task 258, found stale by Task 291) — Η Δίκη is gone
+                         entirely: no file on disk, zero `startTrial`/`room.trial` references
+                         in phases.ts or modes/full.ts. Η Ανάβασις (climb.ts) is the ONLY
+                         finale. Every other mention of Η Δίκη/trial below this point is
+                         HISTORICAL — describes a mechanic that no longer exists.
+server/src/climb.ts      Η Ανάβαση (Task 187/188a) — the game's only finale — pure
+                         mechanic only, no Room/io/timers: round
                          scoring, the top-of-ladder WINNER/DUEL decision, and (Task 203) the
                          spear elimination overlay. The spear half is NOT wired into the live
                          game yet — see Phases below.
@@ -371,8 +373,9 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       statements EACH) -> 3 Ζωγραφική (draw)
       -> 4 Εκτίμηση (3 numeric) -> 5 Η Μνήμη της Αγοράς (one agora round)
       -> 6 Η Συκοφαντία (quiz + STEAL) -> 7 Η Ανάβασις (the climb, entered
-      with accumulated scores as the ladder's entry order) — or Η Δίκη in
-      that same row when the VIP sets finaleMode back to 'trial'.
+      with accumulated scores as the ladder's entry order — the ONLY finale;
+      `finaleMode`/Η Δίκη were removed at Task 258, see the file listing
+      above and Task 291's diagnosis, tasks/291-speech-policy-diagnosis.md).
       **Reference timing, socket-level bots, NOT a human estimate**: a
       seeded `?bot=3` full run (default settings, `gameLength: 'long'`)
       takes ~845-870s end to end across all seven stages — 844.2s in Task
@@ -544,17 +547,15 @@ COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
-**The climb (Task 188a) is the DEFAULT finale since Task 214**, with Η Δίκη
-as the alternative — both gated by `room.settings.finaleMode`
-('trial' | 'climb', **default 'climb'** since 214 flipped it; type + default
-in shared/src/index.ts, search `FinaleMode`/`DEFAULT_ROOM_SETTINGS`). It is a VIP
-lobby setting (ControllerScreen.tsx:3216-3218's finale-mode selector,
-same `vip:update_settings` path as every other room setting), so — like
-every other room.settings field — it lives on the Room object and survives
-a host reload via HOST_REJOIN with no setting-specific code of its own.
-advanceToNextQuestionOrGameOver is the ONE site that branches on
-it (startClimb vs startTrial); quiz and full both honour it since they share
-that site. CLIMB_* constants (all shared/src/index.ts): `CLIMB_TOP` = 10
+**The climb (Task 188a) became the DEFAULT finale at Task 214, then the
+ONLY finale at Task 258**, which removed Η Δίκη and the
+`room.settings.finaleMode` setting/`FinaleMode` type entirely (found stale
+here by Task 291, corrected by Task 292 — `grep -arn "FinaleMode|finaleMode"
+shared/src server/src client/src` is zero hits at this HEAD; `RoomSettings`,
+shared/src/index.ts, has no such field; there is no finale-mode selector in
+ControllerScreen.tsx). `advanceToNextQuestionOrGameOver` (phases.ts) calls
+`startClimb` unconditionally now — no branch, since there is nothing left
+to branch to. CLIMB_* constants (all shared/src/index.ts): `CLIMB_TOP` = 10
 (the top step, a win); `CLIMB_ENTRY_GAP` = 3 / `CLIMB_ENTRY_BASE` = 1 (entry
 step spread by competition rank, climbEntryStep); `CLIMB_QUESTION_TIME_MS`
 = 22000 (fixed, not questionTimeMs); `CLIMB_MAX_QUESTIONS` = 24 (question
@@ -728,19 +729,22 @@ lines after it (Task 236) all land BEFORE the first CLIMB payload, and
 `isClimbFinale` was set only BY one of those payloads — so the quiz's
 TheatreScene and its WREATHED SophistsRow rendered over the whole
 announcement. The server says which stage the card belongs to now: an
-additive **`finale: FinaleMode | null` on StageAnnouncePayload AND
-SocratesShowPayload**, both built off `room.climb`/`room.trial`
-(payloads.ts) — the same two facts the card's WORDS already swap on.
-HostScreen sets `isClimbFinale` from either, live and on state:sync, so a TV
-reloading ON the card (buildStageAnnounce is the sync's own builder,
+additive **`finale: 'climb' | null` on StageAnnouncePayload AND
+SocratesShowPayload** (shared/src/index.ts:1578/2131 — the type narrowed off
+`FinaleMode` when Task 258 removed the trial finale; a stale earlier draft
+of this paragraph said `FinaleMode | null` built off `room.climb`/
+`room.trial` — `room.trial` does not exist, fixed by Task 292/291), built
+off `room.climb` alone (payloads.ts) — the one fact the card's WORDS already
+swap on. HostScreen sets `isClimbFinale` from it, live and on state:sync, so
+a TV reloading ON the card (buildStageAnnounce is the sync's own builder,
 index.ts:447) or MID-NARRATION (the rule lines are plain SOCRATES beats,
 whose sync carries no card at all) comes back to the temple rather than the
 theatre. `isClimbAnnounceBeat` is the fourth term of `showAnavasisWorld`,
 and SocratesFigure's temple pose now covers STAGE_ANNOUNCE as well, or
 CENTRE_STAGE_PHASES would plant him mid-stair at 44% for the card and glide
 him to 57% the moment the narration began. Scoped to ONE game by
-construction: `resetRoomForNewGame` clears room.climb/room.trial, so game
-2's stage 1 announces `finale: null` and every ordinary stage always did.
+construction: `resetRoomForNewGame` clears room.climb, so game 2's stage 1
+announces `finale: null` and every ordinary stage always did.
 **The climb's STAGE_INTRO beats render their card + Task 239 subtitle
 DIRECTLY** (HostScreen's renderPhaseView), not through SocratesView, whose
 GameLayout would duplicate AnavasisChrome — the SOCRATES branch is gated

@@ -15,6 +15,7 @@ import {
   PRESET_NAMES,
   QUESTION_TIME_OPTIONS_MS,
   REVEAL_DURATION_MS,
+  SPEECH_POLICY_OPTIONS,
   ServerEvents,
   getVocative,
   isAgoraQuestionHostPayload,
@@ -89,6 +90,7 @@ import {
   type SabotageEffect,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
+  type SpeechPolicy,
   type StateSyncPayload,
   type StealChoosePayload,
   type StealResolvedPayload,
@@ -137,6 +139,8 @@ const OPTION_SLAB_CLIP = 'polygon(1.5% 0, 98.5% 0.6%, 100% 3%, 99.4% 97%, 98% 10
 // Task 177 - the two options for the powerUpsEnabled SegmentedRow. false
 // first so it renders as the left (default) segment.
 const POWER_UPS_ENABLED_OPTIONS = [false, true] as const;
+// Task 292 - v1/v2 Socrates speech engine. No behaviour reads this yet.
+const SPEECH_POLICY_LABELS: Record<SpeechPolicy, string> = { v1: 'v1', v2: 'v2' };
 // Power-up (Task 30b) - the two choosable effects, phrased from the CASTER's
 // side ("freeze them"), unlike the victim-side banner during QUESTION.
 const POWER_UP_LABELS: Record<PowerUpEffect, { icon: string; title: string; blurb: string }> = {
@@ -3385,6 +3389,20 @@ export default function ControllerScreen() {
             onSelect={(ms) => handleSettingChange({ questionTimeMs: ms })}
             readOnly={!isVip}
             testIdPrefix="setting-time"
+          />
+          {/* Task 292 - speechPolicy groundwork. Shown regardless of mode,
+              the Χρόνος precedent above: it governs Socrates across every
+              mode (the v2 slot engine has no quiz-only concept), never a
+              single mode's own mechanic like powerUpsEnabled below. No
+              behaviour reads this setting yet. */}
+          <SegmentedRow
+            label="Ομιλία Σωκράτη"
+            options={SPEECH_POLICY_OPTIONS}
+            current={roomSettings.speechPolicy}
+            format={(policy: SpeechPolicy) => SPEECH_POLICY_LABELS[policy]}
+            onSelect={(policy) => handleSettingChange({ speechPolicy: policy })}
+            readOnly={!isVip}
+            testIdPrefix="setting-speech-policy"
           />
           {/* Quiz-only settings - hidden for any other mode (not just a
               draw-specific check), so a future third mode never inherits a
