@@ -31,8 +31,10 @@ import {
   emitCrowdIntensity,
   setCrowdMood,
 } from '../crowd.js';
-import { enterSocratesBeat } from '../phases.js';
+import { enterSocratesBeat, startSpeechSlotBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
+import { recordLedgerDrawRound } from '../stageLedger.js';
+import { speechV2 } from '../speechSlots.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -351,7 +353,11 @@ function start(room: Room): void {
 // until task 139 writes lines) - same "no line, no phase" discipline as
 // every other Socrates beat in this codebase.
 function maybeStartDrawIntroThenPhase(room: Room, state: DrawState): void {
-  const picked = pickDrawIntroLine(room.socrates);
+  // Task 294 - v2 KEEPS DRAW_INTRO but once per STAGE rather than once per
+  // cycle: the later cycles are introduced by their own between-rounds slot
+  // beat instead, and two beats back to back is exactly the pacing v2 exists
+  // to remove. v1 asks for the line on every cycle, unchanged.
+  const picked = speechV2(room) && state.cycleIndex > 0 ? null : pickDrawIntroLine(room.socrates);
   if (picked) {
     enterSocratesBeat(
       room,
@@ -555,6 +561,13 @@ function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
   state.guesses.clear();
   state.lastGuessReveal = null;
   console.log(`room ${room.code} draw mode: starting round ${state.cycleIndex + 1}/${state.totalCycles}`);
+  // Task 294 - Ζωγραφική's between-rounds slot, the one moment this stage has
+  // a completed round to judge and another still to come. The fresh cycle is
+  // already dealt above, so the beat holds the room and
+  // advanceFromDrawSocrates opens the DRAW phase once it is acked.
+  if (speechV2(room) && startSpeechSlotBeat(room, 'DRAW_SOCRATES', 'DRAW_MID', () => advanceFromDrawSocrates(room.code))) {
+    return;
+  }
   maybeStartDrawIntroThenPhase(room, state);
 }
 
@@ -874,13 +887,32 @@ export function endGuessRound(code: RoomCode): void {
   // Task 138 - detected (and logged) here, at the moment the round resolves,
   // exactly like the quiz's recordRoundAndPickLine in endQuestion. Consumed
   // by continueAfterGuessReveal once GUESS_REVEAL's own timer ends.
-  const distractorsHit = wrongChoiceCounts.filter((count) => count > 0).length;
-  state.pendingSocratesLine = recordDrawGuessRoundAndPickLine(room.socrates, {
+  // Task 293 - the draw capture site. DrawGuessRoundContext below carries
+  // counts and the drawer's NAME only, so no guesser could ever be named and
+  // the per-DRAWER outcome was unrecoverable once the round passed. Captured
+  // at the call site rather than by widening that context, so the v1 detector
+  // it feeds is untouched.
+  recordLedgerDrawRound(room.socrates.ledger, {
+    drawerPlayerId: drawerId,
+    drawerName: drawer?.name ?? '',
+    drawerPoints: drawerPointsAwarded,
     correctGuessers,
     eligibleGuessers,
-    distractorsHit,
-    drawerName: drawer?.name ?? '',
+    guessers: results,
   });
+
+  const distractorsHit = wrongChoiceCounts.filter((count) => count > 0).length;
+  // Task 294 - THE v2 gate for this mode's DRAW_MOMENT beat, at the PICKER
+  // for the same reason as the quiz's: a picker left running consumes pool
+  // lines for a beat that never plays. v1 is the exact original call.
+  state.pendingSocratesLine = speechV2(room)
+    ? null
+    : recordDrawGuessRoundAndPickLine(room.socrates, {
+        correctGuessers,
+        eligibleGuessers,
+        distractorsHit,
+        drawerName: drawer?.name ?? '',
+      });
 
   // Snapshotted BEFORE the phase/timer changes below - the round is fully
   // scored and frozen the instant it resolves, exactly like Room.lastReveal.
@@ -975,6 +1007,14 @@ export function advanceFromDrawSocrates(code: RoomCode): void {
   }
   if (pending?.kind === 'DRAW_WINNER') {
     finishGame(room);
+    return;
+  }
+  // Task 294 - the between-rounds slot beat precedes a freshly dealt cycle,
+  // so it resumes into that cycle's DRAW phase (via the intro gate, which in
+  // v2 stays silent for every cycle after the first) rather than into the
+  // guess queue, which is empty at this point.
+  if (pending?.kind === 'SPEECH_SLOT') {
+    maybeStartDrawIntroThenPhase(room, state);
     return;
   }
   advanceToNextGuessRoundOrGameOver(room, state);

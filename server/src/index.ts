@@ -728,6 +728,18 @@ io.on('connection', (socket) => {
       console.log(`ignoring unknown mode '${requestedMode}' on ${ClientEvents.CREATE_ROOM} from ${socket.id}`);
     }
     const room = createRoom(socket.id, mode);
+    // Task 294 - ?speech=v2: the SPEECH POLICY the room is CREATED with, for
+    // exactly the reason Task 222 put `mode` on this payload - an all-bot
+    // room (Task 217's self-start) never has a VIP, so vip:update_settings is
+    // unreachable in it and every bot room would be stuck on the default v1.
+    // The validation is updateRoomSettings' own (state.ts, the same call the
+    // VIP path makes), so an unknown value is ignored there rather than
+    // checked twice here. Applied BEFORE spawnBots below, which is what makes
+    // it land ahead of the self-start rather than mid-game.
+    if (payload?.speechPolicy) {
+      updateRoomSettings(room, { speechPolicy: payload.speechPolicy });
+      console.log(`room ${room.code} created with speechPolicy=${room.settings.speechPolicy}`);
+    }
     socketAssociationBySocketId.set(socket.id, { role: 'host', code: room.code });
     socket.join(room.code);
     socket.emit(ServerEvents.ROOM_CREATED, { code: room.code });
@@ -1324,8 +1336,10 @@ io.on('connection', (socket) => {
     }
     // Task 188b - the duel's early-lock beat plays its line INSIDE
     // DUEL_PICK (the phase never changes), so its audio_ended is routed to
-    // the duel rather than rejected. Today the pool is empty and this branch
-    // only ever sees an ack for a line that never fired - a no-op there.
+    // the duel rather than rejected. Load-bearing since Task 296 wrote
+    // DUEL_LINES.DUEL_LOCKED: this branch is now what releases the duel's
+    // reveal once the line has actually finished, rather than a no-op seeing
+    // acks for a line that never fired.
     if (room.phase === 'DUEL_PICK') {
       onDuelAudioEnded(room);
       return;

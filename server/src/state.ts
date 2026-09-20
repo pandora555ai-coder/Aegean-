@@ -22,6 +22,7 @@ import {
   GAME_LENGTH_OPTIONS,
   MAX_PLAYERS,
   QUESTION_TIME_OPTIONS_MS,
+  SPEECH_POLICY_OPTIONS,
   DEFAULT_GAME_MODE,
   SOCRATES_MAX_DURATION_MS,
   sanitizeCustomName,
@@ -161,6 +162,13 @@ export interface ClimbState {
   // 0 for anyone never yet written). Never touched outside endClimbQuestion/
   // endDuelReveal, so pause can never catch it mid-update.
   spearCounters: Map<string, number>;
+  // Task 296 - the once-per-GAME latch on Η Λόγχη's Socrates beat. Lives here
+  // rather than on the stage ledger (whose own firedSlots is cleared at every
+  // stage boundary) because the climb is ONE stage and the beat is meant to
+  // land once a show: the second and third player the spear takes out go
+  // silently. Reset for free with the rest of the climb - resetRoomForNewGame
+  // sets room.climb to null.
+  spearBeatPlayed: boolean;
   // Task 205 - who the spear has speared out, in the order it happened
   // (first eliminated at index 0) - the exact trial.eliminationOrder
   // pattern, read the same way by buildGameOver's climb branch: winner,
@@ -218,7 +226,24 @@ export interface QueuedSocratesLine {
 }
 
 export interface PendingSocratesBeat {
-  kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WINNER' | 'DRAW_INTRO' | 'DRAW_MOMENT' | 'DRAW_WINNER' | 'NUMERIC_MOMENT' | 'AGORA_MOMENT';
+  // Task 294 - 'SPEECH_SLOT' is the v2 policy's per-stage slot beat. Each
+  // mode's own advanceFrom* routes it (see speechSlots.ts), which is why it
+  // needs no per-slot kinds of its own.
+  kind:
+    | 'GAME_INTRO'
+    | 'STAGE_INTRO'
+    | 'WINNER'
+    | 'DRAW_INTRO'
+    | 'DRAW_MOMENT'
+    | 'DRAW_WINNER'
+    | 'NUMERIC_MOMENT'
+    | 'AGORA_MOMENT'
+    | 'SPEECH_SLOT'
+    // Task 296 - the spear's elimination beat (phases.ts's endClimbReveal).
+    // Routed by advanceFromSocrates back into the CLIMB's own loop, never
+    // through continueAfterReveal, which belongs to the quiz's post-REVEAL
+    // sequence and would end the finale outright.
+    | 'SPEAR_OUT';
   line: string;
   lineTemplate: string;
   lineTag: string | null;
@@ -596,6 +621,11 @@ export function updateRoomSettings(room: Room, partial: Partial<RoomSettings>): 
   // fields above; still validated by type rather than trusting the client.
   if (typeof partial.powerUpsEnabled === 'boolean') {
     room.settings.powerUpsEnabled = partial.powerUpsEnabled;
+  }
+  // Task 292 - enum-validated like gameLength above. No behaviour reads
+  // this field yet.
+  if (partial.speechPolicy !== undefined && SPEECH_POLICY_OPTIONS.includes(partial.speechPolicy)) {
+    room.settings.speechPolicy = partial.speechPolicy;
   }
   return room.settings;
 }

@@ -27,6 +27,12 @@ import {
   tallyBlitzSwipes,
   type BlitzSwipe,
 } from '../blitz.js';
+import { recordLedgerBlitzRound } from '../stageLedger.js';
+// Task 294 - Η Παλαίστρα's two v2 slots. This mode has no v1 beat of its own
+// to retire (it never spoke), so this import is the whole of its speech
+// wiring: a beat between the stage's two swipe windows, and one at its close.
+import { startSpeechSlotBeat } from '../phases.js';
+import { speechV2 } from '../speechSlots.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -77,7 +83,11 @@ export function getBlitzStatementIsTrue(room: Room, index: number): boolean | nu
 
 const BLITZ_PHASES: readonly GamePhase[] = ['LOBBY', 'BLITZ', 'BLITZ_REVEAL', 'GAME_OVER'];
 
-export type BlitzTimerKind = 'BLITZ' | 'BLITZ_REVEAL';
+// 'BLITZ_SOCRATES' (Task 294) is this mode's OWN name for its slot beat's
+// timer, exactly as draw/numeric/agora name theirs - the merged continuations
+// table (modes/full.ts) must never see two modes claim one kind, even though
+// every mode's beat enters the same wire-level SOCRATES phase.
+export type BlitzTimerKind = 'BLITZ' | 'BLITZ_REVEAL' | 'BLITZ_SOCRATES';
 
 function armBlitzTimer(room: Room, kind: BlitzTimerKind, durationMs: number, onFire: () => void): void {
   armActiveTimer(room, kind, durationMs, onFire);
@@ -285,6 +295,12 @@ export function endBlitz(code: RoomCode): void {
     };
   });
 
+  // Task 293 - the blitz capture site, and it has to be HERE: this round's
+  // tallies live only in state.lastReveal, which startNextBlitzRound nulls
+  // (:129 pre-293) the moment the stage's next window opens. Captured before
+  // that null, the stage's BLITZ_ROUND_COUNT windows are comparable at close.
+  recordLedgerBlitzRound(room.socrates.ledger, state.roundIndex + 1, results);
+
   // Snapshotted BEFORE the phase/timer changes below - frozen the instant
   // the round resolves, exactly like Room.lastReveal.
   state.lastReveal = {
@@ -379,6 +395,39 @@ export function endBlitzReveal(code: RoomCode): void {
   // Checked before finishGame, which is what ends the stage (and, in the full
   // show, hands over to the next one via advanceAfterSegment).
   const state = requireBlitzState(room);
+  // Task 294 - Η Παλαίστρα's v2 slots, BOTH of them here: this is the one
+  // place the stage knows whether another window follows (the same
+  // `roundIndex + 1 < rounds.length` test the transition itself uses), so the
+  // between-rounds slot and the close slot are the two sides of it. The beat
+  // holds the room; advanceFromBlitzSocrates re-runs the identical test to
+  // decide where it resumes, so neither branch is duplicated here.
+  if (speechV2(room) && startSpeechSlotBeat(room, 'BLITZ_SOCRATES', blitzSlotFor(state), () => advanceFromBlitzSocrates(room.code))) {
+    return;
+  }
+  if (state.roundIndex + 1 < state.rounds.length) {
+    startNextBlitzRound(room, state);
+    return;
+  }
+  finishGame(room);
+}
+
+// Which of the stage's two slots is due - "is there another window after this
+// one" is the whole question, and it is asked identically here and in the
+// continuation below.
+function blitzSlotFor(state: BlitzState): 'BLITZ_MID' | 'BLITZ_CLOSE' {
+  return state.roundIndex + 1 < state.rounds.length ? 'BLITZ_MID' : 'BLITZ_CLOSE';
+}
+
+// Task 294 - ends this mode's slot beat exactly once (phase-guarded, the same
+// one-shot discipline as every other advanceFrom*) and resumes wherever
+// endBlitzReveal would have gone had the beat not interrupted it.
+export function advanceFromBlitzSocrates(code: RoomCode): void {
+  const room = getRoom(code);
+  if (!room || room.phase !== 'SOCRATES') {
+    return;
+  }
+  const state = requireBlitzState(room);
+  room.pendingSocratesBeat = null;
   if (state.roundIndex + 1 < state.rounds.length) {
     startNextBlitzRound(room, state);
     return;
@@ -407,6 +456,7 @@ function finishGame(room: Room): void {
 export const BLITZ_CONTINUATIONS: Record<BlitzTimerKind, (room: Room) => void> = {
   BLITZ: (room) => endBlitz(room.code),
   BLITZ_REVEAL: (room) => endBlitzReveal(room.code),
+  BLITZ_SOCRATES: (room) => advanceFromBlitzSocrates(room.code),
 };
 
 export const blitzMode: GameMode = {

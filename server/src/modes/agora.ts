@@ -24,8 +24,10 @@ import { buildGameOver, computeCompetitionRanks, computeStandings } from '../pay
 import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from '../crowd.js';
 import { calculatePoints, sortAndRankResults } from '../scoring.js';
 import { buildAgoraProof, drawAgoraSeed, toAgoraRenderSpec } from '../agora.js';
-import { enterSocratesBeat } from '../phases.js';
+import { enterSocratesBeat, startSpeechSlotBeat } from '../phases.js';
 import { LINES, recordRoundAndPickLine, type PickedLine, type SocratesPlayerRoundInput } from '../socrates.js';
+import { recordLedgerQuizRound } from '../stageLedger.js';
+import { speechV2 } from '../speechSlots.js';
 import { io } from '../realtime.js';
 import { cleanupRoomBots } from '../bots.js';
 import { modeForRoom, registerGameMode } from './registry.js';
@@ -211,6 +213,12 @@ export function endAgoraExpose(code: RoomCode): void {
 function startAgoraQuestion(room: Room, state: AgoraState): void {
   state.questionIndex += 1;
   if (state.questionIndex >= state.questions.length) {
+    // Task 294 - Η Λήθη's CLOSE slot (the stage titled «Η Λήθη» since Task
+    // 231 - the AGORA_* phases, not the quiz stage titled «Η Αγορά»). Fired
+    // while this stage's ledger is still the live one.
+    if (speechV2(room) && startSpeechSlotBeat(room, 'AGORA_SOCRATES', 'LETHE_CLOSE', () => advanceFromAgoraSocrates(room.code))) {
+      return;
+    }
     finishRound(room);
     return;
   }
@@ -402,16 +410,28 @@ export function endAgoraQuestion(code: RoomCode): void {
     }
   }
 
+  // Task 293 - Η Λήθη's capture site. The same recorder the quiz uses, fed the
+  // same inputs: agora's round shape IS SocratesPlayerRoundInput, so the stage
+  // needs no recorder of its own. The stage's question count comes from its
+  // own tuple (AGORA_QUESTIONS_PER_ROUND), not from a stage-table row, since
+  // every agora row carries questionCount 0.
+  recordLedgerQuizRound(room.socrates.ledger, socratesInputs, state.questions.length);
+
   // D1 - the quiz's GENERIC round-moment detection, nothing agora-specific:
   // whatever fires here fires exactly as it would on a plain quiz question
   // with these standings. 'medium' is the neutral difficulty (the only two
   // difficulty-gated moments key off 'easy' and 'hard').
-  const pickedLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
-    questionIndex: state.questionIndex,
-    totalQuestions: state.questions.length,
-    difficulty: 'medium',
-    stage: 1,
-  });
+  // Task 294 - THE v2 gate for Η Λήθη's per-reveal beat, at the PICKER for the
+  // same reason as the quiz's and numeric's: a picker left running consumes
+  // lines out of pools the v2 slots draw from. v1 is the exact original call.
+  const pickedLine = speechV2(room)
+    ? null
+    : recordRoundAndPickLine(room.socrates, socratesInputs, {
+        questionIndex: state.questionIndex,
+        totalQuestions: state.questions.length,
+        difficulty: 'medium',
+        stage: 1,
+      });
   state.pendingSocratesLine = pickedLine;
 
   // Frozen BEFORE the phase flips, exactly like Room.lastReveal - the proof
@@ -561,7 +581,14 @@ export function advanceFromAgoraSocrates(code: RoomCode): void {
     return;
   }
   const state = requireAgoraState(room);
+  const pending = room.pendingSocratesBeat;
   room.pendingSocratesBeat = null;
+  // Task 294 - the CLOSE slot ends the round; every other beat here precedes
+  // another question.
+  if (pending?.kind === 'SPEECH_SLOT') {
+    finishRound(room);
+    return;
+  }
   startAgoraQuestion(room, state);
 }
 

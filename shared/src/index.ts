@@ -819,6 +819,13 @@ export interface HostCreateRoomPayload {
   // Validated server-side against the mode registry; anything unknown is
   // ignored and the room keeps DEFAULT_GAME_MODE.
   mode?: GameModeId;
+  // Task 294 - ?speech=v2: the speech policy the room is CREATED with, for
+  // the SAME reason `mode` above exists. An all-bot room self-starts with no
+  // VIP, so vip:update_settings can never reach it and every bot room would
+  // play v1 regardless of what was being tested. Validated server-side by
+  // updateRoomSettings against SPEECH_POLICY_OPTIONS; anything unknown is
+  // ignored and the room keeps DEFAULT_ROOM_SETTINGS.speechPolicy.
+  speechPolicy?: SpeechPolicy;
 }
 
 export interface RoomCreatedPayload {
@@ -1402,14 +1409,26 @@ export function trialStageRow(stage: number): StageDefinition {
 // The full show (Task 134)
 // ---------------------------------------------------------------------------
 
-// How many quiz questions EACH of the full mode's two quiz stages asks. The
-// VIP's gameLength maps to this and nothing else: the drawing round and the
-// numeric segment are fixed, and every stage always runs (unlike the quiz
-// mode, where gameLength picks a SLICE of the table).
+// How many quiz questions the full mode's stage 6 (Η Συκοφαντία) asks.
+// Task 295 split this off stage 1 - the two quiz stages no longer share one
+// count. The VIP's gameLength maps to this and nothing else: the drawing
+// round and the numeric segment are fixed, and every stage always runs
+// (unlike the quiz mode, where gameLength picks a SLICE of the table).
 export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
   short: 2,
   medium: 3,
   long: 5,
+};
+
+// Task 295 - stage 1 (Η Αγορά)'s own count, split off FULL_QUIZ_QUESTION_COUNTS
+// so the opening quiz stage can run longer without touching Η Συκοφαντία
+// (stage 6, which also carries STEAL and stays on the table above). Only
+// `long` actually differs (5 -> 10); short/medium are unchanged from what
+// the shared table already gave stage 1.
+export const FULL_QUIZ_STAGE1_QUESTION_COUNTS: Record<GameLength, number> = {
+  short: 2,
+  medium: 3,
+  long: 10,
 };
 
 // Task 150 - how many draw-then-guess-everything cycles the full show's
@@ -1419,10 +1438,13 @@ export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
 // Task 215 - short/medium retuned 1 -> 2, matching the locked lineup's own
 // "Ζωγραφική x2 rounds" (Task 214's tasks/214-compose-locked-lineup.md).
 // Standalone draw's own room.settings.drawRounds setting is untouched.
+// Task 292 - long retuned 3 -> 2, so every gameLength now runs Ζωγραφική
+// x2 rounds; part of the speech-policy v2 groundwork (fewer round-boundary
+// beats to slot), unrelated to gameLength itself.
 export const FULL_DRAW_ROUNDS_BY_LENGTH: Record<GameLength, number> = {
   short: 2,
   medium: 2,
-  long: 3,
+  long: 2,
 };
 
 // Fixed, not gameLength-dependent - the show's shape is the show's shape.
@@ -1461,7 +1483,7 @@ export const FULL_AGORA_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 export const FULL_STAGES: readonly StageDefinition[] = [
   {
     stage: 1,
-    questionCount: FULL_QUIZ_QUESTION_COUNTS.medium,
+    questionCount: FULL_QUIZ_STAGE1_QUESTION_COUNTS.medium,
     segment: 'quiz',
     powerUpBeforeEveryQuestion: true,
     stealAfterEveryQuestion: false,
@@ -1524,11 +1546,22 @@ export const FULL_STAGES: readonly StageDefinition[] = [
 
 // The full mode's table for a given length: every stage, always, with the two
 // quiz rows' counts substituted and Η Δίκη appended as the last card.
+// Task 295 - the two quiz rows no longer share one count, so the substitution
+// is keyed by `definition.stage` (stage 1 vs stage 6), not by segment alone:
+// matching on `stageSegment(definition) === 'quiz'` would give both rows the
+// same figure again.
 export function fullStagesForLength(length: GameLength): readonly StageDefinition[] {
-  const questionCount = FULL_QUIZ_QUESTION_COUNTS[length];
-  const stages = FULL_STAGES.map((definition) =>
-    stageSegment(definition) === 'quiz' ? { ...definition, questionCount } : definition,
-  );
+  const stage1Count = FULL_QUIZ_STAGE1_QUESTION_COUNTS[length];
+  const stage6Count = FULL_QUIZ_QUESTION_COUNTS[length];
+  const stages = FULL_STAGES.map((definition) => {
+    if (definition.stage === 1) {
+      return { ...definition, questionCount: stage1Count };
+    }
+    if (definition.stage === 6) {
+      return { ...definition, questionCount: stage6Count };
+    }
+    return definition;
+  });
   return [...stages, trialStageRow(FULL_STAGES.length + 1)];
 }
 
@@ -1882,6 +1915,13 @@ export const QUESTION_TIME_OPTIONS_MS = [10000, 20000, 30000] as const;
 // every mode's own knobs, and each mode reads only the ones it owns.
 export const DRAW_ROUNDS_OPTIONS = [1, 2] as const;
 
+// Task 292 - v1 is the existing per-reveal Socrates picker; v2 is the
+// fixed per-stage slot engine (see tasks/291-speech-policy-diagnosis.md).
+// Room-scoped, LOBBY-only, frozen for the whole game once it starts. No
+// behaviour reads this yet - the v2 slot engine lands in a later task.
+export type SpeechPolicy = 'v1' | 'v2';
+export const SPEECH_POLICY_OPTIONS: readonly SpeechPolicy[] = ['v1', 'v2'];
+
 export type RoomSettings = {
   questionTimeMs: number;
   difficultyMix: DifficultyMix;
@@ -1893,6 +1933,8 @@ export type RoomSettings = {
   // this is also true. The sabotage machinery itself (ice/ink gates, the
   // host `sabotage` field, the FX) is untouched either way.
   powerUpsEnabled: boolean;
+  // Task 292 - see SpeechPolicy above.
+  speechPolicy: SpeechPolicy;
 };
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -1902,6 +1944,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
+  // Task 292 - v1 stays the default until the v2 slot engine ships.
+  speechPolicy: 'v1',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,
@@ -2045,7 +2089,19 @@ export type SocratesBeatKind =
   | 'DRAW_MOMENT'
   | 'DRAW_WINNER'
   | 'NUMERIC_MOMENT'
-  | 'AGORA_MOMENT';
+  | 'AGORA_MOMENT'
+  // Task 294 - the v2 speech policy's per-stage SLOT beat (speechSlots.ts).
+  // One kind for every slot, deliberately: the TV treats it exactly as it
+  // treats a REVEAL-moment beat (subtitle, no announce card), and the slot's
+  // own identity is a server-side concern. Additive - v1 never emits it.
+  | 'SPEECH_SLOT'
+  // Task 296 - Η Λόγχη struck someone out of the climb (server/src/climb.ts's
+  // own rule, spoken from phases.ts's endClimbReveal). Fires under BOTH speech
+  // policies, unlike SPEECH_SLOT: a unique mechanic gets a line whatever the
+  // policy. The TV treats it as an ordinary subtitled beat - and since it can
+  // only ever play inside the finale, `finale` below is always 'climb' on it,
+  // which is what keeps the Anavasis world on screen (Task 237).
+  | 'SPEAR_OUT';
 
 // Socrates (Task 39) - HOST ONLY, the phones never show commentary; they
 // stay on their own reveal result while this beat plays. The round's single

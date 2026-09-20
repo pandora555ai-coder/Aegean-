@@ -108,11 +108,13 @@ server/src/modes/full.ts   Full mode (Task 134, relined by Task 214): COMPOSES
 server/src/payloads.ts   REVEAL / GAME_OVER payload builders
 server/src/powerups.ts   POWER_UP choice validation + landing on the next question
 server/src/steal.ts      STEAL thief selection + the clamped point transfer
-server/src/trial.ts      Η Δίκη (the quiz FINALE) — pure mechanic only: drain, elimination,
-                         what the next round must be. No Room, no io, no timers; the phase
-                         shell around it is in phases.ts.
-server/src/climb.ts      Η Ανάβαση (the trial's ALTERNATIVE finale, Task 187/188a) — pure
-                         mechanic only, same no-Room/io/timers discipline as trial.ts: round
+server/src/trial.ts      REMOVED (Task 258, found stale by Task 291) — Η Δίκη is gone
+                         entirely: no file on disk, zero `startTrial`/`room.trial` references
+                         in phases.ts or modes/full.ts. Η Ανάβασις (climb.ts) is the ONLY
+                         finale. Every other mention of Η Δίκη/trial below this point is
+                         HISTORICAL — describes a mechanic that no longer exists.
+server/src/climb.ts      Η Ανάβαση (Task 187/188a) — the game's only finale — pure
+                         mechanic only, no Room/io/timers: round
                          scoring, the top-of-ladder WINNER/DUEL decision, and (Task 203) the
                          spear elimination overlay. The spear half is NOT wired into the live
                          game yet — see Phases below.
@@ -131,7 +133,63 @@ server/src/state.ts      Rooms Map, room/player/VIP/settings accessors
 server/src/timers.ts     Shared phase-advance timer helper (arm/pause/resume)
 server/src/questions.ts  Loads questions.json, difficulty filtering. Also holds
                          FORCE_QUESTION_ID — dev hook pinning the served question, NODE_ENV-guarded. Keep it.
-server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS
+server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
+                         Also SPEECH_V2_LINES (Task 294, a THIRTEENTH pool added by
+                         296) — 39 lines copied verbatim from
+                         content/speech-policy-lines.md, a SEPARATE table from
+                         LINES/DRAW_LINES/NUMERIC_LINES so no v1 picker can reach
+                         them. Their 39 LINE_TAGS entries are
+                         load-bearing (the clip is lineHash(template, tag)); no mp3
+                         exists for any of them until the October pass, so a v2 beat
+                         404s and ends on the client's immediate ack (Task 154).
+                         TWO EXCEPTIONS to that separation, both wired by Task 296
+                         and both audible under v1 TOO, because they belong to unique
+                         MECHANICS rather than to a stage's structural slot:
+                         `DUEL_LOCKED` here IS DUEL_LINES.DUEL_LOCKED — literally the
+                         same array, aliased, so one usedLines entry covers both names
+                         (296 wrote the three lines 188b left empty; do NOT restore
+                         that emptiness) — and `SPEAR_OUT` is read by phases.ts's
+                         endClimbReveal through recordSpearOutAndPickLine. Neither
+                         goes near pickSpeechSlot, so neither is gated on
+                         room.settings.speechPolicy. QUIZ_BEST is the 13th pool,
+                         the quiz stage's best side (see speechSlots.ts below).
+server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure decision
+                         layer, no io/timers/phases. v2 (room.settings.speechPolicy,
+                         Task 292) RETIRES per-reveal speech and speaks at fixed
+                         per-stage SLOTS instead: quiz mid/close, blitz between-rounds
+                         /close, draw between-rounds, Εκτίμηση close, Η Λήθη close,
+                         Η Συκοφαντία first-steal/close. The quiz stage's two slots
+                         draw from AGORA_WORST (worst side) and — since Task 296 —
+                         QUIZ_BEST (best side, on BOTH the mid and the close). Before
+                         296 the mid's best side was `null` and the close's was the
+                         RUNAWAY_LEAD reservoir, so a stage whose WORST end was a tie
+                         could say nothing at all. Reservoir pools stay live as extra
+                         variety: STUCK_IN_LAST on the close's worst side,
+                         DRAW_MID/NUMERIC_CLOSE wholly reservoir-backed. The four retired v1 sites are
+                         gated at the PICKER, not the beat (phases.ts:890,
+                         modes/agora.ts:427, modes/draw.ts:908, modes/numeric.ts:354) —
+                         a picker left running consumes usedLines out of pools the
+                         slots draw from. KEPT in v2: GAME_INTRO, every STAGE_INTRO,
+                         the anavasis sequence, the coronation, DRAW_WINNER, and
+                         DRAW_INTRO once per STAGE rather than per cycle.
+                         Targets come from Task 293's stageExtremes; a stage's mid and
+                         close prefer OPPOSITE ends (the alternation), with
+                         ledger.targetedThisStage as the hard "never the same target
+                         twice per stage" guarantee. A tie, or no untargeted standout
+                         with a line, SKIPS — silence, never GENERIC_TRANSITION.
+                         Slot beats ride the ordinary beat path (startSpeechSlotBeat,
+                         phases.ts) under the CALLING MODE's own timer kind, because
+                         the ack resolves its continuation from the mode's
+                         continuations table by kind (modes/registry.ts) and not from
+                         the closure — which is why BLITZ_SOCRATES had to join
+                         BLITZ_CONTINUATIONS. Reservoir-backed slots (RUNAWAY_LEAD 1
+                         line alive, STUCK_IN_LAST 3, after the deletion filter) go
+                         silent once spent; the eight new-pool slots do not.
+                         `speechPolicy` rides host:create_room (Task 222's precedent):
+                         an all-bot room self-starts with no VIP, so
+                         vip:update_settings is unreachable there.
+                         Check: `npx tsx dev/294-slot-probe.ts` (pure, 16/16) and
+                         `SCENARIO=V2 npx tsx dev/294-speech-policy-check.ts`.
 server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal's
                          correct-by-speed order and answerRank; quiz AND trial)
 server/src/numeric.ts    maxForAnswer, clamping, scoring, pure payload builders. MODE-AGNOSTIC — keep it that way.
@@ -371,8 +429,9 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       statements EACH) -> 3 Ζωγραφική (draw)
       -> 4 Εκτίμηση (3 numeric) -> 5 Η Μνήμη της Αγοράς (one agora round)
       -> 6 Η Συκοφαντία (quiz + STEAL) -> 7 Η Ανάβασις (the climb, entered
-      with accumulated scores as the ladder's entry order) — or Η Δίκη in
-      that same row when the VIP sets finaleMode back to 'trial'.
+      with accumulated scores as the ladder's entry order — the ONLY finale;
+      `finaleMode`/Η Δίκη were removed at Task 258, see the file listing
+      above and Task 291's diagnosis, tasks/291-speech-policy-diagnosis.md).
       **Reference timing, socket-level bots, NOT a human estimate**: a
       seeded `?bot=3` full run (default settings, `gameLength: 'long'`)
       takes ~845-870s end to end across all seven stages — 844.2s in Task
@@ -544,17 +603,15 @@ COSMETIC re-derivation of that same formula for display only; TRIAL_REVEAL
 always shows the server's real standings, no local math. buildStageAnnounce
 (payloads.ts) always counts the trial in totalStages (quizStages + 1), so
 its card reads e.g. "4/4", never "3/4".
-**The climb (Task 188a) is the DEFAULT finale since Task 214**, with Η Δίκη
-as the alternative — both gated by `room.settings.finaleMode`
-('trial' | 'climb', **default 'climb'** since 214 flipped it; type + default
-in shared/src/index.ts, search `FinaleMode`/`DEFAULT_ROOM_SETTINGS`). It is a VIP
-lobby setting (ControllerScreen.tsx:3216-3218's finale-mode selector,
-same `vip:update_settings` path as every other room setting), so — like
-every other room.settings field — it lives on the Room object and survives
-a host reload via HOST_REJOIN with no setting-specific code of its own.
-advanceToNextQuestionOrGameOver is the ONE site that branches on
-it (startClimb vs startTrial); quiz and full both honour it since they share
-that site. CLIMB_* constants (all shared/src/index.ts): `CLIMB_TOP` = 10
+**The climb (Task 188a) became the DEFAULT finale at Task 214, then the
+ONLY finale at Task 258**, which removed Η Δίκη and the
+`room.settings.finaleMode` setting/`FinaleMode` type entirely (found stale
+here by Task 291, corrected by Task 292 — `grep -arn "FinaleMode|finaleMode"
+shared/src server/src client/src` is zero hits at this HEAD; `RoomSettings`,
+shared/src/index.ts, has no such field; there is no finale-mode selector in
+ControllerScreen.tsx). `advanceToNextQuestionOrGameOver` (phases.ts) calls
+`startClimb` unconditionally now — no branch, since there is nothing left
+to branch to. CLIMB_* constants (all shared/src/index.ts): `CLIMB_TOP` = 10
 (the top step, a win); `CLIMB_ENTRY_GAP` = 3 / `CLIMB_ENTRY_BASE` = 1 (entry
 step spread by competition rank, climbEntryStep); `CLIMB_QUESTION_TIME_MS`
 = 22000 (fixed, not questionTimeMs); `CLIMB_MAX_QUESTIONS` = 24 (question
@@ -596,9 +653,14 @@ reveal payload comes from the frozen duel.lastReveal. DUEL_PICK is 20s
 (DUEL_PICK_TIME_MS) on the quiz continuations table; the second pick fires
 the host-only `duel:locked` beat and re-arms the timer as 'DUEL_LOCKED'
 (DUEL_LOCK_FLOOR_MS = 2000, then the audio backstop only if a line fired —
-DUEL_LINES.DUEL_LOCKED is EMPTY by design, the 138 pattern, so the floor
-alone carries it; `socrates:audio_ended` during DUEL_PICK routes to
-onDuelAudioEnded). Timeout assigns a uniform-random weapon flagged
+**Task 296 WROTE DUEL_LINES.DUEL_LOCKED's three lines**, so a line now fires on
+every lock and the floor is back to being a MINIMUM rather than the whole wait:
+measured lock -> DUEL_REVEAL at 2002ms against that 2000ms floor, i.e. the ack
+lands inside it and the 11s backstop never applies. The beat plays INSIDE
+DUEL_PICK (no SOCRATES phase, 0 measured) and `socrates:audio_ended` during
+DUEL_PICK routes to onDuelAudioEnded, which is load-bearing now rather than a
+no-op. **DUEL_PICK's own 20s input window is untouched** — the beat only ever
+runs after both picks are already in. Timeout assigns a uniform-random weapon flagged
 `assigned: true`. Same weapon = tie: DUEL_PICK again, no cap, tieCount in
 the host payload. Bots pick at random after 400–1500ms. The Monte Carlo
 harness (seed 187, 0.7/0.5 skill) puts rounds-to-verdict at median 8, p99
@@ -615,8 +677,10 @@ beating whichever actually lost, never assuming a fixed side. Fixes a bug
 where the old inline version always narrated from `weaponA` regardless of
 the real winner, and had `WEAPON_BEATEN` keyed backwards from
 `DUEL_BEATS`'s real cycle — wrong pair on nearly every reveal. `DUEL_LINES.
-DUEL_LOCKED` (socrates.ts:543) is still an empty array by design (the 138
-pattern) — silent until content is written for it, not a bug.
+DUEL_LOCKED` is NO LONGER empty: Task 296 wrote its three lines (and
+SPEECH_V2_LINES.DUEL_LOCKED aliases that same array), so the early-lock beat is
+audible under BOTH policies. Every earlier "empty by design / the 138 pattern"
+note about THIS pool is historical.
 **Η Μονομαχία is ALSO its own standalone GameModeId** since Task 191
 (server/src/modes/duel.ts) — the same dev-harness pattern draw/numeric
 follow: zero mechanic of its own, `phases` = LOBBY -> DUEL_PICK ->
@@ -633,7 +697,29 @@ lives in server/src/climb.ts (`applyClimbSpearRound`/`nextAfterSpearRound`/
 (`server/scripts/trial-montecarlo.ts --spear on|off|auto`) and unit check
 (`npm run climb:spear-check`, 17/17 checks), and Task 205/205b wired it into
 the real phase machine: `endClimbQuestion` (phases.ts:1487) calls
-`applyClimbSpearRound` every reveal. (This paragraph said "a PURE MECHANIC
+`applyClimbSpearRound` every reveal. **Task 296 gave the strike a VOICE** — the
+hook tasks/291 §4 recorded as missing: `startSpearOutBeatIfDue`, called from
+`endClimbReveal` BEFORE it routes anywhere, fires ONE `SPEAR_OUT` beat about the
+first player that round struck out (`lastResults`' `eliminated` flags ∩
+`eliminationOrder`), under BOTH speech policies. Latch
+`ClimbState.spearBeatPlayed`, once per GAME and set on ATTEMPT — NOT the stage
+ledger's firedSlots, which clears at every stage boundary, and the climb is one
+stage; it resets for free because resetRoomForNewGame nulls room.climb. On a
+DOUBLE spear only the first speaks. It CANNOT stall the climb: an ordinary held
+SOCRATES phase under the quiz's own 'SOCRATES' timer kind (already in
+QUIZ_CONTINUATIONS, so pause resumes it), and every exit — ack, the immediate
+404 ack, the backstop, vip:skip_socrates — lands in advanceFromSocrates's
+`case 'SPEAR_OUT'` -> `resumeAfterClimbReveal`, which is endClimbReveal's own
+former body MOVED, so there is still exactly ONE routing decision after a climb
+reveal. Measured: CLIMB_REVEAL@11188ms -> SOCRATES@17192ms ->
+CLIMB_QUESTION@17194ms, the climb carrying on. A spear DUEL's loser is
+eliminated in endDuelReveal, which never passes through endClimbReveal, so it
+never speaks — deliberate. The line addresses the player by name in the
+SUBTITLE unconditionally (the template stays unsubstituted, since that is what
+hashes to the mp3) and splices the vocative CLIP only when hasSocratesClip finds
+it; no vocative clip exists for any preset name yet, so today it is READ with
+the name and HEARD without it. Check: `npx tsx dev/296-spear-duel-check.ts`
+(SCENARIO=A|B|C, socket-only, 34/34). (This paragraph said "a PURE MECHANIC
 ONLY — NOT wired into the live climb" until Task 225, which watched real
 reveals strike real players out over real sockets — it had been stale since
 205.) The rule: auto-gated to
@@ -728,19 +814,22 @@ lines after it (Task 236) all land BEFORE the first CLIMB payload, and
 `isClimbFinale` was set only BY one of those payloads — so the quiz's
 TheatreScene and its WREATHED SophistsRow rendered over the whole
 announcement. The server says which stage the card belongs to now: an
-additive **`finale: FinaleMode | null` on StageAnnouncePayload AND
-SocratesShowPayload**, both built off `room.climb`/`room.trial`
-(payloads.ts) — the same two facts the card's WORDS already swap on.
-HostScreen sets `isClimbFinale` from either, live and on state:sync, so a TV
-reloading ON the card (buildStageAnnounce is the sync's own builder,
+additive **`finale: 'climb' | null` on StageAnnouncePayload AND
+SocratesShowPayload** (shared/src/index.ts:1578/2131 — the type narrowed off
+`FinaleMode` when Task 258 removed the trial finale; a stale earlier draft
+of this paragraph said `FinaleMode | null` built off `room.climb`/
+`room.trial` — `room.trial` does not exist, fixed by Task 292/291), built
+off `room.climb` alone (payloads.ts) — the one fact the card's WORDS already
+swap on. HostScreen sets `isClimbFinale` from it, live and on state:sync, so
+a TV reloading ON the card (buildStageAnnounce is the sync's own builder,
 index.ts:447) or MID-NARRATION (the rule lines are plain SOCRATES beats,
 whose sync carries no card at all) comes back to the temple rather than the
 theatre. `isClimbAnnounceBeat` is the fourth term of `showAnavasisWorld`,
 and SocratesFigure's temple pose now covers STAGE_ANNOUNCE as well, or
 CENTRE_STAGE_PHASES would plant him mid-stair at 44% for the card and glide
 him to 57% the moment the narration began. Scoped to ONE game by
-construction: `resetRoomForNewGame` clears room.climb/room.trial, so game
-2's stage 1 announces `finale: null` and every ordinary stage always did.
+construction: `resetRoomForNewGame` clears room.climb, so game 2's stage 1
+announces `finale: null` and every ordinary stage always did.
 **The climb's STAGE_INTRO beats render their card + Task 239 subtitle
 DIRECTLY** (HostScreen's renderPhaseView), not through SocratesView, whose
 GameLayout would duplicate AnavasisChrome — the SOCRATES branch is gated

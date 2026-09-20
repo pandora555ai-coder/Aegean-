@@ -17,6 +17,7 @@ import {
   ServerEvents,
   climbEntryStep,
   stageForQuestionIndex,
+  stageSegment,
   type ClimbRevealHostResult,
   type CrowdIntensityContext,
   type QuestionShowHostPayload,
@@ -67,10 +68,26 @@ import {
   pickStageIntroLine,
   recordDuelLockedAndPickLine,
   recordRoundAndPickLine,
+  recordSpearOutAndPickLine,
   stageIntroIdentity,
+  vocativeClipFor,
   type PickedLine,
   type SocratesPlayerRoundInput,
 } from './socrates.js';
+// Task 293 - the per-stage ledger: written at the quiz's and the steal's own
+// scoring sites below, reset at the stage boundary, dumped at every stage
+// close. Data only; nothing here reads it back to decide anything.
+import {
+  dumpStageLedger,
+  recordLedgerQuizRound,
+  recordLedgerSteal,
+  resetStageLedger,
+} from './stageLedger.js';
+// Task 294 - the v2 speech policy. `speechV2` is the gate every retired v1
+// site and every new slot reads; `pickSpeechSlot` decides whether a given
+// slot has anything to say and about whom. A leaf (no io, no timers), so the
+// graph stays acyclic even though the modes import THIS file.
+import { isQuizMidpoint, pickSpeechSlot, speechV2, type SpeechSlotId } from './speechSlots.js';
 import { activeSabotagesFor, resetSabotageForNewQuestion, optionsForPlayer } from './sabotage.js';
 import { applyPendingPowerUps } from './powerups.js';
 import { applySteal, buildStealState } from './steal.js';
@@ -192,6 +209,10 @@ function announceStageIfChanged(room: Room): boolean {
 // when there is nothing open yet) and opens a fresh one for the stage it's
 // entering. finishGame closes the final entry the same way, since there's no
 // "next" stage to trigger that close.
+// Task 293 - THE stage boundary, and therefore the ledger's clear point too
+// (tasks/291 §4). The stage being LEFT is dumped before the ledger is reset for
+// the stage being entered, so the dump always describes a stage that is over.
+// The very first call has nothing to dump (ledger.stage is 0) and only opens.
 function recordStageStart(room: Room, stage: number, title: string): void {
   const now = Date.now();
   const open = room.stageTimings[room.stageTimings.length - 1];
@@ -199,6 +220,10 @@ function recordStageStart(room: Room, stage: number, title: string): void {
     open.endTs = now;
   }
   room.stageTimings.push({ stage, title, startTs: now, endTs: null });
+
+  dumpStageLedger(room.socrates.ledger, room.code, room.requestedBotCount > 0);
+  const definition = stagesForRoom(room).find((entry) => entry.stage === stage);
+  resetStageLedger(room.socrates.ledger, stage, title, definition ? stageSegment(definition) : null);
 }
 
 export function enterStageAnnounce(room: Room, stage: number): void {
@@ -436,6 +461,89 @@ function startSocratesBeat(room: Room, kind: 'GAME_INTRO' | 'STAGE_INTRO' | 'WIN
     () => advanceFromSocrates(room.code),
   );
   return true;
+}
+
+// Task 294 - the shared entry for EVERY v2 slot beat, in every mode. The slot
+// engine (speechSlots.ts) decides whether there is a line and who it is
+// about; this is the one place one becomes a held phase, so a slot beat is a
+// beat like any other - the same enterSocratesBeat, the same audio ack, the
+// same backstop, the same pause behaviour.
+//
+// `timerKind` is the CALLING MODE's own kind ('SOCRATES' for the quiz,
+// 'BLITZ_SOCRATES', 'DRAW_SOCRATES', ...), because the ack path resolves its
+// continuation out of the room's mode table by that kind
+// (modes/registry.ts's continuationForActiveTimer) rather than through the
+// closure passed here - so a slot beat armed under a kind its mode's table
+// does not claim would end the show. Every kind used by a call site below is
+// in its mode's continuations table.
+//
+// Returns whether a beat began, so a caller falls through to whatever it
+// would have done anyway when the slot stays silent - the same "no line, no
+// phase" discipline as startSocratesBeat above.
+export function startSpeechSlotBeat(
+  room: Room,
+  timerKind: string,
+  slot: SpeechSlotId,
+  onFire: () => void,
+): boolean {
+  const beat = pickSpeechSlot(room, slot);
+  if (!beat) {
+    return false;
+  }
+  enterSocratesBeat(
+    room,
+    timerKind,
+    {
+      kind: 'SPEECH_SLOT',
+      line: beat.picked.text,
+      lineTemplate: beat.picked.template,
+      lineTag: beat.picked.tag,
+    },
+    onFire,
+  );
+  return true;
+}
+
+// Task 294 - the quiz machine's own slots, all of which resolve at the ONE
+// post-REVEAL decision point below. Three can be due, in this order:
+//
+//   SYKO_FIRST_STEAL  the first theft of a stealing stage (Η Συκοφαντία),
+//                     latched to once per stage by the ledger, read off the
+//                     steal columns Task 293 books on both sides
+//   QUIZ_CLOSE /      the stage's last reveal, before the next card
+//   SYKO_CLOSE
+//   QUIZ_MID          the reveal that completes a plain quiz stage's first
+//                     half (a stealing stage spends its mid moment on the
+//                     first theft instead)
+//
+// At most ONE beat per reveal: each branch returns as soon as a slot speaks.
+function startQuizSlotBeatIfDue(room: Room): boolean {
+  if (!speechV2(room)) {
+    return false;
+  }
+  const definition = definitionForCurrentStage(room);
+  if (stageSegment(definition) !== 'quiz') {
+    return false;
+  }
+  const ledger = room.socrates.ledger;
+  const resume = () => advanceFromSocrates(room.code);
+  const steals = definition.stealAfterEveryQuestion;
+
+  if (
+    steals &&
+    !ledger.firedSlots.has('SYKO_FIRST_STEAL') &&
+    [...ledger.entries.values()].some((entry) => entry.stealTaken > 0) &&
+    startSpeechSlotBeat(room, 'SOCRATES', 'SYKO_FIRST_STEAL', resume)
+  ) {
+    return true;
+  }
+  if (ledger.quizQuestionsSeen >= definition.questionCount) {
+    return startSpeechSlotBeat(room, 'SOCRATES', steals ? 'SYKO_CLOSE' : 'QUIZ_CLOSE', resume);
+  }
+  if (!steals && isQuizMidpoint(ledger, definition.questionCount)) {
+    return startSpeechSlotBeat(room, 'SOCRATES', 'QUIZ_MID', resume);
+  }
+  return false;
 }
 
 // Task 247 - who the WINNER beat is actually speaking to, or null when that
@@ -767,13 +875,28 @@ export function endQuestion(code: RoomCode): void {
 
   const correctOption = question.options[question.correctIndex];
 
+  const definition = stageOfQuestion(room, room.currentQuestionIndex);
+  // Task 293 - the quiz capture site, fed the SAME per-player inputs the
+  // picker below gets (they already carry scoreBefore/scoreAfter and the
+  // speed rank). The stage's own questionCount is what splits this question
+  // into the stage's first or second half.
+  recordLedgerQuizRound(room.socrates.ledger, socratesInputs, definition.questionCount);
+
   // Pure/synchronous - can never delay the REVEAL broadcast that follows.
-  const pickedLine = recordRoundAndPickLine(room.socrates, socratesInputs, {
-    questionIndex: room.currentQuestionIndex,
-    totalQuestions: room.questions.length,
-    difficulty: question.difficulty,
-    stage: stageOfQuestion(room, room.currentQuestionIndex).stage,
-  });
+  // Task 294 - THE v2 gate for the quiz's per-reveal beat, the v1 engine
+  // itself. Gated at the PICKER rather than at startSocratesIfLineFired
+  // below: the picker CONSUMES lines (state.usedLines is game-scoped), and
+  // several v2 slots draw from those same reservoir pools, so leaving it
+  // running would empty the reservoir for beats that never play. v1 is the
+  // exact original call, untouched.
+  const pickedLine = speechV2(room)
+    ? null
+    : recordRoundAndPickLine(room.socrates, socratesInputs, {
+        questionIndex: room.currentQuestionIndex,
+        totalQuestions: room.questions.length,
+        difficulty: question.difficulty,
+        stage: definition.stage,
+      });
 
   room.phase = 'REVEAL';
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -916,6 +1039,18 @@ export function resolveSteal(code: RoomCode, victimPlayerId: string | null): voi
   steal.chosenTargetPlayerId = victimPlayerId;
   steal.resolved = applySteal(room, steal, victimPlayerId);
 
+  // Task 293 - the steal capture site. Nothing accumulated theft before this:
+  // room.steal is nulled at advanceFromSteal and STEAL_RESOLVED is
+  // fire-and-forget, so given/taken totals existed nowhere. Recorded on both
+  // sides, from the resolved payload applySteal just returned.
+  recordLedgerSteal(room.socrates.ledger, {
+    thiefPlayerId: steal.resolved.thiefPlayerId,
+    thiefName: steal.resolved.thiefName,
+    victimPlayerId: steal.resolved.victimPlayerId,
+    victimName: steal.resolved.victimName,
+    stolenAmount: steal.resolved.stolenAmount,
+  });
+
   armQuizTimer(room, 'STEAL_ANNOUNCE', STEAL_ANNOUNCE_DURATION_MS, () => advanceFromSteal(room.code));
   // Crowd mood (Task 35) - a steal resolving is always a boo, win or not.
   setCrowdMood(room, 'boo');
@@ -957,6 +1092,14 @@ export function advanceFromSteal(code: RoomCode): void {
 function continueAfterReveal(room: Room): void {
   if (room.phase !== 'SOCRATES' && startSocratesIfLineFired(room)) {
     return; // advanceFromSocrates comes back through here once the beat is over
+  }
+  // Task 294 - the v2 slots sit at this same decision point, and under the
+  // same re-entrancy guard: the beat comes back through here once it is
+  // acked, and `room.phase` is still SOCRATES then, so neither this nor the
+  // v1 call above can fire a second beat on the way out. In v1 this is a
+  // single boolean check that returns false immediately.
+  if (room.phase !== 'SOCRATES' && startQuizSlotBeatIfDue(room)) {
+    return;
   }
   advanceToNextQuestionOrGameOver(room);
 }
@@ -1083,6 +1226,22 @@ export function advanceFromSocrates(code: RoomCode): void {
       case 'WINNER':
         finishGame(room);
         return;
+      // Task 294 - a quiz-machine slot beat is part of the post-REVEAL
+      // sequence, so it leaves through the same one decision point every
+      // other beat there does. The phase is still SOCRATES on this pass,
+      // which is exactly what makes that call advance rather than start a
+      // second beat.
+      case 'SPEECH_SLOT':
+        continueAfterReveal(room);
+        return;
+      // Task 296 - the spear's beat sits INSIDE the climb loop, between a
+      // reveal and whatever that reveal decided, so it leaves through the
+      // climb's own routing. NOT continueAfterReveal: that one belongs to the
+      // quiz's post-REVEAL sequence and would walk the finale into
+      // advanceToNextQuestionOrGameOver.
+      case 'SPEAR_OUT':
+        resumeAfterClimbReveal(room);
+        return;
     }
   }
 
@@ -1194,6 +1353,7 @@ export function startClimb(room: Room): boolean {
     lastCorrectIndex: null,
     duel: null,
     spearCounters: new Map(),
+    spearBeatPlayed: false,
     eliminationOrder: [],
   };
   room.climb = climb;
@@ -1528,6 +1688,30 @@ export function endClimbReveal(code: RoomCode): void {
   if (!climb) {
     return;
   }
+  // Task 296 - Η Λόγχη speaks BEFORE this reveal routes anywhere, at most once
+  // a game. It cannot stall the climb: the beat is an ordinary held SOCRATES
+  // phase armed under the quiz's own 'SOCRATES' timer kind (which is in
+  // QUIZ_CONTINUATIONS, so a pause resumes it and the host's ack finds a
+  // continuation), and every way out of it - the ack, that ack arriving
+  // immediately on a missing clip (Task 154), the per-beat backstop, a VIP
+  // skip - lands in advanceFromSocrates, which calls resumeAfterClimbReveal
+  // below: the exact routing this function would otherwise have done itself.
+  if (startSpearOutBeatIfDue(room, climb)) {
+    return;
+  }
+  resumeAfterClimbReveal(room);
+}
+
+// What a finished CLIMB_REVEAL leads to. This is endClimbReveal's own former
+// body, MOVED here unchanged (Task 296) so the spear's beat can sit in front of
+// it and hand back to ONE routing decision rather than a second copy of it -
+// the same "one function decides what follows" rule the quiz's own
+// continueAfterReveal keeps.
+function resumeAfterClimbReveal(room: Room): void {
+  const climb = room.climb;
+  if (!climb) {
+    return;
+  }
   if (climb.winnerPlayerId) {
     endClimb(room);
     return;
@@ -1537,6 +1721,67 @@ export function endClimbReveal(code: RoomCode): void {
     return;
   }
   startClimbQuestion(room);
+}
+
+// Task 296 - the spear's elimination beat, the hook tasks/291 §4 found missing.
+// ONE per game (ClimbState.spearBeatPlayed): on a DOUBLE spear the first player
+// struck is spoken about and the second is silent, which is the latch doing
+// precisely what it exists for - two strikes in one reveal are one dramatic
+// beat, not two lines back to back.
+//
+// Who was struck comes off THIS round's own rows (lastResults' `eliminated`
+// flags, which endClimbQuestion writes for that round only) intersected with
+// eliminationOrder, whose push order is nextAfterSpearRound's own
+// fastest-reacting-first - so "the first" is a real order rather than a Map's.
+// A spear DUEL's loser is eliminated later, in endDuelReveal, which never
+// passes through here and therefore never speaks: deliberate, the beat belongs
+// to the strike itself, not to the duel that settles who survives it.
+//
+// LATCHES ON ATTEMPT, the same discipline as pickSpeechSlot: an exhausted pool
+// spends the latch rather than leaving a retry armed for the next strike.
+function startSpearOutBeatIfDue(room: Room, climb: ClimbState): boolean {
+  if (climb.spearBeatPlayed) {
+    return false;
+  }
+  const struckThisRound = new Set(
+    (climb.lastResults ?? []).filter((result) => result.eliminated).map((result) => result.playerId),
+  );
+  const struckId = climb.eliminationOrder.find((playerId) => struckThisRound.has(playerId));
+  const name = struckId ? room.players.get(struckId)?.name : undefined;
+  if (!struckId || !name) {
+    return false;
+  }
+  climb.spearBeatPlayed = true;
+  const picked = recordSpearOutAndPickLine(room.socrates, name);
+  if (!picked) {
+    return false;
+  }
+  // The name is ALREADY in the subtitle (recordSpearOutAndPickLine puts it
+  // there unconditionally); this decides only whether it is also SPOKEN, as a
+  // clip sounded AHEAD of the line inside the same beat and under its single
+  // ack (Task 263's prefix). No vocative clip has been recorded for any preset
+  // name yet, so today this is always absent: the strike is READ with the name
+  // and HEARD without it, the coronation's own interim behaviour.
+  const vocative = vocativeClipFor(name);
+  const hasVocativeClip = vocative !== null && hasSocratesClip(vocative.template, vocative.tag);
+  console.log(
+    `room ${room.code} climb: Η Λόγχη struck ${name} out — Socrates beat firing ` +
+      `(vocative clip ${hasVocativeClip ? 'spliced' : 'absent'})`,
+  );
+  enterSocratesBeat(
+    room,
+    'SOCRATES',
+    {
+      kind: 'SPEAR_OUT',
+      line: picked.text,
+      lineTemplate: picked.template,
+      lineTag: picked.tag,
+      prefixTemplate: hasVocativeClip ? vocative.template : null,
+      prefixTag: hasVocativeClip ? vocative.tag : null,
+    },
+    () => advanceFromSocrates(room.code),
+  );
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1636,10 +1881,15 @@ export function submitDuelPick(room: Room, playerId: string, weapon: unknown): b
 // whoever stayed online.
 
 // The early-lock beat: both picks are in, so the reveal is scheduled for
-// max(the DUEL_LOCK_FLOOR_MS floor, Socrates' line ending) - the same
-// "moment detected, pool empty, beat stays silent" pattern as Task 138, so
-// today the floor alone carries it. Host-only DUEL_LOCKED goes out at once;
-// the weapons still don't.
+// max(the DUEL_LOCK_FLOOR_MS floor, Socrates' line ending). Task 188b shipped
+// with DUEL_LINES.DUEL_LOCKED empty (the Task 138 pattern), so the floor alone
+// carried it; Task 296 WROTE those three lines, so a line now fires here on
+// every duel lock and the floor has gone back to being what its name says - a
+// minimum, not the whole wait. Nothing else about this function changed: the
+// "waiting on Socrates too" path was already built and already waited for the
+// host's ack. Host-only DUEL_LOCKED goes out at once; the weapons still don't,
+// and DUEL_PICK's own 20s input window (DUEL_PICK_TIME_MS, armed in startDuel)
+// is untouched - this beat only ever runs AFTER both picks are already in.
 function lockDuel(room: Room): void {
   const duel = room.climb?.duel;
   if (!duel || duel.lock) {
@@ -1831,6 +2081,11 @@ function finishGame(room: Room): void {
   if (openTiming && openTiming.endTs === null) {
     openTiming.endTs = Date.now();
   }
+  // Task 293 - the LAST stage's ledger dump, for the same reason the timing
+  // above is closed here: no next stage will ever announce itself and trigger
+  // the boundary. Left intact (not reset) so play-again's resetSocratesState
+  // is the one place it is cleared for a new game.
+  dumpStageLedger(room.socrates.ledger, room.code, room.requestedBotCount > 0);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
   emitCrowdIntensity(room);
   setCrowdMood(room, 'calm');
