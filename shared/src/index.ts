@@ -1409,14 +1409,26 @@ export function trialStageRow(stage: number): StageDefinition {
 // The full show (Task 134)
 // ---------------------------------------------------------------------------
 
-// How many quiz questions EACH of the full mode's two quiz stages asks. The
-// VIP's gameLength maps to this and nothing else: the drawing round and the
-// numeric segment are fixed, and every stage always runs (unlike the quiz
-// mode, where gameLength picks a SLICE of the table).
+// How many quiz questions the full mode's stage 6 (Η Συκοφαντία) asks.
+// Task 295 split this off stage 1 - the two quiz stages no longer share one
+// count. The VIP's gameLength maps to this and nothing else: the drawing
+// round and the numeric segment are fixed, and every stage always runs
+// (unlike the quiz mode, where gameLength picks a SLICE of the table).
 export const FULL_QUIZ_QUESTION_COUNTS: Record<GameLength, number> = {
   short: 2,
   medium: 3,
   long: 5,
+};
+
+// Task 295 - stage 1 (Η Αγορά)'s own count, split off FULL_QUIZ_QUESTION_COUNTS
+// so the opening quiz stage can run longer without touching Η Συκοφαντία
+// (stage 6, which also carries STEAL and stays on the table above). Only
+// `long` actually differs (5 -> 10); short/medium are unchanged from what
+// the shared table already gave stage 1.
+export const FULL_QUIZ_STAGE1_QUESTION_COUNTS: Record<GameLength, number> = {
+  short: 2,
+  medium: 3,
+  long: 10,
 };
 
 // Task 150 - how many draw-then-guess-everything cycles the full show's
@@ -1471,7 +1483,7 @@ export const FULL_AGORA_SCORE_SCALE = 400 / (BASE_POINTS + SPEED_BONUS_MAX);
 export const FULL_STAGES: readonly StageDefinition[] = [
   {
     stage: 1,
-    questionCount: FULL_QUIZ_QUESTION_COUNTS.medium,
+    questionCount: FULL_QUIZ_STAGE1_QUESTION_COUNTS.medium,
     segment: 'quiz',
     powerUpBeforeEveryQuestion: true,
     stealAfterEveryQuestion: false,
@@ -1534,11 +1546,22 @@ export const FULL_STAGES: readonly StageDefinition[] = [
 
 // The full mode's table for a given length: every stage, always, with the two
 // quiz rows' counts substituted and Η Δίκη appended as the last card.
+// Task 295 - the two quiz rows no longer share one count, so the substitution
+// is keyed by `definition.stage` (stage 1 vs stage 6), not by segment alone:
+// matching on `stageSegment(definition) === 'quiz'` would give both rows the
+// same figure again.
 export function fullStagesForLength(length: GameLength): readonly StageDefinition[] {
-  const questionCount = FULL_QUIZ_QUESTION_COUNTS[length];
-  const stages = FULL_STAGES.map((definition) =>
-    stageSegment(definition) === 'quiz' ? { ...definition, questionCount } : definition,
-  );
+  const stage1Count = FULL_QUIZ_STAGE1_QUESTION_COUNTS[length];
+  const stage6Count = FULL_QUIZ_QUESTION_COUNTS[length];
+  const stages = FULL_STAGES.map((definition) => {
+    if (definition.stage === 1) {
+      return { ...definition, questionCount: stage1Count };
+    }
+    if (definition.stage === 6) {
+      return { ...definition, questionCount: stage6Count };
+    }
+    return definition;
+  });
   return [...stages, trialStageRow(FULL_STAGES.length + 1)];
 }
 
