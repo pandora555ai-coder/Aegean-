@@ -1,10 +1,14 @@
 # Speech-policy v2 — new line pools (T-D, locked 2026-09-20)
-39 lines, 13 pools. Rules: 2nd person, stage-level verdicts,
+43 lines, 14 pools. Rules: 2nd person, stage-level verdicts,
 agender, no ellipses, no "μαθητ", one tag each, names spliced never baked.
 SPEAR_OUT replaces SPEAR_WARNING (post-strike). Generation: October reset.
 Task 296 appended the 13th pool, QUIZ_BEST (the quiz stage's best side, which
 the original twelve left unwritten), and wired DUEL_LOCKED/SPEAR_OUT into the
 phase machine under BOTH policies.
+Task 300 appended the 14th, SKIP_INTERRUPTED — what he says when the room votes
+his narration quiet. Like DUEL_LOCKED and SPEAR_OUT it belongs to a MECHANIC
+rather than a stage slot, so it plays under BOTH policies; four lines, not three,
+because a game holds two skippable sequences and neither may repeat the other.
 
 PALAISTRA_MID_BEST:
 [dry] Δώδεκα κρίσεις, καμία λάθος. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.
@@ -70,3 +74,9 @@ QUIZ_BEST:
 [dry] Η Αγορά έχει χίλιες φωνές. Απόψε ακούγεται κυρίως η δική σου.
 [thoughtful] Απαντάς σαν να έχεις ξαναδεί τις ερωτήσεις. Δεν σε κατηγορώ. Σε παρακολουθώ.
 [amused] Οι έμποροι ρωτούν ποιος είσαι. Οι σοφιστές ρωτούν πόσο χρεώνεις.
+
+SKIP_INTERRUPTED:
+[dry] Καλά. Ούτε στη δίκη μου δεν με διέκοψαν τόσο γρήγορα.
+[sighs] Μιλούσα. Ψηφίσατε. Δημοκρατία — το χειρότερο πολίτευμα, εκτός από όσα δοκιμάσαμε.
+[amused] Η Εκκλησία του Δήμου αποφάσισε να σωπάσω. Πρώτη φορά συμφωνώ με απόφασή της τόσο απρόθυμα.
+[deadpan] Σημειώνω τα ονόματα όσων ψήφισαν. Δεν θα το ξεχάσω. Παίξτε.

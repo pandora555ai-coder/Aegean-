@@ -88,6 +88,7 @@ import {
   type RoomPeekResultPayload,
   type RoomSettings,
   type SabotageEffect,
+  type SkipVoteProgressPayload,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
   type SpeechPolicy,
@@ -520,6 +521,17 @@ export default function ControllerScreen() {
   // it is pressed, rather than waiting for the next beat to prove the press
   // landed. The server is still the authority - a stale id is refused there.
   const [socratesSkipSent, setSocratesSkipSent] = useState(false);
+  // Task 300 - the room's skip vote for the narration currently playing. Null
+  // outside one. Unlike socratesBeatId above this is NOT per-beat: the vote
+  // belongs to the whole narration, so it deliberately survives every line
+  // boundary inside it (the server closes it when the sequence ends).
+  const [skipVote, setSkipVote] = useState<SkipVoteProgressPayload | null>(null);
+  // The one-way half, same shape as socratesSkipSent above: the button goes the
+  // instant it is pressed rather than waiting for the tally to come back. Reset
+  // only on leaving SOCRATES - resetting it per beat would hand the button back
+  // to someone who has already voted, on the very next line of the same
+  // narration.
+  const [skipVoteSent, setSkipVoteSent] = useState(false);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
@@ -778,6 +790,16 @@ export default function ControllerScreen() {
       setSocratesSkipSent(false);
     }
 
+    // Task 300 - the vote's live state, room-wide and counts-only. `youVoted`
+    // is present ONLY on the targeted resend a rejoining phone gets, which is
+    // the one moment this phone cannot know its own vote from memory.
+    function handleSkipVoteProgress(payload: SkipVoteProgressPayload) {
+      setSkipVote(payload);
+      if (typeof payload.youVoted === 'boolean') {
+        setSkipVoteSent(payload.youVoted);
+      }
+    }
+
     function handlePhaseChanged(payload: PhaseChangedPayload) {
       setPhase(payload.phase);
       // Task 238 - phase-scoped state, cleared on EVERY transition out of the
@@ -787,6 +809,13 @@ export default function ControllerScreen() {
       if (payload.phase !== 'SOCRATES') {
         setSocratesBeatId(null);
         setSocratesSkipSent(false);
+        // Task 300 - the same Task 140 rule for the vote: a narration can only
+        // be skipped while it is on screen, so leaving SOCRATES takes the
+        // button and the tally with it. This is also what re-arms the button
+        // for the game's SECOND skippable narration (Η Ανάβασις'), since many
+        // non-SOCRATES phases separate the two.
+        setSkipVote(null);
+        setSkipVoteSent(false);
       }
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round
@@ -1454,6 +1483,7 @@ export default function ControllerScreen() {
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.SOCRATES_BEAT, handleSocratesBeat);
+    socket.on(ServerEvents.SKIP_VOTE_PROGRESS, handleSkipVoteProgress);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -1490,6 +1520,7 @@ export default function ControllerScreen() {
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.SOCRATES_BEAT, handleSocratesBeat);
+      socket.off(ServerEvents.SKIP_VOTE_PROGRESS, handleSkipVoteProgress);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.ANSWER_ACCEPTED, handleAnswerAccepted);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -1881,6 +1912,21 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_SKIP_SOCRATES, socratesBeatId !== null ? { beatId: socratesBeatId } : {});
   }
 
+  // Task 300 - vote to cut the narration short. Any player, not just the VIP.
+  // One-way: there is no un-voting, so the press is final and the button goes
+  // at once (the server refuses a second vote from the same playerId anyway -
+  // this is the cosmetic half of that rule, exactly as socratesSkipSent is for
+  // the VIP's own skip). Sends the beat id when this phone knows one; a phone
+  // that reconnected mid-narration omits it, which the server reads as
+  // "whatever is current".
+  function handleSkipVote() {
+    if (skipVoteSent || inputsLocked) {
+      return;
+    }
+    setSkipVoteSent(true);
+    socket.emit(ClientEvents.SKIP_VOTE, socratesBeatId !== null ? { beatId: socratesBeatId } : {});
+  }
+
   function handlePlayAgain() {
     socket.emit(ClientEvents.VIP_PLAY_AGAIN, {});
   }
@@ -2190,6 +2236,17 @@ export default function ControllerScreen() {
             onClick={phase === 'SOCRATES' ? handleSkipSocrates : handleNext}
           >
             Παράλειψη
+          </button>
+        )}
+        {/* Task 300 - the room's own vote, on the reveal card because that is
+            where a phone sits when Η Ανάβασις' narration begins (the last
+            REVEAL of stage 6 is still on screen). Every connected player gets
+            it, VIP or not - that is the whole difference from the button
+            above. A branch, not a disabled control: once this phone has voted,
+            or the vote closes, there is no node here at all. */}
+        {skipVote?.open && !skipVoteSent && !inputsLocked && (
+          <button data-testid="skip-vote-button" style={styles.voteButton} type="button" onClick={handleSkipVote}>
+            Αρκετά, Σωκράτη ({skipVote.votes}/{skipVote.needed})
           </button>
         )}
         <ConnectionBanner visible={!connected && joined !== null} />
@@ -3517,6 +3574,16 @@ export default function ControllerScreen() {
             Παράλειψη
           </button>
         )}
+
+        {/* Task 300 - and the same vote here, which is where every phone sits
+            during the OPENING narration: the game has left LOBBY but no round
+            view exists yet, so this branch is the whole screen for all ten
+            lines of it. */}
+        {skipVote?.open && !skipVoteSent && !inputsLocked && (
+          <button data-testid="skip-vote-button" style={styles.voteButton} type="button" onClick={handleSkipVote}>
+            Αρκετά, Σωκράτη ({skipVote.votes}/{skipVote.needed})
+          </button>
+        )}
       </div>
     );
   }
@@ -4026,6 +4093,21 @@ const styles: Record<string, CSSProperties> = {
     background: 'transparent',
     color: 'var(--marble-3)',
     fontWeight: 600,
+  },
+  // Task 300 - the skip vote. Ember rather than the skip button's marble, since
+  // this is a room action with a consequence rather than a neutral "next", and
+  // a full 2.75rem/44px tap target (the phone rule) unlike the older
+  // skipButton, which predates nothing and is simply narrower.
+  voteButton: {
+    width: '100%',
+    minHeight: '2.75rem',
+    fontSize: '1rem',
+    padding: '0.6rem 1rem',
+    borderRadius: '0.5rem',
+    border: '1px solid var(--ember)',
+    background: 'transparent',
+    color: 'var(--ember)',
+    fontWeight: 700,
   },
   pauseButton: {
     width: '100%',

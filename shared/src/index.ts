@@ -50,6 +50,14 @@ export const ClientEvents = {
   // rejected, exactly as a late ack would be. This is a PLAYER event (VIP
   // only), unlike SOCRATES_AUDIO_ENDED, which only the host may send.
   VIP_SKIP_SOCRATES: 'vip:skip_socrates',
+  // Task 300 - ANY connected player votes to cut a multi-line NARRATION short
+  // (the opening GAME_INTRO_SEQUENCE, Η Ανάβασις' own ANAVASIS_INTRO_SEQUENCE).
+  // Deliberately NOT a second VIP_SKIP_SOCRATES: that one is the VIP's alone and
+  // advances ONE line, while this is a room decision that discards the whole
+  // rest of the narration. Carries the beat id the phone was last told about,
+  // put through the same staleness rule (Task 238), and one vote per player per
+  // sequence - there is no un-voting.
+  SKIP_VOTE: 'player:skip_vote',
   // Task 53 - dev-only drawing harness (/dev/draw). Not part of any game
   // phase yet: the real draw phase will get its own player:* event with a
   // room/phase check. This one exists so the surface can be tried on a
@@ -136,6 +144,18 @@ export const ServerEvents = {
   // host-only, SOCRATES_SHOW's job). The VIP's phone needs the id to be able
   // to name the beat it is skipping - see VIP_SKIP_SOCRATES.
   SOCRATES_BEAT: 'socrates:beat',
+  // Task 300 - the skip vote's live tally, ROOM-WIDE (the TV renders the
+  // counter, every phone decides whether its own button is still up). Carries
+  // counts only - never WHO voted - for the same reason SOCRATES_BEAT carries
+  // only an id: a phone learns the room's state, never another player's choice.
+  SKIP_VOTE_PROGRESS: 'skip:progress',
+  // Task 300 - HOST ONLY: stop the clip currently sounding, mid-play. The one
+  // server->client AUDIO-CONTROL event in the game; every other audio decision
+  // is the client's own. Sent exactly once, at the moment a skip vote passes,
+  // and the host answers it with SILENCE rather than an ack - the beat it names
+  // is over by server decree, so a synthesised completion for it would be a
+  // second advance (the double-advance Task 236 closed).
+  SOCRATES_STOP: 'socrates:stop',
   STEAL_SHOW: 'steal:show',
   STEAL_RESOLVED: 'steal:resolved',
   CROWD_MOOD: 'crowd:mood',
@@ -2373,6 +2393,42 @@ export interface SocratesBeatPayload {
   beatId: number;
 }
 
+// Task 300 - a player's vote to cut the narration short. `beatId` is optional
+// for the same reason VipSkipSocratesPayload's is: a phone that reconnected
+// mid-beat has not been told an id yet, and "whatever is current" is the right
+// reading of a press made against what is actually on screen.
+export interface SkipVotePayload {
+  beatId?: number;
+}
+
+// Task 300 - the vote's live state. Room-wide, counts only.
+export interface SkipVoteProgressPayload {
+  // Votes from players who are STILL connected. A voter who drops stops
+  // counting, exactly as haveAllConnectedPlayersAnswered stops waiting for one.
+  votes: number;
+  // Strictly more than half of the currently-connected roster, recomputed on
+  // every join/disconnect - so this number can FALL between two payloads.
+  needed: number;
+  connected: number;
+  // Whether a vote can still be cast: true only while a sequence is in flight
+  // and unresolved. False closes every phone's button (the counter may still
+  // be on screen) and is what makes the vote once-per-sequence.
+  open: boolean;
+  // Present ONLY on the targeted resend a rejoining phone gets (the same
+  // "one event name, different payloads per recipient" rule question:show
+  // follows). Absent on the room-wide broadcast, where it would be a lie for
+  // every recipient but one.
+  youVoted?: boolean;
+}
+
+// Task 300 - which beat's audio to stop. The id is load-bearing, not
+// decorative: a host whose clip already ended naturally, or which reconnected
+// mid-beat and so never had a source at all, must be able to tell this event
+// is about a beat it is no longer playing and do nothing.
+export interface SocratesStopPayload {
+  beatId: number;
+}
+
 // Every player's current score + rank, in room.players' insertion (join)
 // order - NEVER re-sorted by score, so the TV's persistent score column
 // (Task 38) never reshuffles rows as a total changes. Included on every
@@ -4071,6 +4127,7 @@ export type ClientToServerEvents = {
   [ClientEvents.STEAL_CHOOSE]: (payload: StealChoosePayload) => void;
   [ClientEvents.SOCRATES_AUDIO_ENDED]: (payload: SocratesAudioEndedPayload) => void;
   [ClientEvents.VIP_SKIP_SOCRATES]: (payload: VipSkipSocratesPayload) => void;
+  [ClientEvents.SKIP_VOTE]: (payload: SkipVotePayload) => void;
   [ClientEvents.DEV_SUBMIT_DRAWING]: (payload: DevSubmitDrawingPayload) => void;
   [ClientEvents.DEV_GET_NUMERIC_QUESTIONS]: () => void;
   [ClientEvents.DEV_GET_VOICE_LINES]: () => void;
@@ -4111,6 +4168,8 @@ export type ServerToClientEvents = {
   [ServerEvents.STAGE_ANNOUNCE]: (payload: StageAnnouncePayload) => void;
   [ServerEvents.SOCRATES_SHOW]: (payload: SocratesShowPayload) => void;
   [ServerEvents.SOCRATES_BEAT]: (payload: SocratesBeatPayload) => void;
+  [ServerEvents.SKIP_VOTE_PROGRESS]: (payload: SkipVoteProgressPayload) => void;
+  [ServerEvents.SOCRATES_STOP]: (payload: SocratesStopPayload) => void;
   [ServerEvents.STEAL_SHOW]: (payload: StealShowPayload) => void;
   [ServerEvents.STEAL_RESOLVED]: (payload: StealResolvedPayload) => void;
   [ServerEvents.CROWD_MOOD]: (payload: CrowdMoodPayload) => void;

@@ -76,6 +76,7 @@ import {
   type RoomSettings,
   type ServerErrorPayload,
   type SettingsUpdatedPayload,
+  type SkipVoteProgressPayload,
   type SocratesShowPayload,
   type StageAnnouncePayload,
   type DevVoiceLinesPayload,
@@ -262,6 +263,18 @@ export default function HostScreen() {
   // and its durationMs is always the server's live remaining time, so the
   // countdown below can key off the object alone.
   const [socrates, setSocrates] = useState<SocratesShowPayload | null>(null);
+  // Task 300 - the skip vote's live tally, straight off skip:progress. Never
+  // cleared here: the SERVER closes the vote (a final payload with open:false
+  // and votes 0) when the narration routes onward, and the counter is rendered
+  // only inside the SOCRATES subtitle anyway, so it cannot outlive its beat.
+  const [skipVote, setSkipVote] = useState<SkipVoteProgressPayload | null>(null);
+  // Task 300 - what the subtitle band actually renders. Deliberately NOT gated
+  // on `open`: the counter STAYS up through the interruption beat that a passed
+  // vote produces, showing the tally that carried it, and comes down only when
+  // the server closes the vote (votes back to 0). Nothing to show before the
+  // first vote is cast, so an unskipped narration renders the plain bar.
+  const skipVoteCounter =
+    skipVote && skipVote.votes > 0 ? { votes: skipVote.votes, needed: skipVote.needed } : null;
   const [socratesSecondsLeft, setSocratesSecondsLeft] = useState(0);
   // Drawing mode (Task 56b) - the phase payload, set once per phase/reconnect.
   // The submitted/guessed progress tickers went with the counters and avatar
@@ -368,6 +381,7 @@ export default function HostScreen() {
     playCrowdOneShot,
     holdCrowdIntensity,
     playSocratesLine,
+    stopSocratesLine,
     prefetchSocratesLines,
   } = useGameAudio();
 
@@ -744,8 +758,27 @@ export default function HostScreen() {
           // carries none. The single ack above moves to whichever clip
           // genuinely ends the chain.
           payload.suffix,
+          // Task 300 - which beat this chain belongs to, so a socrates:stop
+          // naming a beat can tell whether this is the chain it means.
+          payload.beatId,
         );
       }
+    }
+
+    // Task 300 - the server says STOP, mid-clip, because the room voted the
+    // narration quiet. The ack is SUPPRESSED rather than synthesised: the audio
+    // hook nulls the source's onended before stopping it, so no
+    // socrates:audio_ended is ever emitted for this beat. Nothing is sent back
+    // here at all - the server already knows what it decided, and a reply would
+    // be a second advance.
+    function handleSocratesStop(payload: { beatId: number }) {
+      stopSocratesLine(payload.beatId);
+    }
+
+    // Task 300 - room-wide counts only; the TV is the one screen that renders
+    // them, in the subtitle's own band.
+    function handleSkipVoteProgress(payload: SkipVoteProgressPayload) {
+      setSkipVote(payload);
     }
 
     // Steal (Task 32) - the host branch of an asymmetric event. The thief's
@@ -1376,6 +1409,8 @@ export default function HostScreen() {
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
     socket.on(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
     socket.on(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
+    socket.on(ServerEvents.SOCRATES_STOP, handleSocratesStop);
+    socket.on(ServerEvents.SKIP_VOTE_PROGRESS, handleSkipVoteProgress);
     socket.on(ServerEvents.STEAL_SHOW, handleStealShow);
     socket.on(ServerEvents.STEAL_RESOLVED, handleStealResolved);
     socket.on(ServerEvents.REVEAL_SHOW, handleRevealShow);
@@ -1415,6 +1450,8 @@ export default function HostScreen() {
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
       socket.off(ServerEvents.STAGE_ANNOUNCE, handleStageAnnounce);
       socket.off(ServerEvents.SOCRATES_SHOW, handleSocratesShow);
+      socket.off(ServerEvents.SOCRATES_STOP, handleSocratesStop);
+      socket.off(ServerEvents.SKIP_VOTE_PROGRESS, handleSkipVoteProgress);
       socket.off(ServerEvents.STEAL_SHOW, handleStealShow);
       socket.off(ServerEvents.STEAL_RESOLVED, handleStealResolved);
       socket.off(ServerEvents.REVEAL_SHOW, handleRevealShow);
@@ -2103,7 +2140,7 @@ export default function HostScreen() {
       return (
         <>
           {isAnnounceCard && stageAnnounce && <StageAnnounceOverlay announce={stageAnnounce} />}
-          <SocratesSubtitle text={socrates.line} />
+          <SocratesSubtitle text={socrates.line} skipVote={skipVoteCounter} />
         </>
       );
     }
@@ -2112,6 +2149,7 @@ export default function HostScreen() {
       const isAnnounceBeat = socrates.kind === 'GAME_INTRO' || socrates.kind === 'STAGE_INTRO';
       return (
         <SocratesView
+          skipVote={skipVoteCounter}
           socrates={socrates}
           roomCode={roomCode}
           paused={paused}

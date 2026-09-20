@@ -82,6 +82,19 @@ export function useGameAudio() {
   // re-fetches. Tied to this hook instance, not module scope: an AudioBuffer
   // is meaningless once its AudioContext is gone.
   const socratesBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  // Task 300 - cancellation. Before this task nothing retained a handle on a
+  // Socrates source (it was a local `const` inside play()), so there was no way
+  // to stop a line mid-word: the room heard an interrupted narration out to its
+  // end. The skip vote needs the clip to actually STOP, so the live chain is
+  // held here, and `generation` is what stops a clip that is still mid-fetch
+  // from ever being scheduled - the play path has four await points, and a stop
+  // can land on any of them, where there is no source to stop yet.
+  const socratesPlaybackRef = useRef<{
+    beatId: number | null;
+    generation: number;
+    sources: AudioBufferSourceNode[];
+  } | null>(null);
+  const socratesGenerationRef = useRef(0);
   // Task 36c - the crowd bed/one-shot buffers, decoded (not just HTTP-cache
   // warmed like the 254 Socrates mp3s - there are only 7 of these, and they
   // loop/replay all game, so decoding once is worth the memory).
@@ -668,17 +681,38 @@ export function useGameAudio() {
     // `template`, inside this same beat. Independent of `prefix`, so all four
     // combinations are legal.
     suffix?: { template: string; tag: string | null } | null,
+    // Task 300 - which beat this chain belongs to, so socrates:stop can name a
+    // beat and this can tell whether it is the one actually sounding. Null
+    // wherever a caller has no beat id (the draw mode's own reveal line).
+    beatId: number | null = null,
   ) {
     const ctx = audioCtxRef.current;
     if (!ctx || mutedRef.current) {
       return;
     }
+    // Task 300 - claim this generation before the first await. A LATER call, or
+    // a stopSocratesLine, bumps the counter, and every resumption point below
+    // checks it: an aborted chain returns WITHOUT calling onEnded, which is the
+    // whole point. The ack for a stopped beat must be SUPPRESSED, never
+    // synthesised - a synthetic one would advance the beat that replaced it and
+    // re-open the double-advance Task 236 closed.
+    const generation = socratesGenerationRef.current + 1;
+    socratesGenerationRef.current = generation;
+    const playback = { beatId, generation, sources: [] as AudioBufferSourceNode[] };
+    socratesPlaybackRef.current = playback;
+    const cancelled = (): boolean => socratesGenerationRef.current !== generation;
     // Task 213 - awaited (not fire-and-forget) so a resume that completes
     // during the fetch/decode below is already reflected in audioSuspended
     // by the time this line actually schedules.
     await attemptResumeAudio();
+    if (cancelled()) {
+      return;
+    }
     try {
       const buffer = await loadSocratesBuffer(ctx, lineHash(template, tag));
+      if (cancelled()) {
+        return;
+      }
       if (!buffer) {
         onEnded(); // Task 154 - a missing clip ends the beat now, not at the backstop
         return;
@@ -716,13 +750,19 @@ export function useGameAudio() {
       const suffixBuffer = suffix ? await loadSpliceBuffer(suffix) : null;
       // The context (or the mute toggle) may have changed while the fetch/
       // decode above was in flight - re-check before actually sounding it.
-      if (audioCtxRef.current !== ctx || mutedRef.current) {
+      // Task 300 - and the beat may have been STOPPED while it was in flight,
+      // which is the same "do not sound it" answer for a different reason.
+      if (audioCtxRef.current !== ctx || mutedRef.current || cancelled()) {
         return;
       }
       const play = (buf: AudioBuffer, onended: () => void): void => {
         const source = ctx.createBufferSource();
         source.buffer = buf;
         source.onended = onended;
+        // Task 300 - retained so stopSocratesLine can reach it. Every clip of
+        // the chain is tracked, not just the last: a stop landing on a spliced
+        // prefix has to silence that too.
+        playback.sources.push(source);
         // Task 36c - through the shared output gain, not ctx.destination
         // directly, so the one mute toggle covers this too. Task 178 - via
         // voiceGain first, so the VIP's voice slider applies without touching
@@ -744,6 +784,13 @@ export function useGameAudio() {
       chain.push(buffer);
       if (suffixBuffer) chain.push(suffixBuffer);
       const playFrom = (index: number): void => {
+        // Task 300 - a stop between two clips of one chain: the previous
+        // source's onended was nulled, but this continuation is already
+        // scheduled, so it checks for itself rather than sounding the next clip
+        // of a beat that is over.
+        if (cancelled()) {
+          return;
+        }
         play(chain[index], index === chain.length - 1 ? onEnded : () => playFrom(index + 1));
       };
       playFrom(0);
@@ -755,8 +802,48 @@ export function useGameAudio() {
       // Task 195 - this used to swallow the error entirely, so a real
       // playback bug (bad decode, blocked AudioContext) looked identical to
       // a missing file. Log it; onEnded() behavior is unchanged.
+      // Task 300 - a chain aborted by a stop must not end the beat here either:
+      // a cancelled fetch can surface as a throw, and Task 154's "a dead clip
+      // ends the beat now" must not become "a stopped clip acks the beat that
+      // replaced it".
+      if (cancelled()) {
+        return;
+      }
       console.warn('[socrates-audio] playSocratesLine failed', err);
       onEnded();
+    }
+  }
+
+  // Task 300 - stop the clip currently sounding, mid-word, without acking it.
+  // Answers the host-only socrates:stop, which a passed skip vote sends exactly
+  // once. Three ways this is legitimately a NO-OP, and all three matter: no
+  // chain is live (a host that reconnected mid-beat never played one - see
+  // HostScreen's state:sync branch - and that beat must still end on its own
+  // backstop); the live chain belongs to a different beat; or the clip already
+  // finished naturally, in which case its ack is already on the wire and the
+  // server's own staleness rule handles it.
+  //
+  // ORDER IS THE WHOLE THING: `onended` is nulled BEFORE stop(), because stop()
+  // FIRES onended - leaving it attached would emit socrates:audio_ended for the
+  // beat we just cancelled, i.e. synthesise precisely the ack this feature must
+  // suppress.
+  function stopSocratesLine(beatId?: number | null): void {
+    const playback = socratesPlaybackRef.current;
+    if (!playback) {
+      return;
+    }
+    if (typeof beatId === 'number' && playback.beatId !== null && playback.beatId !== beatId) {
+      return;
+    }
+    socratesGenerationRef.current += 1; // anything still awaiting gives up before it schedules
+    socratesPlaybackRef.current = null;
+    for (const source of playback.sources) {
+      source.onended = null;
+      try {
+        source.stop();
+      } catch {
+        // Already ended or never started - nothing to silence.
+      }
     }
   }
 
@@ -806,6 +893,7 @@ export function useGameAudio() {
     playCrowdOneShot,
     holdCrowdIntensity,
     playSocratesLine,
+    stopSocratesLine,
     prefetchSocratesLines,
   };
 }

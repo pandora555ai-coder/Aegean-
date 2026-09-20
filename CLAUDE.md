@@ -153,6 +153,16 @@ server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
                          goes near pickSpeechSlot, so neither is gated on
                          room.settings.speechPolicy. QUIZ_BEST is the 13th pool,
                          the quiz stage's best side (see speechSlots.ts below).
+                         A THIRD such exception since Task 300:
+                         `SKIP_INTERRUPTED_LINES` (4 lines), what he says when the
+                         room VOTES a narration quiet — see Voice below. It lives
+                         in its OWN const beside DUEL_LINES, NOT inside
+                         SPEECH_V2_LINES (which stays 13 pools / 39 lines), and is
+                         drawn by `pickSkipInterruptedLine` through the plain
+                         pickSpeechLine, never pickSpeechSlot — so it too is
+                         ungated by speechPolicy. content/speech-policy-lines.md
+                         is 14 pools / 43 lines as of 300; collectVoiceLineEntries
+                         517 -> 521 (measured, both ends).
 server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure decision
                          layer, no io/timers/phases. v2 (room.settings.speechPolicy,
                          Task 292) RETIRES per-reveal speech and speaks at fixed
@@ -1063,6 +1073,27 @@ announcement). They are sequential PROSE, not pools: a random pick emits
 nonsense, so `pickSequence` returns every line in order and
 `startSocratesSequence`/`room.pendingSocratesQueue` (phases.ts) play them
 one at a time, each with its own held phase and its own audio ack.
+**Those two sequences — and ONLY those two — can be voted quiet (Task 300).**
+Every connected phone (not just the VIP) gets a `skip-vote-button`;
+`player:skip_vote` is one-way, one vote per playerId per SEQUENCE, refused
+while paused and against a stale beat id. The threshold is strictly more than
+half of the CURRENTLY-connected roster, recomputed live — so a DISCONNECT can
+pass a vote with nobody voting again (`recheckSkipVoteOnDisconnect`, beside the
+other disconnect rechecks). `room.skipVote` (state.ts) belongs to the
+NARRATION, not the beat: it survives every line boundary inside one and is
+closed at the single site where the drain routes onward. On pass,
+`startSequenceSkip` (phases.ts) discards `pendingSocratesQueue`, emits host-only
+`socrates:stop`, and enters ONE `SKIP_INTERRUPTED` beat carrying the ORIGINAL
+kind — so the existing switch resumes the flow with ZERO new routing, and that
+beat is `unskippable` by both the vote and Task 238's Παράλειψη. The coronation
+is a sequence too and deliberately opens NO vote. **The client must never
+synthesise the stopped beat's ack**: `stopSocratesLine` (useGameAudio.ts) nulls
+`source.onended` BEFORE `source.stop()`, because stop() fires onended, and a
+generation counter covers the play path's four awaits. Check:
+`npx tsx dev/300-skip-vote-check.ts` (SCENARIO=A|B|C|D|E, 47/47).
+NOTE, unverified and NOT fixed here: the "276 ... (collectVoiceLineEntries'
+count)" claim just above is stale in at least its parenthetical — that function
+measured 517 before Task 300 and 521 after.
 **lineHash does NOT include the voice ID** — switching voices overwrites
 the SAME filenames rather than producing new ones. This is the central
 trap of the whole voice system: a filename alone never tells you which

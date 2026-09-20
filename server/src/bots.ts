@@ -423,9 +423,19 @@ function wireBotGameplay(socket: Socket, profile: BotProfile, code: RoomCode, ac
 // file exists on disk, falling back to the flat SOCRATES_DURATION_MS
 // otherwise - exactly what HostScreen's real playback would take, without
 // this harness needing to decode any audio itself.
+// Task 300 - the ack now carries the beat's OWN id, as a real browser's has
+// since Task 236 (HostScreen.tsx's handleSocratesShow closes over
+// payload.beatId). Without it this ack meant "whatever is on screen", and a
+// late one - for a beat whose clip the backstop cut off, or which Task 300's
+// skip vote STOPPED mid-word - would end whichever beat had since replaced it.
+// That is precisely the double-advance index.ts:608's staleness rule exists to
+// refuse, and a harness host was the one client in the game exempt from it.
+// Strictly safer for every existing caller (bot-accuracy-check,
+// bot-mode-param-check, socrates-cutoff-timing-check): an id that IS current
+// validates exactly as an absent one did.
 export function wireHostSocratesAck(hostSocket: Socket): void {
   hostSocket.on(ServerEvents.SOCRATES_SHOW, (payload: SocratesShowPayload) => {
-    setTimeout(() => hostSocket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, {}), payload.totalDurationMs);
+    setTimeout(() => hostSocket.emit(ClientEvents.SOCRATES_AUDIO_ENDED, { beatId: payload.beatId }), payload.totalDurationMs);
   });
 }
 

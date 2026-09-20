@@ -14,6 +14,11 @@ interface SocratesViewProps {
   // its own comment). null for every other kind (REVEAL/WINNER/...), which
   // renders the subtitle alone, same as before this task.
   announceCard?: StageAnnouncePayload | null;
+  // Task 300 - passed straight through to SocratesSubtitle. This view is the
+  // path EVERY non-climb beat takes, so without it the opening narration - the
+  // longest skippable thing in the show - would be the one place the counter
+  // never appeared.
+  skipVote?: { votes: number; needed: number } | null;
 }
 
 // Task 39/163b - the whole view of the SOCRATES phase: the host alone with
@@ -36,7 +41,14 @@ interface SocratesViewProps {
 // announce beat (GAME_INTRO/STAGE_INTRO) keeps the stage-announce card up
 // underneath it, since STAGE_ANNOUNCE itself already ended by the time this
 // phase starts and the card would otherwise vanish mid-narration.
-export function SocratesView({ socrates, roomCode, paused, pausedByName, announceCard = null }: SocratesViewProps) {
+export function SocratesView({
+  socrates,
+  roomCode,
+  paused,
+  pausedByName,
+  announceCard = null,
+  skipVote = null,
+}: SocratesViewProps) {
   return (
     <GameLayout
       roomCode={roomCode}
@@ -46,7 +58,7 @@ export function SocratesView({ socrates, roomCode, paused, pausedByName, announc
       contentKey={`socrates-${socrates.questionIndex}`}
     >
       {announceCard && <StageAnnounceOverlay announce={announceCard} />}
-      <SocratesSubtitle text={socrates.line} />
+      <SocratesSubtitle text={socrates.line} skipVote={skipVote} />
     </GameLayout>
   );
 }
