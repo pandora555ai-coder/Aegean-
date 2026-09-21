@@ -42,7 +42,7 @@ import {
 } from './state.js';
 // Task 238 - each Socrates beat's backstop is derived from ITS OWN clip's
 // length, so the phase machine has to ask how long this line actually runs.
-import { hasSocratesClip, socratesBackstopMs } from './socratesAudio.js';
+import { hasSocratesClip, socratesBackstopMs, socratesHoldForBeat } from './socratesAudio.js';
 // The registry only - a leaf module (see modes/registry.ts), so this keeps the
 // graph acyclic even though the modes themselves import THIS file.
 import { modeForRoom, stagesForRoom } from './modes/registry.js';
@@ -425,6 +425,11 @@ export function enterSocratesBeat(
     beat.suffixTemplate ?? null,
     beat.suffixTag ?? null,
   );
+  // Task 303 - and how long to hold it if nothing is going to sound. Set here,
+  // beside the backstop, because this is the one place EVERY beat but the
+  // post-REVEAL one is entered - a sequence's queued lines come back through
+  // here one at a time, so each line of a narration gets its own hold.
+  room.socratesHoldMs = socratesHoldForBeat(beat.lineTemplate || null, beat.lineTag, beat.line);
   armActiveTimer(room, timerKind, room.socratesBackstopMs, onFire);
 
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -1285,6 +1290,14 @@ function startSocratesIfLineFired(room: Room): boolean {
   room.socratesBackstopMs = socratesBackstopMs(
     room.lastReveal.socratesLineTemplate ?? null,
     room.lastReveal.socratesLineTag ?? null,
+  );
+  // Task 303 - the post-REVEAL beat is the one beat that does not go through
+  // enterSocratesBeat, so it sets its own hold here for the same reason and
+  // from the same three values.
+  room.socratesHoldMs = socratesHoldForBeat(
+    room.lastReveal.socratesLineTemplate ?? null,
+    room.lastReveal.socratesLineTag ?? null,
+    room.lastReveal.socratesLine,
   );
   armQuizTimer(room, 'SOCRATES', room.socratesBackstopMs, () => advanceFromSocrates(room.code));
   // Crowd mood (Task 35) deliberately untouched: whatever the reveal (or a

@@ -2261,6 +2261,32 @@ export const SOCRATES_BACKSTOP_MARGIN_MS = 3000;
 // 154), so this ceiling is reached only when audio is genuinely hung.
 export const SOCRATES_BACKSTOP_UNKNOWN_MS = 15000;
 
+// Task 303 - THE HOLD, for a beat whose line has NO clip on disk.
+//
+// Task 154 makes the client ack such a beat the instant it discovers the 404,
+// so the phase ended in ~50ms and the subtitle flashed and vanished. That was
+// invisible rather than silent: observed live on a v2 TV, where QUIZ_MID and
+// QUIZ_CLOSE fired correctly and simply could not be read. None of the 36 v2
+// slot lines has an mp3 until the October pass, so this is every v2 slot beat
+// in the game today.
+//
+// The rate is DERIVED FROM THE BANK, not guessed: over the 125 pre-generated
+// clips whose line text is still active (137 files, the rest orphans), the
+// per-clip rate is median 10.65 chars/s, IQR 9.65-11.55, pooled 10.58
+// (9428 chars over 891.4s). 11 is that median rounded to a whole number and
+// sits inside the IQR; being slightly ABOVE the median makes the estimate
+// slightly SHORT of a true read, which is the safe direction - a hold that
+// overran its own backstop would be cut off by it.
+//
+// The clamps are what make it safe at both ends: a four-word line still needs
+// long enough to be read, and no estimate may approach the backstop. The cap
+// is deliberately well under SOCRATES_BACKSTOP_UNKNOWN_MS (9s vs 15s): the
+// backstop stays armed throughout, and the hold can never be the thing that
+// reaches it.
+export const SOCRATES_HOLD_CHARS_PER_SEC = 11;
+export const SOCRATES_HOLD_MIN_MS = 3000;
+export const SOCRATES_HOLD_MAX_MS = 9000;
+
 // sha256(template [+ tag]), hex, first 16 chars - deliberately synchronous
 // and dependency-free (no node:crypto, which the browser build can't
 // bundle; no Web Crypto, which is async) so it works identically, with no

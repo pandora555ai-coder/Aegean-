@@ -58,7 +58,7 @@ import {
   updateRoomSettings,
   type Room,
 } from './state.js';
-import { pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
+import { armActiveTimer, pauseActiveTimer, remainingActiveTimerMs, resumeActiveTimer } from './timers.js';
 import {
   emitCrowdIntensity,
   emitCrowdIntensityResume,
@@ -630,6 +630,41 @@ function endSocratesBeat(room: Room, beatId: unknown, source: string, options: {
   if (typeof beatId === 'number' && beatId !== room.socratesBeatId) {
     console.log(`rejected ${source} for room ${room.code}: stale beat ${beatId}, current is ${room.socratesBeatId}`);
     return;
+  }
+  // Task 303 - THE HOLD. A beat whose line has no clip is acked by the client
+  // the instant it discovers that (Task 154's missing-clip path, ~50ms), so the
+  // subtitle flashed and vanished - which is how the v2 slots, none of which
+  // has an mp3 yet, fired correctly and were invisible on a real TV. That one
+  // ack is therefore ABSORBED: the beat stays up for the rest of its estimated
+  // speaking time and then ends on the ordinary timer, whose continuation is
+  // the very one this ack was about to call. It is NOT a second advance path -
+  // the beat still leaves through exactly one, just later.
+  //
+  // A SKIP is deliberately exempt. The VIP's Παράλειψη means "cut this now",
+  // and a passed skip vote never arrives here at all: it enters its own
+  // interruption beat, and that enterSocratesBeat's armActiveTimer is what
+  // cancels this hold.
+  //
+  // Elapsed-since-armed is derived exactly as buildSocratesPayload derives it
+  // (the armed backstop minus what the timer says is left), which is pause-
+  // aware for free - a pause freezes the timer, so a hold spanning one resumes
+  // with its remainder intact. The field is nulled BEFORE the re-arm, so a
+  // second ack (or one arriving during the hold) finds nothing to re-arm and
+  // falls through to the ordinary advance below.
+  if (!options.skip && room.socratesHoldMs !== null) {
+    const holdMs = room.socratesHoldMs;
+    room.socratesHoldMs = null;
+    const elapsedMs = room.socratesBackstopMs - remainingActiveTimerMs(room);
+    const remainingMs = Math.round(holdMs - elapsedMs);
+    const onFire = continuationForActiveTimer(room);
+    if (remainingMs > 0 && room.activeTimer && onFire) {
+      armActiveTimer(room, room.activeTimer.kind, remainingMs, onFire);
+      console.log(
+        `room ${room.code} Socrates beat ${room.socratesBeatId} has no clip - holding ` +
+          `${remainingMs}ms more of ${holdMs}ms (${source} absorbed)`,
+      );
+      return;
+    }
   }
   console.log(`room ${room.code} Socrates beat ${room.socratesBeatId} ended (${source}) - advancing`);
   // Task 138 - dispatched through the room's own MODE, never a hardcoded call

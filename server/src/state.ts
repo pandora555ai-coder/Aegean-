@@ -387,6 +387,13 @@ export interface Room {
   // remainder - so buildSocratesPayload has nothing else to derive
   // elapsed-since-armed from. Meaningless outside a SOCRATES beat.
   socratesBackstopMs: number;
+  // Task 303 - how long the CURRENT beat must stay on screen when its line has
+  // no clip to pace it, or null when it has one (the ordinary audio-driven
+  // beat, untouched). Set on every beat entry, so it can never leak from one
+  // beat into the next, and nulled the moment the ack that it absorbs arrives -
+  // which is what stops a duplicate ack re-arming it. Meaningless outside a
+  // SOCRATES beat, exactly like socratesBackstopMs above.
+  socratesHoldMs: number | null;
   // Task 239 - when THIS game began (Date.now() at startGame - vip:start_game
   // or the all-bot auto-start), null before that. Feeds StageAnnouncePayload's
   // own gameStartedAt (the TV clock's reconnect-safe reference) and the
@@ -523,6 +530,7 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     skipVote: null,
     socratesBeatId: 0,
     socratesBackstopMs: SOCRATES_MAX_DURATION_MS,
+    socratesHoldMs: null,
     gameStartedAt: null,
     stageTimings: [],
     pendingSocratesBeat: null,
@@ -971,6 +979,7 @@ export function resetRoomForNewGame(room: Room): void {
   room.skipVote = null;
   room.socratesBeatId = 0;
   room.socratesBackstopMs = SOCRATES_MAX_DURATION_MS;
+  room.socratesHoldMs = null;
   // Task 239 - no residue from the game that just ended: a fresh "play
   // again" must open its own clean timing record and re-derive its own
   // start time at the next startGame, not inherit the last one's.

@@ -6,6 +6,9 @@ import {
   SOCRATES_BACKSTOP_MARGIN_MS,
   SOCRATES_BACKSTOP_UNKNOWN_MS,
   SOCRATES_DURATION_MS,
+  SOCRATES_HOLD_CHARS_PER_SEC,
+  SOCRATES_HOLD_MAX_MS,
+  SOCRATES_HOLD_MIN_MS,
   SOCRATES_VOICE_DIR,
   lineHash,
 } from '@game/shared';
@@ -89,6 +92,36 @@ export function hasSocratesClip(template: string | null, tag: string | null = nu
 // now report their true length instead of a truncated one.
 export function resolveSocratesDurationMs(template: string | null, tag: string | null = null): number {
   return resolveSocratesClip(template, tag).durationMs;
+}
+
+// Task 303 - how long a line with no audio should hold the screen: its own
+// estimated speaking time, clamped. Pure arithmetic on the text, deliberately
+// in this module because this is where "how long does this line take" already
+// lives - the byte-size estimate above answers it for a line that HAS a clip,
+// and this answers the same question for one that does not.
+export function socratesHoldMs(spokenText: string): number {
+  const estimatedMs = (spokenText.trim().length / SOCRATES_HOLD_CHARS_PER_SEC) * 1000;
+  return Math.min(SOCRATES_HOLD_MAX_MS, Math.max(SOCRATES_HOLD_MIN_MS, Math.round(estimatedMs)));
+}
+
+// Task 303 - the hold this beat needs, or null when it needs none because its
+// audio will pace it. Keyed on the LINE's own clip and nothing else, which is
+// exactly the condition the CLIENT branches on: playSocratesLine loads the
+// line's buffer FIRST and, finding none, calls onEnded() and returns before it
+// so much as looks at a prefix or a suffix (useGameAudio.ts). So a missing line
+// means nothing sounds at all, whatever splices the beat carries - and a beat
+// whose line IS on disk is untouched by this task, which is what keeps the
+// coronation's without-vocative branch (Task 263) and the suffix rule (Task
+// 277) behaving exactly as they did.
+export function socratesHoldForBeat(
+  template: string | null,
+  tag: string | null,
+  spokenText: string,
+): number | null {
+  if (resolveSocratesClip(template, tag).known) {
+    return null;
+  }
+  return socratesHoldMs(spokenText);
 }
 
 // Task 238 - what the phase's REAL advance timer is armed at. NOT the expected
