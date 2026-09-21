@@ -7,6 +7,8 @@ import {
   MAX_BOTS,
   GAME_MODE_IDS,
   type GameModeId,
+  SPEECH_POLICY_OPTIONS,
+  type SpeechPolicy,
   ServerEvents,
   isAgoraQuestionHostPayload,
   isAgoraRevealHostPayload,
@@ -189,6 +191,20 @@ export default function HostScreen() {
   const [requestedMode] = useState<GameModeId | null>(() => {
     const param = searchParams.get('mode');
     return param && (GAME_MODE_IDS as readonly string[]).includes(param) ? (param as GameModeId) : null;
+  });
+  // Task 302 - ?policy=v1|v2: the speech policy the room is CREATED with,
+  // read once at mount for the same reason requestedMode is (bot/mode
+  // precedent above). An all-bot room self-starts with no VIP (Task 217),
+  // so the lobby toggle (vip:update_settings) is unreachable there - this
+  // is the only way to test v2 in a bot run. Only 'v1'/'v2' is ever sent;
+  // anything else (missing, 'banana', ...) is dropped here, and the server
+  // falls back to DEFAULT_ROOM_SETTINGS.speechPolicy ('v1') exactly as an
+  // unknown ?mode= already falls back to the mode registry's default.
+  const [requestedSpeechPolicy] = useState<SpeechPolicy | null>(() => {
+    const param = searchParams.get('policy');
+    return param && (SPEECH_POLICY_OPTIONS as readonly string[]).includes(param)
+      ? (param as SpeechPolicy)
+      : null;
   });
   const [roomCode, setRoomCode] = useState<RoomCode | null>(null);
   // Task 259 - the tap-to-start gate. Bypassed at mount whenever the room
@@ -1909,6 +1925,7 @@ export default function HostScreen() {
     socket.emit(ClientEvents.CREATE_ROOM, {
       ...(botCount > 0 ? { botCount } : {}),
       ...(mode ? { mode } : {}),
+      ...(requestedSpeechPolicy ? { speechPolicy: requestedSpeechPolicy } : {}),
     });
   }
 
