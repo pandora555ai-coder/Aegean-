@@ -64,3 +64,32 @@ Real dev server (localhost:5173/4001), real Playwright browser sessions —
 no code-reading-only claims. Scratch harness files used for this
 verification (`dev/302-tmp-check.ts`, `dev/302-tmp-lobby-check.ts`) were
 deleted after use; they were throwaway, not a checked-in dev harness.
+
+## Deploy
+
+Committed as `e69677d` on `main`, pushed. Preconditions before deploying:
+protection greps against `/usr/local/sbin/aegean-deploy` = **6**
+(voice-line-review.json/voice-deleted/voice-staging guard lines), tree
+clean, `main` == `origin/main` == `e69677d`.
+
+`sudo /usr/local/sbin/aegean-deploy`, once: `DEPLOY OK:
+e69677db19c2219a4eb6ed5442f6b3c67475c8fb live, party-game active, voice
+bank 137 mp3s`.
+
+| | before | after |
+|---|---|---|
+| bundle | `index-CMxlUNKM.js` 593626 B | `index-wpaJ5mPF.js` **572290 B** |
+| sha256 | `2973eb7f…` | **`e1ac53bf…`** |
+| mtime | 2026-09-20 21:44:41 | **2026-09-21 11:23:55** |
+| service | ActiveEnter 21:44:41 UTC (PID 53970) | **ActiveEnter 11:23:55 UTC (PID 62072, active)** |
+
+**Protections held exactly** (same values before and after): review JSON
+`ffa7c9136c4a79ef…` unchanged, voice-deleted **155**, bank **137**
+(preflight 137 → postflight 137, floor 100), staging **265**.
+
+**Change confirmed live in the deployed bundle** (runtime string literals,
+not identifiers, per the deploy-confirm trap): `t("policy")` —
+`searchParams.get('policy')` reached production — and `i?{speechPolicy:i}`
+— the exact conditional spread `...(requestedSpeechPolicy ? {
+speechPolicy: requestedSpeechPolicy } : {})` — both present in
+`index-wpaJ5mPF.js`.
