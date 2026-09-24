@@ -190,17 +190,42 @@ async function main(): Promise<void> {
   const { enterSocratesBeat, advanceFromSocrates } = await import('../server/src/phases.js');
   const { collectVoiceLineEntries } = await import('../server/src/socrates.js');
   const { socratesHoldMs } = await import('../server/src/socratesAudio.js');
-  const { remainingActiveTimerMs } = await import('../server/src/timers.js');
+  const { remainingActiveTimerMs, clearActiveTimer } = await import('../server/src/timers.js');
+  // Task 310 - a scenario's LAST armed beat timer used to outlive it and fire
+  // into scenario E's process: advanceFromSocrates -> startQuestion on a room
+  // that never started a game -> TypeError, killing the whole run. (Unreachable
+  // until 310, because the harness threw before B on "found 166/0".) Retire the
+  // room's timer and queue before its sockets go.
+  const retire = (room: RoomLike): void => {
+    clearActiveTimer(room as never);
+    room.pendingSocratesQueue = [];
+    (room as unknown as { phase: string }).phase = 'LOBBY';
+  };
 
   const entries = collectVoiceLineEntries() as Array<{ moment: string; line: string; tag: string | null; hash: string }>;
   const withClip = entries
     .map((e) => ({ ...e, fileMs: fileMsOf(e.hash) }))
     .filter((e): e is typeof e & { fileMs: number } => e.fileMs !== null && e.fileMs > 4500)
     .sort((a, b) => a.fileMs - b.fileMs);
-  // Real v2 slot lines with no mp3 - the exact lines the field report is about.
-  const noClip = entries.filter((e) => e.moment.startsWith('SLOT (') && !existsSync(path.join(VOICE_DIR, `${e.hash}.mp3`)));
-  if (withClip.length < 2 || noClip.length < 2) {
-    throw new Error(`need 2 clipped and 2 unclipped lines, found ${withClip.length}/${noClip.length}`);
+  // Task 310 - this used to pick REAL v2 slot lines that had no mp3 (the lines
+  // the field report was about). Tasks 306/307 recorded every one of them, so
+  // there are none left and it threw "found 166/0". The clip-less lines are now
+  // TEST-ONLY lines: text no pool contains, so no file for their hash exists
+  // or ever will, and nothing in the bank is touched. Two lengths, so the hold
+  // arithmetic (chars / 11 per sec, clamped 3000..9000ms) is exercised for
+  // real rather than sitting on the clamp.
+  const synth = (line: string): { moment: string; line: string; tag: string | null; hash: string } => ({
+    moment: 'TEST (303)',
+    line,
+    tag: null,
+    hash: lineHash(line, null),
+  });
+  const noClip = [
+    synth('Δοκιμαστική γραμμή τριακοσίων: ο Σωκράτης μιλά χωρίς ήχο, και η οθόνη οφείλει να τον κρατήσει ορατό.'),
+    synth('Δεύτερη δοκιμαστική γραμμή, λίγο πιο σύντομη, για να μην περάσει ποτέ από φωνή.'),
+  ];
+  if (withClip.length < 2 || noClip.some((e) => existsSync(path.join(VOICE_DIR, `${e.hash}.mp3`)))) {
+    throw new Error(`need 2 clipped lines and 2 clip-less TEST lines, found ${withClip.length} clipped / ${noClip.filter((e) => !existsSync(path.join(VOICE_DIR, `${e.hash}.mp3`))).length} clip-less`);
   }
   const CLIP = withClip[0];
   const TAIL = withClip[withClip.length - 1];
@@ -240,6 +265,12 @@ async function main(): Promise<void> {
   // =====================================================================
   if (run('B')) {
     say('\n=== B (skip vote cuts a held GAME_INTRO line) ===');
+    // Task 310 - SKIP_INTERRUPTED's four lines were recorded by Task 306, so the
+    // interruption beat now has audio and would (correctly) not be held. This
+    // scenario is about the HELD interruption, so those four are hidden from the
+    // SERVER via AEGEAN_DEV_HIDE_CLIPS (dev-only, socratesAudio.ts) - the host
+    // here is a socket, so there is no browser half. The bank is untouched.
+    process.env.AEGEAN_DEV_HIDE_CLIPS = entries.filter((e) => e.moment === 'SKIP_INTERRUPTED').map((e) => e.hash).join(',');
     const { host, code, players, room } = await newRoom();
     // A narration: a second line queued behind the first, and the vote the
     // real startSocratesSequence opens - seeded exactly as openSkipVote does.
@@ -322,12 +353,15 @@ async function main(): Promise<void> {
       onScreenMs !== null && Math.abs(onScreenMs - interruptionHold) < 500 && room.socratesBeatId === beat2 + 1,
       `on screen ${onScreenMs}ms vs hold ${interruptionHold}ms — its ack landed at ${ackedAt}ms and did NOT extend it; beat ${room.socratesBeatId}`,
     );
+    retire(room);
     for (const s of [host, ...players]) s.disconnect();
   }
 
   // =====================================================================
   // C - a pause mid-hold.
   // =====================================================================
+  delete process.env.AEGEAN_DEV_HIDE_CLIPS;
+
   if (run('C')) {
     say('\n=== C (pause mid-hold) ===');
     const { host, code, players, room } = await newRoom();
@@ -365,6 +399,7 @@ async function main(): Promise<void> {
       resumedIn !== null && Math.abs(resumedIn - r1) < 500 && room.socratesBeatId === beat1 + 1,
       `advanced ${resumedIn}ms after resume vs ${r1}ms frozen remainder; beat ${room.socratesBeatId}`,
     );
+    retire(room);
     for (const s of [host, ...players]) s.disconnect();
   }
 
@@ -398,6 +433,7 @@ async function main(): Promise<void> {
       advancedIn !== null && advancedIn < 250 && logsSince(t0, 'has no clip - holding').length === 0,
       `advanced ${advancedIn}ms after the ack (beat ran ${tAck - t0}ms ≈ clip ${CLIP.fileMs}ms), 0 hold logs`,
     );
+    retire(room);
     for (const s of [host, ...players]) s.disconnect();
   }
 
@@ -468,6 +504,25 @@ async function main(): Promise<void> {
     await waitForClient();
     browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
     const page: Page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    // Task 310 - every v2 slot line has a clip since Task 306, so the field
+    // report's premise (a slot beat with no mp3) is recreated by HIDING them:
+    // server-side via AEGEAN_DEV_HIDE_CLIPS (the hold is armed off the server's
+    // own clip lookup) and browser-side by 404ing the same hashes, so the TV
+    // takes Task 154's instant-ack path exactly as it did then. The v1
+    // reservoirs a slot can also draw from (STUCK_IN_LAST, RUNAWAY_LEAD) are
+    // hidden too. Nothing in the bank is touched; GAME_INTRO clips stay real,
+    // which is what the scenario's clip-backed comparison beat needs.
+    const hideHashes = new Set(
+      entries
+        .filter((e) => e.moment.startsWith('SLOT (') || e.moment === 'STUCK_IN_LAST' || e.moment === 'RUNAWAY_LEAD')
+        .map((e) => e.hash),
+    );
+    process.env.AEGEAN_DEV_HIDE_CLIPS = [...hideHashes].join(',');
+    await page.route('**/voice/*.mp3', (route) => {
+      const hash = /\/voice\/([0-9a-f]+)\.mp3/.exec(route.request().url())?.[1] ?? '';
+      return hideHashes.has(hash) ? route.fulfill({ status: 404, body: 'hidden by 303 harness' }) : route.continue();
+    });
+    say(`  hiding ${hideHashes.size} slot/reservoir clips from server + browser for this show`);
     // ?bot=4 bypasses Task 259's gate; ?policy=v2 is Task 302's param.
     await page.goto(`${CLIENT_ORIGIN}/host?bot=4&mode=full&policy=v2&clock=off`);
     // ?bot=N bypasses Task 259's GATE, but nothing presses "Create Room" for

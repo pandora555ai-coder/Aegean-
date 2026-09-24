@@ -38,6 +38,19 @@ const DEV_VOICE_DIR =
     : null;
 const VOICE_DIRS = DEV_VOICE_DIR ? [DEV_VOICE_DIR, REAL_VOICE_DIR] : [REAL_VOICE_DIR];
 
+// Task 310 - the OPPOSITE dev hook: a comma-separated list of lineHash values
+// this server must treat as having NO clip (`known: false`), whatever is on
+// disk. Same NODE_ENV guard and idiom as the search path above, and read at
+// call time so a harness can set it after importing the server. It exists
+// because Tasks 306/307 put a clip behind every line the "no mp3" harnesses
+// (263's without-vocative branch, 303's hold) were written around, and the bank
+// is not theirs to delete from. The browser half is the harness's own
+// page.route 404 for the same hashes. Never set in production.
+function hiddenClipHashes(): ReadonlySet<string> {
+  const raw = process.env.NODE_ENV !== 'production' ? process.env.AEGEAN_DEV_HIDE_CLIPS : undefined;
+  return raw ? new Set(raw.split(',').map((h) => h.trim()).filter(Boolean)) : new Set();
+}
+
 // Task 238 - the one place a line's clip is measured, and whether it could be
 // measured AT ALL. `known: false` means there is no file to size (no line, or
 // a missing/unreadable one) - which is a different situation from a genuinely
@@ -61,7 +74,11 @@ export function resolveSocratesClip(template: string | null, tag: string | null 
   if (!template) {
     return { durationMs: SOCRATES_DURATION_MS, known: false };
   }
-  const filename = `${lineHash(template, tag)}.mp3`;
+  const hash = lineHash(template, tag);
+  if (hiddenClipHashes().has(hash)) {
+    return { durationMs: SOCRATES_DURATION_MS, known: false };
+  }
+  const filename = `${hash}.mp3`;
   for (const dir of VOICE_DIRS) {
     try {
       const { size } = statSync(path.join(dir, filename));

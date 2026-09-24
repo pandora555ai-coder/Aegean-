@@ -264,6 +264,19 @@ async function main(): Promise<void> {
       // Rotate who is best/worst so every slot names someone, and one of them Ζήνων.
       const pts = [30, 10, 20, 0].map((_, k) => [30, 10, 20, 0][(k + i) % 4]);
       cast.forEach(([id, name], k) => ledger.entries.set(id, entry(id, name, pts[k], k === (i % 4) ? 50 : 0, k === ((i + 1) % 4) ? 50 : 0)));
+      // Task 310 - DRAW_MID / NUMERIC_CLOSE read the mechanic's own columns now,
+      // not score deltas, so their ledgers carry draw rounds / numeric misses:
+      // one drawer everyone got, one nobody got; one near answerer, one far.
+      const tgt = ledger.entries.get(cast[i % 4][0]);
+      const far = ledger.entries.get(cast[(i + 2) % 4][0]);
+      if (slot === 'DRAW_MID') {
+        tgt.drawRounds = [{ correctGuessers: 3, eligibleGuessers: 3, drawerPoints: 400 }];
+        far.drawRounds = [{ correctGuessers: 0, eligibleGuessers: 3, drawerPoints: 0 }];
+      }
+      if (slot === 'NUMERIC_CLOSE') {
+        tgt.numericMisses = [{ questionIndex: 0, distance: 10, relative: 0.01, exact: false }];
+        far.numericMisses = [{ questionIndex: 0, distance: 900, relative: 0.9, exact: false }];
+      }
       room.socrates.ledger = ledger;
       const before = shows.length;
       const fired = phases.startSpeechSlotBeat(room, 'SOCRATES', slot as never, () => {});

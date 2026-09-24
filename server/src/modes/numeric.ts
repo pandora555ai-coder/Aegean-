@@ -344,7 +344,7 @@ export function endNumericQuestion(code: RoomCode): void {
   // below is { answer, values } with no id at all, so a numeric moment
   // structurally cannot name anyone. The ids are right here, one frame before
   // that call throws them away - `results` carries playerId AND distance.
-  recordLedgerNumericRound(room.socrates.ledger, state.questionIndex, results);
+  recordLedgerNumericRound(room.socrates.ledger, state.questionIndex, results, question.max);
 
   // Task 294 - THE v2 gate for this mode's per-reveal beat. Gated at the
   // PICKER, not at the beat: leaving the picker running would consume lines

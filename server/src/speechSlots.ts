@@ -26,7 +26,7 @@
 // exactly the filler v2 exists to remove.
 import type { Room } from './state.js';
 import { LINES, SPEECH_V2_LINES, pickSpeechLine, type Moment, type PickedLine, type SpeechSlotPool } from './socrates.js';
-import { stageExtremes, type StageExtreme, type StageLedger } from './stageLedger.js';
+import { stageExtremes, type StageExtreme, type StageLedger, type StageLedgerEntry } from './stageLedger.js';
 
 // THE gate. Read off room.settings, which is LOBBY-only (index.ts's
 // VIP_UPDATE_SETTINGS), so the policy is frozen for the whole game the instant
@@ -73,7 +73,7 @@ interface SlotSpec {
   worst: PoolRef | null;
 }
 
-const SLOT_SPECS: Record<Exclude<SpeechSlotId, 'SYKO_FIRST_STEAL' | 'SYKO_CLOSE'>, SlotSpec> = {
+const SLOT_SPECS: Record<Exclude<SpeechSlotId, 'SYKO_FIRST_STEAL' | 'SYKO_CLOSE' | 'DRAW_MID' | 'NUMERIC_CLOSE'>, SlotSpec> = {
   // Η Αγορά's midpoint is written for the player having the WORST of it -
   // AGORA_WORST reads as an aside to someone still in the stage ("you have
   // questions left to make it regret that") - and its close for the BEST,
@@ -93,11 +93,11 @@ const SLOT_SPECS: Record<Exclude<SpeechSlotId, 'SYKO_FIRST_STEAL' | 'SYKO_CLOSE'
   QUIZ_CLOSE: { prefer: 'best', best: slot('QUIZ_BEST'), worst: reservoir('STUCK_IN_LAST') },
   BLITZ_MID: { prefer: 'best', best: slot('PALAISTRA_MID_BEST'), worst: slot('PALAISTRA_MID_WORST') },
   BLITZ_CLOSE: { prefer: 'worst', best: slot('PALAISTRA_CLOSE_BEST'), worst: slot('PALAISTRA_CLOSE_WORST') },
-  // Task 309 - DRAW_MID and NUMERIC_CLOSE now read their own second-person
-  // pools instead of the third-person reservoirs (the named address of Task 308
-  // sat on "someone guessed..." lines). Reservoirs stay live for v1 only.
-  DRAW_MID: { prefer: 'best', best: slot('DRAW_MID_BEST'), worst: slot('DRAW_MID_WORST') },
-  NUMERIC_CLOSE: { prefer: 'worst', best: slot('NUMERIC_CLOSE_BEST'), worst: slot('NUMERIC_CLOSE_WORST') },
+  // DRAW_MID and NUMERIC_CLOSE have no spec here: Task 310 - their pools say
+  // things about the DRAWING / the ESTIMATES, which the score-delta extremes
+  // every spec above rides on cannot answer (the stage leader is not the
+  // drawer everyone understood). They read the ledger's own draw/numeric
+  // columns instead - drawCandidates/numericCandidates below.
   LETHE_CLOSE: { prefer: 'best', best: slot('LITHI_CLOSE_OBSERVER'), worst: slot('LITHI_CLOSE_BLIND') },
 };
 
@@ -177,6 +177,93 @@ function stealCandidates(ledger: StageLedger, slotId: 'SYKO_FIRST_STEAL' | 'SYKO
   );
 }
 
+function entryExtreme(entry: StageLedgerEntry): StageExtreme {
+  return {
+    playerId: entry.playerId,
+    name: entry.name,
+    points: entry.points,
+    correct: entry.correct,
+    wrong: entry.wrong,
+    noAnswer: entry.noAnswer,
+  };
+}
+
+const pickOne = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
+
+// Task 310 - DRAW_MID reads how each DRAWER's picture landed, off the ledger's
+// drawRounds (summed per drawer, so a two-round stage compares like with like).
+// BEST = a drawer EVERY eligible guesser got right; WORST = one NOBODY did;
+// anything in between is neither and is left out. Several drawers may qualify
+// for a side - each line is true of each of them, so one is picked at random;
+// with both sides populated the side itself is random too. Neither side
+// populated -> no candidates -> the slot SKIPS.
+function drawCandidates(ledger: StageLedger): { extreme: StageExtreme; ref: PoolRef }[] {
+  const best: StageLedgerEntry[] = [];
+  const worst: StageLedgerEntry[] = [];
+  for (const entry of ledger.entries.values()) {
+    if (entry.drawRounds.length === 0 || ledger.targetedThisStage.has(entry.playerId)) {
+      continue;
+    }
+    const eligible = entry.drawRounds.reduce((n, round) => n + round.eligibleGuessers, 0);
+    const correct = entry.drawRounds.reduce((n, round) => n + round.correctGuessers, 0);
+    if (eligible === 0) {
+      continue;
+    }
+    if (correct === eligible) {
+      best.push(entry);
+    } else if (correct === 0) {
+      worst.push(entry);
+    }
+  }
+  const sides = [
+    ...(best.length > 0 ? [{ entry: pickOne(best), ref: slot('DRAW_MID_BEST') }] : []),
+    ...(worst.length > 0 ? [{ entry: pickOne(worst), ref: slot('DRAW_MID_WORST') }] : []),
+  ];
+  if (sides.length === 2 && Math.random() < 0.5) {
+    sides.reverse();
+  }
+  return sides.map(({ entry, ref }) => ({ extreme: entryExtreme(entry), ref }));
+}
+
+// Task 310 - NUMERIC_CLOSE reads each player's mean RELATIVE miss (distance /
+// the question's max) over the questions they answered. The closest player is
+// the BEST end, the farthest the WORST; the slot speaks about the more extreme
+// of the two - 1 - closestMiss (how near) against farthestMiss (how far),
+// both on 0..1 - and only falls to the other end if that pool is spent. An
+// equal pair of extremes, a tied extreme (two players share the closest, or
+// the farthest, mean) or fewer than two answerers leaves that end out, and an
+// empty list SKIPS. Non-submitters are not "far", they are absent.
+function numericCandidates(ledger: StageLedger): { extreme: StageExtreme; ref: PoolRef }[] {
+  const scored: { entry: StageLedgerEntry; mean: number }[] = [];
+  for (const entry of ledger.entries.values()) {
+    const misses = entry.numericMisses.flatMap((miss) => (miss.relative === null ? [] : [miss.relative]));
+    if (misses.length > 0) {
+      scored.push({ entry, mean: misses.reduce((a, b) => a + b, 0) / misses.length });
+    }
+  }
+  if (scored.length < 2) {
+    return [];
+  }
+  const lo = Math.min(...scored.map((item) => item.mean));
+  const hi = Math.max(...scored.map((item) => item.mean));
+  if (lo === hi) {
+    return [];
+  }
+  const closest = scored.filter((item) => item.mean === lo);
+  const farthest = scored.filter((item) => item.mean === hi);
+  const ends = [
+    ...(closest.length === 1 ? [{ entry: closest[0].entry, weight: 1 - lo, ref: slot('NUMERIC_CLOSE_BEST') }] : []),
+    ...(farthest.length === 1 ? [{ entry: farthest[0].entry, weight: hi, ref: slot('NUMERIC_CLOSE_WORST') }] : []),
+  ];
+  if (ends.length === 2 && ends[0].weight === ends[1].weight) {
+    return [];
+  }
+  return ends
+    .sort((a, b) => b.weight - a.weight)
+    .filter(({ entry }) => !ledger.targetedThisStage.has(entry.playerId))
+    .map(({ entry, ref }) => ({ extreme: entryExtreme(entry), ref }));
+}
+
 // THE one entry point. Returns the beat to play, or null for a slot that must
 // stay silent - and logs which of the two it was, with the reason, because a
 // silent slot is otherwise indistinguishable from one that was never reached.
@@ -195,7 +282,11 @@ export function pickSpeechSlot(room: Room, slotId: SpeechSlotId): SpeechSlotBeat
   const candidates =
     slotId === 'SYKO_FIRST_STEAL' || slotId === 'SYKO_CLOSE'
       ? stealCandidates(ledger, slotId)
-      : candidatesFor(ledger, SLOT_SPECS[slotId]);
+      : slotId === 'DRAW_MID'
+        ? drawCandidates(ledger)
+        : slotId === 'NUMERIC_CLOSE'
+          ? numericCandidates(ledger)
+          : candidatesFor(ledger, SLOT_SPECS[slotId]);
 
   for (const { extreme, ref } of candidates) {
     const picked = pickSpeechLine(room.socrates, poolLines(ref));

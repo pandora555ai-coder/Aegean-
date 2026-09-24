@@ -52,6 +52,11 @@ export interface LedgerDrawRound {
 export interface LedgerNumericMiss {
   questionIndex: number; // 0-based within the segment
   distance: number | null; // null = never submitted
+  // Task 310 - distance / the question's own max, 0..1. Questions differ in
+  // scale (max is derived from the answer), so raw distances are not
+  // comparable across a stage; this is. null = never submitted, or a caller
+  // that did not pass `max`.
+  relative: number | null;
   exact: boolean;
 }
 
@@ -289,6 +294,7 @@ export function recordLedgerNumericRound(
   ledger: StageLedger,
   questionIndex: number,
   results: readonly LedgerNumericResult[],
+  max: number | null = null,
 ): void {
   for (const result of results) {
     const entry = entryFor(ledger, result.playerId, result.name);
@@ -303,6 +309,7 @@ export function recordLedgerNumericRound(
     entry.numericMisses.push({
       questionIndex,
       distance: result.value === null ? null : result.distance,
+      relative: result.value === null || result.distance === null || !max || max <= 0 ? null : Math.min(1, result.distance / max),
       exact: result.exact,
     });
   }

@@ -49,7 +49,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
-import { ClientEvents, ServerEvents, CLIMB_TOP, NAME_GENDER, PRESET_NAMES, lineHash, getVocative, stripPlaceholders } from '@game/shared';
+import { AUDIO_BITRATE_KBPS, ClientEvents, ServerEvents, CLIMB_TOP, NAME_GENDER, PRESET_NAMES, lineHash, getVocative, stripPlaceholders } from '@game/shared';
+import { statSync } from 'node:fs';
 
 // The dev-only voice search path MUST be set before the server (and with it
 // socratesAudio.ts, which reads it once at module load) is imported below.
@@ -64,6 +65,13 @@ const ORIGIN = `http://127.0.0.1:${SERVER_PORT}`;
 const CLIENT_ORIGIN = `http://127.0.0.1:${CLIENT_PORT}`;
 const SCENARIO = process.env.SCENARIO ?? '';
 const REAL_VOICE_DIR = path.join(ROOT, 'client', 'public', 'voice');
+
+// Task 310 - the vocative clip's own length, off its byte size (the server's
+// estimate; the browser's decoded duration runs within ~70ms of it).
+function getVocativeClipMs(winnerName: string): number {
+  const v = getVocative(winnerName);
+  return Math.round((statSync(path.join(REAL_VOICE_DIR, `${lineHash(v, null)}.mp3`)).size * 8) / AUDIO_BITRATE_KBPS);
+}
 
 let clientProc: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -199,8 +207,17 @@ const SUBTITLE_PROBE = `
   })();
 `;
 
+// Task 310 - lineHash values a scenario pretends have NO clip. The server half
+// is AEGEAN_DEV_HIDE_CLIPS (socratesAudio.ts, dev-only); this is the browser
+// half, so the TV cannot fetch a clip the server says is absent. The bank is
+// never touched. Empty outside scenario A.
+let hiddenHashes: string[] = [];
+
 async function newTvPage(code: string): Promise<Page> {
   const page = await browser!.newPage({ viewport: { width: 1280, height: 720 } });
+  for (const h of hiddenHashes) {
+    await page.route(`**/voice/${h}.mp3`, (route) => route.fulfill({ status: 404, body: 'hidden by 263 harness' }));
+  }
   await page.addInitScript((c: string) => {
     try {
       window.localStorage.setItem('hostRoomCode', c);
@@ -209,6 +226,19 @@ async function newTvPage(code: string): Promise<Page> {
     }
   }, code);
   await page.addInitScript({ content: SUBTITLE_PROBE });
+  // Task 310 - every non-looping AudioBufferSourceNode start, so a beat's
+  // spliced suffix is proved by SOUNDING (a decoded clip of the suffix's own
+  // length), not by the payload carrying it. RAW STRING (Task 259's trap).
+  await page.addInitScript({
+    content: `(() => { window.__aegeanClips = []; const p = AudioBufferSourceNode.prototype; const o = p.start;
+      p.start = function () { try { if (!this.loop && this.buffer) window.__aegeanClips.push(Math.round(this.buffer.duration * 1000)); } catch (e) {} return o.apply(this, arguments); }; })();`,
+  });
+  // Task 310 - surface the client's own audio diagnostics (a spliced clip that
+  // fails to decode is DROPPED silently by design, Task 277) so a beat that
+  // "has a suffix" on the wire but never sounds it cannot pass unnoticed.
+  page.on('console', (msg) => {
+    if (msg.text().includes('[socrates-audio]')) say(`    [page] ${msg.text().slice(0, 200)}`);
+  });
   // Task 243 - ?clock=off, exactly as dev/climb-ceremony-check.ts does it:
   // Task 239's GameClock renders an mm:ss readout, so a page-wide digit sweep
   // would otherwise pick up cosmetic chrome and read as a ceremony violation.
@@ -261,6 +291,7 @@ interface LiveResult {
   winnerName: string;
   beats: Beat[];
   subtitles: string[];
+  clipMs: number[];
   usedWinnerPoolLines: string[];
   winnerTitle: string;
 }
@@ -303,6 +334,7 @@ async function runLive(winnerName: string, others: string[], forcedSet: 'B' | 'C
   await delay(600);
 
   const subtitles = (await page.evaluate('window.__aegeanSubs')) as string[];
+  const clipMs = (await page.evaluate('window.__aegeanClips')) as number[];
 
   // The crowning is up; PodiumView replaces it 6s later, so read it now.
   let winnerTitle = '(never rendered)';
@@ -354,7 +386,7 @@ async function runLive(winnerName: string, others: string[], forcedSet: 'B' | 'C
   for (const p of players) p.disconnect();
   delete process.env.FORCE_CORONATION_SET;
 
-  return { winnerName, beats, subtitles, usedWinnerPoolLines, winnerTitle };
+  return { winnerName, beats, subtitles, clipMs, usedWinnerPoolLines, winnerTitle };
 }
 
 async function reportLive(
@@ -387,9 +419,13 @@ async function reportLive(
     r.beats.map((b) => b.endedBy ?? 'BACKSTOP').join(', '),
   );
   const helds = r.beats.filter((b) => b.endTs !== null).map((b) => b.endTs! - b.startTs);
+  // Task 310 - was "held < 1000ms (missing clips ack at ~0ms)", a premise that
+  // died when 306/307 recorded the six lines. Every LINE has a clip now, so a
+  // beat is held for real audio: longer than a 404's instant ack (>1000ms) and
+  // ended by the ack well before its own armed backstop.
   check(
-    `${title}: each beat held < 1000ms (missing clips ack at ~0ms, no backstop)`,
-    helds.length === r.beats.length && helds.every((h) => h < 1000),
+    `${title}: each beat held for real audio - over 1000ms, and 1000ms+ inside its backstop`,
+    helds.length === r.beats.length && helds.every((h, i) => h > 1000 && h < r.beats[i].backstopMs - 1000),
     `held = ${helds.join(', ')}ms against backstops ${r.beats.map((b) => b.backstopMs).join(', ')}ms`,
   );
 
@@ -397,9 +433,19 @@ async function reportLive(
   // the name.
   const last = r.beats[r.beats.length - 1];
   check(
-    `${title}: spliced suffix ${expectSuffix ? `present ("${vocative}")` : 'ABSENT (no vocative clip on disk)'}`,
+    `${title}: spliced suffix ${expectSuffix ? `present ("${vocative}")` : 'ABSENT (vocative clip hidden from server + browser)'}`,
     expectSuffix ? last?.suffix === vocative : r.beats.every((b) => b.suffix === null),
     r.beats.map((b) => (b.suffix === null ? 'none' : `"${b.suffix}"`)).join(', '),
+  );
+  // Task 310 - the suffix must actually SOUND. The coronation's three lines
+  // each start one clip; a sounded suffix is a fourth, of the vocative's own
+  // (byte-size-estimated) length. Absent when the vocative is hidden.
+  say(`  clips the TV started: [${r.clipMs.join(', ')}]ms`);
+  const vocClip = getVocativeClipMs(r.winnerName);
+  check(
+    `${title}: the browser ${expectSuffix ? 'SOUNDED' : 'did NOT sound'} the vocative clip (${vocClip}ms)`,
+    r.clipMs.some((ms) => Math.abs(ms - vocClip) < 150) === expectSuffix,
+    `clips [${r.clipMs.join(', ')}]ms`,
   );
   check(
     `${title}: no beat carries a PREFIX (Task 278 moved the splice to the end)`,
@@ -497,8 +543,11 @@ async function runStatic(): Promise<void> {
     `checked all ${PRESET_NAMES.length} preset names + vocatives against all six`,
   );
   check(
-    'D: ZERO coronation clips exist on disk',
-    ALL.every((t) => !onDisk(t)),
+    // Task 310 - this asserted ZERO clips (true until Task 306 generated the
+    // six). It now asserts the opposite premise every later scenario stands on:
+    // all six are in the bank, so a coronation beat is paced by REAL audio.
+    'D: all six coronation clips exist on disk (Tasks 306/307)',
+    ALL.every((t) => onDisk(t)),
     `${ALL.filter(onDisk).length}/6 present in ${REAL_VOICE_DIR}`,
   );
 
@@ -597,21 +646,28 @@ async function main(): Promise<void> {
   if (run('D')) await runStatic();
 
   if (run('A')) {
-    say('\n--- A: set B, no vocative clip anywhere (the real, shipping case) ---');
-    await reportLive('A (Νίκος, set B, no clip)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', false);
+    // Task 310 - every preset vocative has a clip since Task 307, so the
+    // without-vocative branch is reached by HIDING Νίκος's (AEGEAN_DEV_HIDE_CLIPS
+    // server-side + a 404 route in the TV page). The bank is untouched.
+    const { coronationVocative: vocativeOf } = await import('../server/src/socrates.js');
+    const hid = vocativeOf('Νίκος')!;
+    const hidHash = lineHash(hid.template, hid.tag);
+    say(`\n--- A: set B, the winner's vocative clip HIDDEN ("${hid.template}" ${hidHash}) ---`);
+    process.env.AEGEAN_DEV_HIDE_CLIPS = hidHash;
+    hiddenHashes = [hidHash];
+    await reportLive('A (Νίκος, set B, vocative hidden)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', false);
+    delete process.env.AEGEAN_DEV_HIDE_CLIPS;
+    hiddenHashes = [];
   }
 
   if (run('B')) {
-    // The ONLY file this harness ever writes, in a throwaway dir outside the
-    // repo. Never /opt/party-game, never client/public/voice.
+    // Task 310 - no dummy file any more: Task 307 recorded a real vocative for
+    // every preset name (Νίκο included), so the suffix branch is proved against
+    // the REAL bank clip. Nothing is written anywhere.
     const { coronationVocative } = await import('../server/src/socrates.js');
     const v = coronationVocative('Νίκος')!;
-    const dummy = path.join(DEV_VOICE_DIR, `${lineHash(v.template, v.tag)}.mp3`);
-    writeFileSync(dummy, Buffer.alloc(8000));
-    say(`\n--- B: set B with a dummy vocative clip for Νίκος ("${v.template}") at ${dummy} ---`);
-    await reportLive('B (Νίκος, set B, clip present)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', true);
-    rmSync(dummy);
-    say(`  dummy deleted; dev voice dir now holds: ${JSON.stringify(readdirSync(DEV_VOICE_DIR))}`);
+    say(`\n--- B: set B with the REAL vocative clip for Νίκος ("${v.template}", ${lineHash(v.template, v.tag)}) ---`);
+    await reportLive('B (Νίκος, set B, real clip present)', await runLive('Νίκος', ['Μαρία', 'Άρης'], 'B'), 'B', true);
   }
 
   if (run('C')) {
