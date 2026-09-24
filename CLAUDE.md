@@ -139,8 +139,10 @@ server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
                          content/speech-policy-lines.md, a SEPARATE table from
                          LINES/DRAW_LINES/NUMERIC_LINES so no v1 picker can reach
                          them. Their 39 LINE_TAGS entries are
-                         load-bearing (the clip is lineHash(template, tag)); no mp3
-                         exists for any of them until the October pass, so a v2 beat
+                         load-bearing (the clip is lineHash(template, tag)); every one of
+                         them has had an mp3 since Task 306 (promoted to the bank by
+                         307), so a v2 beat is clip-paced. A line with NO clip
+                         (audit-deleted, or a fresh edit awaiting generation) still
                          404s and the client acks at once (Task 154) — but since
                          Task 303 the server ABSORBS that ack and holds the beat
                          for the line's estimated speaking time (socratesHoldMs,
@@ -178,7 +180,8 @@ server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure
                          RUNAWAY_LEAD reservoir, so a stage whose WORST end was a tie
                          could say nothing at all. Reservoir pools stay live as extra
                          variety: STUCK_IN_LAST on the close's worst side,
-                         DRAW_MID/NUMERIC_CLOSE wholly reservoir-backed. The four retired v1 sites are
+                         DRAW_MID/NUMERIC_CLOSE read their own BEST/WORST pools since
+                         Task 309 (reservoirs no longer feed them under v2). The four retired v1 sites are
                          gated at the PICKER, not the beat (phases.ts:890,
                          modes/agora.ts:427, modes/draw.ts:908, modes/numeric.ts:354) —
                          a picker left running consumes usedLines out of pools the
@@ -213,8 +216,8 @@ server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure
                          sent, room takes the v2 default; `?policy=v1` still selects v1
                          and the server logs `created with speechPolicy=v1`). A human VIP joining such a
                          room sees v2 selected and can still change it.
-                         v2 slot beats have no mp3s yet and ride the Task
-                         303 hold (see Voice).
+                         v2 slot beats are voiced since Tasks 306/307/309; a
+                         clip-less beat rides the Task 303 hold (see Voice).
                          Check: `npx tsx dev/294-slot-probe.ts` (pure, 16/16) and
                          `SCENARIO=V2 npx tsx dev/294-speech-policy-check.ts`.
 server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal's
@@ -1086,13 +1089,14 @@ shared's BLITZ_STATEMENTS block by `npm run blitz:generate` — edit the
 
 ## Voice
 
-137 ElevenLabs mp3s in the bank (client/public/voice — the post-audit
-count, Tasks 274/286; 283 before the 155-clip deletion), named by
-lineHash(text, tag). Measured at Task 305: collectVoiceLineEntries()
-returns **521** active line entries, of which **125** have a clip on disk
-(resolveSocratesClip(...).known) and **396** have none (v2 pools, Task 300's
-lines, audit-deleted lines); the other 12 bank files are orphans from
-replaced line text — nothing prunes them.
+396 ElevenLabs mp3s in the bank (client/public/voice — 137 after the Task
+274/286 audit, +243 at Task 307 (43 v2/skip lines + 200 vocatives), +16 at
+Task 309; 283 before the 155-clip deletion), named by
+lineHash(text, tag). Measured at Task 312: collectVoiceLineEntries()
+returns **533** active line entries, of which **380** have a clip on disk
+(resolveSocratesClip(...).known) and **153** have none (audit-deleted lines
+and lines never voiced); the other 16 bank files are orphans
+from replaced line text — nothing prunes them.
 **Two multi-line SEQUENCES exist since Task 236** — GAME_INTRO_SEQUENCE
 (10, full mode's opening) and ANAVASIS_INTRO_SEQUENCE (3, the climb's
 announcement). They are sequential PROSE, not pools: a random pick emits
