@@ -37,6 +37,11 @@ const ANSWER_BUMP_CAP_MARGIN = 0.1;
 const ANSWER_BUMP_MAX = 0.95;
 const ANSWER_BUMP_PHASES: readonly GamePhase[] = ['QUESTION', 'GUESS', 'NUMERIC_QUESTION'];
 
+// Task 308 - trailing-silence trim for a spliced chain (see speechEndSec).
+const SPLICE_SILENCE_RMS = 0.015;
+const SPLICE_WINDOW_SEC = 0.01;
+const SPLICE_TAIL_SEC = 0.12;
+
 // Equal-power crossfade across two adjacent zones of a 3-point ramp (murmur
 // -> unrest -> roar) - identical math to the /dev/crowd reference mixer
 // (DevCrowdScreen's zoneGains): `t` is the local position within the active
@@ -82,6 +87,7 @@ export function useGameAudio() {
   // re-fetches. Tied to this hook instance, not module scope: an AudioBuffer
   // is meaningless once its AudioContext is gone.
   const socratesBufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const speechEndCacheRef = useRef<WeakMap<AudioBuffer, number>>(new WeakMap());
   // Task 300 - cancellation. Before this task nothing retained a handle on a
   // Socrates source (it was a local `const` inside play()), so there was no way
   // to stop a line mid-word: the room heard an interrupted narration out to its
@@ -670,6 +676,38 @@ export function useGameAudio() {
     return buffer;
   }
 
+  // Task 308 - where a clip's SPEECH ends, plus at most SPLICE_TAIL_SEC of
+  // tail, in seconds. Walks back from the buffer's end in SPLICE_WINDOW_SEC
+  // windows and stops at the first whose RMS (loudest channel) reaches
+  // SPLICE_SILENCE_RMS = 0.015 of full scale (~ -36.5 dBFS; Task 307's own
+  // tail check used RMS 500 on int16 = 0.0153). Memoised per decoded buffer.
+  function speechEndSec(buf: AudioBuffer): number {
+    const cached = speechEndCacheRef.current.get(buf);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const win = Math.max(1, Math.round(buf.sampleRate * SPLICE_WINDOW_SEC));
+    const channels = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+    let end = 0;
+    for (let start = Math.max(0, buf.length - win); start >= 0 && end === 0; start -= win) {
+      for (const data of channels) {
+        let sum = 0;
+        for (let i = start; i < start + win && i < data.length; i++) {
+          sum += data[i] * data[i];
+        }
+        if (Math.sqrt(sum / win) >= SPLICE_SILENCE_RMS) {
+          end = start + win;
+          break;
+        }
+      }
+      if (start === 0) break;
+    }
+    // An all-silent clip keeps its full length: nothing to trim against.
+    const seconds = end === 0 ? buf.duration : Math.min(buf.duration, end / buf.sampleRate + SPLICE_TAIL_SEC);
+    speechEndCacheRef.current.set(buf, seconds);
+    return seconds;
+  }
+
   async function playSocratesLine(
     template: string,
     tag: string | null,
@@ -755,7 +793,9 @@ export function useGameAudio() {
       if (audioCtxRef.current !== ctx || mutedRef.current || cancelled()) {
         return;
       }
-      const play = (buf: AudioBuffer, onended: () => void): void => {
+      // Task 308 - `playFor` (seconds) cuts a clip short: the next clip of the
+      // chain starts where this one's SPEECH ends, not where its buffer does.
+      const play = (buf: AudioBuffer, onended: () => void, playFor?: number): void => {
         const source = ctx.createBufferSource();
         source.buffer = buf;
         source.onended = onended;
@@ -768,7 +808,11 @@ export function useGameAudio() {
         // voiceGain first, so the VIP's voice slider applies without touching
         // outputGain (mute stays a completely separate ramp on top).
         source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
-        source.start();
+        if (playFor === undefined) {
+          source.start();
+        } else {
+          source.start(0, 0, playFor);
+        }
       };
       // Task 277 - ONE ack in all four combinations, bound to the LAST clip
       // that actually plays. The chain is built from whatever resolved:
@@ -791,7 +835,11 @@ export function useGameAudio() {
         if (cancelled()) {
           return;
         }
-        play(chain[index], index === chain.length - 1 ? onEnded : () => playFrom(index + 1));
+        // Task 308 - every clip but the last is trimmed to its speech (vocatives
+        // carry up to 1780ms of trailing silence, Task 307). The LAST clip plays
+        // whole, so the one ack still lands at the true end of the chain.
+        const last = index === chain.length - 1;
+        play(chain[index], last ? onEnded : () => playFrom(index + 1), last ? undefined : speechEndSec(chain[index]));
       };
       playFrom(0);
     } catch (err) {

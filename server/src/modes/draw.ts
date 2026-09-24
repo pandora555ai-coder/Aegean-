@@ -31,7 +31,7 @@ import {
   emitCrowdIntensity,
   setCrowdMood,
 } from '../crowd.js';
-import { enterSocratesBeat, startSpeechSlotBeat } from '../phases.js';
+import { addressedTo, enterSocratesBeat, startSpeechSlotBeat } from '../phases.js';
 import { pickDrawIntroLine, pickDrawWinnerLine, recordDrawGuessRoundAndPickLine, type PickedLine } from '../socrates.js';
 import { recordLedgerDrawRound } from '../stageLedger.js';
 import { speechV2 } from '../speechSlots.js';
@@ -580,11 +580,14 @@ function advanceToNextCycleOrGameOver(room: Room, state: DrawState): void {
 function finishDrawSegment(room: Room, state: DrawState): void {
   const winner = bestDrawer(room, state);
   const picked = winner ? pickDrawWinnerLine(room.socrates, winner.name, winner.points) : null;
-  if (picked) {
+  if (picked && winner) {
+    // Task 308 - under v2 the winner is addressed by name (subtitle always,
+    // vocative clip spliced ahead when the bank has it). v1 is untouched.
+    const address = speechV2(room) ? addressedTo(winner.name, picked.text) : { line: picked.text };
     enterSocratesBeat(
       room,
       'DRAW_SOCRATES',
-      { kind: 'DRAW_WINNER', line: picked.text, lineTemplate: picked.template, lineTag: picked.tag },
+      { kind: 'DRAW_WINNER', lineTemplate: picked.template, lineTag: picked.tag, ...address },
       () => advanceFromDrawSocrates(room.code),
     );
     return;

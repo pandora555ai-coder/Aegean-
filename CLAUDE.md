@@ -1253,6 +1253,17 @@ pause freezes the hold with the timer. Known, not fixed:
 `SocratesShowPayload.totalDurationMs` still reports the 4000ms floor for a
 clip-less beat, and the duel's DUEL_LOCKED beat (inside DUEL_PICK) is not
 held. Check: `npx tsx dev/303-hold-check.ts` (SCENARIO=A|B|C|D|E, 23/23).
+**Named v2 slots + tight splices (Task 308).** Every single-target v2 slot
+(startSpeechSlotBeat) and, under v2 only, DRAW_WINNER go through
+`addressedTo` (phases.ts): subtitle "<vocative>. <line>" always, the
+vocative clip as a PREFIX only when hasSocratesClip finds it; the line's
+template/tag are untouched. DUEL stays unnamed. Client side, every clip but
+the LAST in a chain is played only to its speech end + 120ms
+(`speechEndSec`, useGameAudio.ts: 10ms windows walked back from the end,
+first with RMS >= 0.015 of full scale), via `start(0, 0, d)` — a vocative's
+up-to-1780ms tail no longer sits between the name and the line. The last
+clip plays whole, so the one ack is unchanged. Check:
+`npx tsx dev/308-vocative-slot-check.ts` (SCENARIO=W|T|P|L).
 `npm run voice:generate` regenerates only changed lines and reports the
 longest clip — that scan reads the mp3 DIRECTORY, not the active LINE_TAGS
 hashes, so an orphaned line's mp3 keeps getting reported as "longest"

@@ -512,13 +512,34 @@ export function startSpeechSlotBeat(
     timerKind,
     {
       kind: 'SPEECH_SLOT',
-      line: beat.picked.text,
       lineTemplate: beat.picked.template,
       lineTag: beat.picked.tag,
+      ...addressedTo(beat.targetName, beat.picked.text),
     },
     onFire,
   );
   return true;
+}
+
+// Task 308 - a beat about ONE player opens by addressing them: the subtitle
+// always reads "<vocative>. <line>" (SPEAR_OUT's own form), and the vocative
+// is also SPOKEN, as a Task 263/277 prefix clip, only when the bank holds it.
+// Name without a clip -> subtitle only, audio unchanged (Task 276's rule).
+// The line's template/tag are untouched: that is what hashes to its mp3.
+export function addressedTo(
+  name: string,
+  text: string,
+): { line: string; prefixTemplate: string | null; prefixTag: string | null } {
+  const vocative = vocativeClipFor(name);
+  if (!vocative) {
+    return { line: text, prefixTemplate: null, prefixTag: null };
+  }
+  const spoken = hasSocratesClip(vocative.template, vocative.tag);
+  return {
+    line: `${vocative.template}. ${text}`,
+    prefixTemplate: spoken ? vocative.template : null,
+    prefixTag: spoken ? vocative.tag : null,
+  };
 }
 
 // Task 294 - the quiz machine's own slots, all of which resolve at the ONE
