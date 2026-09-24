@@ -34,6 +34,7 @@ import {
   // state.ts beside the roster it is measured against, so the vote handler and
   // the disconnect recheck can never disagree about what "passed" means.
   liveSkipVotes,
+  getConnectedHumans,
   skipVotePassed,
   skipVoteThreshold,
   type ClimbState,
@@ -718,8 +719,9 @@ export function emitSkipVoteProgress(room: Room, target?: { socketId: string; pl
   const payload: SkipVoteProgressPayload = {
     votes: liveSkipVotes(room),
     needed: skipVoteThreshold(room),
-    connected: getConnectedPlayers(room).length,
-    open: room.skipVote !== null && !room.skipVote.resolved,
+    connected: getConnectedHumans(room).length,
+    // Task 311: no human connected -> nobody can vote -> the button never shows.
+    open: room.skipVote !== null && !room.skipVote.resolved && getConnectedHumans(room).length > 0,
   };
   if (target) {
     io.to(target.socketId).emit(ServerEvents.SKIP_VOTE_PROGRESS, {
@@ -735,7 +737,7 @@ function openSkipVote(room: Room, kind: string, lineCount: number): void {
   room.skipVote = { voters: new Set(), resolved: false };
   console.log(
     `room ${room.code} skip vote OPEN for ${kind} (${lineCount} lines, ` +
-      `${skipVoteThreshold(room)} of ${getConnectedPlayers(room).length} needed)`,
+      `${skipVoteThreshold(room)} of ${getConnectedHumans(room).length} humans needed)`,
   );
   emitSkipVoteProgress(room);
 }

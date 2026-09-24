@@ -198,7 +198,7 @@ export default function HostScreen() {
   // so the lobby toggle (vip:update_settings) is unreachable there - this
   // is the only way to test v2 in a bot run. Only 'v1'/'v2' is ever sent;
   // anything else (missing, 'banana', ...) is dropped here, and the server
-  // falls back to DEFAULT_ROOM_SETTINGS.speechPolicy ('v1') exactly as an
+  // falls back to DEFAULT_ROOM_SETTINGS.speechPolicy ('v2', Task 311) exactly as an
   // unknown ?mode= already falls back to the mode registry's default.
   const [requestedSpeechPolicy] = useState<SpeechPolicy | null>(() => {
     const param = searchParams.get('policy');

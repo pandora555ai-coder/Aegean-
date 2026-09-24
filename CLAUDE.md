@@ -201,16 +201,17 @@ server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure
                          `speechPolicy` rides host:create_room (Task 222's precedent):
                          an all-bot room self-starts with no VIP, so
                          vip:update_settings is unreachable there.
-                         **Merged to main at Task 298 with DEFAULT v1**
-                         (DEFAULT_ROOM_SETTINGS.speechPolicy = 'v1'); the VIP
+                         **Merged to main at Task 298 with DEFAULT v1; Task 311 made
+                         v2 the DEFAULT** (DEFAULT_ROOM_SETTINGS.speechPolicy = 'v2';
+                         tag v1.0-playtest is the frozen pre-v2 show); the VIP
                          picks v1/v2 in the lobby (ControllerScreen's
                          `setting-speech-policy-v1|v2` toggle, any mode).
                          **`?policy=v1|v2` on /host (Task 302)** is the bot-
                          room route: HostScreen reads it once at mount,
                          validates against SPEECH_POLICY_OPTIONS and spreads
                          it into CREATE_ROOM (invalid/absent -> nothing
-                         sent, room stays v1); the server logs `created
-                         with speechPolicy=v2`. A human VIP joining such a
+                         sent, room takes the v2 default; `?policy=v1` still selects v1
+                         and the server logs `created with speechPolicy=v1`). A human VIP joining such a
                          room sees v2 selected and can still change it.
                          v2 slot beats have no mp3s yet and ride the Task
                          303 hold (see Voice).
@@ -1102,7 +1103,9 @@ one at a time, each with its own held phase and its own audio ack.
 Every connected phone (not just the VIP) gets a `skip-vote-button`;
 `player:skip_vote` is one-way, one vote per playerId per SEQUENCE, refused
 while paused and against a stale beat id. The threshold is strictly more than
-half of the CURRENTLY-connected roster, recomputed live — so a DISCONNECT can
+half of the CURRENTLY-connected HUMANS (Task 311: bots excluded, `getConnectedHumans`
+in state.ts — a bot never votes; zero humans => the progress payload is never `open`,
+no button), recomputed live — so a DISCONNECT can
 pass a vote with nobody voting again (`recheckSkipVoteOnDisconnect`, beside the
 other disconnect rechecks). `room.skipVote` (state.ts) belongs to the
 NARRATION, not the beat: it survives every line boundary inside one and is

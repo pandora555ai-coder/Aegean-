@@ -1964,8 +1964,9 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   drawRounds: 1,
   // Task 177 - POWER_UP tested poorly; off unless the VIP turns it back on.
   powerUpsEnabled: false,
-  // Task 292 - v1 stays the default until the v2 slot engine ships.
-  speechPolicy: 'v1',
+  // Task 311 - v2 is the default (was v1 through Task 310). ?policy=v1 on /host
+  // and the lobby toggle still select v1; tag v1.0-playtest is the frozen v1 show.
+  speechPolicy: 'v2',
 };
 
 // VIP -> server: only the fields being changed. Server -> room: the full,

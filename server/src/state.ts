@@ -803,12 +803,20 @@ export function haveAllConnectedPlayersChosenPowerUp(room: Room): boolean {
   return connectedPlayers.length > 0 && connectedPlayers.every((player) => room.powerUpChoices.has(player.playerId));
 }
 
-// Task 300 - strictly MORE than half of whoever is connected right now: 3 of 5,
-// 3 of 4, 2 of 3, 2 of 2. Deliberately recomputed from the live roster on every
-// read rather than frozen when the vote opened, so a disconnect lowers the bar
-// it is measured against (see skipVotePassed).
+// Task 311 - the skip vote's electorate: connected HUMANS only. A bot never
+// votes, so counting one made a `?bot=N` room unpassable by the one real phone
+// in it. A room with zero humans has no electorate at all - no vote can open.
+export function getConnectedHumans(room: Room): Player[] {
+  return getConnectedPlayers(room).filter((player) => !player.isBot);
+}
+
+// Task 300 - strictly MORE than half of the connected humans right now: 3 of 5,
+// 3 of 4, 2 of 3, 2 of 2 (Task 311: bots excluded from the count). Deliberately
+// recomputed from the live roster on every read rather than frozen when the
+// vote opened, so a disconnect lowers the bar it is measured against (see
+// skipVotePassed).
 export function skipVoteThreshold(room: Room): number {
-  return Math.floor(getConnectedPlayers(room).length / 2) + 1;
+  return Math.floor(getConnectedHumans(room).length / 2) + 1;
 }
 
 // Task 300 - how many of the votes cast are still in the room. Identity-based
@@ -819,7 +827,7 @@ export function liveSkipVotes(room: Room): number {
   if (!room.skipVote) {
     return 0;
   }
-  return getConnectedPlayers(room).filter((player) => room.skipVote!.voters.has(player.playerId)).length;
+  return getConnectedHumans(room).filter((player) => room.skipVote!.voters.has(player.playerId)).length;
 }
 
 // Task 300 - the decision, in one place so the vote handler and the disconnect
@@ -829,7 +837,7 @@ export function skipVotePassed(room: Room): boolean {
   if (!room.skipVote || room.skipVote.resolved) {
     return false;
   }
-  const connectedCount = getConnectedPlayers(room).length;
+  const connectedCount = getConnectedHumans(room).length;
   return connectedCount > 0 && liveSkipVotes(room) >= skipVoteThreshold(room);
 }
 
