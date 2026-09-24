@@ -141,7 +141,10 @@ server/src/socrates.ts   Moment detection, Greek lines, LINE_TAGS, LINE_RATINGS.
                          them. Their 39 LINE_TAGS entries are
                          load-bearing (the clip is lineHash(template, tag)); no mp3
                          exists for any of them until the October pass, so a v2 beat
-                         404s and ends on the client's immediate ack (Task 154).
+                         404s and the client acks at once (Task 154) — but since
+                         Task 303 the server ABSORBS that ack and holds the beat
+                         for the line's estimated speaking time (socratesHoldMs,
+                         see Voice), so the subtitle stays up.
                          TWO EXCEPTIONS to that separation, both wired by Task 296
                          and both audible under v1 TOO, because they belong to unique
                          MECHANICS rather than to a stage's structural slot:
@@ -198,6 +201,19 @@ server/src/speechSlots.ts  Η v2 speech policy's SLOT ENGINE (Task 294) — pure
                          `speechPolicy` rides host:create_room (Task 222's precedent):
                          an all-bot room self-starts with no VIP, so
                          vip:update_settings is unreachable there.
+                         **Merged to main at Task 298 with DEFAULT v1**
+                         (DEFAULT_ROOM_SETTINGS.speechPolicy = 'v1'); the VIP
+                         picks v1/v2 in the lobby (ControllerScreen's
+                         `setting-speech-policy-v1|v2` toggle, any mode).
+                         **`?policy=v1|v2` on /host (Task 302)** is the bot-
+                         room route: HostScreen reads it once at mount,
+                         validates against SPEECH_POLICY_OPTIONS and spreads
+                         it into CREATE_ROOM (invalid/absent -> nothing
+                         sent, room stays v1); the server logs `created
+                         with speechPolicy=v2`. A human VIP joining such a
+                         room sees v2 selected and can still change it.
+                         v2 slot beats have no mp3s yet and ride the Task
+                         303 hold (see Voice).
                          Check: `npx tsx dev/294-slot-probe.ts` (pure, 16/16) and
                          `SCENARIO=V2 npx tsx dev/294-speech-policy-check.ts`.
 server/src/scoring.ts    Pure scoring function + sortAndRankResults (the reveal's
@@ -320,7 +336,8 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
 
 Phases belong to a MODE (room.mode), not to the room. The mode owns its
 phase list, its continuations table and its STAGES table.
-GamePhase has 24 values (shared/src/index.ts, `export type GamePhase`);
+GamePhase has 22 values (shared/src/index.ts, `export type GamePhase` —
+counted at Task 305; TRIAL_QUESTION/TRIAL_REVEAL went with Task 258);
 GameModeId has 7 — 'quiz' | 'draw' | 'numeric' | 'full' | 'blitz' | 'duel' |
 'agora' (`export type GameModeId`).
 
@@ -442,8 +459,11 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       with accumulated scores as the ladder's entry order — the ONLY finale;
       `finaleMode`/Η Δίκη were removed at Task 258, see the file listing
       above and Task 291's diagnosis, tasks/291-speech-policy-diagnosis.md).
-      **Reference timing, socket-level bots, NOT a human estimate**: a
-      seeded `?bot=3` full run (default settings, `gameLength: 'long'`)
+      **Reference timing, socket-level bots, NOT a human estimate — and
+      PRE-292/295: every number in this paragraph was measured before Task 292
+      cut long's draw rounds 3 -> 2 and Task 295 raised long's stage 1 from 5
+      to 10 questions. Not re-measured since; do not quote them as today's
+      show length.** A seeded `?bot=3` full run (default settings, `gameLength: 'long'`)
       takes ~845-870s end to end across all seven stages — 844.2s in Task
       214's own run (its per-stage table: Η Αγορά 119.1s, Η Παλαίστρα 41.5s,
       Ζωγραφική 225.6s, Εκτίμηση 61.6s, Η Μνήμη της Αγοράς 77.7s,
@@ -473,18 +493,20 @@ Full (134, relined by Task 214): THE game — the LOCKED lineup, seven stages,
       **Task 215 closed both** (see FULL_AGORA_SCORE_SCALE and
       FULL_DRAW_ROUNDS_BY_LENGTH below) — tasks/215-report.md has the
       before/after numbers.
-      FULL_QUIZ_QUESTION_COUNTS (shared) gives EACH quiz stage's count by
-      gameLength: short 2, medium 3, long 5 (so stages 1+6 total 2+2/3+3/5+5).
-      Draw round count is gameLength-dependent since Task 150
-      (FULL_DRAW_ROUNDS_BY_LENGTH: short 2, medium 2, long 3 — Task 215
-      retuned short/medium up from 1 to match the locked lineup's own
-      "Ζωγραφική x2 rounds"; standalone draw's own room.settings.drawRounds
-      setting is untouched). **DEFAULT_ROOM_SETTINGS.gameLength is 'long'**
+      The two quiz stages have SEPARATE counts since Task 295:
+      FULL_QUIZ_STAGE1_QUESTION_COUNTS (shared) gives stage 1 (Η Αγορά)
+      short 2, medium 3, long 10; FULL_QUIZ_QUESTION_COUNTS now gives ONLY
+      stage 6 (Η Συκοφαντία) short 2, medium 3, long 5 — so stages 1+6 total
+      2+2/3+3/10+5. fullStagesForLength substitutes by `definition.stage`,
+      not by segment (a segment match would give both rows one figure again).
+      Draw round count is FLAT since Task 292 (FULL_DRAW_ROUNDS_BY_LENGTH:
+      short 2, medium 2, long 2 — 215 retuned short/medium 1 -> 2, 292 cut
+      long 3 -> 2; standalone draw's own room.settings.drawRounds setting is
+      untouched). **DEFAULT_ROOM_SETTINGS.gameLength is 'long'**
       (shared/src/index.ts) — a fresh room nobody has touched the length
-      setting on therefore plays the `long` row, i.e. 3 draw rounds by
-      default, not 2; the 215 retune is visible only once the VIP picks
-      short/medium. Numeric count (3) stays fixed regardless of
-      length. Every segment count is a CALL-SITE parameter
+      setting on plays the `long` row: 10 stage-1 questions, 5 in
+      Η Συκοφαντία, 2 draw rounds. Numeric count (3) stays fixed regardless
+      of length. Every segment count is a CALL-SITE parameter
       (startDrawSegment(room, totalCycles, guessScale),
       prepareNumericGame(room, questionCount)) — standalone modes pass their
       own constants (standalone numeric still asks NUMERIC_QUESTION_COUNT =
@@ -1063,10 +1085,13 @@ shared's BLITZ_STATEMENTS block by `npm run blitz:generate` — edit the
 
 ## Voice
 
-283 pre-generated ElevenLabs mp3s in client/public/voice, named by
-lineHash(text, tag). 276 of them are ACTIVE lines (collectVoiceLineEntries'
-count, up from 254 when Task 236 wired Task 230's 22); the rest are
-orphans from replaced line text — nothing prunes them.
+137 ElevenLabs mp3s in the bank (client/public/voice — the post-audit
+count, Tasks 274/286; 283 before the 155-clip deletion), named by
+lineHash(text, tag). Measured at Task 305: collectVoiceLineEntries()
+returns **521** active line entries, of which **125** have a clip on disk
+(resolveSocratesClip(...).known) and **396** have none (v2 pools, Task 300's
+lines, audit-deleted lines); the other 12 bank files are orphans from
+replaced line text — nothing prunes them.
 **Two multi-line SEQUENCES exist since Task 236** — GAME_INTRO_SEQUENCE
 (10, full mode's opening) and ANAVASIS_INTRO_SEQUENCE (3, the climb's
 announcement). They are sequential PROSE, not pools: a random pick emits
@@ -1091,9 +1116,8 @@ synthesise the stopped beat's ack**: `stopSocratesLine` (useGameAudio.ts) nulls
 `source.onended` BEFORE `source.stop()`, because stop() fires onended, and a
 generation counter covers the play path's four awaits. Check:
 `npx tsx dev/300-skip-vote-check.ts` (SCENARIO=A|B|C|D|E, 47/47).
-NOTE, unverified and NOT fixed here: the "276 ... (collectVoiceLineEntries'
-count)" claim just above is stale in at least its parenthetical — that function
-measured 517 before Task 300 and 521 after.
+(collectVoiceLineEntries measured 517 before Task 300 and 521 after; the
+stale "276" this note used to flag was corrected by Task 305, above.)
 **lineHash does NOT include the voice ID** — switching voices overwrites
 the SAME filenames rather than producing new ones. This is the central
 trap of the whole voice system: a filename alone never tells you which
@@ -1128,10 +1152,11 @@ early-lock ceiling (onDuelLockTimer) and as the neutral value the field holds
 outside a beat. Clip length comes from the mp3's BYTE SIZE (CBR, Task 42b) —
 measured against ffprobe over all 283 files in Task 238, within 32ms every
 time and always erring slightly HIGH, which is the safe direction here.
-That source cannot regress the Task 154 missing-clip path: it is read
-server-side when the beat is ARMED, while Task 154 is a CLIENT behaviour
-(a 404/decode failure calls onEnded at once), and an ack is accepted the
-moment it arrives whatever the backstop was set to — measured at 1ms.
+That source is read server-side when the beat is ARMED, while Task 154 is a
+CLIENT behaviour (a 404/decode failure calls onEnded at once). For a line
+WITH a clip, an ack is accepted the moment it arrives whatever the backstop
+was set to — measured at 1ms. For a line WITHOUT one (`known: false`), the
+first non-skip ack is absorbed into the Task 303 hold (below) instead.
 **socrates:audio_ended carries a `beatId` (Task 236)** and the server drops
 an ack whose id isn't the beat currently on screen. An over-cap clip is cut
 off by the backstop and its audio finishes AFTERWARDS, so its ack lands
@@ -1139,17 +1164,40 @@ while the next beat is already playing; before beats could follow one
 another directly that was harmless (the phase check rejected it), but in a
 sequence it advanced twice and swallowed a line whole. Deliberately an
 identity check, not a "too early" check: a missing clip legitimately acks
-at ~0ms (Task 154) carrying the CURRENT id, and must still end the beat.
-**A beat has exactly ONE way to end early, whoever asked (Task 238).**
-`endSocratesBeat` (server/src/index.ts) owns the phase/pause/stale-beat
-rules, and all three callers go through it: the host's audio ack, the VIP's
-new `vip:skip_socrates`, and `vip:next`'s own SOCRATES branch. A skip is NOT
-a parallel advance — it synthesises exactly the advance the natural end
-produces, so mid-sequence it plays the NEXT line rather than jumping the
-narration (the queue drain in advanceFromSocrates decides that, untouched).
+at ~0ms (Task 154) carrying the CURRENT id — that ack is VALID, and since
+Task 303 it is absorbed into a hold rather than ending the beat on the spot.
+**Every way a beat ends today (traced at Task 305).** A beat still leaves
+through ONE continuation — the active timer's, resolved from the mode's
+continuations table — but four things can fire it:
+(1) **the host's audio ack** (`socrates:audio_ended`, index.ts:1408 ->
+`endSocratesBeat`, index.ts:603, `skip: false`). On a beat whose line has
+no clip, `room.socratesHoldMs` is non-null and the FIRST such ack is
+absorbed (index.ts:654): the field is nulled and the same timer kind is
+re-armed (index.ts:661) for the rest of the hold, measured from BEAT START,
+so a late ack never lengthens it. A second current-id ack during the hold
+finds the field null and ends the beat — the real client never sends one.
+(2) **a VIP skip** — `vip:skip_socrates` (index.ts:1438) or `vip:next`'s
+SOCRATES branch (index.ts:1375), both `endSocratesBeat` with `skip: true`:
+EXEMPT from the hold, refused on an `unskippable` beat (Task 300's
+interruption), while paused, and against a stale beat id. It synthesises
+exactly the natural end's advance, so mid-sequence it plays the NEXT line.
+(3) **a passed skip vote** (Task 300, sequences only) — `player:skip_vote`
+(index.ts:1455 -> startSequenceSkip, index.ts:1499) or a disconnect that
+lowers the bar (index.ts:2011 -> recheckSkipVoteOnDisconnect, phases.ts:795).
+startSequenceSkip (phases.ts:743) does NOT go through endSocratesBeat: it
+discards the queue, emits `socrates:stop`, and enters the SKIP_INTERRUPTED
+beat through enterSocratesBeat, whose fresh armActiveTimer cancels any hold
+in progress — or, with that pool spent, calls advanceFromSocrates directly
+(phases.ts:772).
+(4) **the timer itself** — the backstop armed at beat start
+(enterSocratesBeat phases.ts:433; the post-REVEAL beat, phases.ts:1302), or
+the re-armed hold from (1) expiring. Both call the same continuation.
+Dev-only: `wireHostSocratesAck` (bots.ts:436) makes a socket-level harness
+host ack after `totalDurationMs`, entering path (1).
 The server log says which fired: `Socrates beat N ended (<event>) -
-advancing`, identical but for the event name, and a beat that leaves NO such
-line was ended by its backstop instead. `ServerEvents.SOCRATES_BEAT` carries
+advancing` for (1)/(2); `holding Xms more of Yms (<event> absorbed)` when
+(1) starts a hold; `skip vote PASSED on beat N` for (3); and a beat that
+leaves none of these was ended by its timer (4). `ServerEvents.SOCRATES_BEAT` carries
 the beat id ROOM-WIDE (the id alone — the line itself stays host-only) so the
 VIP's phone can name what it is skipping; a second press inside one beat
 cites an id that is no longer current and is refused as stale, and a press
@@ -1191,8 +1239,20 @@ never decoded (254 decoded buffers is too much for a TV browser), once per
 hook instance. Failure path, same task: a 404, a decodeAudioData throw or a
 source.start throw inside playSocratesLine now calls onEnded() at once
 (useGameAudio.ts:273), so a dead clip emits socrates:audio_ended
-immediately instead of holding the phase for the 11000ms backstop
-(measured 11010ms before).
+immediately rather than waiting out the backstop (measured 11010ms before).
+**The CLIENT still acks at once; the SERVER now holds (Task 303).** That
+instant ack made every clip-less beat — every v2 slot line — flash its
+subtitle for ~50ms. `socratesHoldForBeat` (server/src/socratesAudio.ts)
+returns null when the LINE's clip exists (audio paces it) and otherwise
+`socratesHoldMs(text)` = chars / SOCRATES_HOLD_CHARS_PER_SEC (11, the
+bank's median rounded) clamped to SOCRATES_HOLD_MIN_MS..SOCRATES_HOLD_MAX_MS
+(3000..9000ms, all shared/src/index.ts) — always under the 15000ms unknown-
+clip backstop. Set per beat beside the backstop (phases.ts:432 and 1297),
+absorbed in endSocratesBeat (see the early-end list above). A SKIP is exempt;
+pause freezes the hold with the timer. Known, not fixed:
+`SocratesShowPayload.totalDurationMs` still reports the 4000ms floor for a
+clip-less beat, and the duel's DUEL_LOCKED beat (inside DUEL_PICK) is not
+held. Check: `npx tsx dev/303-hold-check.ts` (SCENARIO=A|B|C|D|E, 23/23).
 `npm run voice:generate` regenerates only changed lines and reports the
 longest clip — that scan reads the mp3 DIRECTORY, not the active LINE_TAGS
 hashes, so an orphaned line's mp3 keeps getting reported as "longest"
