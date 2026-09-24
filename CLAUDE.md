@@ -1264,6 +1264,18 @@ first with RMS >= 0.015 of full scale), via `start(0, 0, d)` — a vocative's
 up-to-1780ms tail no longer sits between the name and the line. The last
 clip plays whole, so the one ack is unchanged. Check:
 `npx tsx dev/308-vocative-slot-check.ts` (SCENARIO=W|T|P|L).
+**Task 309: gap + pools.** The chain's next clip now starts `SPLICE_GAP_MS` = 450ms
+after the previous clip's SPEECH end (useGameAudio.ts, scheduled on the context
+clock via `source.start(when)`, so pause freezes it) — 308's ≤120ms sounded
+rushed; `speechEndSec` now returns the speech end alone and the 120ms tail is
+added at the play site. DRAW_MID and NUMERIC_CLOSE no longer read the
+third-person reservoirs under v2: SPEECH_V2_LINES has FOUR more pools
+(DRAW_MID_BEST/WORST, NUMERIC_CLOSE_BEST/WORST, 12 lines, second person) and
+`collectVoiceLineEntries` is 533 (was 521). NOBODY/EVERYBODY_GUESSED and
+EXACT_HIT/WILDLY_OFF stay for v1. Four lines were REPLACED (CORONATION_SET_C #2,
+AGORA_WORST #1, PALAISTRA_MID_BEST #1, LITHI_CLOSE_OBSERVER #3) — their old
+clips are orphans in the bank. Bank is 396 files after the 16 new clips.
+Check: `npx tsx dev/309-dispatch-check.ts` (pure).
 `npm run voice:generate` regenerates only changed lines and reports the
 longest clip — that scan reads the mp3 DIRECTORY, not the active LINE_TAGS
 hashes, so an orphaned line's mp3 keeps getting reported as "longest"

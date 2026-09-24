@@ -41,6 +41,11 @@ const ANSWER_BUMP_PHASES: readonly GamePhase[] = ['QUESTION', 'GUESS', 'NUMERIC_
 const SPLICE_SILENCE_RMS = 0.015;
 const SPLICE_WINDOW_SEC = 0.01;
 const SPLICE_TAIL_SEC = 0.12;
+// Task 309 - the pause between a spliced clip's SPEECH end and the next clip's
+// start, prefix -> line AND line -> suffix. 308's <=120ms was audibly rushed
+// in a full v2 game. Scheduled on the AudioContext clock (source.start(when)),
+// so a pause - which suspends the context - freezes it like everything else.
+const SPLICE_GAP_MS = 450;
 
 // Equal-power crossfade across two adjacent zones of a 3-point ramp (murmur
 // -> unrest -> roar) - identical math to the /dev/crowd reference mixer
@@ -676,8 +681,8 @@ export function useGameAudio() {
     return buffer;
   }
 
-  // Task 308 - where a clip's SPEECH ends, plus at most SPLICE_TAIL_SEC of
-  // tail, in seconds. Walks back from the buffer's end in SPLICE_WINDOW_SEC
+  // Task 308 - where a clip's SPEECH ends, in seconds (Task 309: the tail moved
+  // to the play site). Walks back from the buffer's end in SPLICE_WINDOW_SEC
   // windows and stops at the first whose RMS (loudest channel) reaches
   // SPLICE_SILENCE_RMS = 0.015 of full scale (~ -36.5 dBFS; Task 307's own
   // tail check used RMS 500 on int16 = 0.0153). Memoised per decoded buffer.
@@ -703,7 +708,9 @@ export function useGameAudio() {
       if (start === 0) break;
     }
     // An all-silent clip keeps its full length: nothing to trim against.
-    const seconds = end === 0 ? buf.duration : Math.min(buf.duration, end / buf.sampleRate + SPLICE_TAIL_SEC);
+    // Task 309 - returns the speech end ITSELF; the tail is added at the play
+    // site, where the gap owed after the tail actually played is computed.
+    const seconds = end === 0 ? buf.duration : Math.min(buf.duration, end / buf.sampleRate);
     speechEndCacheRef.current.set(buf, seconds);
     return seconds;
   }
@@ -795,7 +802,8 @@ export function useGameAudio() {
       }
       // Task 308 - `playFor` (seconds) cuts a clip short: the next clip of the
       // chain starts where this one's SPEECH ends, not where its buffer does.
-      const play = (buf: AudioBuffer, onended: () => void, playFor?: number): void => {
+      // Task 309 - `delaySec` starts it that long from now on the context clock.
+      const play = (buf: AudioBuffer, onended: () => void, playFor?: number, delaySec = 0): void => {
         const source = ctx.createBufferSource();
         source.buffer = buf;
         source.onended = onended;
@@ -808,10 +816,11 @@ export function useGameAudio() {
         // voiceGain first, so the VIP's voice slider applies without touching
         // outputGain (mute stays a completely separate ramp on top).
         source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
+        const when = delaySec > 0 ? ctx.currentTime + delaySec : 0;
         if (playFor === undefined) {
-          source.start();
+          source.start(when);
         } else {
-          source.start(0, 0, playFor);
+          source.start(when, 0, playFor);
         }
       };
       // Task 277 - ONE ack in all four combinations, bound to the LAST clip
@@ -827,7 +836,7 @@ export function useGameAudio() {
       if (prefixBuffer) chain.push(prefixBuffer);
       chain.push(buffer);
       if (suffixBuffer) chain.push(suffixBuffer);
-      const playFrom = (index: number): void => {
+      const playFrom = (index: number, delaySec = 0): void => {
         // Task 300 - a stop between two clips of one chain: the previous
         // source's onended was nulled, but this continuation is already
         // scheduled, so it checks for itself rather than sounding the next clip
@@ -838,8 +847,18 @@ export function useGameAudio() {
         // Task 308 - every clip but the last is trimmed to its speech (vocatives
         // carry up to 1780ms of trailing silence, Task 307). The LAST clip plays
         // whole, so the one ack still lands at the true end of the chain.
+        // Task 309 - the next clip starts SPLICE_GAP_MS after this one's speech
+        // end. This one plays to min(buffer, speech end + tail), so the wait
+        // still owed when it stops is the gap minus the tail it actually played.
         const last = index === chain.length - 1;
-        play(chain[index], last ? onEnded : () => playFrom(index + 1), last ? undefined : speechEndSec(chain[index]));
+        if (last) {
+          play(chain[index], onEnded, undefined, delaySec);
+          return;
+        }
+        const speechEnd = speechEndSec(chain[index]);
+        const playFor = Math.min(chain[index].duration, speechEnd + SPLICE_TAIL_SEC);
+        const owed = Math.max(0, SPLICE_GAP_MS / 1000 - (playFor - speechEnd));
+        play(chain[index], () => playFrom(index + 1, owed), playFor, delaySec);
       };
       playFrom(0);
     } catch (err) {

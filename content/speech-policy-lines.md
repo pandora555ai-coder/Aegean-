@@ -5,13 +5,19 @@ SPEAR_OUT replaces SPEAR_WARNING (post-strike). Generation: October reset.
 Task 296 appended the 13th pool, QUIZ_BEST (the quiz stage's best side, which
 the original twelve left unwritten), and wired DUEL_LOCKED/SPEAR_OUT into the
 phase machine under BOTH policies.
+Task 309 replaced three lines below (PALAISTRA_MID_BEST #1, AGORA_WORST #1,
+LITHI_CLOSE_OBSERVER #3), and appended the 15th-18th pools (DRAW_MID_BEST/WORST,
+NUMERIC_CLOSE_BEST/WORST) at the END of this file. The fourth replacement, the
+coronation's Set C line 2, lives in server/src/socrates.ts (CORONATION_SET_C),
+not in this file: "[sighs] Σε έψαξα όλη τη νύχτα για ένα λάθος να σε πιάσω.
+Δεν το βρήκα."
 Task 300 appended the 14th, SKIP_INTERRUPTED — what he says when the room votes
 his narration quiet. Like DUEL_LOCKED and SPEAR_OUT it belongs to a MECHANIC
 rather than a stage slot, so it plays under BOTH policies; four lines, not three,
 because a game holds two skippable sequences and neither may repeat the other.
 
 PALAISTRA_MID_BEST:
-[dry] Δώδεκα κρίσεις, καμία λάθος. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.
+[dry] Δύσκολα σε ρίχνουν τα ψέματά μου. Στην Παλαίστρα αυτό λέγεται ταλέντο. Παντού αλλού, τύχη.
 [amused] Ο γύρος πέρασε και δεν σε άγγιξε κανείς. Οι θεατές αρχίζουν να στοιχηματίζουν επάνω σου.
 [thoughtful] Αποφασίζεις πιο γρήγορα απ' όσο σκέφτεσαι. Έτσι νικούν οι παλαιστές. Και οι ανόητοι, αλλά ας μη χαλάσουμε τη στιγμή.
 
@@ -33,7 +39,7 @@ PALAISTRA_CLOSE_WORST:
 LITHI_CLOSE_OBSERVER:
 [thoughtful] Πέρασες από την Αγορά μία φορά και θυμάσαι περισσότερα από τους εμπόρους της. Ανησυχητικό χάρισμα.
 [dry] Η Λήθη δεν βρήκε τίποτα δικό σου να πάρει. Έφυγε με άδεια χέρια, πρώτη φορά.
-[amused] Τρεις ερωτήσεις, τρεις σωστές. Ή έχεις μάτια παντού, ή έστησες τον πάγκο εσύ.
+[amused] Θυμάσαι την Αγορά καλύτερα από όλους. Ή έχεις μάτια παντού, ή έστησες τον πάγκο εσύ.
 
 LITHI_CLOSE_BLIND:
 [dry] Πέρασες από την Αγορά και δεν είδες τίποτα. Η Λήθη σε ευχαριστεί για τη συνεργασία.
@@ -56,7 +62,7 @@ SYKO_CLOSE_VICTIM:
 [dry] Όλοι διάλεξαν εσένα. Κάτι ξέρουν, ή κάτι φοβούνται. Και τα δύο κολακευτικά, με τον τρόπο τους.
 
 AGORA_WORST:
-[warm] Η Αγορά δεν σε αγάπησε ακόμα. Έχεις πέντε ερωτήσεις να την κάνεις να το μετανιώσει.
+[warm] Η Αγορά δεν σε αγάπησε απόψε. Δεν πειράζει. Ούτε εμένα με αγάπησε ποτέ.
 [dry] Κάθε αγορά έχει κάποιον που πληρώνει ακριβά και φεύγει με άδειο καλάθι. Απόψε κρατάς εσύ το καλάθι.
 [thoughtful] Οι απαντήσεις σου έχουν θάρρος. Η ακρίβεια θα έβλαπτε; Όχι. Δοκίμασέ τη.
 
@@ -80,3 +86,23 @@ SKIP_INTERRUPTED:
 [sighs] Μιλούσα. Ψηφίσατε. Δημοκρατία — το χειρότερο πολίτευμα, εκτός από όσα δοκιμάσαμε.
 [amused] Η Εκκλησία του Δήμου αποφάσισε να σωπάσω. Πρώτη φορά συμφωνώ με απόφασή της τόσο απρόθυμα.
 [deadpan] Σημειώνω τα ονόματα όσων ψήφισαν. Δεν θα το ξεχάσω. Παίξτε.
+
+DRAW_MID_BEST:
+[amused] Όλοι κατάλαβαν τι ζωγράφισες. Σπάνιο για σοφιστή. Συνήθως κανείς δεν καταλαβαίνει τι λέμε.
+[dry] Το σχέδιό σου το διάβασαν όλοι με την πρώτη. Σοφιστής που γίνεται κατανοητός. Ανησυχητικό.
+[thoughtful] Λίγες γραμμές και σε κατάλαβαν όλοι. Τα λόγια σου δεν τα κατάφεραν ποτέ τόσο καλά.
+
+DRAW_MID_WORST:
+[dry] Κανείς δεν κατάλαβε τι ζωγράφισες. Επιτέλους, ένας σοφιστής που δεν πείθει κανέναν.
+[sighs] Το σχέδιό σου έμεινε μυστήριο για όλους. Ακόμα και για σένα, υποψιάζομαι.
+[amused] Κανείς δεν το βρήκε. Οι μεγάλοι καλλιτέχνες πέθαιναν παρεξηγημένοι. Μη βιαστείς να τους μοιάσεις.
+
+NUMERIC_CLOSE_BEST:
+[thoughtful] Οι σοφιστές μετρούν λόγια. Εσύ μετράς τον κόσμο. Και τον μετράς σωστά.
+[dry] Οι αριθμοί σου έπεσαν πιο κοντά απ' όλων. Ή ξέρεις, ή μαντεύεις καλύτερα απ' όσο πρέπει.
+[amused] Σε ρώτησα πόσα και ήξερες. Επιτέλους ένας σοφιστής με κάτι χρήσιμο.
+
+NUMERIC_CLOSE_WORST:
+[dry] Είπες αριθμούς που δεν έχουν καμία σχέση με τον κόσμο μας. Σε ζηλεύω λίγο.
+[amused] Οι εκτιμήσεις σου ήταν τολμηρές. Λάθος, αλλά τολμηρές. Κανένας σοφιστής δεν ζητά περισσότερα.
+[sighs] Σε κάθε ερώτηση, ήσουν μακριά. Σε αυτό τουλάχιστον ήσουν συνεπής.

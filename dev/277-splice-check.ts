@@ -183,6 +183,9 @@ const AUDIO_PROBE = `(() => {
     try {
       window.__aegeanClips.push({
         t: performance.now(),
+        // Task 309 - the EFFECTIVE start: a chained clip is scheduled with
+        // start(when), so the call time is not when it sounds.
+        s: performance.now() + (arguments[0] > 0 ? Math.max(0, arguments[0] - this.context.currentTime) * 1000 : 0),
         durMs: this.buffer ? this.buffer.duration * 1000 : null,
         playForMs: arguments.length >= 3 ? arguments[2] * 1000 : null,
         loop: !!this.loop,
@@ -196,6 +199,7 @@ const AUDIO_PROBE = `(() => {
 
 interface ProbeClip {
   t: number;
+  s: number;
   durMs: number | null;
   // Task 308 - start()'s duration argument: a clip that is not last in the
   // chain is cut at its speech end, so the next one follows THAT, not the
@@ -374,8 +378,8 @@ async function main(): Promise<void> {
     say(`  page audio warnings   : ${pageWarnings.length === 0 ? 'none' : JSON.stringify(pageWarnings)}`);
 
     if (suffixIsReal) {
-      const gap = lineClip && sufClip ? sufClip.t - (lineClip.t + (lineClip.playForMs ?? lineClip.durMs ?? 0)) : null;
-      const total = lineClip && sufClip ? sufClip.t + (sufClip.durMs ?? 0) - lineClip.t : null;
+      const gap = lineClip && sufClip ? sufClip.s - (lineClip.s + (lineClip.playForMs ?? lineClip.durMs ?? 0)) : null;
+      const total = lineClip && sufClip ? sufClip.s + (sufClip.durMs ?? 0) - lineClip.s : null;
       say(`  gap line-end -> suffix-start : ${gap === null ? 'n/a' : `${gap.toFixed(1)}ms`}`);
       say(`  measured chain total         : ${total === null ? 'n/a' : `${total.toFixed(0)}ms`} vs armed ${armed}ms`);
       check(`${title}: both clips played, line first`, lineClip !== null && sufClip !== null && sufClip.t > lineClip.t, `line@${lineClip?.t.toFixed(0)} suffix@${sufClip?.t.toFixed(0)}`);
@@ -387,7 +391,10 @@ async function main(): Promise<void> {
           Math.abs((sufClip.durMs ?? 0) - SUFFIX.fileMs) < 300,
         `${(lineClip?.durMs ?? 0).toFixed(0)}ms vs line ${LINE.fileMs}ms, ${(sufClip?.durMs ?? 0).toFixed(0)}ms vs suffix ${SUFFIX.fileMs}ms`,
       );
-      check(`${title}: the suffix starts as the line's played span ends (gap < 250ms)`, gap !== null && gap > -60 && gap < 250, `${gap?.toFixed(1)}ms`);
+      // Task 309 - the played span ends <=120ms past speech end, and the suffix owes
+      // SPLICE_GAP_MS = 450 from speech end, so the wait after the span is 330ms
+      // (less when the tail was capped by the buffer): expect ~[250, 460].
+      check(`${title}: the suffix starts SPLICE_GAP_MS (450) after the line's speech end (gap 250-460ms after the played span)`, gap !== null && gap > 250 && gap < 460, `${gap?.toFixed(1)}ms`);
       check(
         `${title}: the ack waited for the SUFFIX, not the line`,
         ended !== null && ended.ts - showTs > LINE.fileMs + 300,

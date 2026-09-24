@@ -87,15 +87,17 @@ const SLOT_SPECS: Record<Exclude<SpeechSlotId, 'SYKO_FIRST_STEAL' | 'SYKO_CLOSE'
   // through to the other one, and a stage that opens on a tie should still be
   // able to say something about whoever is ahead. The reservoir pools are NOT
   // removed anywhere - STUCK_IN_LAST still covers this stage's worst side at
-  // the close, and DRAW_MID/NUMERIC_CLOSE below are still wholly
-  // reservoir-backed - so v1's own line bank stays in play as extra variety
-  // exactly as Task 294 left it.
+  // the close. (DRAW_MID/NUMERIC_CLOSE were wholly reservoir-backed until
+  // Task 309 gave them their own pools, below.)
   QUIZ_MID: { prefer: 'worst', best: slot('QUIZ_BEST'), worst: slot('AGORA_WORST') },
   QUIZ_CLOSE: { prefer: 'best', best: slot('QUIZ_BEST'), worst: reservoir('STUCK_IN_LAST') },
   BLITZ_MID: { prefer: 'best', best: slot('PALAISTRA_MID_BEST'), worst: slot('PALAISTRA_MID_WORST') },
   BLITZ_CLOSE: { prefer: 'worst', best: slot('PALAISTRA_CLOSE_BEST'), worst: slot('PALAISTRA_CLOSE_WORST') },
-  DRAW_MID: { prefer: 'best', best: reservoir('RUNAWAY_LEAD'), worst: reservoir('STUCK_IN_LAST') },
-  NUMERIC_CLOSE: { prefer: 'worst', best: reservoir('RUNAWAY_LEAD'), worst: reservoir('STUCK_IN_LAST') },
+  // Task 309 - DRAW_MID and NUMERIC_CLOSE now read their own second-person
+  // pools instead of the third-person reservoirs (the named address of Task 308
+  // sat on "someone guessed..." lines). Reservoirs stay live for v1 only.
+  DRAW_MID: { prefer: 'best', best: slot('DRAW_MID_BEST'), worst: slot('DRAW_MID_WORST') },
+  NUMERIC_CLOSE: { prefer: 'worst', best: slot('NUMERIC_CLOSE_BEST'), worst: slot('NUMERIC_CLOSE_WORST') },
   LETHE_CLOSE: { prefer: 'best', best: slot('LITHI_CLOSE_OBSERVER'), worst: slot('LITHI_CLOSE_BLIND') },
 };
 

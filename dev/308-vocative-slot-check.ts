@@ -155,6 +155,8 @@ const AUDIO_PROBE = `(() => {
     try {
       window.__aegeanClips.push({
         t: performance.now(),
+        // Task 309 - EFFECTIVE start: a chained clip is scheduled start(when).
+        s: performance.now() + (arguments[0] > 0 ? Math.max(0, arguments[0] - this.context.currentTime) * 1000 : 0),
         durMs: this.buffer ? this.buffer.duration * 1000 : null,
         playForMs: arguments.length >= 3 ? arguments[2] * 1000 : null,
         wall: Date.now(),
@@ -169,6 +171,7 @@ const AUDIO_PROBE = `(() => {
 
 interface ProbeClip {
   t: number;
+  s: number;
   playForMs: number | null;
   wall: number;
   durMs: number | null;
@@ -297,7 +300,7 @@ async function main(): Promise<void> {
       room.phase = 'LOBBY';
       const clips = (((await page.evaluate('window.__aegeanClips')) ?? []) as ProbeClip[]).filter((c) => !c.loop && c.durMs !== null);
       const [pre, line] = clips;
-      const startDelta = line.t - pre.t;
+      const startDelta = line.s - pre.s;
       say(`  ${v.voc.padEnd(9)} prefix buffer=${pre.durMs!.toFixed(0)}ms playFor=${pre.playForMs === null ? 'whole' : pre.playForMs.toFixed(0) + 'ms'} ` +
         `speechEnd=${v.speechEndMs}ms line started +${startDelta.toFixed(0)}ms -> GAP speech-end->line = ${(startDelta - v.speechEndMs).toFixed(0)}ms; ` +
         `ack ${ended ? (ended.ts - t0) + 'ms ' + (ended.text.includes('audio_ended') ? 'socrates:audio_ended' : ended.text) : 'NEVER'} (backstop ${room.socratesBackstopMs}ms)`);
@@ -380,10 +383,14 @@ async function main(): Promise<void> {
       const i = clips.findIndex((c) => c.wall >= b.ts - 50);
       const pre = clips[i];
       const nxt = clips[i + 1];
-      const gap = pre && nxt && pre.playForMs !== null ? nxt.t - pre.t - (pre.playForMs - 120) : null;
+      const gap = pre && nxt && pre.playForMs !== null ? nxt.s - pre.s - (pre.playForMs - 120) : null;
       say(`  beat ${id} ${kind} prefix="${prefix}" buf=${pre?.durMs?.toFixed(0)} playFor=${pre?.playForMs?.toFixed(0)} ` +
-        `line+${pre && nxt ? (nxt.t - pre.t).toFixed(0) : '?'}ms speech-end->line GAP=${gap === null ? '?' : gap.toFixed(0)}ms ` +
+        `line+${pre && nxt ? (nxt.s - pre.s).toFixed(0) : '?'}ms speech-end->line GAP=${gap === null ? '?' : gap.toFixed(0)}ms ` +
         `ack=${ended ? (ended.text.includes('audio_ended') ? 'socrates:audio_ended' : ended.text.slice(0, 60)) + ' @+' + (ended.ts - b.ts) + 'ms' : 'NONE'} backstop=${backstop} "${line}"`);
+    }
+    // Task 309 - which pool each slot drew from, and the coronation beats.
+    for (const l of serverLog.filter((l) => l.ts >= t0 && (/\[slot\].*FIRED/.test(l.text) || /CORONATION/.test(l.text)))) {
+      say(`  LOG ${l.text.slice(0, 170)}`);
     }
     await page.close();
   }
