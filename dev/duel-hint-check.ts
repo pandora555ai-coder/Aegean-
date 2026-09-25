@@ -93,7 +93,7 @@ async function main() {
     const hostPage = await hostContext.newPage();
     await hostPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=duel`);
     await hostPage.getByTestId('audio-gate').click();
-    await hostPage.getByRole('button', { name: 'Create Room' }).click();
+    await hostPage.getByTestId('create-room').click();
     const codeLocator = hostPage.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');

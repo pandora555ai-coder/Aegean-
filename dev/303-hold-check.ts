@@ -525,7 +525,7 @@ async function main(): Promise<void> {
     say(`  hiding ${hideHashes.size} slot/reservoir clips from server + browser for this show`);
     // ?bot=4 bypasses Task 259's gate; ?policy=v2 is Task 302's param.
     await page.goto(`${CLIENT_ORIGIN}/host?bot=4&mode=full&policy=v2&clock=off`);
-    // ?bot=N bypasses Task 259's GATE, but nothing presses "Create Room" for
+    // ?bot=N bypasses Task 259's GATE, but nothing presses the create-room button for
     // us - the room is created by that click and by nothing else, which is why
     // the first attempt at this scenario sat for 430s with "client connected"
     // as its last server log and zero beats. The mute toggle is the lobby's

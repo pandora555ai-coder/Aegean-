@@ -275,7 +275,7 @@ async function main(): Promise<void> {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await ctx.newPage();
     await page.goto(`http://localhost:${CLIENT_PORT}/host?bot=3&mode=full&clock=off`);
-    await page.getByRole('button', { name: 'Create Room' }).click();
+    await page.getByTestId('create-room').click();
     const scenario0Code = ((await page.getByTestId('room-code').textContent({ timeout: 15000 })) ?? '').replace(/\s+/g, '');
     // An all-bot room self-starts (Task 217) with no VIP needed - wait for
     // the stage-1 card, the first real content past LOBBY.
@@ -314,7 +314,7 @@ async function main(): Promise<void> {
   // meeting 'full' mode's own MIN_PLAYERS=2) - no bots needed at all.
   await tvPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
   await tvPage.getByTestId('audio-gate').click();
-  await tvPage.getByRole('button', { name: 'Create Room' }).click();
+  await tvPage.getByTestId('create-room').click();
   const codeLocator = tvPage.getByTestId('room-code');
   await codeLocator.waitFor({ timeout: 15000 });
   const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');

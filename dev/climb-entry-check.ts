@@ -310,7 +310,7 @@ async function main(): Promise<void> {
   const sims: Sim[] = [];
   try {
     await page.goto(`http://localhost:${CLIENT_PORT}/host?bot=1&mode=full`);
-    await page.getByRole('button', { name: 'Create Room' }).click();
+    await page.getByTestId('create-room').click();
     const codeLocator = page.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');

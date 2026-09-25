@@ -1523,3 +1523,9 @@ via HOST_REJOIN.
 - When a task copies content from a document into code, count the rows.
 - Move code rather than rewriting it during refactors.
 - One task = one file at `tasks/NNN-name.md`, committed with its work.
+- **UI harnesses select elements by `data-testid`, never by visible text or
+  role name** (Task 317). Copy changes break text selectors silently: Task 316
+  relabelled the host lobby's button and ~24 dev/ harnesses that clicked
+  `getByRole('button', { name: 'Create Room' })` all stopped working at once.
+  The host's create button is `getByTestId('create-room')`. Add a testid to
+  the component when none exists rather than falling back to text.

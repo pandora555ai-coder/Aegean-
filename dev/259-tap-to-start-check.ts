@@ -1,5 +1,5 @@
 // Task 259 - the TV tap-to-start gate: an audio-unlock/dead-zone gate on
-// /host that must be tapped before "Create Room" is even reachable.
+// /host that must be tapped before the create-room button is even reachable.
 //
 // Root cause under test: getAudioCtx() (client/src/hooks/useGameAudio.ts) was
 // only ever first called from ROOM_CREATED's startKeepAliveAudio - a SOCKET
@@ -12,7 +12,7 @@
 // construction AND resume happen inside one trusted gesture.
 //
 // Criteria, each reported with its own numbers:
-//   1 (SCENARIO=A, default): before tap - gate node count, Create Room
+//   1 (SCENARIO=A, default): before tap - gate node count, create-room
 //     reachability; after tap - gate node count, AudioContext.state, and the
 //     first GAME_INTRO clip's played duration vs its own decoded file
 //     duration (a Web Audio probe patched into the page BEFORE navigation -
@@ -152,21 +152,21 @@ async function runScenarioA(page: Page): Promise<void> {
   await page.waitForTimeout(600);
 
   const gateBefore = await page.locator('[data-testid="audio-gate"]').count();
-  // The "Create Room" button is still present in the DOM underneath (the
+  // The create-room button is still present in the DOM underneath (the
   // gate is a z-index overlay, not a replacement) - the real proof it
   // "cannot start" is that a click on it is intercepted, exactly as a
   // real tap landing on the gate instead would be. Playwright's own
   // actionability check throws when another element covers the target.
   let createRoomClickThrows = false;
   try {
-    await page.getByRole('button', { name: 'Create Room' }).click({ timeout: 2000 });
+    await page.getByTestId('create-room').click({ timeout: 2000 });
   } catch {
     createRoomClickThrows = true;
   }
   const ctxBefore = await page.evaluate(() => !!(window as any).__audioProbe.ctx);
-  console.log(`before tap: gate nodes=${gateBefore}, Create Room click intercepted by gate=${createRoomClickThrows}, AudioContext constructed=${ctxBefore}`);
+  console.log(`before tap: gate nodes=${gateBefore}, create-room click intercepted by gate=${createRoomClickThrows}, AudioContext constructed=${ctxBefore}`);
   check('1: gate present before any tap', gateBefore === 1);
-  check('1: Create Room unreachable before tap (game cannot start)', createRoomClickThrows);
+  check('1: create-room unreachable before tap (game cannot start)', createRoomClickThrows);
   check('1: no AudioContext constructed yet (nothing to resume)', ctxBefore === false);
 
   await page.locator('[data-testid="audio-gate"]').click();
@@ -174,13 +174,13 @@ async function runScenarioA(page: Page): Promise<void> {
 
   const gateAfter = await page.locator('[data-testid="audio-gate"]').count();
   const ctxStateAfter = await page.evaluate(() => (window as any).__audioProbe.ctx?.state ?? 'no-context');
-  const createRoomAfter = await page.getByRole('button', { name: 'Create Room' }).count();
-  console.log(`after 1 tap: gate nodes=${gateAfter}, AudioContext.state=${ctxStateAfter}, Create Room button nodes=${createRoomAfter}`);
+  const createRoomAfter = await page.getByTestId('create-room').count();
+  console.log(`after 1 tap: gate nodes=${gateAfter}, AudioContext.state=${ctxStateAfter}, create-room button nodes=${createRoomAfter}`);
   check('1: gate gone after one tap (0 nodes)', gateAfter === 0);
   check('1: AudioContext running after the tap', ctxStateAfter === 'running');
-  check('1: Create Room now reachable', createRoomAfter === 1);
+  check('1: create-room now reachable', createRoomAfter === 1);
 
-  await page.getByRole('button', { name: 'Create Room' }).click();
+  await page.getByTestId('create-room').click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 15000 });
   const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');
@@ -225,7 +225,7 @@ async function runScenarioB(page: Page): Promise<void> {
   check('2: gate never renders for a bot-driven room (bypassed at mount)', gateAtLoad === 0, `nodes=${gateAtLoad}`);
 
   const t0 = Date.now();
-  await page.getByRole('button', { name: 'Create Room' }).click();
+  await page.getByTestId('create-room').click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
     // An all-bot room can self-start (Task 217) fast enough that LOBBY's

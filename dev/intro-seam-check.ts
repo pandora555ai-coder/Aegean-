@@ -159,7 +159,7 @@ async function main(): Promise<void> {
   });
 
   await page.goto(`http://localhost:${CLIENT_PORT}/host?bot=${BOTS}&mode=full`);
-  await page.getByRole('button', { name: 'Create Room' }).click();
+  await page.getByTestId('create-room').click();
   console.log(`host page open, ?bot=${BOTS}&mode=full - an all-bot room self-starts`);
 
   // Wait for the opening narration to finish: all ten intro lines acked, or

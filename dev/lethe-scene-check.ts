@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     const page = await context.newPage();
     await page.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
     await page.getByTestId('audio-gate').click();
-    await page.getByRole('button', { name: 'Create Room' }).click();
+    await page.getByTestId('create-room').click();
     const codeLocator = page.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
     const page2 = await context2.newPage();
     await page2.goto(`http://localhost:${CLIENT_PORT}/host?mode=quiz`);
     await page2.getByTestId('audio-gate').click();
-    await page2.getByRole('button', { name: 'Create Room' }).click();
+    await page2.getByTestId('create-room').click();
     const code2Locator = page2.getByTestId('room-code');
     await code2Locator.waitFor({ state: 'visible', timeout: 20000 });
     const code2 = ((await code2Locator.textContent()) ?? '').replace(/\s+/g, '');

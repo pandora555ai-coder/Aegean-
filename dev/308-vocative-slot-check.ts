@@ -440,7 +440,7 @@ async function main(): Promise<void> {
     await page.addInitScript(AUDIO_PROBE);
     const t0 = Date.now();
     await page.goto(`${CLIENT_ORIGIN}/host?bot=4&mode=full&policy=v2&clock=off`);
-    // ?bot=N skips the gate but nothing presses "Create Room" (303's own note).
+    // ?bot=N skips the gate but nothing presses the create-room button (303's own note).
     await page.locator('[data-testid="lobby-root"] button:not([data-testid="mute-toggle"])').first().click({ timeout: 20000 });
     await delay(5000);
     if (logsSince(t0, 'speechPolicy=v2').length === 0) throw new Error('room was not created as v2 within 5s');

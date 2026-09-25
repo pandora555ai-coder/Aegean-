@@ -49,7 +49,7 @@ async function main() {
   page.on('pageerror', (e) => log('PAGEERROR', e.message));
 
   await page.goto(`${CLIENT}/host?bot=5&mode=full`);
-  await page.getByRole('button', { name: 'Create Room' }).click();
+  await page.getByTestId('create-room').click();
   const roomCode = await page.evaluate(async () => {
     for (let i = 0; i < 60; i++) {
       const el = document.querySelector('[data-testid="room-code"]') || document.querySelector('[data-testid="corner-room-code"]');

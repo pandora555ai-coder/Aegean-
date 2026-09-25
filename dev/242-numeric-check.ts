@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   const tvPage = await tvCtx.newPage();
   await tvPage.goto(`http://localhost:${CLIENT_PORT}/host?mode=numeric`);
   await tvPage.getByTestId('audio-gate').click();
-  await tvPage.getByRole('button', { name: 'Create Room' }).click();
+  await tvPage.getByTestId('create-room').click();
   const code = ((await tvPage.getByTestId('room-code').textContent({ timeout: 15000 })) ?? '').replace(/\s+/g, '');
   console.log(`room ${code} created (standalone numeric)`);
 

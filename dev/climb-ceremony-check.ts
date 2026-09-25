@@ -260,7 +260,7 @@ async function newRoom(browser: Browser, playerCount: number): Promise<{ page: P
   // and stays exactly as strict.
   await page.goto(`http://localhost:${CLIENT_PORT}/host?clock=off`);
   await page.getByTestId('audio-gate').click();
-  await page.getByRole('button', { name: 'Create Room' }).click();
+  await page.getByTestId('create-room').click();
   const codeLocator = page.getByTestId('room-code');
   await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
   const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');

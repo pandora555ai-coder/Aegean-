@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     page.on('close', () => console.log('[page closed]'));
     await page.goto(`http://localhost:${CLIENT_PORT}/host?mode=full`);
     await page.getByTestId('audio-gate').click();
-    await page.getByRole('button', { name: 'Create Room' }).click();
+    await page.getByTestId('create-room').click();
     const codeLocator = page.getByTestId('room-code');
     await codeLocator.waitFor({ state: 'visible', timeout: 20000 });
     const code = ((await codeLocator.textContent()) ?? '').replace(/\s+/g, '');
