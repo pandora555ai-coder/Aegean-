@@ -52,7 +52,7 @@ page in Chromium. Result: 22 passed, 0 failed.
    - A resume carrying the live instance id was accepted.
 4. **Inverse.** A "same players" press with the VIP's seat gone hands VIP to the remaining human:
    state.ts:1126-1131 (`rebuildRoomForNewGame` step 6). An in-game drop now migrates to a human (state.ts:1060).
-   Suites: see the report line below.
+   Suites, one at a time: 319 35/35, 263 52/52, 277 24/24, 300 55/55, 303 23/23, 308 W 18/18 · P 3/3 · T 5/5, 310 20/20; typecheck exit 0.
 
 Not done (out of scope): the phone's `play-again-button`, labelled "Νέο παιχνίδι" since Task 239, still sends
 `vip:play_again`. The TV has no new-game button. Wiring both to the new events belongs with the UI task.
