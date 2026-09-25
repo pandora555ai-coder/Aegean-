@@ -104,18 +104,24 @@ export const styles: Record<string, CSSProperties> = {
     zIndex: 3,
     pointerEvents: 'none',
   },
+  // Task 316 - sits in the lobby's left column under the tagline, so it is
+  // sized to that column (it used to be 2rem/1.5rem 3rem, centred across the
+  // temple). Filled wine takes the cream text token, not the dark carve.
   createButton: {
-    fontSize: '2rem',
-    padding: '1.5rem 3rem',
+    marginTop: '3cqh',
+    fontSize: '1.5rem',
+    padding: '0.8rem 2rem',
     borderRadius: '0.75rem',
     border: 'none',
     background: 'var(--wine-2)',
-    color: 'var(--carve)',
+    color: 'var(--marble)',
     fontWeight: 700,
+    cursor: 'pointer',
   },
   createButtonDisabled: {
-    fontSize: '2rem',
-    padding: '1.5rem 3rem',
+    marginTop: '3cqh',
+    fontSize: '1.5rem',
+    padding: '0.8rem 2rem',
     borderRadius: '0.75rem',
     border: 'none',
     background: 'var(--marble)',

@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import {
   stagesForLength,
   totalQuestionsForLength,
@@ -22,6 +22,10 @@ interface LobbyViewProps {
   muted: boolean;
   onToggleMuted: () => void;
   onCreateRoom: () => void;
+  // Task 316 - false while the tap-to-start gate (Task 259) still covers the
+  // screen: focus must not land on the button under it, or remote OK would
+  // create a room without the gate's audio-unlocking tap.
+  focusCreate: boolean;
   qrCanvasRef: RefObject<HTMLCanvasElement>;
   roomSettings: RoomSettings;
   // Task 57 - which game is selected, plus the registry-driven list (used
@@ -69,6 +73,7 @@ export function LobbyView({
   muted,
   onToggleMuted,
   onCreateRoom,
+  focusCreate,
   qrCanvasRef,
   roomSettings,
   mode,
@@ -76,6 +81,14 @@ export function LobbyView({
 }: LobbyViewProps) {
   const modeLabel = availableModes.find((option) => option.id === mode)?.label ?? mode;
   const joinUrl = typeof window !== 'undefined' ? window.location.host : '';
+  // Task 316 - Enter / remote OK must trigger "Νέο παιχνίδι". A disabled
+  // button cannot take focus, and the socket is not connected at mount, so
+  // the autoFocus attribute alone misses; focus once it is enabled.
+  const createRef = useRef<HTMLButtonElement>(null);
+  const showCreate = roomCode === null && !isRejoining;
+  useEffect(() => {
+    if (showCreate && connected && focusCreate) createRef.current?.focus();
+  }, [showCreate, connected, focusCreate]);
 
   return (
     <div className="lobby-root screen-fade-in" data-testid="lobby-root">
@@ -97,7 +110,29 @@ export function LobbyView({
           Αιγαίον
           <small>{greekUpper('Ο Σωκράτης εναντίον των Σοφιστών')}</small>
         </div>
-        <div className="status">{connected ? 'connected' : 'disconnected'}</div>
+        {roomCode === null && !isRejoining ? (
+          <button
+            ref={createRef}
+            style={connected ? styles.createButton : styles.createButtonDisabled}
+            type="button"
+            data-testid="create-room"
+            autoFocus={focusCreate}
+            onClick={onCreateRoom}
+            disabled={!connected}
+          >
+            Νέο παιχνίδι
+          </button>
+        ) : null}
+        {roomCode === null && isRejoining && (
+          <div className="status" data-testid="rejoining">
+            Επανασύνδεση...
+          </div>
+        )}
+        {!connected && !(roomCode === null && isRejoining) && (
+          <div className="status" data-testid="reconnecting">
+            Επανασύνδεση…
+          </div>
+        )}
         {phase === 'LOBBY' && wakeLockFailed && (
           <div className="status" data-testid="wake-lock-hint">
             Συμβουλή: απενεργοποιήστε το Eco Mode / Screen Saver στις ρυθμίσεις της τηλεόρασης
@@ -106,22 +141,7 @@ export function LobbyView({
       </div>
 
       <div className="right">
-        {roomCode === null ? (
-          isRejoining ? (
-            <div className="status" data-testid="rejoining">
-              Επανασύνδεση...
-            </div>
-          ) : (
-            <button
-              style={connected ? styles.createButton : styles.createButtonDisabled}
-              type="button"
-              onClick={onCreateRoom}
-              disabled={!connected}
-            >
-              Create Room
-            </button>
-          )
-        ) : (
+        {roomCode !== null && (
           <>
             <MarbleSlab data-testid="join-slab" style={{ display: 'grid', padding: '4cqh 5cqh' }}>
               <div className="join-inner">

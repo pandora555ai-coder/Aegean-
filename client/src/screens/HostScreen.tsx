@@ -2339,6 +2339,7 @@ export default function HostScreen() {
         muted={muted}
         onToggleMuted={toggleMuted}
         onCreateRoom={handleCreateRoom}
+        focusCreate={audioGatePassed}
         qrCanvasRef={qrCanvasRef}
         roomSettings={roomSettings}
         mode={lobby?.mode ?? DEFAULT_GAME_MODE}
@@ -2783,6 +2784,7 @@ export default function HostScreen() {
         <button
           type="button"
           data-testid="audio-gate"
+          autoFocus
           className="enter-pop"
           onClick={handleAudioGateTap}
           style={hostStyles.audioGate}

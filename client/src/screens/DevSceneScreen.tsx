@@ -315,6 +315,7 @@ const PHASES: Array<{ phase: GamePhase; render: () => ReactElement }> = [
         muted={false}
         onToggleMuted={() => {}}
         onCreateRoom={() => {}}
+        focusCreate={false}
         qrCanvasRef={{ current: null }}
         roomSettings={DEFAULT_ROOM_SETTINGS}
         mode="quiz"
