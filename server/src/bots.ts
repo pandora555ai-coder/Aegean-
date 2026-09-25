@@ -493,7 +493,7 @@ export function spawnBots(code: string, count: number): void {
 }
 
 // Disconnects every bot socket for `code` and removes its Player entry from
-// the room outright (not just marking it disconnected - resetRoomForNewGame
+// the room outright (not just marking it disconnected - rebuildRoomForNewGame
 // would otherwise carry a "connected: false" bot ghost into the next lobby).
 // Called once the room's game is actually over (each mode's own finishGame)
 // and from vip:reset_to_lobby, so an abandoned bot game cleans up too. A

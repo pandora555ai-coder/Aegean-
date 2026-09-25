@@ -13,7 +13,8 @@ import {
   type StageDefinition,
 } from '@game/shared';
 import type { Room } from '../state.js';
-import { getQuestionSet } from '../questions.js';
+import { getQuestionSet, questionSeenKey } from '../questions.js';
+import { markSeen } from '../seenContent.js';
 import { enterQuestionOrPowerUp, enterStageAnnounce } from '../phases.js';
 import { QUIZ_CONTINUATIONS } from './quiz.js';
 import { DRAW_CONTINUATIONS, clearDrawState, startDrawSegment } from './draw.js';
@@ -152,7 +153,8 @@ function drawRoundCount(room: Room): number {
 // clearDrawState), numeric questions or agora scene. Each of these four calls
 // is the standalone mode's own prepare, deleting its state first.
 function prepareGame(room: Room): void {
-  room.questions = getQuestionSet(room.settings.difficultyMix, quizQuestionCount(room));
+  room.questions = getQuestionSet(room.settings.difficultyMix, quizQuestionCount(room), room.seenQuestionKeys);
+  markSeen(room.questions, questionSeenKey, room.seenQuestionKeys);
   prepareBlitzGame(room, BLITZ_STATEMENT_COUNT, BLITZ_ROUND_COUNT);
   clearDrawState(room);
   prepareNumericGame(room, FULL_NUMERIC_QUESTION_COUNT);

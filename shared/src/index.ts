@@ -23,6 +23,10 @@ export const ClientEvents = {
   SUBMIT_ANSWER: 'player:submit_answer',
   VIP_NEXT: 'vip:next',
   VIP_PLAY_AGAIN: 'vip:play_again',
+  // Task 319 - the SAME "Ξανά, ίδια παρέα" as VIP_PLAY_AGAIN, sent by the TV:
+  // post-game actions are one of the two things a TV may do (the other is
+  // creating its room). GAME_OVER only, from the room's current host display.
+  HOST_PLAY_AGAIN: 'host:play_again',
   VIP_UPDATE_SETTINGS: 'vip:update_settings',
   // Task 57 - separate from VIP_UPDATE_SETTINGS: mode isn't a RoomSettings
   // field (it's Room's own, read by modeForRoom everywhere), so it gets its
@@ -1619,7 +1623,7 @@ export interface StageAnnouncePayload {
   // the first thing a stage emits AND is already held in client state
   // through that stage's own SOCRATES beats, so one field covers the whole
   // announce window, and state:sync rebuilds it for a TV that reloads
-  // mid-card. Scoped to THIS game by construction - resetRoomForNewGame
+  // mid-card. Scoped to THIS game by construction - rebuildRoomForNewGame
   // clears room.climb, so game 2's stage 1 announces null again.
   // Task 258 - Η Δίκη is gone, so 'climb' is the only finale this can name;
   // the field stays (the TV reads it to enter the Anavasis world) rather
@@ -2471,6 +2475,12 @@ export interface PlayerStanding {
 }
 
 export interface VipPlayAgainPayload {}
+
+export interface HostPlayAgainPayload {}
+
+// Task 319 - how long a GAME_OVER room waits for "Ξανά, ίδια παρέα" / "Νέο
+// παιχνίδι" before playing again with the same players on its own.
+export const POST_GAME_IDLE_MS = 300000;
 
 // Pause is a boolean flag on the room, NOT a new GamePhase - the phase
 // stays QUESTION/REVEAL/STEAL throughout a pause, so every existing
@@ -4143,6 +4153,7 @@ export type ClientToServerEvents = {
   [ClientEvents.SUBMIT_ANSWER]: (payload: SubmitAnswerPayload) => void;
   [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
+  [ClientEvents.HOST_PLAY_AGAIN]: (payload: HostPlayAgainPayload) => void;
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
   [ClientEvents.VIP_SET_MODE]: (payload: VipSetModePayload) => void;
   [ClientEvents.VIP_SET_AUDIO_VOLUME]: (payload: VipSetAudioVolumePayload) => void;

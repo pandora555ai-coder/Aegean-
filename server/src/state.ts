@@ -25,6 +25,7 @@ import {
   SPEECH_POLICY_OPTIONS,
   DEFAULT_GAME_MODE,
   SOCRATES_MAX_DURATION_MS,
+  POST_GAME_IDLE_MS,
   sanitizeCustomName,
   PRESET_NAMES,
 } from '@game/shared';
@@ -32,8 +33,9 @@ import {
 // (and through them phases.ts, which imports THIS file). registry.ts is a
 // leaf, so this direction stays acyclic.
 import { modeForRoom } from './modes/registry.js';
-import { createSocratesState, resetSocratesState, type SocratesState } from './socrates.js';
+import { createSocratesState, type SocratesState } from './socrates.js';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
+import { clearModeStateForRoom } from './modeStateRegistry.js';
 import { clearActiveTimer, clearSimpleTimer, type ActiveTimer, type SimpleTimer } from './timers.js';
 
 export interface RecordedAnswer {
@@ -166,7 +168,7 @@ export interface ClimbState {
   // rather than on the stage ledger (whose own firedSlots is cleared at every
   // stage boundary) because the climb is ONE stage and the beat is meant to
   // land once a show: the second and third player the spear takes out go
-  // silently. Reset for free with the rest of the climb - resetRoomForNewGame
+  // silently. Reset for free with the rest of the climb - rebuildRoomForNewGame
   // sets room.climb to null.
   spearBeatPlayed: boolean;
   // Task 205 - who the spear has speared out, in the order it happened
@@ -330,7 +332,7 @@ export interface Room {
   settings: RoomSettings;
   // Task 217 - the `?bot=N` the room was CREATED with (host:create_room's
   // botCount, already clamped to MAX_BOTS). 0 for a room nobody asked bots
-  // for. PERSISTS across resetRoomForNewGame (a room preference, same as
+  // for. PERSISTS across rebuildRoomForNewGame (a room preference, same as
   // `settings`/`audioVolume` - never reset there) so vip:play_again and
   // vip:reset_to_lobby know how many bots to re-spawn once cleanupRoomBots
   // has already emptied the roster of them.
@@ -379,7 +381,17 @@ export interface Room {
   // Task 236 - monotonic id of the Socrates beat currently on screen, echoed
   // by the host on socrates:audio_ended so a stale ack (one belonging to a
   // beat the backstop already cut off) can be told apart from a real one.
+  // Task 319 - a ROOM field, never reset: monotonic across games too, so a
+  // late ack from game 1 can never carry an id that is live again in game 2.
   socratesBeatId: number;
+  // Task 319 - every question/numeric question/blitz statement an earlier game
+  // in this room dealt (seenContent.ts). A ROOM field: it is what lets game 2
+  // prefer content game 1 never showed, recycling only a pool that ran out.
+  seenQuestionKeys: Set<string>;
+  // Task 319 - GAME_OVER's "nobody pressed anything" timer: POST_GAME_IDLE_MS
+  // after GAME_OVER it fires "Ξανά, ίδια παρέα". null outside GAME_OVER and
+  // whenever no connected human is left to play again (armPostGameIdle).
+  postGameIdleTimer: NodeJS.Timeout | null;
   // Task 238 - what the CURRENT Socrates beat's backstop timer was armed at
   // (socratesBackstopMs: this line's own clip length plus a margin, or the
   // flat unknown-duration fallback). Recorded because the timer itself only
@@ -462,7 +474,7 @@ export interface Room {
   crowdIntensityCtx: CrowdIntensityContext | null;
   // Task 178 - VIP-controlled crowd/voice playback levels, percent (0-100).
   // Lives alongside crowdMood as HOST-ONLY audio state, but (unlike
-  // crowdMood) PERSISTS across resetRoomForNewGame - a VIP preference, not
+  // crowdMood) PERSISTS across rebuildRoomForNewGame - a VIP preference, not
   // per-game state, same as `settings`.
   audioVolume: AudioVolumePayload;
   // Task 172 - one grace timer per currently-disconnected LOBBY player,
@@ -498,37 +510,51 @@ export function generateRoomCode(): RoomCode {
 // import, so host:create_room checks the id against listGameModeOptions()
 // and passes only a known one. Omitted = DEFAULT_GAME_MODE, exactly as
 // before.
-export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME_MODE): Room {
-  const code = generateRoomCode();
-  const room: Room = {
-    code,
-    hostSocketId,
-    createdAt: Date.now(),
-    players: new Map(),
-    mode,
+// Task 319 - THE WHITELIST. These Room fields belong to the ROOM and survive
+// "Ξανά, ίδια παρέα"; every other field is per-GAME state and is rebuilt from
+// freshGameState() below. GameFields is typed as "Room minus these", so a new
+// Room field that is in neither list is a compile error in freshGameState -
+// nothing can be forgotten by a reset again (the old field-by-field reset had
+// already missed questionStartedAt).
+const ROOM_FIELDS = [
+  'code',
+  'hostSocketId',
+  'createdAt',
+  'players',
+  'mode',
+  'settings',
+  'requestedBotCount',
+  'vipPlayerId',
+  'emptyTtlTimer',
+  'audioVolume',
+  'lobbyGraceTimers',
+  'socratesBeatId',
+  'seenQuestionKeys',
+] as const;
+type GameFields = Omit<Room, (typeof ROOM_FIELDS)[number]>;
+
+// A new game's state from nothing - shared by createRoom and
+// rebuildRoomForNewGame, so game 2 starts from exactly what game 1 did.
+function freshGameState(): GameFields {
+  return {
     phase: 'LOBBY',
     stage: 0, // no stage until the first question is entered
     // Nobody reads `questions` before the game actually starts - built for
-    // real by buildRoomQuestions() on vip:start_game and vip:play_again, so
-    // settings changes made while still in LOBBY never waste a shuffle.
+    // real by buildRoomQuestions() in startGame (index.ts), so settings
+    // changes made while still in LOBBY never waste a shuffle.
     questions: [],
     currentQuestionIndex: -1,
     answers: new Map(),
     questionStartedAt: 0,
     activeTimer: null,
     lastReveal: null,
-    settings: { ...DEFAULT_ROOM_SETTINGS },
-    requestedBotCount: 0,
-    vipPlayerId: null,
     paused: false,
     pausedByName: null,
     pausedAt: null,
-    emptyTtlTimer: null,
     socrates: createSocratesState(),
     gameIntroPlayed: false,
     pendingSocratesQueue: [],
     skipVote: null,
-    socratesBeatId: 0,
     socratesBackstopMs: SOCRATES_MAX_DURATION_MS,
     socratesHoldMs: null,
     gameStartedAt: null,
@@ -544,8 +570,27 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
     crowdTensionTimer: null,
     drawWarningTimer: null,
     crowdIntensityCtx: null,
+    postGameIdleTimer: null,
+  };
+}
+
+export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME_MODE): Room {
+  const code = generateRoomCode();
+  const room: Room = {
+    code,
+    hostSocketId,
+    createdAt: Date.now(),
+    players: new Map(),
+    mode,
+    settings: { ...DEFAULT_ROOM_SETTINGS },
+    requestedBotCount: 0,
+    vipPlayerId: null,
+    emptyTtlTimer: null,
     audioVolume: { ...DEFAULT_AUDIO_VOLUME },
     lobbyGraceTimers: new Map(),
+    socratesBeatId: 0,
+    seenQuestionKeys: new Set(),
+    ...freshGameState(),
   };
 
   rooms.set(code, room);
@@ -568,12 +613,68 @@ export function deleteRoom(code: RoomCode): boolean {
     }
     clearSimpleTimer(room.crowdTensionTimer);
     clearSimpleTimer(room.drawWarningTimer);
+    cancelPostGameIdle(room, 'room deleted');
     for (const handle of room.lobbyGraceTimers.values()) {
       clearTimeout(handle);
     }
     room.lobbyGraceTimers.clear();
   }
   return rooms.delete(code);
+}
+
+// Task 319 - the post-game idle timer. POST_GAME_IDLE_MS (5 minutes) in prod,
+// always: the dev override POST_GAME_IDLE_MS_DEV is read only when NODE_ENV is
+// not 'production' (the FORCE_QUESTION_ID precedent - the prod unit sets
+// NODE_ENV=production), and only as a positive integer; anything else, in any
+// environment, falls back to the real value.
+export function postGameIdleMs(): number {
+  if (process.env.NODE_ENV === 'production') {
+    return POST_GAME_IDLE_MS;
+  }
+  const override = Number(process.env.POST_GAME_IDLE_MS_DEV);
+  return Number.isInteger(override) && override > 0 ? override : POST_GAME_IDLE_MS;
+}
+
+// What the timer fires. Set once by index.ts (the "same players" path emits to
+// sockets and re-spawns bots, neither of which state.ts may import).
+let postGameIdleHandler: ((room: Room) => void) | null = null;
+
+export function onPostGameIdle(handler: (room: Room) => void): void {
+  postGameIdleHandler = handler;
+}
+
+// Called at every GAME_OVER (each mode's finishGame) and when a human comes
+// back to a GAME_OVER room. Re-arms from scratch; arms nothing outside
+// GAME_OVER or with no connected human, since "same players" for nobody is
+// not a game - the empty-room TTL is what cleans such a room up.
+export function armPostGameIdle(room: Room): void {
+  cancelPostGameIdle(room, null);
+  if (room.phase !== 'GAME_OVER' || getConnectedHumans(room).length === 0) {
+    return;
+  }
+  const ms = postGameIdleMs();
+  room.postGameIdleTimer = setTimeout(() => {
+    room.postGameIdleTimer = null;
+    if (rooms.get(room.code) !== room) {
+      return;
+    }
+    console.log(`room ${room.code} post-game idle timer fired after ${ms}ms`);
+    postGameIdleHandler?.(room);
+  }, ms);
+  console.log(`room ${room.code} post-game idle timer armed: ${ms}ms`);
+}
+
+// `reason` null = a silent re-arm; otherwise logged, and only when a timer was
+// actually pending, so the log shows exactly which event cancelled it.
+export function cancelPostGameIdle(room: Room, reason: string | null): void {
+  if (!room.postGameIdleTimer) {
+    return;
+  }
+  clearTimeout(room.postGameIdleTimer);
+  room.postGameIdleTimer = null;
+  if (reason) {
+    console.log(`room ${room.code} post-game idle timer cancelled: ${reason}`);
+  }
 }
 
 function isRoomFullyEmpty(room: Room): boolean {
@@ -960,62 +1061,49 @@ export function removePlayer(code: RoomCode, playerId: string): boolean {
   return room.players.delete(playerId);
 }
 
-// Resets a finished game back to a fresh LOBBY - keeps every player (both
-// connected and disconnected) with their playerId/name intact, so nobody
-// has to rejoin for "play again".
-export function resetRoomForNewGame(room: Room): void {
-  room.phase = 'LOBBY';
-  // Back to "no stage" so the next game announces stage 1 again from scratch.
-  room.stage = 0;
-  room.currentQuestionIndex = -1;
-  room.answers.clear();
+// Task 319 - "Ξανά, ίδια παρέα": the same room back to LOBBY for a new game.
+// A WHITELIST rebuild onto the SAME Room object, never field-by-field
+// clearing: every per-game field is replaced by freshGameState() (the builder
+// createRoom uses), and only the ROOM_FIELDS above survive, plus the two
+// records this function copies across on purpose. The SAME object, because
+// sockets, the rooms Map and every mode's WeakMap entry are keyed by it.
+//
+// Bots are the caller's: cleanupRoomBots before this, spawnBots after (FRESH
+// instances, requestedBotCount of them) - bots.ts imports this file.
+export function rebuildRoomForNewGame(room: Room): void {
+  // 1. Nothing the finished game armed may fire into the new one.
   clearActiveTimer(room);
-  room.paused = false;
-  room.pausedByName = null;
-  room.pausedAt = null;
-  room.lastReveal = null;
-  // A fresh game means fresh commentary too - no streaks/cooldowns/used
-  // lines carried over from the game that just ended.
-  resetSocratesState(room.socrates);
-  // A fresh game opens with GAME_INTRO again too.
-  room.gameIntroPlayed = false;
-  room.pendingSocratesBeat = null;
-  // Task 236 - no half-played narration survives into the next game.
-  room.pendingSocratesQueue = [];
-  // Task 300 - nor a vote against one. A fresh game opens a fresh narration
-  // with a fresh vote, so game 2 can skip its own intro exactly as game 1 could.
-  room.skipVote = null;
-  room.socratesBeatId = 0;
-  room.socratesBackstopMs = SOCRATES_MAX_DURATION_MS;
-  room.socratesHoldMs = null;
-  // Task 239 - no residue from the game that just ended: a fresh "play
-  // again" must open its own clean timing record and re-derive its own
-  // start time at the next startGame, not inherit the last one's.
-  room.gameStartedAt = null;
-  room.stageTimings = [];
-  room.activeSabotageByTarget.clear();
-  room.shuffledOptionsByTarget.clear();
-  // No unspent power-up choice carries over from the game that just ended.
-  room.powerUpChoices.clear();
-  room.pendingPowerUpByTarget.clear();
-  // No half-finished theft survives into the next game.
-  room.steal = null;
-  // Nor last game's climb - including whoever it crowned, which finishGame
-  // would otherwise still be reading at the NEXT game's GAME_OVER.
-  room.climb = null;
-  // Fresh game, fresh crowd - back to calm, and no leftover tension timer
-  // from whatever question was in flight when this reset was triggered.
-  room.crowdMood = 'calm';
   clearSimpleTimer(room.crowdTensionTimer);
-  room.crowdTensionTimer = null;
   clearSimpleTimer(room.drawWarningTimer);
-  room.drawWarningTimer = null;
-  room.crowdIntensityCtx = null;
-  // Settings PERSIST across play_again (room.settings is untouched) - the
-  // VIP doesn't have to reconfigure every game, only the question SET gets
-  // rebuilt (a fresh shuffle/draw against those same settings).
-  buildRoomQuestions(room);
-  for (const player of room.players.values()) {
+  cancelPostGameIdle(room, 'room rebuilt for a new game');
+  // 2. Per-game state living OUTSIDE the Room literal (draw/blitz/numeric/agora).
+  clearModeStateForRoom(room);
+  // 3. The one per-game record that carries: every line this room has spoken,
+  //    so game 2 draws lines game 1 never used (socrates.ts's pickLine, which
+  //    recycles a pool only once all of it has been heard).
+  const earlierGamesLines = new Set([...room.socrates.earlierGamesLines, ...room.socrates.usedLines]);
+  // 4. The rebuild itself.
+  Object.assign(room, freshGameState());
+  room.socrates.earlierGamesLines = earlierGamesLines;
+  // 5. The roster: connected humans, with their names/avatars/playerIds, back
+  //    to 0. A disconnected player's seat is not held - they rejoin the lobby
+  //    like anyone (their name is still free); a bot here is one the caller
+  //    did not clean up, dropped rather than carried.
+  for (const [playerId, player] of room.players) {
+    if (player.isBot || !player.connected) {
+      room.players.delete(playerId);
+      clearLobbyDisconnectGrace(room, playerId);
+      continue;
+    }
     player.score = 0;
+  }
+  // 6. VIP stays with whoever held it if they are still here; otherwise it
+  //    goes to the longest-joined human left (Map order is join order).
+  if (room.vipPlayerId !== null && !room.players.has(room.vipPlayerId)) {
+    room.vipPlayerId = null;
+  }
+  const firstHuman = room.players.values().next().value;
+  if (firstHuman) {
+    claimVipIfVacant(room, firstHuman);
   }
 }

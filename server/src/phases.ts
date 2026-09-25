@@ -28,6 +28,7 @@ import {
   type StageDefinition,
 } from '@game/shared';
 import {
+  armPostGameIdle,
   getConnectedPlayers,
   getRoom,
   // Task 300 - the skip vote's three pure readers. The DECISION lives in
@@ -50,7 +51,8 @@ import { modeForRoom, stagesForRoom } from './modes/registry.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from './timers.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from './crowd.js';
 import { calculatePoints, sortAndRankResults } from './scoring.js';
-import { getUnusedQuestionSet } from './questions.js';
+import { getUnusedQuestionSet, questionSeenKey } from './questions.js';
+import { markSeen } from './seenContent.js';
 import {
   applyClimbDuelResult,
   applyClimbRound,
@@ -1508,7 +1510,11 @@ export function startClimb(room: Room): boolean {
     room.settings.difficultyMix,
     room.questions.map((question) => question.id),
     CLIMB_MAX_QUESTIONS,
+    room.seenQuestionKeys,
   );
+  // Task 319 - the whole draw is marked, not just what the climb reaches: a
+  // question dealt is one a player may have seen, and the pool is 899 deep.
+  markSeen(questions, questionSeenKey, room.seenQuestionKeys);
   if (questions.length === 0) {
     console.log(`room ${room.code} skipping the climb — no unused questions left`);
     return false;
@@ -2271,7 +2277,7 @@ function finishGame(room: Room): void {
   }
   // Task 293 - the LAST stage's ledger dump, for the same reason the timing
   // above is closed here: no next stage will ever announce itself and trigger
-  // the boundary. Left intact (not reset) so play-again's resetSocratesState
+  // the boundary. Left intact (not reset) so play-again's rebuildRoomForNewGame
   // is the one place it is cleared for a new game.
   dumpStageLedger(room.socrates.ledger, room.code, room.requestedBotCount > 0);
   io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
@@ -2291,4 +2297,6 @@ function finishGame(room: Room): void {
   // now rather than leaving them in the roster for a play-again that didn't
   // ask for them.
   cleanupRoomBots(room.code);
+  // Task 319 - 5 minutes of nobody pressing anything plays again, same players.
+  armPostGameIdle(room);
 }

@@ -11,7 +11,9 @@ import {
   type NumericRevealShowPayload,
   type RoomCode,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { armPostGameIdle, getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { registerModeStateClearer } from '../modeStateRegistry.js';
+import { markSeen, seenKey, unseenFirst } from '../seenContent.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from '../crowd.js';
@@ -61,6 +63,8 @@ interface NumericState {
 }
 
 const numericStateByRoom = new WeakMap<Room, NumericState>();
+// Task 319 - cleared by rebuildRoomForNewGame (state.ts) via the registry.
+registerModeStateClearer((room) => numericStateByRoom.delete(room));
 
 function requireNumericState(room: Room): NumericState {
   const state = numericStateByRoom.get(room);
@@ -105,6 +109,10 @@ function shuffle<T>(items: readonly T[]): T[] {
   return shuffled;
 }
 
+function numericSeenKey(question: NumericQuestion): string {
+  return seenKey('numeric', question.text);
+}
+
 // Task 52's prepareGame contract. The delete is unconditional and first, same
 // as draw's - a second game (via "play again", the same Room object) must
 // never see a trace of the first game's submissions.
@@ -121,8 +129,14 @@ function prepareGame(room: Room): void {
 // again" reuses the same Room object.
 export function prepareNumericGame(room: Room, questionCount: number): void {
   numericStateByRoom.delete(room);
+  // Task 319 - what an earlier game in this room asked goes to the back.
+  const questions = unseenFirst(shuffle(NUMERIC_QUESTIONS), numericSeenKey, room.seenQuestionKeys).slice(
+    0,
+    questionCount,
+  );
+  markSeen(questions, numericSeenKey, room.seenQuestionKeys);
   numericStateByRoom.set(room, {
-    questions: shuffle(NUMERIC_QUESTIONS).slice(0, questionCount),
+    questions,
     questionIndex: -1,
     submissions: new Map(),
     lastReveal: null,
@@ -486,6 +500,8 @@ function finishGame(room: Room): void {
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} numeric game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   cleanupRoomBots(room.code);
+  // Task 319 - 5 minutes of nobody pressing anything plays again, same players.
+  armPostGameIdle(room);
 }
 
 // Exported since Task 134 - see QUIZ_CONTINUATIONS' note in quiz.ts.

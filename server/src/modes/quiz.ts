@@ -8,7 +8,8 @@ import {
   type StageDefinition,
 } from '@game/shared';
 import type { Room } from '../state.js';
-import { getQuestionSet } from '../questions.js';
+import { getQuestionSet, questionSeenKey } from '../questions.js';
+import { markSeen } from '../seenContent.js';
 import {
   advanceFromReveal,
   advanceFromSocrates,
@@ -101,7 +102,9 @@ export const quizMode: GameMode = {
     room.questions = getQuestionSet(
       room.settings.difficultyMix,
       totalQuestionsForLength(room.settings.gameLength, QUIZ_STAGES),
+      room.seenQuestionKeys,
     );
+    markSeen(room.questions, questionSeenKey, room.seenQuestionKeys);
   },
   // A quiz game opens on the single gate every question is entered through -
   // which is what runs GAME_INTRO and announces stage 1 before anything else.

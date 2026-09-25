@@ -9,9 +9,10 @@ import {
 } from '@game/shared';
 import { isLineDeleted } from './voiceDeletions.js';
 // Task 293 - the per-stage ledger rides on SocratesState (see below), so it
-// resets for free with resetSocratesState on play-again, exactly like
-// usedLines/momentFireCounts. A leaf module: it imports nothing back.
-import { createStageLedger, resetStageLedger, type StageLedger } from './stageLedger.js';
+// is rebuilt fresh with the rest of SocratesState on play-again (Task 319's
+// rebuildRoomForNewGame), exactly like usedLines/momentFireCounts. A leaf
+// module: it imports nothing back.
+import { createStageLedger, type StageLedger } from './stageLedger.js';
 
 // Task 61 - same dev/production idiom used elsewhere in the server (see
 // index.ts/avatars.ts's `isProduction`): gates the per-fire moment log and
@@ -128,6 +129,11 @@ export interface SocratesState {
   // line twice" is a whole-game invariant, not scoped per moment or per
   // surface.
   usedLines: Set<string>;
+  // Task 319 - every template an EARLIER game in this room used. Carried
+  // across "Ξανά, ίδια παρέα" by rebuildRoomForNewGame (state.ts) - the only
+  // SocratesState field that survives a new game - so pickLine can prefer
+  // lines this room has never heard, recycling a pool only once it is spent.
+  earlierGamesLines: Set<string>;
   // How many times each REVEAL Moment has actually been picked this game.
   // Task 61: fed the dev-only GAME_OVER summary in logMomentFireSummary
   // below. Task 62: now also load-bearing in all environments - the
@@ -147,15 +153,13 @@ export interface SocratesState {
 }
 
 export function createSocratesState(): SocratesState {
-  return { players: new Map(), usedLines: new Set(), momentFireCounts: new Map(), ledger: createStageLedger() };
-}
-
-export function resetSocratesState(state: SocratesState): void {
-  state.players.clear();
-  state.usedLines.clear();
-  state.momentFireCounts.clear();
-  // Back to "no stage yet" - the next game's first stage card opens its own.
-  resetStageLedger(state.ledger, 0, '', null);
+  return {
+    players: new Map(),
+    usedLines: new Set(),
+    earlierGamesLines: new Set(),
+    momentFireCounts: new Map(),
+    ledger: createStageLedger(),
+  };
 }
 
 const MAX_NAME_DISPLAY_LENGTH = 12;
@@ -1565,7 +1569,8 @@ export interface PickedLine {
 // `pool` (genius 3x as likely as okish - see LINE_RATINGS/lineWeight above).
 // Exhaustion is unaffected by weighting - once every line in the pool has
 // been used this game, this still returns null exactly as the old
-// first-unused-in-order version did.
+// first-unused-in-order version did (a pool never repeats WITHIN a game).
+// Across games (Task 319) an exhausted pool recycles instead - see below.
 function pickLine(state: SocratesState, pool: readonly string[], vars: Record<string, string>): PickedLine | null {
   // Task 271 - deleted lines filtered out here, same "kept in the pool,
   // filtered at pick time" idiom GAME_INTRO_LINES_EXCLUDED_IN_FULL/
@@ -1575,15 +1580,27 @@ function pickLine(state: SocratesState, pool: readonly string[], vars: Record<st
   // filter its own pool first.
   const unused = pool.filter((template) => !state.usedLines.has(template) && !isLineDeleted(template));
   if (unused.length === 0) {
-    return null; // this moment's whole pool is exhausted this game
+    return null; // this moment's whole pool is exhausted THIS game
   }
-  const weights = unused.map(lineWeight);
+  // Task 319 - across games: prefer a line no earlier game in this room spoke.
+  // When every line still unused this game WAS spoken in an earlier one, the
+  // pool RECYCLES - its earlier-game marks are forgotten, so it is drawn
+  // afresh (and cycles through in full again) instead of going silent.
+  let candidates = unused.filter((template) => !state.earlierGamesLines.has(template));
+  if (candidates.length === 0) {
+    for (const template of pool) {
+      state.earlierGamesLines.delete(template);
+    }
+    candidates = unused;
+    console.log(`[lines] pool of ${pool.length} recycled - every unused line was spoken in an earlier game`);
+  }
+  const weights = candidates.map(lineWeight);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   let roll = Math.random() * totalWeight;
-  let chosen = unused[unused.length - 1];
-  for (let i = 0; i < unused.length; i++) {
+  let chosen = candidates[candidates.length - 1];
+  for (let i = 0; i < candidates.length; i++) {
     if (roll < weights[i]) {
-      chosen = unused[i];
+      chosen = candidates[i];
       break;
     }
     roll -= weights[i];

@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { Difficulty, DifficultyMix, Question } from '@game/shared';
+import { seenKey, unseenFirst } from './seenContent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUESTIONS_PATH = path.join(__dirname, 'data/questions.json');
@@ -126,10 +127,14 @@ function shuffle<T>(items: T[]): T[] {
   return shuffled;
 }
 
-export function getQuestionSet(mix: DifficultyMix, count: number): Question[] {
+// Task 319 - `seen` is the room's Room.seenQuestionKeys: questions an earlier
+// game in this room already asked go to the BACK of the shuffle, so they are
+// dealt only once the unseen ones run out (seenContent.ts). Callers mark what
+// they deal. Absent = every question counts as unseen, as before.
+export function getQuestionSet(mix: DifficultyMix, count: number, seen: ReadonlySet<string> = new Set()): Question[] {
   const allowedDifficulties = DIFFICULTY_MIX_TO_ALLOWED[mix];
   const pool = QUESTIONS.filter((question) => allowedDifficulties.includes(question.difficulty));
-  let shuffled = shuffle(pool);
+  let shuffled = unseenFirst(shuffle(pool), questionSeenKey, seen);
 
   // Dev-only measurement hook (Task 87) - pins the first question to a known
   // id so a layout check can screenshot/measure a specific question's text
@@ -160,13 +165,22 @@ export function getQuestionSet(mix: DifficultyMix, count: number): Question[] {
 // BOUND: fewer come back when the filtered pool is genuinely smaller, and the
 // trial's "question pool exhausted -> highest score wins" ending is what
 // covers running off the end of it.
-export function getUnusedQuestionSet(mix: DifficultyMix, usedIds: readonly string[], count: number): Question[] {
+export function getUnusedQuestionSet(
+  mix: DifficultyMix,
+  usedIds: readonly string[],
+  count: number,
+  seen: ReadonlySet<string> = new Set(),
+): Question[] {
   const allowedDifficulties = DIFFICULTY_MIX_TO_ALLOWED[mix];
   const used = new Set(usedIds);
   const pool = QUESTIONS.filter(
     (question) => allowedDifficulties.includes(question.difficulty) && !used.has(question.id),
   );
-  return shuffle(pool).slice(0, count);
+  return unseenFirst(shuffle(pool), questionSeenKey, seen).slice(0, count);
+}
+
+export function questionSeenKey(question: Question): string {
+  return seenKey('quiz', question.id);
 }
 
 export interface QuestionStats {

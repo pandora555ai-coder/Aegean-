@@ -5,6 +5,7 @@ import {
   BLITZ_REVEAL_DURATION_MS,
   BLITZ_ROUND_COUNT,
   BLITZ_STATEMENT_COUNT,
+  BLITZ_STATEMENTS,
   BLITZ_WRONG_POINTS,
   ServerEvents,
   type BlitzRevealHostPayload,
@@ -16,7 +17,9 @@ import {
   type GamePhase,
   type RoomCode,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { armPostGameIdle, getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { registerModeStateClearer } from '../modeStateRegistry.js';
+import { markSeen, seenKey } from '../seenContent.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
 import { emitCrowdIntensity, setCrowdMood } from '../crowd.js';
@@ -64,6 +67,8 @@ interface BlitzState {
 }
 
 const blitzStateByRoom = new WeakMap<Room, BlitzState>();
+// Task 319 - cleared by rebuildRoomForNewGame (state.ts) via the registry.
+registerModeStateClearer((room) => blitzStateByRoom.delete(room));
 
 function requireBlitzState(room: Room): BlitzState {
   const state = blitzStateByRoom.get(room);
@@ -93,6 +98,25 @@ function armBlitzTimer(room: Room, kind: BlitzTimerKind, durationMs: number, onF
   armActiveTimer(room, kind, durationMs, onFire);
 }
 
+function blitzSeenKey(statement: BlitzStatement): string {
+  return seenKey('blitz', statement.text);
+}
+
+// Task 319 - the statements no earlier game in this room dealt, when there are
+// enough of them for the whole draw with BOTH truth values able to fill their
+// half of every round (drawBlitzGameStatements balances true/false per round);
+// otherwise the full pool - the recycle. Returns a pool, not a draw, so the
+// per-round balance stays drawBlitzGameRounds' job.
+function unseenBlitzPool(room: Room, total: number): readonly BlitzStatement[] {
+  const unseen = BLITZ_STATEMENTS.filter((statement) => !room.seenQuestionKeys.has(blitzSeenKey(statement)));
+  const trues = unseen.filter((statement) => statement.isTrue).length;
+  if (unseen.length >= total && Math.min(trues, unseen.length - trues) >= Math.ceil(total / 2)) {
+    return unseen;
+  }
+  console.log(`room ${room.code} blitz: ${unseen.length} unseen statement(s) cannot cover ${total} - drawing from the full pool`);
+  return BLITZ_STATEMENTS;
+}
+
 // Task 52's prepareGame contract. The delete is unconditional and first,
 // same as draw's and numeric's - a second game (via "play again", the same
 // Room object) must never see a trace of the first game's swipes.
@@ -104,7 +128,8 @@ function prepareGame(room: Room): void {
 // prepareNumericGame - a later task composes this into full).
 export function prepareBlitzGame(room: Room, statementCount: number, roundCount: number): void {
   blitzStateByRoom.delete(room);
-  const rounds = drawBlitzGameRounds(roundCount, statementCount);
+  const rounds = drawBlitzGameRounds(roundCount, statementCount, Math.random, unseenBlitzPool(room, statementCount * roundCount));
+  markSeen(rounds.flat(), blitzSeenKey, room.seenQuestionKeys);
   blitzStateByRoom.set(room, {
     rounds,
     roundIndex: 0,
@@ -451,6 +476,8 @@ function finishGame(room: Room): void {
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} blitz game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   cleanupRoomBots(room.code);
+  // Task 319 - 5 minutes of nobody pressing anything plays again, same players.
+  armPostGameIdle(room);
 }
 
 export const BLITZ_CONTINUATIONS: Record<BlitzTimerKind, (room: Room) => void> = {

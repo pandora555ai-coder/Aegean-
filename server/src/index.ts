@@ -52,7 +52,11 @@ import {
   normalizePlayerName,
   refreshRoomTtl,
   removePlayer,
-  resetRoomForNewGame,
+  rebuildRoomForNewGame,
+  armPostGameIdle,
+  cancelPostGameIdle,
+  onPostGameIdle,
+  getConnectedHumans,
   roomHasOnlyBots,
   updateAudioVolume,
   updateRoomSettings,
@@ -271,17 +275,38 @@ function expireLobbyDisconnect(room: Room, playerId: string): void {
   broadcastLobbyUpdate(room.code);
 }
 
-// Task 172 - a player who disconnected mid-game and never came back is
-// still sitting in room.players (in-game disconnects never drop a seat) -
-// landing back in LOBBY via play-again/reset must start their grace clock
-// too, or they'd sit as a permanent ghost through every game that follows.
-function armLobbyGraceForAllDisconnected(room: Room): void {
-  for (const player of room.players.values()) {
-    if (!player.connected) {
-      armLobbyDisconnectGrace(room, player.playerId, () => expireLobbyDisconnect(room, player.playerId));
-    }
+// Task 319 - "Ξανά, ίδια παρέα": the ONE path for the VIP's press, the TV's
+// press and the post-game idle timer. First press wins by the same-tick phase
+// check (the vip:play_again pattern): this runs to completion before any other
+// socket event is handled, and it leaves GAME_OVER, so whichever of the three
+// comes second finds LOBBY and is a logged no-op.
+function playAgainSamePlayers(room: Room, source: string): void {
+  if (room.phase !== 'GAME_OVER') {
+    console.log(`ignored ${source} for room ${room.code}: phase is ${room.phase}, not GAME_OVER (an earlier press already won)`);
+    return;
   }
+  // Structurally unreachable (GAME_PAUSE is refused in GAME_OVER) - kept
+  // explicit, as vip:start_game keeps its own.
+  if (room.paused) {
+    console.log(`rejected ${source} for room ${room.code}: game is paused`);
+    return;
+  }
+  // finishGame already cleaned the bots up; a no-op then, a safety otherwise.
+  cleanupRoomBots(room.code);
+  rebuildRoomForNewGame(room);
+  // Task 217 - FRESH bots, as many as the room was created with, so a bot
+  // room comes back to a lobby that can start (and an all-bot one self-starts).
+  if (room.requestedBotCount > 0) {
+    spawnBots(room.code, room.requestedBotCount);
+  }
+  refreshRoomTtl(room);
+  io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
+  emitCrowdIntensity(room);
+  broadcastLobbyUpdate(room.code);
+  console.log(`room ${room.code} reset for a new game - same players (${source})`);
 }
+
+onPostGameIdle((room) => playAgainSamePlayers(room, 'post-game idle timer'));
 
 // Catches a single player up to whatever's currently happening in the room -
 // used right after a join/reconnect when phase !== 'LOBBY', so nobody is
@@ -896,6 +921,11 @@ io.on('connection', (socket) => {
         claimVipIfVacant(room, existingPlayer);
       }
       refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
+      // Task 319 - the first human back to a GAME_OVER room nobody was left in
+      // restarts the idle clock (a full POST_GAME_IDLE_MS from now).
+      if (room.phase === 'GAME_OVER' && !existingPlayer.isBot && room.postGameIdleTimer === null) {
+        armPostGameIdle(room);
+      }
       socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
       socket.join(code);
       socket.emit(ServerEvents.PLAYER_JOINED, {
@@ -1721,40 +1751,24 @@ io.on('connection', (socket) => {
     if (!room) {
       return;
     }
+    playAgainSamePlayers(room, ClientEvents.VIP_PLAY_AGAIN);
+  });
 
-    if (room.phase !== 'GAME_OVER') {
-      console.log(`rejected ${ClientEvents.VIP_PLAY_AGAIN} for room ${room.code}: phase is ${room.phase}, not GAME_OVER`);
+  // Task 319 - the TV's own "Ξανά, ίδια παρέα". Authorised as the room's
+  // CURRENT host display, then exactly the VIP's path.
+  socket.on(ClientEvents.HOST_PLAY_AGAIN, () => {
+    const room = getHostRoomForSocket(socket, ClientEvents.HOST_PLAY_AGAIN);
+    if (!room) {
       return;
     }
-
-    // Structurally unreachable today (same reasoning as vip:start_game) -
-    // kept explicit for the same reason.
-    if (room.paused) {
-      console.log(`rejected ${ClientEvents.VIP_PLAY_AGAIN} for room ${room.code}: game is paused`);
-      return;
-    }
-
-    resetRoomForNewGame(room);
-    // Task 217 - finishGame already ran cleanupRoomBots on the way to this
-    // GAME_OVER (the only phase this fires from), so the roster is bot-less
-    // right now; re-spawn whatever count this room was created with, same
-    // as host:create_room, so a bot-only room survives play_again instead
-    // of coming back with canStart permanently false.
-    if (room.requestedBotCount > 0) {
-      spawnBots(room.code, room.requestedBotCount);
-    }
-    armLobbyGraceForAllDisconnected(room);
-    io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
-    emitCrowdIntensity(room);
-    broadcastLobbyUpdate(room.code);
-    console.log(`room ${room.code} reset for a new game`);
+    playAgainSamePlayers(room, ClientEvents.HOST_PLAY_AGAIN);
   });
 
   // Lets the VIP abandon an in-progress game (e.g. it was started before
   // everyone had joined) and go straight back to LOBBY - unlike
   // vip:play_again, this is reachable from QUESTION/REVEAL/STEAL, not
   // just GAME_OVER. Deliberately NOT blocked by `room.paused`: resetting
-  // must work even mid-pause, and resetRoomForNewGame clears the pause
+  // must work even mid-pause, and rebuildRoomForNewGame clears the pause
   // state itself so the fresh LOBBY is never left frozen.
   socket.on(ClientEvents.VIP_RESET_TO_LOBBY, () => {
     const room = getVipRoomForSocket(socket, ClientEvents.VIP_RESET_TO_LOBBY);
@@ -1772,14 +1786,13 @@ io.on('connection', (socket) => {
     // up any bots) - an abandoned bot game must not leave bot ghosts in the
     // fresh LOBBY this produces.
     cleanupRoomBots(room.code);
-    resetRoomForNewGame(room);
+    rebuildRoomForNewGame(room);
     // Task 217 - same re-spawn as vip:play_again above, so an abandoned
     // bot game comes back to a lobby that can actually start again rather
     // than a canStart:false dead end.
     if (room.requestedBotCount > 0) {
       spawnBots(room.code, room.requestedBotCount);
     }
-    armLobbyGraceForAllDisconnected(room);
     io.to(room.code).emit(ServerEvents.PHASE_CHANGED, { phase: room.phase });
     emitCrowdIntensity(room);
     broadcastLobbyUpdate(room.code);
@@ -1936,6 +1949,12 @@ io.on('connection', (socket) => {
 
       if (room) {
         refreshRoomTtl(room); // may arm the empty-room TTL if nobody's left at all
+      }
+
+      // Task 319 - "same players" with no human left is nobody: the idle timer
+      // stops here. A human coming back re-arms it (PLAYER_JOIN's reconnect).
+      if (room && room.phase === 'GAME_OVER' && getConnectedHumans(room).length === 0) {
+        cancelPostGameIdle(room, 'no connected humans left');
       }
 
       broadcastLobbyUpdate(association.code);

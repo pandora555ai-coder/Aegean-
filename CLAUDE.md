@@ -1,6 +1,7 @@
 # Aegean — Greek party quiz game
 
-Jackbox-style. TV = display only (no input). Phones = controllers.
+Jackbox-style. TV cannot control gameplay; exceptions are room creation and
+post-game actions (Task 319). Phones = controllers.
 4-digit numeric room code. Server-authoritative. Host persona: Socrates,
 in Ancient Athens. All player-facing text is Greek.
 
@@ -297,7 +298,30 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
 - The correct answer NEVER leaves the server before REVEAL / GUESS_REVEAL.
 - Same event name can carry DIFFERENT payloads to host vs players.
   Players never receive another player's answer or score breakdown.
-- VIP = first player to join, tracked by playerId. TV cannot control the game.
+- VIP = first player to join, tracked by playerId. TV cannot control gameplay;
+  exceptions are room creation and post-game actions (Task 319:
+  `host:play_again`, GAME_OVER only, from the room's current host display).
+- **A new game is a WHITELIST rebuild (Task 319), never field-by-field
+  clearing.** `rebuildRoomForNewGame` (state.ts) Object.assigns
+  `freshGameState()` — the same builder createRoom uses — onto the SAME Room
+  object; only `ROOM_FIELDS` survive (code, host, players, mode, settings,
+  bots count, VIP, audio, TTL/grace timers, `socratesBeatId` — never reset,
+  so a late game-1 ack is stale in game 2 — and `seenQuestionKeys`), plus
+  `socrates.earlierGamesLines`, copied on purpose. GameFields is typed as
+  Room minus ROOM_FIELDS, so a new Room field must be classified or it will
+  not compile. Connected humans carry over (score 0); a disconnected seat is
+  dropped; bots are re-spawned fresh. Mode state outside the Room
+  (draw/blitz/numeric/agora WeakMaps) is cleared through modeStateRegistry.ts.
+  Game 2 prefers lines and questions/numeric/blitz content game 1 never used
+  (pickLine's earlierGamesLines; seenContent.ts's unseenFirst); a pool
+  recycles only once exhausted — WITHIN a game a spent line pool still
+  returns null. All three "same players" triggers — `vip:play_again`,
+  `host:play_again`, the post-game idle timer (POST_GAME_IDLE_MS = 300000,
+  armed at every GAME_OVER with a human present, cancelled on either press,
+  rebuild, deleteRoom and when no human is connected; dev-only override
+  `POST_GAME_IDLE_MS_DEV`, ignored under NODE_ENV=production) — go through
+  index.ts's `playAgainSamePlayers`; first press wins by its same-tick
+  GAME_OVER check. Check: `npx tsx dev/319-same-players-check.ts`.
 - **canStartRoom(room) (state.ts) is the ONLY source of truth for roster
   count / start eligibility.** Never add a second count elsewhere.
   LOBBY_DISCONNECT_GRACE_MS = 20000 governs lobby-roster expiry; VIP
@@ -744,7 +768,7 @@ first player that round struck out (`lastResults`' `eliminated` flags ∩
 `eliminationOrder`), under BOTH speech policies. Latch
 `ClimbState.spearBeatPlayed`, once per GAME and set on ATTEMPT — NOT the stage
 ledger's firedSlots, which clears at every stage boundary, and the climb is one
-stage; it resets for free because resetRoomForNewGame nulls room.climb. On a
+stage; it resets for free because rebuildRoomForNewGame nulls room.climb. On a
 DOUBLE spear only the first speaks. It CANNOT stall the climb: an ordinary held
 SOCRATES phase under the quiz's own 'SOCRATES' timer kind (already in
 QUIZ_CONTINUATIONS, so pause resumes it), and every exit — ack, the immediate
@@ -868,7 +892,7 @@ theatre. `isClimbAnnounceBeat` is the fourth term of `showAnavasisWorld`,
 and SocratesFigure's temple pose now covers STAGE_ANNOUNCE as well, or
 CENTRE_STAGE_PHASES would plant him mid-stair at 44% for the card and glide
 him to 57% the moment the narration began. Scoped to ONE game by
-construction: `resetRoomForNewGame` clears room.climb, so game 2's stage 1
+construction: `rebuildRoomForNewGame` clears room.climb, so game 2's stage 1
 announces `finale: null` and every ordinary stage always did.
 **The climb's STAGE_INTRO beats render their card + Task 239 subtitle
 DIRECTLY** (HostScreen's renderPhaseView), not through SocratesView, whose

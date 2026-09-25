@@ -18,7 +18,8 @@ import {
   type RevealPlayerResult,
   type RoomCode,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { armPostGameIdle, getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { registerModeStateClearer } from '../modeStateRegistry.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { buildGameOver, computeCompetitionRanks, computeStandings } from '../payloads.js';
 import { armCrowdTensionTimer, clearCrowdTensionTimer, emitCrowdIntensity, setCrowdMood } from '../crowd.js';
@@ -73,6 +74,8 @@ interface AgoraState {
 }
 
 const agoraStateByRoom = new WeakMap<Room, AgoraState>();
+// Task 319 - cleared by rebuildRoomForNewGame (state.ts) via the registry.
+registerModeStateClearer((room) => agoraStateByRoom.delete(room));
 
 function requireAgoraState(room: Room): AgoraState {
   const state = agoraStateByRoom.get(room);
@@ -611,6 +614,8 @@ function finishRound(room: Room): void {
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} agora game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   cleanupRoomBots(room.code);
+  // Task 319 - 5 minutes of nobody pressing anything plays again, same players.
+  armPostGameIdle(room);
 }
 
 export const AGORA_CONTINUATIONS: Record<AgoraTimerKind, (room: Room) => void> = {

@@ -19,7 +19,8 @@ import {
   type RoomCode,
   type WordSet,
 } from '@game/shared';
-import { getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { armPostGameIdle, getConnectedPlayers, getRoom, type Room } from '../state.js';
+import { registerModeStateClearer } from '../modeStateRegistry.js';
 import { armActiveTimer, clearActiveTimer, remainingActiveTimerMs } from '../timers.js';
 import { calculatePoints } from '../scoring.js';
 import { buildGameOver, computeStandings } from '../payloads.js';
@@ -48,7 +49,7 @@ import type { GameMode } from './types.js';
 // zero coupling: once a room is deleted from state.ts's own map and nothing
 // else references it, this entry is garbage-collected for free.
 //
-// "Play again" reuses the SAME Room object (state.ts's resetRoomForNewGame
+// "Play again" reuses the SAME Room object (state.ts's rebuildRoomForNewGame
 // never creates a new one), so prepareGame is what has to guarantee a
 // second game never sees a trace of the first: it now deletes any existing
 // entry unconditionally, up front, before deciding whether it can even deal
@@ -123,6 +124,8 @@ interface DrawState {
 }
 
 const drawStateByRoom = new WeakMap<Room, DrawState>();
+// Task 319 - cleared by rebuildRoomForNewGame (state.ts) via the registry.
+registerModeStateClearer((room) => drawStateByRoom.delete(room));
 
 function requireDrawState(room: Room): DrawState {
   const state = drawStateByRoom.get(room);
@@ -1044,6 +1047,8 @@ function finishGame(room: Room): void {
   io.to(room.code).emit(ServerEvents.GAME_OVER, gameOverPayload);
   console.log(`room ${room.code} draw game over - final standings: ${JSON.stringify(gameOverPayload.standings)}`);
   cleanupRoomBots(room.code);
+  // Task 319 - 5 minutes of nobody pressing anything plays again, same players.
+  armPostGameIdle(room);
 }
 
 // Exported since Task 134 - see QUIZ_CONTINUATIONS' note in quiz.ts.

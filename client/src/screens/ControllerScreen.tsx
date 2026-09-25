@@ -2055,7 +2055,7 @@ export default function ControllerScreen() {
         <div style={styles.lookAtTv}>Κοίτα την τηλεόραση για τα τελικά αποτελέσματα</div>
         {/* Task 239 - the end state's own action, relabelled from "Ξανά":
             same vip:play_again mechanism (same room, same players, full
-            reset - resetRoomForNewGame, server-side), unchanged. Non-VIP
+            reset - rebuildRoomForNewGame, server-side), unchanged. Non-VIP
             gets an explicit waiting note instead of nothing, the same
             "waiting-for-vip" idiom the LOBBY screen already uses. */}
         {isVip ? (

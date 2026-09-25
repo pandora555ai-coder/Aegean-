@@ -471,6 +471,7 @@ async function main(): Promise<void> {
   console.log('\n--- 3: play-again integrity ---');
   const game1Questions = [...state.questionTexts];
   const game1FirstBeatId = state.socratesBeats[0]?.beatId ?? null;
+  const game1LastBeatId = state.socratesBeats[state.socratesBeats.length - 1]?.beatId ?? null;
   console.log(`game 1: ${game1Questions.length} question texts, first beat id ${game1FirstBeatId}`);
 
   // Reset capture state for game 2, keep the same websocket listener (same
@@ -513,7 +514,9 @@ async function main(): Promise<void> {
   console.log(`duplicate questions WITHIN game 2's own draw: ${game2Dupes.length}`);
   check('3: game 2 draws a fresh question set (some difference from game 1)', overlap.length < game2Questions.length, `${overlap.length}/${game2Questions.length} overlap (pool is small - 899 across all difficulties/categories, some overlap is expected by chance)`);
   check('3: no duplicate questions within game 2 itself (dedupe holds)', game2Dupes.length === 0, `${game2Dupes.length} dupes`);
-  check('3: socratesBeatId reset - first beat of game 2 is 1', game2FirstBeatId === 1, `game1 first=${game1FirstBeatId}, game2 first=${game2FirstBeatId}`);
+  // Task 319 - socratesBeatId is a ROOM field now, never reset: game 2's ids
+  // continue past game 1's, so a late game-1 ack can never match a game-2 beat.
+  check('3: socratesBeatId continues - game 2 opens past game 1', game2FirstBeatId !== null && game1LastBeatId !== null && game2FirstBeatId > game1LastBeatId, `game1 first=${game1FirstBeatId} last=${game1LastBeatId}, game2 first=${game2FirstBeatId}`);
   console.log(`game 2's earliest observed standings: ${JSON.stringify(state.firstStandings)}`);
   check('3: every player starts game 2 at score 0', (state.firstStandings ?? []).every((s) => s.score === 0), JSON.stringify(state.firstStandings));
 
