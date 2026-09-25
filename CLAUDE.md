@@ -36,6 +36,9 @@ plus dev-only /dev/draw /dev/numeric /dev/scene /dev/blitz /dev/voice
   task because the work looks finished, and never carried over from an
   earlier turn's permission. Having the privilege to deploy without a
   password is NOT permission to decide when to deploy.
+- **Every task report that deploys must quote the wrapper's `DEPLOY OK`
+  line VERBATIM** (Task 313). "Deployed" with no quoted line is not evidence:
+  308-311 shipped with none recorded and prod had to be re-proven by grep.
 - `deploy/deploy.sh` is **GONE**, removed in this commit: it did
   `cd ~/Aegean-`, and no clone exists at that path (verified 2026-09-17), so
   as root it aborted on line 7. Do not resurrect it, do not cite it as the

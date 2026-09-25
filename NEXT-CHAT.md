@@ -19,9 +19,22 @@ agent at CONTEXT CHECK. Tag `v1.0-playtest` = c87443a (Task 289's run sheet).
   humans = no button. Still sequences only (GAME_INTRO / ANAVASIS_INTRO).
 - **No-clip beats are held (303):** ~11 chars/s, clamped 3000-9000ms; the client
   acks at once, the server absorbs it; a VIP skip is exempt. 303 WAS deployed
-  and verified (DEPLOY OK 54a1582, per Argyrios). Deploy state of 308-311 is
-  NOT recorded in the repo (309's report says "deployed", no log quoted) —
-  ask before assuming what prod runs.
+  and verified (DEPLOY OK 54a1582, per Argyrios).
+- **Prod state PROVEN at 313 (read-only): 308-311 are all live.** Each string
+  hit in /opt/party-game, and the six touched files are byte-identical to dev
+  (`cmp`): 308 `addressedTo` phases.ts:530; 309 `SPLICE_GAP_MS = 450`
+  useGameAudio.ts:48 (bundle index-CbJi1tO7.js, built 2026-09-24 22:13, carries
+  `.015,.01,.12,450`); 310 `drawCandidates`/`numericCandidates` speechSlots.ts:
+  200/236; 311 `getConnectedHumans` state.ts:809 + `speechPolicy: 'v2'`
+  shared/src/index.ts:1969 (bundle: `speechPolicy:"v2"`). The DEPLOY OK lines
+  themselves were never recorded (the rule is now in CLAUDE.md).
+- **OPEN DEFECT (found by 313, not fixed, client):** when a spliced prefix
+  plays WHOLE (its buffer has < 120ms of trailing silence, so playFor = buffer
+  length), the LINE clip is started TWICE at the same instant. Repro: 308's T
+  with `VOCS='[{"name":"Χρυσάνθη","voc":"Χρυσάνθη","speechEndMs":720}]'` - 3
+  clips, the last two identical, 2 of 2 runs. 60 of the 201 bank vocatives are
+  on that path (141 are trimmed and fine). Cause NOT diagnosed; suspect the
+  prefix source's onended firing twice (useGameAudio.ts play/playFrom).
 - Coronation (274-283), spear + duel voices (296), climb, Η Λήθη naming,
   show shape (10/5 quiz, 2 draw rounds): unchanged — see CLAUDE.md.
 
@@ -32,10 +45,9 @@ figure; no report states it. Replaces the old "172 chars, frozen for party
 vocatives" note, which is obsolete (vocatives done in 307).
 
 ## Next (in this order)
-1. **Harness debt:** `dev/300-skip-vote-check.ts` scenario E has 3 stale count
-   expectations (521/14/43 vs 533/18/55, per 311); `dev/308-vocative-slot-check.ts`
-   scenario T needs the VOCS env (JSON of name/voc/speechEndMs). 263 and 303
-   were repaired in 310 (52/0, 23/0) — not debt.
+1. **Fix the whole-prefix double start** (open defect above) — diagnosis first,
+   then a T assertion for the whole-prefix path. Harness debt is CLEARED (313):
+   300 E derives its counts from the tables/file; 308 T runs bare.
 2. **Argyrios picks:** options menu (TV + phones: sounds, restart, back to
    lobby — restart/lobby VIP-only, with confirm); Η Λήθη background scene;
    sabotage for trailing players (design talk first — POWER_UP is off by

@@ -202,7 +202,7 @@ async function openNarration(simCount: number, waitBeats: number) {
 
 async function main(): Promise<void> {
   await import('../server/src/index.js'); // the REAL server, in-process
-  const { GAME_INTRO_SEQUENCE, ANAVASIS_INTRO_SEQUENCE, SKIP_INTERRUPTED_LINES, LINE_TAGS, collectVoiceLineEntries } =
+  const { GAME_INTRO_SEQUENCE, ANAVASIS_INTRO_SEQUENCE, SKIP_INTERRUPTED_LINES, SPEECH_V2_LINES, LINE_TAGS, collectVoiceLineEntries } =
     await import('../server/src/socrates.js');
   const { getRoom } = await import('../server/src/state.js');
   const { startClimb } = await import('../server/src/phases.js');
@@ -405,7 +405,14 @@ async function main(): Promise<void> {
     console.log('\n=== E. registration (pure) ===');
     const entries = collectVoiceLineEntries();
     const mine = entries.filter((entry) => entry.moment === 'SKIP_INTERRUPTED');
-    check('collectVoiceLineEntries is 521', entries.length === 521, `${entries.length}`);
+    // Task 313 - every expectation below is derived from the tables/file, not
+    // hard-coded, so adding a pool or a line can no longer stale this scenario.
+    // The v2 pools + the skip pool, as distinct line texts (DUEL_LOCKED aliases
+    // DUEL_LINES.DUEL_LOCKED, so texts, not array lengths, are what dedup).
+    const v2Tables = Object.entries(SPEECH_V2_LINES);
+    const v2Texts = new Set<string>([...v2Tables.flatMap(([, lines]) => lines), ...SKIP_INTERRUPTED_LINES]);
+    const registered = entries.filter((entry) => v2Texts.has(entry.line));
+    check(`every v2/skip line is registered exactly once (${v2Texts.size} distinct texts)`, registered.length === v2Texts.size && new Set(registered.map((e) => e.line)).size === v2Texts.size, `${registered.length} entries, total ${entries.length}`);
     check('4 of them are SKIP_INTERRUPTED', mine.length === 4, `${mine.length}`);
     check('every one has a tag (the clip is lineHash(template, tag))', mine.every((entry) => entry.tag !== null), mine.map((e) => e.tag).join(' '));
 
@@ -413,8 +420,11 @@ async function main(): Promise<void> {
     const sha = createHash('sha256').update(raw).digest('hex');
     const poolHeaders = raw.split('\n').filter((line) => /^[A-Z_]+:$/.test(line));
     const lineRows = raw.split('\n').filter((line) => /^\[/.test(line));
-    check('content file has 14 pools', poolHeaders.length === 14, `${poolHeaders.length}`);
-    check('content file has 43 lines', lineRows.length === 43, `${lineRows.length}`);
+    const expectedPools = v2Tables.length + 1; // the v2 slot pools + SKIP_INTERRUPTED
+    const expectedLines = v2Tables.reduce((sum, [, lines]) => sum + lines.length, 0) + SKIP_INTERRUPTED_LINES.length;
+    check(`content file has ${expectedPools} pools (SPEECH_V2_LINES keys + SKIP_INTERRUPTED)`, poolHeaders.length === expectedPools, `${poolHeaders.length}`);
+    check(`content file has ${expectedLines} lines (sum of the tables)`, lineRows.length === expectedLines, `${lineRows.length}`);
+    check('every pool header in the file is a table key', poolHeaders.every((h) => h === 'SKIP_INTERRUPTED:' || h.slice(0, -1) in SPEECH_V2_LINES), poolHeaders.join(' '));
     // Counted row by row against the code, not assumed: the file is the source
     // and the table is the copy, so a drift in either direction has to fail.
     const fileBlock = raw.split('SKIP_INTERRUPTED:\n')[1]?.split('\n\n')[0] ?? '';

@@ -21,7 +21,7 @@ process.env.PORT = process.env.SERVER_PORT ?? '3968';
 import { randomUUID } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import { io, type Socket } from 'socket.io-client';
@@ -222,6 +222,65 @@ function fileMsOf(hash: string): number | null {
 }
 
 
+// --------------------------------------------------------------------------
+// Task 313 - speech end of a vocative clip, measured offline with the client's
+// own algorithm (useGameAudio.ts speechEndSec): 10ms windows walked back from
+// the end, first one whose RMS >= 0.015 on ANY channel, no tail. ffmpeg decodes
+// at the file's native rate/channels, so nothing is resampled or downmixed.
+// --------------------------------------------------------------------------
+interface VocMeasure {
+  name: string;
+  voc: string;
+  speechEndMs: number;
+  bufferMs?: number;
+}
+
+function speechEndMsOf(file: string): { speechEndMs: number; bufferMs: number } {
+  const probe = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=sample_rate,channels', '-of', 'csv=p=0', file]).toString().trim();
+  const [rateText, channelText] = probe.split(',');
+  const rate = Number(rateText);
+  const channels = Number(channelText);
+  const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-acodec', 'pcm_f32le', '-'], { maxBuffer: 256 * 1024 * 1024 });
+  const samples = new Float32Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.byteLength / 4));
+  const frames = Math.floor(samples.length / channels);
+  const win = Math.max(1, Math.round(rate * 0.01));
+  let end = 0;
+  for (let start = Math.max(0, frames - win); start >= 0 && end === 0; start -= win) {
+    for (let c = 0; c < channels; c++) {
+      let sum = 0;
+      for (let i = start; i < start + win && i < frames; i++) sum += samples[i * channels + c] ** 2;
+      if (Math.sqrt(sum / win) >= 0.015) { end = start + win; break; }
+    }
+    if (start === 0) break;
+  }
+  return { speechEndMs: Math.round(((end === 0 ? frames : Math.min(frames, end)) / rate) * 1000), bufferMs: Math.round((frames / rate) * 1000) };
+}
+
+// First, middle and last preset name whose vocative clip is on disk AND has
+// more trailing silence than the client's 120ms tail, i.e. the TRIM path this
+// scenario is about. A vocative with no such silence plays whole instead; the
+// bare run found that path starts the line TWICE (see tasks/313), so those are
+// counted and reported but not asserted here.
+async function bankVocatives(count: number): Promise<VocMeasure[]> {
+  const { PRESET_NAMES } = await import('@game/shared');
+  const { vocativeClipFor } = await import('../server/src/socrates.js');
+  const trimmed: VocMeasure[] = [];
+  let whole = 0;
+  let total = 0;
+  for (const name of PRESET_NAMES as readonly string[]) {
+    const v = vocativeClipFor(name);
+    const file = v ? path.join(VOICE_DIR, `${lineHash(v.template, v.tag)}.mp3`) : null;
+    if (!v || !file || !existsSync(file)) continue;
+    total++;
+    const m = speechEndMsOf(file);
+    if (m.bufferMs > m.speechEndMs + 120) trimmed.push({ name, voc: v.template, ...m });
+    else whole++;
+  }
+  say(`  bank vocatives on disk: ${total}; trim path ${trimmed.length}, whole-prefix path ${whole} (not asserted)`);
+  const pick = [0, Math.floor(trimmed.length / 2), trimmed.length - 1].slice(0, count);
+  return [...new Set(pick)].filter((i) => i >= 0 && trimmed[i]).map((i) => trimmed[i]);
+}
+
 async function main(): Promise<void> {
   say(`booting in-process server on ${SERVER_PORT}`);
   await import('../server/src/index.js');
@@ -298,7 +357,10 @@ async function main(): Promise<void> {
     const LINE = collectVoiceLineEntries().find((e) => e.line.length > 30 && e.line.length < 60 && existsSync(path.join(VOICE_DIR, `${e.hash}.mp3`)))!;
     // Speech ends measured offline with the client's algorithm (10ms windows,
     // RMS >= 0.015, loudest channel), WITHOUT the 120ms tail.
-    const vocs: Array<{ name: string; voc: string; speechEndMs: number }> = JSON.parse(process.env.VOCS!);
+    // VOCS (JSON of name/voc/speechEndMs) still overrides; bare, three preset
+    // vocatives are taken from the bank and measured here by decoding the mp3s.
+    const vocs = process.env.VOCS ? (JSON.parse(process.env.VOCS) as VocMeasure[]) : await bankVocatives(3);
+    check('T: at least one vocative measured', vocs.length > 0, vocs.map((v) => `${v.voc}=${v.speechEndMs}ms`).join(' '));
     for (const v of vocs) {
       const { host, code, players, room } = await newRoom();
       const page = await newTvPage(code);
