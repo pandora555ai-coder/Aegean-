@@ -1,6 +1,6 @@
 # NEXT-CHAT — Aegean handoff (rewritten 2026-09-24, after tasks 306-311)
 
-State: numbering continues at **313**. HEAD is not authoritative here — ask the
+State: numbering continues at **316**. HEAD is not authoritative here — ask the
 agent at CONTEXT CHECK. Tag `v1.0-playtest` = c87443a (Task 289's run sheet).
 
 ## LIVE (tasks 274-311)
@@ -28,13 +28,12 @@ agent at CONTEXT CHECK. Tag `v1.0-playtest` = c87443a (Task 289's run sheet).
   200/236; 311 `getConnectedHumans` state.ts:809 + `speechPolicy: 'v2'`
   shared/src/index.ts:1969 (bundle: `speechPolicy:"v2"`). The DEPLOY OK lines
   themselves were never recorded (the rule is now in CLAUDE.md).
-- **OPEN DEFECT (found by 313, not fixed, client):** when a spliced prefix
-  plays WHOLE (its buffer has < 120ms of trailing silence, so playFor = buffer
-  length), the LINE clip is started TWICE at the same instant. Repro: 308's T
-  with `VOCS='[{"name":"Χρυσάνθη","voc":"Χρυσάνθη","speechEndMs":720}]'` - 3
-  clips, the last two identical, 2 of 2 runs. 60 of the 201 bank vocatives are
-  on that path (141 are trimmed and fine). Cause NOT diagnosed; suspect the
-  prefix source's onended firing twice (useGameAudio.ts play/playFrom).
+- **CLOSED (314 diagnosed, 315 fixed + deployed): whole-prefix double start.**
+  A spliced clip played to its full length (`start(when, 0, buf.duration)`)
+  made Chromium fire `ended` twice, so the line started twice and the host
+  acked twice (the server refused the second). useGameAudio.ts now passes a
+  duration only for a genuine cut and latches the chain's next-clip step.
+  308 T asserts both paths (Νίκο trim, Χρυσάνθη whole): 2 starts, 1 ack.
 - Coronation (274-283), spear + duel voices (296), climb, Η Λήθη naming,
   show shape (10/5 quiz, 2 draw rounds): unchanged — see CLAUDE.md.
 
@@ -45,9 +44,7 @@ figure; no report states it. Replaces the old "172 chars, frozen for party
 vocatives" note, which is obsolete (vocatives done in 307).
 
 ## Next (in this order)
-1. **Fix the whole-prefix double start** (open defect above) — diagnosis first,
-   then a T assertion for the whole-prefix path. Harness debt is CLEARED (313):
-   300 E derives its counts from the tables/file; 308 T runs bare.
+1. ~~Fix the whole-prefix double start~~ — CLOSED at 315 (see LIVE).
 2. **Argyrios picks:** options menu (TV + phones: sounds, restart, back to
    lobby — restart/lobby VIP-only, with confirm); Η Λήθη background scene;
    sabotage for trailing players (design talk first — POWER_UP is off by

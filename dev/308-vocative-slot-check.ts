@@ -256,16 +256,15 @@ function speechEndMsOf(file: string): { speechEndMs: number; bufferMs: number } 
   return { speechEndMs: Math.round(((end === 0 ? frames : Math.min(frames, end)) / rate) * 1000), bufferMs: Math.round((frames / rate) * 1000) };
 }
 
-// First, middle and last preset name whose vocative clip is on disk AND has
-// more trailing silence than the client's 120ms tail, i.e. the TRIM path this
-// scenario is about. A vocative with no such silence plays whole instead; the
-// bare run found that path starts the line TWICE (see tasks/313), so those are
-// counted and reported but not asserted here.
-async function bankVocatives(count: number): Promise<VocMeasure[]> {
+// Task 315 - one vocative per splice path: the TRIM path (more trailing
+// silence than the client's 120ms tail - Νίκο when present, else the first)
+// and the WHOLE path (no such silence - Χρυσάνθη when present, else the
+// first), which started the line TWICE until Task 315 (tasks/314).
+async function bankVocatives(): Promise<VocMeasure[]> {
   const { PRESET_NAMES } = await import('@game/shared');
   const { vocativeClipFor } = await import('../server/src/socrates.js');
   const trimmed: VocMeasure[] = [];
-  let whole = 0;
+  const whole: VocMeasure[] = [];
   let total = 0;
   for (const name of PRESET_NAMES as readonly string[]) {
     const v = vocativeClipFor(name);
@@ -273,12 +272,12 @@ async function bankVocatives(count: number): Promise<VocMeasure[]> {
     if (!v || !file || !existsSync(file)) continue;
     total++;
     const m = speechEndMsOf(file);
-    if (m.bufferMs > m.speechEndMs + 120) trimmed.push({ name, voc: v.template, ...m });
-    else whole++;
+    (m.bufferMs > m.speechEndMs + 120 ? trimmed : whole).push({ name, voc: v.template, ...m });
   }
-  say(`  bank vocatives on disk: ${total}; trim path ${trimmed.length}, whole-prefix path ${whole} (not asserted)`);
-  const pick = [0, Math.floor(trimmed.length / 2), trimmed.length - 1].slice(0, count);
-  return [...new Set(pick)].filter((i) => i >= 0 && trimmed[i]).map((i) => trimmed[i]);
+  say(`  bank vocatives on disk: ${total}; trim path ${trimmed.length}, whole-prefix path ${whole.length}`);
+  const trim = trimmed.find((v) => v.name === 'Νίκος' || v.voc === 'Νίκο') ?? trimmed[0];
+  const full = whole.find((v) => v.name === 'Χρυσάνθη') ?? whole[0];
+  return [trim, full].filter((v): v is VocMeasure => !!v);
 }
 
 async function main(): Promise<void> {
@@ -359,7 +358,7 @@ async function main(): Promise<void> {
     // RMS >= 0.015, loudest channel), WITHOUT the 120ms tail.
     // VOCS (JSON of name/voc/speechEndMs) still overrides; bare, three preset
     // vocatives are taken from the bank and measured here by decoding the mp3s.
-    const vocs = process.env.VOCS ? (JSON.parse(process.env.VOCS) as VocMeasure[]) : await bankVocatives(3);
+    const vocs = process.env.VOCS ? (JSON.parse(process.env.VOCS) as VocMeasure[]) : await bankVocatives();
     check('T: at least one vocative measured', vocs.length > 0, vocs.map((v) => `${v.voc}=${v.speechEndMs}ms`).join(' '));
     for (const v of vocs) {
       const { host, code, players, room } = await newRoom();
@@ -372,6 +371,12 @@ async function main(): Promise<void> {
       const beatId = room.socratesBeatId;
       let ended: LogLine | null = null;
       while (!ended && Date.now() - t0 < 30000) { ended = logsSince(t0, `Socrates beat ${beatId} ended`)[0] ?? null; await delay(25); }
+      // Task 315 - a duplicate ack trails the first by ~2ms (tasks/314); wait
+      // well past that before counting.
+      await delay(1500);
+      const acks = logsSince(t0, 'socrates:audio_ended');
+      const accepted = acks.filter((l) => l.text.includes('ended (socrates:audio_ended)')).length;
+      const rejected = acks.filter((l) => l.text.startsWith('rejected socrates:audio_ended')).length;
       room.phase = 'LOBBY';
       const clips = (((await page.evaluate('window.__aegeanClips')) ?? []) as ProbeClip[]).filter((c) => !c.loop && c.durMs !== null);
       const [pre, line] = clips;
@@ -379,7 +384,9 @@ async function main(): Promise<void> {
       say(`  ${v.voc.padEnd(9)} prefix buffer=${pre.durMs!.toFixed(0)}ms playFor=${pre.playForMs === null ? 'whole' : pre.playForMs.toFixed(0) + 'ms'} ` +
         `speechEnd=${v.speechEndMs}ms line started +${startDelta.toFixed(0)}ms -> GAP speech-end->line = ${(startDelta - v.speechEndMs).toFixed(0)}ms; ` +
         `ack ${ended ? (ended.ts - t0) + 'ms ' + (ended.text.includes('audio_ended') ? 'socrates:audio_ended' : ended.text) : 'NEVER'} (backstop ${room.socratesBackstopMs}ms)`);
-      check(`T ${v.voc}: two clips, ack via audio_ended`, clips.length === 2 && !!ended?.text.includes('audio_ended'), `${clips.length} clips`);
+      const path = pre.playForMs !== null && pre.playForMs < pre.durMs! ? 'trim' : 'whole';
+      check(`T ${v.voc} (${path}): exactly 2 clip starts`, clips.length === 2, `${clips.length} clips`);
+      check(`T ${v.voc} (${path}): exactly 1 audio_ended accepted, 0 rejected`, accepted === 1 && rejected === 0, `${accepted} accepted, ${rejected} rejected`);
       await page.close(); host.disconnect(); for (const p of players) p.disconnect();
     }
   }

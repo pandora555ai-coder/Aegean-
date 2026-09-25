@@ -817,7 +817,9 @@ export function useGameAudio() {
         // outputGain (mute stays a completely separate ramp on top).
         source.connect(voiceGainRef.current ?? outputGainRef.current ?? ctx.destination);
         const when = delaySec > 0 ? ctx.currentTime + delaySec : 0;
-        if (playFor === undefined) {
+        // Task 315 - a duration equal to the whole buffer makes Chromium fire
+        // `ended` TWICE (Task 314), so only a genuine cut passes one.
+        if (playFor === undefined || playFor >= buf.duration) {
           source.start(when);
         } else {
           source.start(when, 0, playFor);
@@ -858,7 +860,14 @@ export function useGameAudio() {
         const speechEnd = speechEndSec(chain[index]);
         const playFor = Math.min(chain[index].duration, speechEnd + SPLICE_TAIL_SEC);
         const owed = Math.max(0, SPLICE_GAP_MS / 1000 - (playFor - speechEnd));
-        play(chain[index], () => playFrom(index + 1, owed), playFor, delaySec);
+        // Task 315 - the next clip is started at most once per chain, whatever
+        // the browser does with `ended`.
+        let advanced = false;
+        play(chain[index], () => {
+          if (advanced) return;
+          advanced = true;
+          playFrom(index + 1, owed);
+        }, playFor, delaySec);
       };
       playFrom(0);
     } catch (err) {
