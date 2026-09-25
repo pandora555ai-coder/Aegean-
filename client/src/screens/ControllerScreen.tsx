@@ -75,6 +75,7 @@ import {
   type PausedPayload,
   type PhaseChangedPayload,
   type PlayerJoinedPayload,
+  type RoomClosedPayload,
   type PowerUpChoiceAcceptedPayload,
   type PowerUpChoosePayload,
   type PowerUpEffect,
@@ -179,6 +180,9 @@ const REJECTION_MESSAGES: Record<JoinRejectedPayload['reason'], string> = {
   NAME_TAKEN: 'Το όνομα μόλις πιάστηκε από άλλον παίκτη',
   INVALID_AVATAR: 'Μη έγκυρος χαρακτήρας',
   AVATAR_TAKEN: 'Ο χαρακτήρας μόλις πιάστηκε από άλλον παίκτη',
+  // Task 320 - never shown: handleRejected treats this phone as a fresh
+  // visitor (no error) rather than reporting a room it never asked for.
+  ROOM_CLOSED: '',
 };
 
 // One row of the VIP settings panel - either a row of tappable segmented
@@ -493,6 +497,8 @@ export default function ControllerScreen() {
   const codeRef = useRef(code);
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<PlayerJoinedPayload | null>(null);
+  // Task 320 - set by room:closed; replaces every other view.
+  const [roomClosed, setRoomClosed] = useState(false);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
   // Task 175 - the ONE thing that decides whether the LOBBY-waiting view
   // below may render «Έναρξη»: set from player:joined (the only signal
@@ -685,8 +691,24 @@ export default function ControllerScreen() {
       // page load's own auto-resume) becomes the identity a LATER socket
       // reconnect replays automatically (see the `connected`-keyed effect
       // below) and the one restored on a full page reload after that.
-      identityRef.current = { code: payload.code, name: payload.name, avatarId: payload.avatarId };
+      identityRef.current = {
+        code: payload.code,
+        name: payload.name,
+        avatarId: payload.avatarId,
+        instanceId: payload.instanceId,
+      };
       saveLastSession(identityRef.current);
+    }
+
+    // Task 320 - "Νέο παιχνίδι" closed this phone's room: forget it (the
+    // stored session, so neither a reload nor a socket reconnect resumes it)
+    // and show the closed notice until the player scans the new QR.
+    function handleRoomClosed(payload: RoomClosedPayload) {
+      console.log(`room ${payload.code} closed (${payload.instanceId})`);
+      identityRef.current = null;
+      clearLastSession();
+      setResuming(false);
+      setRoomClosed(true);
     }
 
     // Power-up (Task 30b) - always set together, so the step, the locked-in
@@ -865,7 +887,12 @@ export default function ControllerScreen() {
     }
 
     function handleRejected(payload: JoinRejectedPayload) {
-      setError(REJECTION_MESSAGES[payload.reason]);
+      setError(payload.reason === 'ROOM_CLOSED' ? null : REJECTION_MESSAGES[payload.reason]);
+      if (payload.reason === 'ROOM_CLOSED') {
+        // Task 320 - the remembered room is gone (its code may already be
+        // someone else's): a fresh visitor, from the join form.
+        setJoined(null);
+      }
       if (payload.reason === 'AVATAR_TAKEN' || payload.reason === 'INVALID_AVATAR') {
         // Someone else just claimed it (or it disappeared) - drop the pick
         // and let them choose again from the grid, which a fresh peek below
@@ -1479,6 +1506,7 @@ export default function ControllerScreen() {
 
     socket.on(ServerEvents.PLAYER_JOINED, handleJoined);
     socket.on(ServerEvents.JOIN_REJECTED, handleRejected);
+    socket.on(ServerEvents.ROOM_CLOSED, handleRoomClosed);
     socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -1516,6 +1544,7 @@ export default function ControllerScreen() {
     return () => {
       socket.off(ServerEvents.PLAYER_JOINED, handleJoined);
       socket.off(ServerEvents.JOIN_REJECTED, handleRejected);
+      socket.off(ServerEvents.ROOM_CLOSED, handleRoomClosed);
       socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
@@ -1567,8 +1596,8 @@ export default function ControllerScreen() {
   // the manual form's own handleJoin sends the first PLAYER_JOIN itself.
   useEffect(() => {
     if (connected && identityRef.current) {
-      const { code: resumeCode, name, avatarId } = identityRef.current;
-      socket.emit(ClientEvents.PLAYER_JOIN, { code: resumeCode, name, playerId, avatarId });
+      const { code: resumeCode, name, avatarId, instanceId } = identityRef.current;
+      socket.emit(ClientEvents.PLAYER_JOIN, { code: resumeCode, name, playerId, avatarId, instanceId });
     }
   }, [connected, playerId]);
 
@@ -1967,6 +1996,15 @@ export default function ControllerScreen() {
   // the normal form further down). Never reappears after that first
   // resolution - a LATER mid-game drop gets the connection banner instead,
   // not this full-screen replacement.
+  // Task 320 - plain text; its styling is Task 322.
+  if (roomClosed) {
+    return (
+      <div style={styles.container}>
+        <div data-testid="room-closed">Το παιχνίδι έκλεισε. Σκάναρε το νέο QR στην τηλεόραση.</div>
+      </div>
+    );
+  }
+
   if (resuming && !joined) {
     return (
       <div style={styles.container}>

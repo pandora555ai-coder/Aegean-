@@ -44,7 +44,7 @@ import {
   type StealShowPlayerPayload,
 } from '@game/shared';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
-import { getRoom, removePlayer } from './state.js';
+import { getRoom, onRoomDeleted, removePlayer } from './state.js';
 import { getAgoraCorrectIndex } from './modes/agora.js';
 import { getDrawCorrectIndex } from './modes/draw.js';
 import { getBlitzStatementIsTrue } from './modes/blitz.js';
@@ -510,3 +510,6 @@ export function cleanupRoomBots(code: string): void {
   }
   console.log(`room ${code}: cleaned up ${bots.length} bot(s)`);
 }
+
+// Task 320 - a deleted room takes its bots with it ("Νέο παιχνίδι", TTL).
+onRoomDeleted((room) => cleanupRoomBots(room.code));

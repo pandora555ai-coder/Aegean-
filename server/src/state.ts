@@ -35,6 +35,7 @@ import {
 import { modeForRoom } from './modes/registry.js';
 import { createSocratesState, type SocratesState } from './socrates.js';
 import { AVAILABLE_AVATAR_IDS } from './avatars.js';
+import { randomUUID } from 'node:crypto';
 import { clearModeStateForRoom } from './modeStateRegistry.js';
 import { clearActiveTimer, clearSimpleTimer, type ActiveTimer, type SimpleTimer } from './timers.js';
 
@@ -297,6 +298,11 @@ export const ROOM_TTL_MS = 300000; // 5 minutes
 
 export interface Room {
   code: RoomCode;
+  // Task 320 - which room THIS is, beyond its 4-digit code: codes are reused
+  // once a room is deleted, an instance id never is. A phone stores it with
+  // the code, and a resume carrying another room's id is refused
+  // (JOIN_REJECTED 'ROOM_CLOSED'). Survives "same players" - same room.
+  instanceId: string;
   // null when no TV/display is currently attached (e.g. it went to sleep) -
   // the game keeps running regardless; broadcasts to it are simply skipped
   // until a display reattaches via host:rejoin.
@@ -518,6 +524,7 @@ export function generateRoomCode(): RoomCode {
 // already missed questionStartedAt).
 const ROOM_FIELDS = [
   'code',
+  'instanceId',
   'hostSocketId',
   'createdAt',
   'players',
@@ -578,6 +585,7 @@ export function createRoom(hostSocketId: string, mode: GameModeId = DEFAULT_GAME
   const code = generateRoomCode();
   const room: Room = {
     code,
+    instanceId: randomUUID(),
     hostSocketId,
     createdAt: Date.now(),
     players: new Map(),
@@ -601,9 +609,23 @@ export function getRoom(code: RoomCode): Room | undefined {
   return rooms.get(code);
 }
 
+// Task 320 - teardown owned by modules state.ts may not import (bots.ts
+// imports this file). Each registers once at load; deleteRoom runs them
+// BEFORE the room leaves the map, so they can still resolve it by code.
+const roomDeletionHooks: Array<(room: Room) => void> = [];
+
+export function onRoomDeleted(hook: (room: Room) => void): void {
+  roomDeletionHooks.push(hook);
+}
+
 export function deleteRoom(code: RoomCode): boolean {
   const room = rooms.get(code);
   if (room) {
+    for (const hook of roomDeletionHooks) {
+      hook(room);
+    }
+    // Per-game state living outside the Room literal (draw/blitz/numeric/agora).
+    clearModeStateForRoom(room);
     // No timer may fire against a room that no longer exists.
     if (room.activeTimer?.handle) {
       clearTimeout(room.activeTimer.handle);
@@ -1033,7 +1055,9 @@ export function migrateVipAwayFrom(room: Room, playerId: string): Player | null 
     formerVip.isVip = false;
   }
 
-  const nextVip = getConnectedPlayers(room)[0] ?? null;
+  // Task 320 - humans only: a bot is never VIP, and a bot VIP would leave
+  // nobody able to press a post-game action once finishGame removes the bots.
+  const nextVip = getConnectedHumans(room)[0] ?? null;
   room.vipPlayerId = nextVip ? nextVip.playerId : null;
   if (nextVip) {
     nextVip.isVip = true;

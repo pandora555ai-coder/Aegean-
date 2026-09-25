@@ -10,6 +10,11 @@ export interface LastSession {
   code: string;
   name: string;
   avatarId: string;
+  // Task 320 - WHICH room behind that code. Replayed on resume; the server
+  // refuses one that is not the live room's (JOIN_REJECTED 'ROOM_CLOSED'),
+  // so a reused 4-digit code can't pull this phone into a stranger's game.
+  // Absent in a session stored before 320 (resumes as before).
+  instanceId?: string;
 }
 
 export function getLastSession(): LastSession | null {

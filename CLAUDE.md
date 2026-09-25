@@ -322,6 +322,16 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
   `POST_GAME_IDLE_MS_DEV`, ignored under NODE_ENV=production) — go through
   index.ts's `playAgainSamePlayers`; first press wins by its same-tick
   GAME_OVER check. Check: `npx tsx dev/319-same-players-check.ts`.
+- **"Νέο παιχνίδι" is a NEW room (Task 320)** — `vip:new_game`/`host:new_game`
+  -> index.ts's `startNewGameRoom`, behind the SAME `acceptPostGamePress` guard
+  as play-again (first press of either action wins). New code + new
+  `Room.instanceId`; mode/speechPolicy/bot count/audio carried; TV moved via
+  ROOM_CREATED + PHASE_CHANGED LOBBY; old sockets get `room:closed`; then
+  `deleteRoom`, which now also clears the mode WeakMaps and (onRoomDeleted
+  hook) the bots. A phone RESUME carries its stored instanceId (localStorage
+  `lastSession`); a mismatch — even on a reused 4-digit code — is
+  JOIN_REJECTED `ROOM_CLOSED` and the phone starts over as a fresh visitor.
+  Check: `npx tsx dev/320-new-game-check.ts`.
 - **canStartRoom(room) (state.ts) is the ONLY source of truth for roster
   count / start eligibility.** Never add a second count elsewhere.
   LOBBY_DISCONNECT_GRACE_MS = 20000 governs lobby-roster expiry; VIP

@@ -27,6 +27,12 @@ export const ClientEvents = {
   // post-game actions are one of the two things a TV may do (the other is
   // creating its room). GAME_OVER only, from the room's current host display.
   HOST_PLAY_AGAIN: 'host:play_again',
+  // Task 320 - "Νέο παιχνίδι": a NEW room (new code, new instanceId) for the
+  // TV, the old one torn down and its phones told so (room:closed). GAME_OVER
+  // only, from the VIP or the room's current host display, through the same
+  // first-press-wins guard as the play-again pair above.
+  VIP_NEW_GAME: 'vip:new_game',
+  HOST_NEW_GAME: 'host:new_game',
   VIP_UPDATE_SETTINGS: 'vip:update_settings',
   // Task 57 - separate from VIP_UPDATE_SETTINGS: mode isn't a RoomSettings
   // field (it's Room's own, read by modeForRoom everywhere), so it gets its
@@ -125,6 +131,9 @@ export const ServerEvents = {
   ROOM_CREATED: 'room:created',
   PLAYER_JOINED: 'player:joined',
   JOIN_REJECTED: 'join:rejected',
+  // Task 320 - to every socket of a room torn down by "Νέο παιχνίδι". A phone
+  // forgets the room (lastSession) and shows the closed notice.
+  ROOM_CLOSED: 'room:closed',
   LOBBY_UPDATE: 'lobby:update',
   QUESTION_SHOW: 'question:show',
   PHASE_CHANGED: 'phase:changed',
@@ -877,7 +886,11 @@ export type JoinRejectedReason =
   | 'INVALID_NAME'
   | 'NAME_TAKEN'
   | 'INVALID_AVATAR'
-  | 'AVATAR_TAKEN';
+  | 'AVATAR_TAKEN'
+  // Task 320 - a RESUME whose stored instanceId is not the live room's: the
+  // room it remembers is gone, even if its 4-digit code has been reused. The
+  // phone forgets the session and starts over as a fresh visitor.
+  | 'ROOM_CLOSED';
 
 // A read-only "is this room joinable, and which avatars/names are already
 // claimed" lookup - fired from the room-code step of the join flow, BEFORE
@@ -908,6 +921,10 @@ export interface PlayerJoinPayload {
   // sending this doesn't gain anything (a bot can never claim VIP), so it's
   // not worth distrusting.
   isBot?: boolean;
+  // Task 320 - sent only by an auto-RESUME (the phone's stored session): the
+  // instanceId of the room it joined. A mismatch is JOIN_REJECTED
+  // 'ROOM_CLOSED'. A fresh join (typed code or QR) sends none.
+  instanceId?: string;
 }
 
 export interface PlayerJoinedPayload {
@@ -924,6 +941,13 @@ export interface PlayerJoinedPayload {
   // window would otherwise have no way to know the game already left LOBBY.
   // This field is the one signal that is ALWAYS present, on every join.
   phase: GamePhase;
+  // Task 320 - the room's instance id; the phone stores it with the code.
+  instanceId: string;
+}
+
+export interface RoomClosedPayload {
+  code: RoomCode;
+  instanceId: string;
 }
 
 export interface JoinRejectedPayload {
@@ -2477,6 +2501,10 @@ export interface PlayerStanding {
 export interface VipPlayAgainPayload {}
 
 export interface HostPlayAgainPayload {}
+
+export interface VipNewGamePayload {}
+
+export interface HostNewGamePayload {}
 
 // Task 319 - how long a GAME_OVER room waits for "Ξανά, ίδια παρέα" / "Νέο
 // παιχνίδι" before playing again with the same players on its own.
@@ -4154,6 +4182,8 @@ export type ClientToServerEvents = {
   [ClientEvents.VIP_NEXT]: (payload: VipNextPayload) => void;
   [ClientEvents.VIP_PLAY_AGAIN]: (payload: VipPlayAgainPayload) => void;
   [ClientEvents.HOST_PLAY_AGAIN]: (payload: HostPlayAgainPayload) => void;
+  [ClientEvents.VIP_NEW_GAME]: (payload: VipNewGamePayload) => void;
+  [ClientEvents.HOST_NEW_GAME]: (payload: HostNewGamePayload) => void;
   [ClientEvents.VIP_UPDATE_SETTINGS]: (payload: VipUpdateSettingsPayload) => void;
   [ClientEvents.VIP_SET_MODE]: (payload: VipSetModePayload) => void;
   [ClientEvents.VIP_SET_AUDIO_VOLUME]: (payload: VipSetAudioVolumePayload) => void;
@@ -4188,6 +4218,7 @@ export type ServerToClientEvents = {
   [ServerEvents.ROOM_CREATED]: (payload: RoomCreatedPayload) => void;
   [ServerEvents.PLAYER_JOINED]: (payload: PlayerJoinedPayload) => void;
   [ServerEvents.JOIN_REJECTED]: (payload: JoinRejectedPayload) => void;
+  [ServerEvents.ROOM_CLOSED]: (payload: RoomClosedPayload) => void;
   [ServerEvents.LOBBY_UPDATE]: (payload: LobbyUpdatePayload) => void;
   [ServerEvents.QUESTION_SHOW]: (payload: QuestionShowPayload) => void;
   [ServerEvents.PHASE_CHANGED]: (payload: PhaseChangedPayload) => void;

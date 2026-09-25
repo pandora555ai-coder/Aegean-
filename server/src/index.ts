@@ -19,6 +19,7 @@ import {
   type PowerUpChoiceAcceptedPayload,
   type ResumedPayload,
   type RoomCode,
+  type RoomClosedPayload,
   type ServerToClientEvents,
   type SettingsUpdatedPayload,
   type StateSyncPayload,
@@ -55,6 +56,7 @@ import {
   rebuildRoomForNewGame,
   armPostGameIdle,
   cancelPostGameIdle,
+  deleteRoom,
   onPostGameIdle,
   getConnectedHumans,
   roomHasOnlyBots,
@@ -213,6 +215,11 @@ type SocketAssociation =
 
 const socketAssociationBySocketId = new Map<string, SocketAssociation>();
 
+// Task 320 - socket.id -> the code of the room "Νέο παιχνίδι" closed under it.
+// Only so a late press from an old phone is logged as what it is (the
+// earlier press won) rather than as "not a player". Cleared on disconnect.
+const closedRoomCodeBySocketId = new Map<string, RoomCode>();
+
 function buildLobbyUpdate(code: RoomCode): LobbyUpdatePayload | null {
   const room = getRoom(code);
   if (!room) {
@@ -280,15 +287,27 @@ function expireLobbyDisconnect(room: Room, playerId: string): void {
 // check (the vip:play_again pattern): this runs to completion before any other
 // socket event is handled, and it leaves GAME_OVER, so whichever of the three
 // comes second finds LOBBY and is a logged no-op.
-function playAgainSamePlayers(room: Room, source: string): void {
+// Task 320 - the ONE first-press-wins guard for every post-game action
+// ("same players" AND "new game"). Whichever action runs first leaves
+// GAME_OVER (a rebuild goes to LOBBY; a new game deletes the room and moves
+// the TV to one in LOBBY) in the same tick, so any later press of EITHER
+// action lands here, or on a closed room, and is a logged no-op.
+function acceptPostGamePress(room: Room, source: string): boolean {
   if (room.phase !== 'GAME_OVER') {
     console.log(`ignored ${source} for room ${room.code}: phase is ${room.phase}, not GAME_OVER (an earlier press already won)`);
-    return;
+    return false;
   }
   // Structurally unreachable (GAME_PAUSE is refused in GAME_OVER) - kept
   // explicit, as vip:start_game keeps its own.
   if (room.paused) {
     console.log(`rejected ${source} for room ${room.code}: game is paused`);
+    return false;
+  }
+  return true;
+}
+
+function playAgainSamePlayers(room: Room, source: string): void {
+  if (!acceptPostGamePress(room, source)) {
     return;
   }
   // finishGame already cleaned the bots up; a no-op then, a safety otherwise.
@@ -307,6 +326,74 @@ function playAgainSamePlayers(room: Room, source: string): void {
 }
 
 onPostGameIdle((room) => playAgainSamePlayers(room, 'post-game idle timer'));
+
+// Task 320 - "Νέο παιχνίδι": a NEW room for the TV (new code, new instanceId,
+// mode and speechPolicy carried, bots re-spawned as the old room asked), and
+// the old one closed: every socket in it gets room:closed, the phones lose
+// their association and leave the Socket.IO room, then deleteRoom tears it
+// down (timers incl. the idle timer, mode WeakMaps, bots). Refused with no TV
+// attached - the new room's QR would have nowhere to show.
+function startNewGameRoom(oldRoom: Room, source: string): void {
+  if (!acceptPostGamePress(oldRoom, source)) {
+    return;
+  }
+  const hostSocketId = oldRoom.hostSocketId;
+  const hostSocket = hostSocketId ? io.sockets.sockets.get(hostSocketId) : undefined;
+  if (!hostSocketId || !hostSocket) {
+    console.log(`rejected ${source} for room ${oldRoom.code}: no host display attached to show the new room`);
+    return;
+  }
+  cancelPostGameIdle(oldRoom, `new game (${source})`);
+
+  // Created BEFORE the old room is deleted, so the new code can never be
+  // the old one.
+  const newRoom = createRoom(hostSocketId, oldRoom.mode);
+  updateRoomSettings(newRoom, { speechPolicy: oldRoom.settings.speechPolicy });
+  newRoom.requestedBotCount = oldRoom.requestedBotCount;
+  newRoom.audioVolume = { ...oldRoom.audioVolume };
+
+  const closed: RoomClosedPayload = { code: oldRoom.code, instanceId: oldRoom.instanceId };
+  io.to(oldRoom.code).emit(ServerEvents.ROOM_CLOSED, closed);
+  const oldSocketIds = [...(io.sockets.adapter.rooms.get(oldRoom.code) ?? [])];
+  for (const socketId of oldSocketIds) {
+    if (socketId === hostSocketId) {
+      continue;
+    }
+    socketAssociationBySocketId.delete(socketId);
+    closedRoomCodeBySocketId.set(socketId, oldRoom.code);
+  }
+  io.in(oldRoom.code).socketsLeave(oldRoom.code);
+
+  // The TV: what host:create_room sends a fresh room, so HostScreen's own
+  // ROOM_CREATED / PHASE_CHANGED(LOBBY) / LOBBY_UPDATE handlers store the new
+  // code and clear the finished game with no TV change.
+  socketAssociationBySocketId.set(hostSocketId, { role: 'host', code: newRoom.code });
+  hostSocket.join(newRoom.code);
+  hostSocket.emit(ServerEvents.ROOM_CREATED, { code: newRoom.code });
+  hostSocket.emit(ServerEvents.PHASE_CHANGED, { phase: newRoom.phase });
+  hostSocket.emit(ServerEvents.AUDIO_VOLUME_CHANGED, newRoom.audioVolume);
+
+  deleteRoom(oldRoom.code);
+  console.log(
+    `room ${oldRoom.code} (instance ${oldRoom.instanceId}) closed for a new game - ${oldSocketIds.length} socket(s) told; ` +
+      `TV moved to room ${newRoom.code} (instance ${newRoom.instanceId}, mode=${newRoom.mode}, ` +
+      `speechPolicy=${newRoom.settings.speechPolicy}) (${source})`,
+  );
+  if (newRoom.requestedBotCount > 0) {
+    spawnBots(newRoom.code, newRoom.requestedBotCount);
+  }
+  broadcastLobbyUpdate(newRoom.code);
+}
+
+// Task 320 - logs a press from a phone whose room "Νέο παιχνίδι" closed.
+function logClosedRoomPress(socket: Socket<ClientToServerEvents, ServerToClientEvents>, eventName: string): boolean {
+  const closedCode = closedRoomCodeBySocketId.get(socket.id);
+  if (closedCode === undefined) {
+    return false;
+  }
+  console.log(`ignored ${eventName} from ${socket.id}: room ${closedCode} was closed for a new game (an earlier press already won)`);
+  return true;
+}
 
 // Catches a single player up to whatever's currently happening in the room -
 // used right after a join/reconnect when phase !== 'LOBBY', so nobody is
@@ -588,6 +675,9 @@ function getVipRoomForSocket(
   eventName: string,
 ): Room | null {
   const association = socketAssociationBySocketId.get(socket.id);
+  if (!association && logClosedRoomPress(socket, eventName)) {
+    return null;
+  }
   if (!association || association.role !== 'player') {
     console.log(`rejected ${eventName} from ${socket.id}: not a player`);
     return null;
@@ -707,6 +797,9 @@ function getPlayerRoomForSocket(
   eventName: string,
 ): { room: Room; playerId: string } | null {
   const association = socketAssociationBySocketId.get(socket.id);
+  if (!association && logClosedRoomPress(socket, eventName)) {
+    return null;
+  }
   if (!association || association.role !== 'player') {
     console.log(`rejected ${eventName} from ${socket.id}: not a player`);
     return null;
@@ -893,6 +986,19 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Task 320 - a resume names the room INSTANCE it remembers. Another
+    // instance under the same code (the old room was closed or expired and
+    // its 4-digit code reused) is not that room: refused BEFORE both the
+    // existing-player fast path and the fresh-join path, so the phone never
+    // slides into a stranger's game.
+    if (payload.instanceId !== undefined && payload.instanceId !== room.instanceId) {
+      socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'ROOM_CLOSED' });
+      console.log(
+        `rejected ${ClientEvents.PLAYER_JOIN} resume from ${socket.id} to room ${code}: instance ${payload.instanceId} is not the live ${room.instanceId}`,
+      );
+      return;
+    }
+
     if (!isValidPlayerName(name)) {
       socket.emit(ServerEvents.JOIN_REJECTED, { reason: 'INVALID_NAME' });
       return;
@@ -935,6 +1041,7 @@ io.on('connection', (socket) => {
         avatarId: existingPlayer.avatarId,
         isPresetName: existingPlayer.isPresetName,
         phase: room.phase,
+        instanceId: room.instanceId,
       });
       console.log(`player ${existingPlayer.name} reconnected to room ${code}`);
       broadcastLobbyUpdate(code);
@@ -1016,7 +1123,15 @@ io.on('connection', (socket) => {
     refreshRoomTtl(room); // cancels a pending empty-room deletion, if any
     socketAssociationBySocketId.set(socket.id, { role: 'player', code, playerId });
     socket.join(code);
-    socket.emit(ServerEvents.PLAYER_JOINED, { playerId, name: trimmedName, code, avatarId, isPresetName, phase: room.phase });
+    socket.emit(ServerEvents.PLAYER_JOINED, {
+      playerId,
+      name: trimmedName,
+      code,
+      avatarId,
+      isPresetName,
+      phase: room.phase,
+      instanceId: room.instanceId,
+    });
     console.log(`player ${trimmedName} (${playerId}) joined room ${code} as ${avatarId}`);
     broadcastLobbyUpdate(code);
     // Task 217 - checked AFTER the lobby update above (so the roster that
@@ -1764,6 +1879,23 @@ io.on('connection', (socket) => {
     playAgainSamePlayers(room, ClientEvents.HOST_PLAY_AGAIN);
   });
 
+  // Task 320 - "Νέο παιχνίδι", from the VIP or the room's current TV.
+  socket.on(ClientEvents.VIP_NEW_GAME, () => {
+    const room = getVipRoomForSocket(socket, ClientEvents.VIP_NEW_GAME);
+    if (!room) {
+      return;
+    }
+    startNewGameRoom(room, ClientEvents.VIP_NEW_GAME);
+  });
+
+  socket.on(ClientEvents.HOST_NEW_GAME, () => {
+    const room = getHostRoomForSocket(socket, ClientEvents.HOST_NEW_GAME);
+    if (!room) {
+      return;
+    }
+    startNewGameRoom(room, ClientEvents.HOST_NEW_GAME);
+  });
+
   // Lets the VIP abandon an in-progress game (e.g. it was started before
   // everyone had joined) and go straight back to LOBBY - unlike
   // vip:play_again, this is reachable from QUESTION/REVEAL/STEAL, not
@@ -1882,6 +2014,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`client disconnected: ${socket.id}`);
+    closedRoomCodeBySocketId.delete(socket.id);
 
     const association = socketAssociationBySocketId.get(socket.id);
     if (!association) {
