@@ -23,4 +23,7 @@ Throwaway (scratchpad copy of 308, untrimmed Χρυσάνθη prefix):
   line (8640ms) started once and ended beat 2 on its one ack; the cut line never started. Pre-fix client: same shape.
 
 ## 4. Deploy
-See the report of this task's deploy below.
+Pushed 527bd69, then `sudo /usr/local/sbin/aegean-deploy`:
+`aegean-deploy: DEPLOY OK: 527bd699829c0ed47f6b1dc306925ee4a561fc20 live, party-game active, voice bank 396 mp3s`
+Bundle index-CbJi1tO7.js -> index-syny0g9S.js. Protections: voice 396, voice-deleted 155, voice-line-review.json
+sha256 ffa7c913... (unchanged). Prod useGameAudio.ts `cmp`-identical to dev. (This note is a docs-only commit after.)
