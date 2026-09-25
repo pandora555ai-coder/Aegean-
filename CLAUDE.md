@@ -338,6 +338,7 @@ client/src/palette-theatro.css           THE colour source: tokens, base reset, 
   passes without them but the server will not boot.
 - payloads.ts and realtime.ts import nothing local back. The dependency
   graph is acyclic. Keep it that way.
+- Plugins (decision 010): I never install, enable, update or remove a Claude Code plugin (neither /plugin nor "claude plugin"), and never write enabledPlugins, extraKnownMarketplaces or a .claude-plugin/plugin.json anywhere. Only the owner installs plugins, by hand. If I find a need for one, I say so in my report.
 
 ## Phases
 
