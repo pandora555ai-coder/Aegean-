@@ -19,14 +19,28 @@
 //   - CLIMB_QUESTION follows, and the whole thing stays under 5 minutes.
 //
 //   npx tsx dev/321-climb-intro-check.ts
+//
+// Task 324 added three variants (tasks/324-steal-view-and-gate-fix.md):
+//   BATCH=on         the default scenario with the TV's phase:changed SOCRATES
+//                    frame held and delivered in ONE task with the next
+//                    socrates:show (tasks/323's repro of the 1000ms watchdog):
+//                    Ανάβασις#20 must render under 200ms after its frame.
+//   SCENARIO=STEAL   quiz mode, two real 360x640 phones, the room jumped to the
+//                    last question so its STEAL leads straight into startClimb:
+//                    both phones must carry the vote, and the VIP Παράλειψη,
+//                    through all three Ανάβασις intro beats.
+//   SCENARIO=FULL    a short `?bot=1&mode=full` show with three real phones
+//                    (4 players, so the spear is live): every SOCRATES beat that
+//                    follows a results screen (steal, Ζωγραφική, Εκτίμηση,
+//                    Η Λήθη, climb reveal) must give the VIP Παράλειψη.
 process.env.PORT = '3922';
 
 import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { io as ioClient, type Socket } from 'socket.io-client';
-import { ClientEvents, ServerEvents } from '@game/shared';
+import { AVATAR_CATALOGUE, ClientEvents, ServerEvents } from '@game/shared';
 import {
   boxInViewport,
   boxesOverlap,
@@ -43,6 +57,58 @@ const CLIENT_DIR = `${ROOT}client`;
 const NAMES = ['Άρης', 'Νίκη'];
 const AVATARS = ['minotaur', 'sphinx'];
 const BUDGET_MS = 5 * 60_000;
+const FULL_BUDGET_MS = 30 * 60_000;
+const SCENARIO = process.env.SCENARIO ?? 'DEFAULT';
+const BATCH = process.env.BATCH === 'on';
+
+// Task 324 - BATCH=on: hold the TV's `phase:changed SOCRATES` frame and hand
+// it to socket.io in the SAME task as the next `socrates:show`, so React
+// renders both in one batch (tasks/323 §3). Frames in between pass through;
+// a held frame is released after 300ms regardless. Raw string (see header).
+const BATCH_INIT = `(() => {
+  const Orig = window.WebSocket;
+  window.__batched = 0;
+  class Held extends Orig {
+    get onmessage() { return super.onmessage; }
+    set onmessage(fn) {
+      let held = null;
+      let timer = 0;
+      const self = this;
+      super.onmessage = (ev) => {
+        const d = typeof ev.data === 'string' ? ev.data : '';
+        if (!held && d.indexOf('"phase:changed"') >= 0 && d.indexOf('"SOCRATES"') >= 0) {
+          held = ev;
+          timer = setTimeout(() => { const h = held; held = null; if (h) fn.call(self, h); }, 300);
+          return;
+        }
+        if (held && d.indexOf('"socrates:show"') >= 0) {
+          clearTimeout(timer);
+          const h = held;
+          held = null;
+          window.__batched++;
+          fn.call(self, h);
+          fn.call(self, ev);
+          return;
+        }
+        fn.call(self, ev);
+      };
+    }
+  }
+  window.WebSocket = Held;
+})();`;
+
+// Task 324 - one read of a phone's skip controls and which results overlay it
+// shows (a raw string again, evaluated per sample).
+const PHONE_PROBE = `(() => {
+  const q = (id) => document.querySelector('[data-testid="' + id + '"]') !== null;
+  let view = null;
+  if (q('steal-outcome') || q('steal-step') || q('steal-waiting') || q('steal-target-list')) view = 'steal';
+  else if (q('guess-reveal-word')) view = 'guessReveal';
+  else if (q('numeric-reveal-answer')) view = 'numericReveal';
+  else if (q('agora-reveal-verdict')) view = 'agoraReveal';
+  else if (q('climb-reveal-verdict')) view = 'climbReveal';
+  return { skip: q('socrates-skip-button'), vote: q('skip-vote-button'), view };
+})()`;
 
 let clientProc: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -100,10 +166,6 @@ interface Beat {
 async function main(): Promise<void> {
   const scriptStart = Date.now();
   await import('../server/src/index.js');
-  const { getRoom } = await import('../server/src/state.js');
-  const { startClimb } = await import('../server/src/phases.js');
-  const { ANAVASIS_INTRO_SEQUENCE } = await import('../server/src/socrates.js');
-
   clientProc = spawn('npx', ['vite', '--port', String(CLIENT_PORT), '--strictPort'], {
     cwd: CLIENT_DIR,
     detached: true,
@@ -112,10 +174,25 @@ async function main(): Promise<void> {
   });
   await waitForClient();
   browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  console.log(`SCENARIO=${SCENARIO}${BATCH ? ' BATCH=on' : ''}`);
+  if (SCENARIO === 'STEAL') await runSteal(browser);
+  else if (SCENARIO === 'FULL') await runFull(browser);
+  else await runDefault(browser);
+  const total = Date.now() - scriptStart;
+  const budget = SCENARIO === 'FULL' ? FULL_BUDGET_MS : BUDGET_MS;
+  check(`whole check under ${budget / 60_000} minutes`, total < budget, `${(total / 1000).toFixed(1)}s end to end`);
+  console.log(`\n${passed} passed, ${failed} failed`);
+}
+
+async function runDefault(browser: Browser): Promise<void> {
+  const { getRoom } = await import('../server/src/state.js');
+  const { startClimb } = await import('../server/src/phases.js');
+  const { ANAVASIS_INTRO_SEQUENCE } = await import('../server/src/socrates.js');
 
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const tv = await ctx.newPage();
   await installSubtitleObserver(tv);
+  if (BATCH) await tv.addInitScript(BATCH_INIT);
   const beats: Beat[] = [];
   const phases: Array<{ t: number; phase: string }> = [];
   tv.on('websocket', (ws) => {
@@ -193,14 +270,232 @@ async function main(): Promise<void> {
       );
     }
   });
+  if (BATCH) {
+    const batched = (await tv.evaluate('window.__batched')) as number;
+    check('BATCH: phase:changed SOCRATES delivered in one task with its socrates:show', batched >= 1, `${batched} batched deliveries`);
+    const first = introBeats[0];
+    const render = first ? matched[beats.indexOf(first)] : null;
+    const ms = render && first ? render.t - first.t : null;
+    check('BATCH: Ανάβασις#20 renders under 200ms after its frame', ms !== null && ms < 200, ms === null ? 'never rendered' : `${ms}ms`);
+  }
   const shown = log.filter((e) => e.text !== null);
   const payloadLines = new Set(beats.map((b) => b.line));
   const strays = shown.filter((e) => !payloadLines.has(e.text!));
   check('every subtitle text the TV ever rendered is a payload line', strays.length === 0, `${strays.length} of ${shown.length} renders unmatched`);
-  const total = Date.now() - scriptStart;
-  check('whole check under 5 minutes', total < BUDGET_MS, `${(total / 1000).toFixed(1)}s end to end`);
+}
 
-  console.log(`\n${passed} passed, ${failed} failed`);
+// ---------------------------------------------------------------------------
+// Task 324 - the phone half: real 360x640 phones, sampled while the server's
+// live Room says which phase and beat is current.
+
+interface LiveRoom {
+  phase: string;
+  socratesBeatId: number;
+  climb: unknown;
+  gameIntroPlayed: boolean;
+  currentQuestionIndex: number;
+  questions: Array<{ correctIndex: number }>;
+  players: Map<string, unknown>;
+  settings: { gameLength: string };
+}
+
+interface PhoneState {
+  skip: boolean;
+  vote: boolean;
+  view: string | null;
+}
+
+interface Sample {
+  t: number;
+  phase: string;
+  beatId: number;
+  climb: boolean;
+  phones: PhoneState[];
+}
+
+interface BeatReport {
+  beatId: number;
+  climb: boolean;
+  after: string;
+  settled: Sample[];
+}
+
+// The results screen each result phase leaves on the phone.
+const RESULT_VIEW_OF: Record<string, string> = {
+  STEAL: 'steal',
+  GUESS_REVEAL: 'guessReveal',
+  NUMERIC_REVEAL: 'numericReveal',
+  AGORA_REVEAL: 'agoraReveal',
+  CLIMB_REVEAL: 'climbReveal',
+};
+// A beat is judged on samples taken at least this long after its first one.
+const SETTLE_MS = 400;
+
+async function openPhone(browser: Browser, code: string, name: string, avatarId: string): Promise<Page> {
+  const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+  await page.goto(`http://localhost:${CLIENT_PORT}/play`);
+  await page.evaluate(
+    ([s, id]) => {
+      localStorage.setItem('playerId', id);
+      localStorage.setItem('lastSession', s);
+    },
+    [JSON.stringify({ code, name, avatarId }), randomUUID()] as const,
+  );
+  await page.reload();
+  return page;
+}
+
+async function joinPhones(browser: Browser, room: LiveRoom, code: string, names: string[]): Promise<Page[]> {
+  const avatars = AVATAR_CATALOGUE.map((a) => a.id);
+  const phones: Page[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const before = room.players.size;
+    phones.push(await openPhone(browser, code, names[i], avatars[i]));
+    const t0 = Date.now();
+    while (room.players.size === before && Date.now() - t0 < 15000) await delay(100);
+    if (room.players.size === before) throw new Error(`phone ${names[i]} never joined`);
+  }
+  return phones;
+}
+
+// One sample, kept only if the phase and beat did not move while the phones
+// were being read.
+async function takeSample(room: LiveRoom, phones: Page[]): Promise<Sample | null> {
+  const phase = room.phase;
+  const beatId = room.socratesBeatId;
+  const states = await Promise.all(
+    phones.map((p) => (p.evaluate(PHONE_PROBE) as Promise<PhoneState>).catch(() => ({ skip: false, vote: false, view: null }))),
+  );
+  if (room.phase !== phase || room.socratesBeatId !== beatId) return null;
+  return { t: Date.now(), phase, beatId, climb: room.climb !== null, phones: states };
+}
+
+function beatsFrom(samples: Sample[]): BeatReport[] {
+  const beats = new Map<number, BeatReport & { start: number }>();
+  let lastGameplay = 'LOBBY';
+  for (const s of samples) {
+    if (s.phase === 'SOCRATES') {
+      let b = beats.get(s.beatId);
+      if (!b) {
+        b = { beatId: s.beatId, climb: s.climb, after: lastGameplay, settled: [], start: s.t };
+        beats.set(s.beatId, b);
+      }
+      if (s.t - b.start >= SETTLE_MS) b.settled.push(s);
+    } else if (s.phase !== 'STAGE_ANNOUNCE') {
+      lastGameplay = s.phase;
+    }
+  }
+  return [...beats.values()];
+}
+
+async function createRoomOnTv(browser: Browser, query: string, gate: boolean): Promise<{ tv: Page; code: string }> {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const tv = await ctx.newPage();
+  await tv.goto(`http://localhost:${CLIENT_PORT}/host?${query}&clock=off`);
+  if (gate) await tv.getByTestId('audio-gate').click();
+  await tv.getByTestId('create-room').click();
+  const codeLocator = tv.getByTestId('room-code');
+  await codeLocator.waitFor({ timeout: 15000 });
+  return { tv, code: ((await codeLocator.textContent()) ?? '').replace(/\D/g, '') };
+}
+
+async function runSteal(browser: Browser): Promise<void> {
+  const { getRoom } = await import('../server/src/state.js');
+  const { code } = await createRoomOnTv(browser, 'mode=quiz', true);
+  const room = getRoom(code) as unknown as LiveRoom;
+  const phones = await joinPhones(browser, room, code, NAMES);
+  const [vip] = phones;
+  console.log(`room ${code}: TV + 2 real phones (VIP ${NAMES[0]}), quiz mode`);
+  await vip.getByTestId('start-button').click({ timeout: 15000 });
+
+  const t0 = Date.now();
+  while (room.phase !== 'STAGE_ANNOUNCE' && Date.now() - t0 < 30000) await delay(50);
+  // While stage 1's card is up: the next question served is the LAST one (a
+  // stage-3 steal question), and the narration intro is marked played.
+  room.gameIntroPlayed = true;
+  room.currentQuestionIndex = room.questions.length - 1;
+  while (room.phase !== 'QUESTION' && Date.now() - t0 < 60000) await delay(50);
+  const correct = room.questions[room.currentQuestionIndex].correctIndex;
+  await vip.getByTestId('answer-button').nth(correct).click({ timeout: 10000 });
+  console.log(`VIP answered correctly (index ${correct}); ${NAMES[1]} stays silent, so the VIP is the thief`);
+
+  const samples: Sample[] = [];
+  let targetClicked = false;
+  while (room.phase !== 'CLIMB_QUESTION' && Date.now() - t0 < 180_000) {
+    const s = await takeSample(room, phones);
+    if (s) samples.push(s);
+    if (room.phase === 'STEAL' && !targetClicked && (await vip.getByTestId('steal-target-option').count()) > 0) {
+      await vip.getByTestId('steal-target-option').first().click().catch(() => {});
+      targetClicked = true;
+    }
+    await delay(80);
+  }
+  check('setup: CLIMB_QUESTION reached', room.phase === 'CLIMB_QUESTION', `after ${Date.now() - t0}ms`);
+  const stealSamples = samples.filter((s) => s.phase === 'STEAL');
+  check(
+    'setup: both phones showed the steal view during STEAL',
+    [0, 1].every((i) => stealSamples.some((s) => s.phones[i].view === 'steal')),
+    `${stealSamples.length} STEAL samples`,
+  );
+  const intro = beatsFrom(samples).filter((b) => b.climb);
+  check('the Ανάβασις intro is 3 beats', intro.length === 3, `${intro.length} climb beats`);
+  let fine = 0;
+  for (const [i, b] of intro.entries()) {
+    const ok = b.settled.length > 0 && b.settled.every((s) => s.phones[0].skip && s.phones[0].vote && s.phones[1].vote);
+    const nonVipSkip = b.settled.some((s) => s.phones[1].skip);
+    const views = [...new Set(b.settled.flatMap((s) => s.phones.map((p) => p.view ?? 'none')))].join(',');
+    if (ok) fine++;
+    check(
+      `Ανάβασις#${20 + i} (beat ${b.beatId}, after ${b.after}): vote on both phones + Παράλειψη on the VIP`,
+      ok,
+      `${b.settled.filter((s) => s.phones[0].skip).length}/${b.settled.length} VIP skip, ${b.settled.filter((s) => s.phones[0].vote).length}/${b.settled.length} VIP vote, ${b.settled.filter((s) => s.phones[1].vote).length}/${b.settled.length} ${NAMES[1]} vote; overlays seen: ${views}`,
+    );
+    check(`Ανάβασις#${20 + i}: no Παράλειψη on the non-VIP phone`, !nonVipSkip);
+  }
+  console.log(`STEAL summary: ${fine} of ${intro.length} intro beats carry both controls on both phones`);
+}
+
+async function runFull(browser: Browser): Promise<void> {
+  const { getRoom } = await import('../server/src/state.js');
+  const { code } = await createRoomOnTv(browser, 'bot=1&mode=full', false);
+  const room = getRoom(code) as unknown as LiveRoom;
+  const names = [...NAMES, 'Τάκης'];
+  const phones = await joinPhones(browser, room, code, names);
+  room.settings.gameLength = 'short';
+  console.log(`room ${code}: TV + 1 bot + 3 idle real phones (VIP ${names[0]}), full, short`);
+  await phones[0].getByTestId('start-button').click({ timeout: 15000 });
+
+  const t0 = Date.now();
+  while (room.phase !== 'STAGE_ANNOUNCE' && Date.now() - t0 < 30000) await delay(50);
+  room.gameIntroPlayed = true; // skip the ten-line opening; not under test
+  const samples: Sample[] = [];
+  let lastPhase = '';
+  while (room.phase !== 'GAME_OVER' && Date.now() - t0 < FULL_BUDGET_MS - 120_000) {
+    if (room.phase !== lastPhase) {
+      lastPhase = room.phase;
+      console.log(`  ${((Date.now() - t0) / 1000).toFixed(1)}s\t${lastPhase}`);
+    }
+    const s = await takeSample(room, phones);
+    if (s) samples.push(s);
+    await delay(80);
+  }
+  check('setup: the show reached GAME_OVER', room.phase === 'GAME_OVER', `after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+
+  const beats = beatsFrom(samples);
+  for (const [resultPhase, view] of Object.entries(RESULT_VIEW_OF)) {
+    const saw = samples.some((s) => s.phase === resultPhase && s.phones[0].view === view);
+    const after = beats.filter((b) => b.after === resultPhase && b.settled.length > 0);
+    if (after.length === 0) {
+      console.log(`  -- ${view}: no SOCRATES beat followed ${resultPhase} on this path (view shown: ${saw})`);
+      continue;
+    }
+    const ok = after.filter((b) => b.settled.every((s) => s.phones[0].skip));
+    check(
+      `${view}: VIP has Παράλειψη on every beat after ${resultPhase}`,
+      ok.length === after.length,
+      `${ok.length}/${after.length} beats (${after.map((b) => b.beatId).join(',')}); ${view} shown on the VIP during ${resultPhase}: ${saw}`,
+    );
+  }
 }
 
 async function cleanup(): Promise<void> {

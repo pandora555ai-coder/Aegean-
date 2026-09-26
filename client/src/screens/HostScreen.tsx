@@ -464,6 +464,7 @@ export default function HostScreen() {
   const phaseEntryPayloadRef = useRef<unknown>(PHASE_PAYLOAD_READY);
   const committedPhaseRef = useRef<GamePhase>('LOBBY');
   const [phaseWatchdog, setPhaseWatchdog] = useState<GamePhase | null>(null);
+  const payloadForPhaseRef = useRef<(candidate: GamePhase) => unknown>(() => PHASE_PAYLOAD_READY);
 
   // The state slot each phase fills from its own payload event. Exhaustive
   // over GamePhase deliberately: a new phase added without a slot here is a
@@ -519,19 +520,22 @@ export default function HostScreen() {
     }
   }
 
+  // Task 324 - handlePhaseChanged reads the slot through this ref, so its
+  // entry snapshot is the LAST-RENDERED value (pre-payload, since the server
+  // emits phase:changed first). The snapshot used to be taken here, during
+  // render: when phase:changed and its payload landed in one React batch the
+  // "entry" value was already the NEW payload, and the phase waited out the
+  // 1000ms watchdog (tasks/323, measured 1009ms).
+  payloadForPhaseRef.current = payloadForPhase;
   const socketPhasePayload = payloadForPhase(socketPhase);
-  // First render after the server moved us: remember what this phase's slot
-  // held AT ENTRY, so "the payload arrived" means precisely "that slot has
-  // been replaced since". Ref writes only, and guarded, so StrictMode's
-  // double render-invoke re-runs this harmlessly (the established pattern in
-  // this file - see stealSnapshotKeyRef below).
-  if (socketPhase !== committedPhaseRef.current && phaseEntryPhaseRef.current !== socketPhase) {
-    phaseEntryPhaseRef.current = socketPhase;
-    phaseEntryPayloadRef.current = socketPhasePayload;
-  }
+  // "Arrived" = the slot has been replaced by a real payload since the
+  // phase:changed event. A slot CLEARED since then (an earlier handler's
+  // pending null) is not an arrival - that is the stale-view case 233b exists
+  // to prevent. A state:sync stamps PHASE_PAYLOAD_SYNCED: arrived at once.
   const phasePayloadArrived =
     socketPhasePayload === PHASE_PAYLOAD_READY ||
-    socketPhasePayload !== phaseEntryPayloadRef.current ||
+    phaseEntryPayloadRef.current === PHASE_PAYLOAD_SYNCED ||
+    (socketPhasePayload != null && socketPhasePayload !== phaseEntryPayloadRef.current) ||
     phaseWatchdog === socketPhase;
   if (phasePayloadArrived) {
     committedPhaseRef.current = socketPhase;
@@ -632,6 +636,11 @@ export default function HostScreen() {
       // it only once this phase's own payload has landed.
       setSocketPhase(payload.phase);
       phaseRef.current = payload.phase;
+      // Task 324 - the entry snapshot, taken at EVENT time (see
+      // payloadForPhaseRef above): what this phase's slot held before its
+      // own payload event could possibly have been handled.
+      phaseEntryPhaseRef.current = payload.phase;
+      phaseEntryPayloadRef.current = payloadForPhaseRef.current(payload.phase);
       if (payload.phase === 'LOBBY') {
         // A fresh game (via "play again") - clear every transient round view
         // so the lobby renders cleanly instead of a stale QUESTION/REVEAL/

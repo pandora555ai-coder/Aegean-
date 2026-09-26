@@ -540,7 +540,9 @@ async function main(): Promise<void> {
   await vipPlayAgain.waitFor({ timeout: 10000 }).catch(() => {});
   const vipButtonText = (await vipPlayAgain.textContent().catch(() => null)) ?? '';
   console.log(`VIP phone play-again button text: "${vipButtonText}"`);
-  check('1: VIP phone sees "Νέο παιχνίδι"', vipButtonText.trim() === 'Νέο παιχνίδι', `text="${vipButtonText.trim()}"`);
+  // Task 324 - play-again-button reads "Ξανά, ίδια παρέα" since Task 322 (5f293ae);
+  // "Νέο παιχνίδι" is new-game-button now (a new room, Task 320).
+  check('1: VIP phone sees "Ξανά, ίδια παρέα"', vipButtonText.trim() === 'Ξανά, ίδια παρέα', `text="${vipButtonText.trim()}"`);
   const otherWaiting = otherPage.locator('[data-testid="waiting-for-play-again"]');
   const otherWaitingCount = await otherWaiting.count();
   const otherWaitingText = otherWaitingCount > 0 ? await otherWaiting.textContent() : null;

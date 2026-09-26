@@ -878,6 +878,41 @@ export default function ControllerScreen() {
         applyBlitz(null);
         setBlitzReveal(null);
       }
+      // Task 324 - the same rule for every other result overlay (tasks/323).
+      // Each sits above the `joined` fallback in the render ladder and carries
+      // neither skip control, so one left standing through a STAGE_ANNOUNCE or
+      // SOCRATES beat hid Παράλειψη from the VIP and the narration vote from
+      // every phone (the steal view held through the whole Ανάβασις intro).
+      if (payload.phase !== 'STEAL') {
+        applySteal(null);
+      }
+      if (payload.phase !== 'GUESS_REVEAL') {
+        setGuessReveal(null);
+      }
+      if (payload.phase !== 'NUMERIC_REVEAL') {
+        setNumericReveal(null);
+      }
+      if (payload.phase !== 'AGORA_REVEAL') {
+        setAgoraReveal(null);
+      }
+      if (payload.phase !== 'CLIMB_REVEAL') {
+        setClimbReveal(null);
+      }
+      if (payload.phase !== 'DUEL_REVEAL') {
+        setDuelReveal(null);
+      }
+      // ...and the two question views those reveals were covering. Neither
+      // reveal handler clears its question (the reveal simply outranks it), so
+      // with the reveal gone a stale agora/climb question resurfaced over the
+      // `joined` fallback for the rest of the show - measured in the Task 324
+      // FULL run: 0/2 beats after AGORA_REVEAL, 0/3 after STEAL, 0/4 after
+      // CLIMB_REVEAL carried Παράλειψη.
+      if (payload.phase !== 'AGORA_QUESTION' && payload.phase !== 'AGORA_REVEAL') {
+        applyAgoraQuestion(null);
+      }
+      if (payload.phase !== 'CLIMB_QUESTION' && payload.phase !== 'CLIMB_REVEAL') {
+        applyClimbQuestion(null);
+      }
     }
 
     // Task 223 - a rejected SUBMIT_ANSWER (out-of-range or non-numeric
