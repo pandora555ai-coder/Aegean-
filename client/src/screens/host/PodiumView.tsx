@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { GameOverPayload } from '@game/shared';
 import { Avatar } from '../../components/Avatar';
 import { greekUpper } from '../../greekUpper';
@@ -5,6 +6,10 @@ import { densityScale } from './hostStyles';
 
 interface PodiumViewProps {
   gameOver: GameOverPayload;
+  vipName: string | null;
+  // Task 322 - the two post-game actions (host:play_again / host:new_game).
+  onSamePlayers: () => void;
+  onNewGame: () => void;
 }
 
 // Task 239 - the end state, shown a beat after whatever ceremony just played
@@ -30,6 +35,14 @@ const STYLE_TAG = `
 .podium-row.winner{color:var(--marble)}
 .podium-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44cqw}
 .podium-wreath{flex-shrink:0}
+.podium-actions{display:flex;flex-direction:column;align-items:center;gap:1.6cqh;pointer-events:auto}
+.podium-buttons{display:flex;gap:2cqw}
+.podium-btn{font-family:"Gentium Book Plus",Georgia,"Times New Roman",serif;font-size:3cqh;font-weight:700;
+  padding:1.4cqh 3cqw;color:var(--marble);background:var(--night-1);border:.3cqh solid var(--marble-3);
+  border-radius:1cqh;cursor:pointer}
+.podium-btn:focus,.podium-btn:focus-visible{outline:.5cqh solid var(--ember);outline-offset:.4cqh;background:var(--wine)}
+.podium-btn:disabled{opacity:.42;cursor:default}
+.podium-decider{font-size:2.4cqh;color:var(--marble-2);font-family:"Gentium Book Plus",Georgia,serif}
 `;
 
 // A small laurel, olive-coloured like AnavasisCrowning's own wreath (a
@@ -54,11 +67,39 @@ function PodiumLaurel({ sizeCqh }: { sizeCqh: number }) {
   );
 }
 
-export function PodiumView({ gameOver }: PodiumViewProps) {
+export function PodiumView({ gameOver, vipName, onSamePlayers, onNewGame }: PodiumViewProps) {
   const count = gameOver.standings.length;
   const s = densityScale(count);
   const avatarRem = 2.6 * s;
   const winnerAvatarRem = 3.4 * s;
+  const [pressed, setPressed] = useState(false);
+  const firstButtonRef = useRef<HTMLButtonElement>(null);
+  const secondButtonRef = useRef<HTMLButtonElement>(null);
+
+  // A TV remote has no pointer: first button takes focus on mount.
+  useEffect(() => {
+    firstButtonRef.current?.focus();
+  }, []);
+
+  function press(action: () => void) {
+    if (pressed) {
+      return;
+    }
+    setPressed(true);
+    action();
+  }
+
+  // Arrow keys move focus between the two buttons; Tab works natively and
+  // Enter presses the focused button (native button behaviour).
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      secondButtonRef.current?.focus();
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      firstButtonRef.current?.focus();
+    }
+  }
 
   return (
     <div className="podium-root screen-fade-in" data-testid="podium-root">
@@ -84,6 +125,33 @@ export function PodiumView({ gameOver }: PodiumViewProps) {
             </div>
           );
         })}
+      </div>
+      <div className="podium-actions" data-testid="podium-actions" onKeyDown={handleKeyDown}>
+        <div className="podium-buttons">
+          <button
+            ref={firstButtonRef}
+            className="podium-btn"
+            type="button"
+            data-testid="tv-play-again"
+            disabled={pressed}
+            onClick={() => press(onSamePlayers)}
+          >
+            Ξανά, ίδια παρέα
+          </button>
+          <button
+            ref={secondButtonRef}
+            className="podium-btn"
+            type="button"
+            data-testid="tv-new-game"
+            disabled={pressed}
+            onClick={() => press(onNewGame)}
+          >
+            Νέο παιχνίδι
+          </button>
+        </div>
+        <div className="podium-decider" data-testid="tv-decider">
+          Αποφασίζει: {vipName ?? '...'}
+        </div>
       </div>
     </div>
   );

@@ -540,6 +540,7 @@ export default function ControllerScreen() {
   const [skipVoteSent, setSkipVoteSent] = useState(false);
   const [vipPlayerId, setVipPlayerId] = useState<string | null>(null);
   const [vipName, setVipName] = useState<string | null>(null);
+  const [postGamePressed, setPostGamePressed] = useState(false);
   const [roomSettings, setRoomSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   // Task 178 - VIP crowd/voice sliders. Local-only: nothing echoes the
   // room's real value back to the VIP's own phone (AUDIO_VOLUME_CHANGED is
@@ -848,6 +849,7 @@ export default function ControllerScreen() {
         setAcceptedChoice(null);
         setReveal(null);
         setGameOver(null);
+        setPostGamePressed(false);
         applyPowerUp(null);
         applySteal(null);
         applyDraw(null);
@@ -1300,6 +1302,7 @@ export default function ControllerScreen() {
       setAcceptedChoice(null);
       setReveal(null);
       setGameOver(null);
+      setPostGamePressed(false);
       applySabotages([]);
       applyPowerUp(null);
       applySteal(null);
@@ -1960,6 +1963,11 @@ export default function ControllerScreen() {
     socket.emit(ClientEvents.VIP_PLAY_AGAIN, {});
   }
 
+  // Task 322 - "Νέο παιχνίδι" is a NEW room (Task 320), not play-again.
+  function handleNewGame() {
+    socket.emit(ClientEvents.VIP_NEW_GAME, {});
+  }
+
   function handleSettingChange(partial: Partial<RoomSettings>) {
     socket.emit(ClientEvents.VIP_UPDATE_SETTINGS, partial);
   }
@@ -2000,7 +2008,12 @@ export default function ControllerScreen() {
   if (roomClosed) {
     return (
       <div style={styles.container}>
-        <div data-testid="room-closed">Το παιχνίδι έκλεισε. Σκάναρε το νέο QR στην τηλεόραση.</div>
+        <div style={styles.brand}>
+          <div style={styles.closedTitle}>Αιγαίον</div>
+        </div>
+        <div style={styles.closedText} data-testid="room-closed">
+          Το παιχνίδι έκλεισε. Σκάναρε το νέο QR στην τηλεόραση.
+        </div>
       </div>
     );
   }
@@ -2097,12 +2110,17 @@ export default function ControllerScreen() {
             gets an explicit waiting note instead of nothing, the same
             "waiting-for-vip" idiom the LOBBY screen already uses. */}
         {isVip ? (
-          <button data-testid="play-again-button" style={styles.button} type="button" onClick={handlePlayAgain}>
-            Νέο παιχνίδι
-          </button>
+          <>
+            <button data-testid="play-again-button" style={styles.button} type="button" disabled={postGamePressed} onClick={() => { setPostGamePressed(true); handlePlayAgain(); }}>
+              Ξανά, ίδια παρέα
+            </button>
+            <button data-testid="new-game-button" style={styles.button} type="button" disabled={postGamePressed} onClick={() => { setPostGamePressed(true); handleNewGame(); }}>
+              Νέο παιχνίδι
+            </button>
+          </>
         ) : (
           <div style={styles.subtitle} data-testid="waiting-for-play-again">
-            Ο/Η {vipName ?? '...'} αποφασίζει αν θα παίξετε ξανά
+            Αποφασίζει: {vipName ?? '...'}
           </div>
         )}
       </div>
@@ -3757,6 +3775,17 @@ export default function ControllerScreen() {
 }
 
 const styles: Record<string, CSSProperties> = {
+  // Task 322 - the room-closed screen wears the landing page's brand block.
+  brand: { textAlign: 'center' },
+  closedTitle: {
+    fontFamily: '"Gentium Book Plus", Georgia, "Times New Roman", serif',
+    fontSize: 'clamp(3rem, 14vw, 4.5rem)',
+    fontWeight: 700,
+    lineHeight: 0.95,
+    color: 'var(--marble)',
+    textShadow: '0 0.3rem 1.5rem rgba(0,0,0,.8)',
+  },
+  closedText: { textAlign: 'center', color: 'var(--marble)', fontSize: '1.15rem' },
   container: {
     display: 'flex',
     flexDirection: 'column',

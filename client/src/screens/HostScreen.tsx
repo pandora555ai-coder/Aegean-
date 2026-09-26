@@ -60,6 +60,7 @@ import {
   type GuessShowHostPayload,
   type GuessShowPayload,
   type LobbyUpdatePayload,
+  type VipChangedPayload,
   type NumericQuestionShowHostPayload,
   type NumericQuestionShowPayload,
   type NumericRevealShowPayload,
@@ -215,6 +216,8 @@ export default function HostScreen() {
   // with no bot count still shows the gate over "Create Room" until tapped.
   const [audioGatePassed, setAudioGatePassed] = useState(() => botCount > 0);
   const [lobby, setLobby] = useState<LobbyUpdatePayload | null>(null);
+  // Task 322 - who decides at the end ("Αποφασίζει: ..."); kept live via lobby + vip:changed.
+  const [vipName, setVipName] = useState<string | null>(null);
   // Task 233b - the SERVER's phase, as last announced by phase:changed. What
   // the TV actually renders is `phase`, derived below: this one runs ahead of
   // the payload by a few ms and must never be read by the view directly.
@@ -572,6 +575,14 @@ export default function HostScreen() {
     function handleLobbyUpdate(payload: LobbyUpdatePayload) {
       setLobby(payload);
       setRoomSettings(payload.settings);
+      const vip = payload.players.find((player) => player.isVip);
+      if (vip) {
+        setVipName(vip.name);
+      }
+    }
+
+    function handleVipChanged(payload: VipChangedPayload) {
+      setVipName(payload.name);
     }
 
     function handleSettingsUpdated(payload: SettingsUpdatedPayload) {
@@ -1420,6 +1431,7 @@ export default function HostScreen() {
     socket.on(ServerEvents.DEV_VOICE_LINES, handleVoiceLines);
     socket.on(ServerEvents.ERROR, handleServerError);
     socket.on(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+    socket.on(ServerEvents.VIP_CHANGED, handleVipChanged);
     socket.on(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
     socket.on(ServerEvents.QUESTION_SHOW, handleQuestionShow);
     socket.on(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -1461,6 +1473,7 @@ export default function HostScreen() {
       socket.off(ServerEvents.DEV_VOICE_LINES, handleVoiceLines);
       socket.off(ServerEvents.ERROR, handleServerError);
       socket.off(ServerEvents.LOBBY_UPDATE, handleLobbyUpdate);
+    socket.off(ServerEvents.VIP_CHANGED, handleVipChanged);
       socket.off(ServerEvents.PHASE_CHANGED, handlePhaseChanged);
       socket.off(ServerEvents.QUESTION_SHOW, handleQuestionShow);
       socket.off(ServerEvents.POWER_UP_SHOW, handlePowerUpShow);
@@ -2075,7 +2088,14 @@ export default function HostScreen() {
       // matters for a climb finale specifically (SophistsRow never renders
       // there either way, showAnavasisWorld gates it out).
       if (showPodium) {
-        return <PodiumView gameOver={gameOver} />;
+        return (
+          <PodiumView
+            gameOver={gameOver}
+            vipName={vipName}
+            onSamePlayers={() => socket.emit(ClientEvents.HOST_PLAY_AGAIN, {})}
+            onNewGame={() => socket.emit(ClientEvents.HOST_NEW_GAME, {})}
+          />
+        );
       }
       // Η Ανάβασις's own verdict (Task 189) - the winner crowned at the
       // temple threshold, not the theatre's overlay. `isClimbFinale` is what
