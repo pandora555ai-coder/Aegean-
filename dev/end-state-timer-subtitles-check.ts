@@ -24,6 +24,14 @@
 // A SEPARATE throwaway all-bot room (criterion 0 only) DOES rely on that
 // same self-start, deliberately - it needs no phone at all.
 //
+// Task 321 - subtitles are captured by an in-page MutationObserver on the TV
+// (dev/subtitle-observer.ts): every change to the subtitle is logged and
+// timestamped by the page itself. The old sampler read the DOM only inside
+// the VIP phone's skip press, so a beat nobody skipped was never read - which
+// is exactly how criterion 4's Ανάβασις check flaked (see tasks/321-*.md).
+// The VIP phone also logs which view it is showing (skip button / steal view /
+// reveal card), so a run reports WHY a beat was or was not skipped.
+//
 //   npx tsx dev/end-state-timer-subtitles-check.ts
 process.env.PORT = '3920';
 
@@ -33,6 +41,16 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { lineHash } from '@game/shared';
+import {
+  boxInViewport,
+  boxesOverlap,
+  matchRenders,
+  installSubtitleObserver,
+  parseFrame,
+  readSubtitleLog,
+  resetSubtitleLog,
+  type SubtitleLogEntry,
+} from './subtitle-observer.js';
 
 const SERVER_PORT = 3920;
 const CLIENT_PORT = 5921;
@@ -98,18 +116,6 @@ function realDurationMs(hash: string): number | null {
 }
 void realDurationMs;
 
-// socket.io frames look like `42["event",{...}]`.
-function parseFrame(payload: string): { event: string; data: Record<string, unknown> } | null {
-  const match = payload.match(/^\d+(\[[\s\S]*\])$/);
-  if (!match) return null;
-  try {
-    const arr = JSON.parse(match[1]) as [string, Record<string, unknown>];
-    return { event: arr[0], data: arr[1] ?? {} };
-  } catch {
-    return null;
-  }
-}
-
 const KNOWN_GROUPS: Record<string, string> = {
   '35e4fb8b4163c1f6': 'Εισαγωγή#1', '6dff7bac5460652f': 'Εισαγωγή#2',
   '842169f9a829faaa': 'Εισαγωγή#3', 'a88a4ce657479a66': 'Εισαγωγή#4',
@@ -141,10 +147,6 @@ interface SubtitleCapture {
   label: string;
   payloadLine: string;
   kind: string;
-  domText: string | null;
-  cardBox: { x: number; y: number; width: number; height: number } | null;
-  subBox: { x: number; y: number; width: number; height: number } | null;
-  skipPressT: number | null;
   nextBeatT: number | null;
 }
 
@@ -154,10 +156,11 @@ interface RoomState {
   socratesBeats: SubtitleCapture[];
   gameOver: GameOverCapture | null;
   firstStandings: Array<{ playerId: string; score: number }> | null;
+  phases: Array<{ t: number; phase: string }>;
 }
 
 function wireTvCapture(tvPage: Page): RoomState {
-  const state: RoomState = { code: '', questionTexts: [], socratesBeats: [], gameOver: null, firstStandings: null };
+  const state: RoomState = { code: '', questionTexts: [], socratesBeats: [], gameOver: null, firstStandings: null, phases: [] };
   tvPage.on('websocket', (ws) => {
     ws.on('framereceived', (frame) => {
       if (typeof frame.payload !== 'string') return;
@@ -185,12 +188,10 @@ function wireTvCapture(tvPage: Page): RoomState {
           label: KNOWN_GROUPS[hash] ?? String(parsed.data.kind ?? '?'),
           payloadLine: String(parsed.data.line ?? ''),
           kind: String(parsed.data.kind ?? '?'),
-          domText: null,
-          cardBox: null,
-          subBox: null,
-          skipPressT: null,
           nextBeatT: null,
         });
+      } else if (parsed.event === 'phase:changed') {
+        state.phases.push({ t: Date.now(), phase: String(parsed.data.phase ?? '?') });
       } else if (parsed.event === 'game:over') {
         state.gameOver = parsed.data as unknown as GameOverCapture;
       }
@@ -199,34 +200,60 @@ function wireTvCapture(tvPage: Page): RoomState {
   return state;
 }
 
-// Reads the CURRENT subtitle's rendered text + (if present) the stage card's
-// bounding box, and stamps them onto whichever beat is still missing them
-// (the LAST one that has no domText yet - beats are appended in order by
-// wireTvCapture as soon as socrates:show arrives, before this ever runs).
-async function sampleCurrentBeat(tvPage: Page, state: RoomState): Promise<void> {
-  const target = [...state.socratesBeats].reverse().find((b) => b.domText === null);
-  if (!target) return;
-  const sub = tvPage.locator('[data-testid="socrates-subtitle"]');
-  if ((await sub.count()) === 0) return;
-  target.domText = await sub.first().textContent();
-  const subBox = await sub.first().boundingBox();
-  target.subBox = subBox;
-  // Task 256 - `[data-testid="stage-announce"]` itself is the full-viewport,
-  // mostly-transparent positioning wrapper (pointer-events:none outside its
-  // centred children); `> div` is the actual content box, the corrected
-  // measurement dev/podium-subtitle-followup-check.ts's own check C already
-  // uses.
-  const card = tvPage.locator('[data-testid="stage-announce"] > div');
-  if ((await card.count()) > 0) {
-    target.cardBox = await card.first().boundingBox();
+// Task 321 - the VIP phone's own view log, same in-page-observer idea as the
+// TV's subtitle log: every change to (skip control present, steal view
+// present, reveal card present), timestamped. Raw string for the same
+// __name reason as dev/subtitle-observer.ts.
+const PHONE_VIEW_SCRIPT = `
+(() => {
+  if (window.__viewLog) return;
+  const log = [];
+  window.__viewLog = log;
+  let lastKey = null;
+  const read = () => {
+    const skip = !!document.querySelector('[data-testid="continue-button"], [data-testid="socrates-skip-button"]');
+    const steal = !!document.querySelector('[data-testid="steal-outcome"], [data-testid="steal-waiting"], [data-testid="steal-target-list"]');
+    const reveal = !!document.querySelector('[data-testid="reveal-total"]');
+    const key = [skip, steal, reveal].join('|');
+    if (key === lastKey) return;
+    lastKey = key;
+    log.push({ t: Date.now(), skip, steal, reveal });
+  };
+  new MutationObserver(read).observe(document, { subtree: true, childList: true, attributes: true });
+})();
+`;
+interface PhoneView {
+  t: number;
+  skip: boolean;
+  steal: boolean;
+  reveal: boolean;
+}
+function viewAt(log: PhoneView[], t: number): PhoneView | null {
+  let current: PhoneView | null = null;
+  for (const v of log) {
+    if (v.t > t) break;
+    current = v;
   }
+  return current;
 }
 
 // One polling loop per phone: taps the shared answer grid, and skips
-// REVEAL/SOCRATES beats via Task 238's own control. `onBeforeSkip` runs
-// (subtitle capture) right before each Socrates skip.
-async function drivePhone(page: Page, stop: { stopped: boolean }, onBeforeSkip?: () => Promise<void>): Promise<void> {
+// REVEAL/SOCRATES beats via Task 238's own control. Skip presses are only
+// timestamped now - nothing is read from the TV around them.
+// Task 321 - a skip is pressed only once the SAME control (by testid) has been
+// seen enabled for SKIP_DWELL_MS. Pressing on first sight ended beats within
+// milliseconds of starting - before the TV had committed their subtitle at all
+// (series A run 5 lost Ανάβασις#20 that way); no human is that fast. 1500ms,
+// not less: when phase:changed and its payload land in ONE React render, the
+// TV's Task 233b gate (HostScreen payloadForPhase) snapshots the payload that
+// already arrived and waits for PHASE_PAYLOAD_WATCHDOG_MS (1000) before it
+// commits the phase - a 500ms dwell ended two beats inside that window
+// (series B run 1 Εισαγωγή#1 at 673ms, series C run 2 Ανάβασις#20 at 702ms).
+// The render latency is printed below, so that TV-side wait stays visible.
+const SKIP_DWELL_MS = 1500;
+async function drivePhone(page: Page, stop: { stopped: boolean }, presses?: number[]): Promise<void> {
   const answeredKeys = new Set<string>();
+  let seen: { testid: string; since: number } | null = null;
   while (!stop.stopped) {
     try {
       const answerBtn = page.locator('[data-testid="answer-button"]:not([disabled])').first();
@@ -238,8 +265,15 @@ async function drivePhone(page: Page, stop: { stopped: boolean }, onBeforeSkip?:
         }
       }
       const skipBtn = page.locator('[data-testid="continue-button"], [data-testid="socrates-skip-button"]').first();
-      if ((await skipBtn.count()) > 0 && !(await skipBtn.isDisabled().catch(() => true))) {
-        if (onBeforeSkip) await onBeforeSkip();
+      const enabled = (await skipBtn.count()) > 0 && !(await skipBtn.isDisabled().catch(() => true));
+      const testid = enabled ? await skipBtn.getAttribute('data-testid').catch(() => null) : null;
+      if (testid === null) {
+        seen = null;
+      } else if (seen === null || seen.testid !== testid) {
+        seen = { testid, since: Date.now() };
+      } else if (Date.now() - seen.since >= SKIP_DWELL_MS) {
+        presses?.push(Date.now());
+        seen = null;
         await skipBtn.click({ timeout: 1200 }).catch(() => {});
       }
     } catch {
@@ -304,6 +338,7 @@ async function main(): Promise<void> {
   const tvCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const tvPage = await tvCtx.newPage();
   const state = wireTvCapture(tvPage);
+  await installSubtitleObserver(tvPage);
   // NO ?bot= here, deliberately: any bot count satisfying minPlayers=2 makes
   // an all-bot room self-start (Task 217) THE INSTANT the bots join, which
   // happens synchronously inside CREATE_ROOM's own handler - before this
@@ -324,6 +359,7 @@ async function main(): Promise<void> {
   const vipCtx = await browser.newContext({ viewport: { width: 360, height: 640 } });
   const otherCtx = await browser.newContext({ viewport: { width: 360, height: 640 } });
   const vipPage = await vipCtx.newPage();
+  await vipPage.addInitScript(PHONE_VIEW_SCRIPT);
   const otherPage = await otherCtx.newPage();
   for (const [page, name] of [
     [vipPage, NAMES[0]],
@@ -357,8 +393,8 @@ async function main(): Promise<void> {
   console.log(`game 1 started at t=0 (${new Date(gameStartT).toISOString()})\n`);
 
   const stop1 = { stopped: false };
-  const captureSubtitles = async () => sampleCurrentBeat(tvPage, state);
-  const drivers1 = [drivePhone(vipPage, stop1, captureSubtitles), drivePhone(otherPage, stop1)];
+  const vipPresses: number[] = [];
+  const drivers1 = [drivePhone(vipPage, stop1, vipPresses), drivePhone(otherPage, stop1)];
 
   // Wait for GAME_OVER (long - the climb finale's 22s/round floor is real).
   const deadline1 = Date.now() + 1_400_000;
@@ -391,36 +427,82 @@ async function main(): Promise<void> {
   const clockVisible = await tvPage.locator('[data-testid="game-clock"]').count();
   check('2: the clock was visible top-left during the game (no ?clock=off)', clockVisible >= 0, `present at end-check: ${clockVisible} (checked live below too)`);
 
-  // --- Criterion 4: subtitles ---
+  // --- Criterion 4: subtitles (Task 321: MutationObserver log) ---
   console.log('\n--- 4: subtitles ---');
-  const withText = state.socratesBeats.filter((b) => b.domText !== null);
-  console.log(`beats observed with a captured DOM subtitle: ${withText.length} of ${state.socratesBeats.length} total beats`);
-  for (const b of withText.slice(0, 8)) {
-    const match = b.domText === b.payloadLine;
-    console.log(`  beat ${b.beatId} [${b.label}] kind=${b.kind} match=${match}`);
-    console.log(`    payload: "${b.payloadLine}"`);
-    console.log(`    dom:     "${b.domText}"`);
+  await delay(800); // the observer's 600ms settled-box re-measure
+  const subLog: SubtitleLogEntry[] = await readSubtitleLog(tvPage);
+  // A beat's lifetime: from its socrates:show frame to the next socrates:show
+  // or phase change, whichever comes first.
+  const lifetimeOf = (b: SubtitleCapture): number => {
+    const nextPhase = state.phases.find((p) => p.t > b.t)?.t ?? Number.MAX_SAFE_INTEGER;
+    return Math.min(b.nextBeatT ?? Number.MAX_SAFE_INTEGER, nextPhase) - b.t;
+  };
+  const matched = matchRenders(subLog, state.socratesBeats.map((b) => b.payloadLine));
+  const renders = state.socratesBeats.map((b, i) => ({ beat: b, lifetime: lifetimeOf(b), render: matched[i] }));
+  const rendered = renders.filter((r) => r.render !== null);
+  const missing = renders.filter((r) => r.render === null);
+  // A beat ended inside BLINK_MS (a skip landing as the beat began) cannot be
+  // expected to paint; listed, never silently dropped.
+  const BLINK_MS = 150;
+  console.log(`observer log: ${subLog.length} entries; beats rendered: ${rendered.length} of ${state.socratesBeats.length}`);
+  for (const m of missing) {
+    console.log(`  NOT rendered: beat ${m.beat.beatId} [${m.beat.label}] kind=${m.beat.kind} lived ${m.lifetime}ms "${m.beat.payloadLine.slice(0, 60)}"`);
+    for (const e of subLog.filter((x) => x.text === m.beat.payloadLine)) console.log(`    same text rendered at frame${e.t - m.beat.t >= 0 ? '+' : ''}${e.t - m.beat.t}ms`);
   }
-  check('4: subtitle DOM text captured for >= 3 beats', withText.length >= 3, `${withText.length} beats`);
-  check('4: every captured subtitle matches its payload line exactly', withText.every((b) => b.domText === b.payloadLine), `${withText.filter((b) => b.domText !== b.payloadLine).length} mismatches`);
-  const anavasisBeat = withText.find((b) => b.label.startsWith('Ανάβασις'));
-  check('4: one captured beat is an Ανάβασις rule line', anavasisBeat !== undefined, anavasisBeat ? `${anavasisBeat.label}: "${anavasisBeat.payloadLine.slice(0, 60)}..."` : 'none found');
+  // Frame-stamp lag diagnostic: renders the page stamped BEFORE the harness
+  // stamped their frame (the reason matching is by order).
+  const latencies = renders.filter((r) => r.render).map((r) => ({ label: r.beat.label, ms: r.render!.t - r.beat.t }));
+  const slow = latencies.filter((l) => l.ms >= 500);
+  const maxLatency = latencies.length ? Math.max(...latencies.map((l) => l.ms)) : 0;
+  console.log(`render latency (TV DOM after frame): max ${maxLatency}ms; >= 500ms: ${slow.length} [${slow.map((l) => `${l.label} ${l.ms}ms`).join(', ')}]`);
+  const early = renders.filter((r) => r.render && r.render.t < r.beat.t);
+  console.log(`renders stamped before their frame: ${early.length}${early.length ? ` (earliest ${Math.min(...early.map((r) => r.render!.t - r.beat.t))}ms)` : ''}`);
+  const missingLived = missing.filter((m) => m.lifetime >= BLINK_MS);
+  check('4: subtitle rendered for >= 3 beats', rendered.length >= 3, `${rendered.length} beats`);
+  check(`4: every SOCRATES beat that lived >= ${BLINK_MS}ms rendered its line as the subtitle`, missingLived.length === 0, `${missingLived.length} missing (${missing.length - missingLived.length} blink-skipped)`);
+  const payloadLines = new Set(state.socratesBeats.map((b) => b.payloadLine));
+  const shownTexts = subLog.filter((e) => e.text !== null);
+  const strays = shownTexts.filter((e) => !payloadLines.has(e.text!));
+  for (const e of strays.slice(0, 5)) console.log(`  stray render @${e.t}: "${e.text}"`);
+  check('4: every subtitle the TV rendered matches a payload line exactly', strays.length === 0, `${strays.length} of ${shownTexts.length} renders unmatched`);
+  const anavasis = renders.filter((r) => r.beat.label.startsWith('Ανάβασις'));
+  const anavasisRendered = anavasis.filter((r) => r.render !== null);
+  check(
+    '4: all three Ανάβασις rule lines rendered',
+    anavasis.length === 3 && anavasisRendered.length === 3,
+    `${anavasisRendered.length} of ${anavasis.length} beats (${anavasis.map((r) => r.beat.label).join(', ')})`,
+  );
 
-  const announceBeats = withText.filter((b) => (b.kind === 'GAME_INTRO' || b.kind === 'STAGE_INTRO') && b.cardBox);
-  console.log(`\nannounce beats with a stage-card bbox captured: ${announceBeats.length}`);
-  for (const b of announceBeats.slice(0, 5)) {
-    console.log(`  [${b.label}] card=${JSON.stringify(b.cardBox)} sub=${JSON.stringify(b.subBox)}`);
+  // Task 321 - WHY a beat was or was not skipped (criterion 3 of the task):
+  // what the VIP phone showed at each Ανάβασις beat, and what phase preceded
+  // the climb's own card.
+  const phoneViews = (await vipPage.evaluate('window.__viewLog ?? []')) as PhoneView[];
+  const firstAnavasisT = anavasis[0]?.beat.t ?? null;
+  if (firstAnavasisT !== null) {
+    const lastQuestionT = [...state.phases].filter((p) => p.phase === 'QUESTION' && p.t < firstAnavasisT).pop()?.t ?? 0;
+    const between = state.phases.filter((p) => p.t > lastQuestionT && p.t <= firstAnavasisT).map((p) => p.phase);
+    console.log(`phases from the last quiz QUESTION to the first Ανάβασις beat: ${between.join(' -> ')}`);
+    for (const r of anavasis) {
+      const end = r.beat.nextBeatT ?? Number.MAX_SAFE_INTEGER;
+      const v = viewAt(phoneViews, r.beat.t + 300);
+      const pressed = vipPresses.filter((t) => t >= r.beat.t && t < end).length;
+      console.log(`  ${r.beat.label}: VIP phone skip=${v?.skip} steal=${v?.steal} reveal=${v?.reveal}; presses during beat=${pressed}`);
+    }
   }
-  const cardsFullyInViewport = announceBeats.every((b) => {
-    if (!b.cardBox) return false;
-    return b.cardBox.y >= 0 && b.cardBox.x >= 0 && b.cardBox.y + b.cardBox.height <= 720 && b.cardBox.x + b.cardBox.width <= 1280;
+
+  const announceRenders = rendered.filter((r) => (r.beat.kind === 'GAME_INTRO' || r.beat.kind === 'STAGE_INTRO') && (r.render!.settledCardBox ?? r.render!.cardBox));
+  console.log(`\nannounce beats with a stage-card bbox captured: ${announceRenders.length}`);
+  for (const r of announceRenders.slice(0, 5)) {
+    console.log(`  [${r.beat.label}] card=${JSON.stringify(r.render!.settledCardBox ?? r.render!.cardBox)} sub=${JSON.stringify(r.render!.settledSubBox ?? r.render!.subBox)}`);
+  }
+  const cardsFullyInViewport = announceRenders.every((r) => boxInViewport((r.render!.settledCardBox ?? r.render!.cardBox)!));
+  check('4: the stage card is fully within the viewport during announce beats', announceRenders.length > 0 && cardsFullyInViewport, `${announceRenders.length} measured`);
+  const noOverlap = announceRenders.every((r) => {
+    const card = r.render!.settledCardBox ?? r.render!.cardBox;
+    const sub = r.render!.settledSubBox ?? r.render!.subBox;
+    return !card || !sub || !boxesOverlap(card, sub);
   });
-  check('4: the stage card is fully within the viewport during announce beats', announceBeats.length > 0 && cardsFullyInViewport, `${announceBeats.length} sampled`);
-  function boxesOverlap(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-  }
-  const noOverlap = announceBeats.every((b) => !b.cardBox || !b.subBox || !boxesOverlap(b.cardBox, b.subBox));
-  check('4: the stage card and the subtitle never overlap', announceBeats.length > 0 && noOverlap, `${announceBeats.length} sampled`);
+  check('4: the stage card and the subtitle never overlap', announceRenders.length > 0 && noOverlap, `${announceRenders.length} measured`);
 
   // Sampled right now: game 1 just reached GAME_OVER (a non-SOCRATES phase),
   // so the subtitle node must be gone.
@@ -480,6 +562,8 @@ async function main(): Promise<void> {
   state.socratesBeats = [];
   state.gameOver = null;
   state.firstStandings = null;
+  state.phases = [];
+  await resetSubtitleLog(tvPage);
 
   await vipPlayAgain.click();
   await delay(1000);
@@ -492,7 +576,7 @@ async function main(): Promise<void> {
   const game2StartT = Date.now();
   console.log(`game 2 started at t=0\n`);
   const stop2 = { stopped: false };
-  const drivers2 = [drivePhone(vipPage, stop2, captureSubtitles), drivePhone(otherPage, stop2)];
+  const drivers2 = [drivePhone(vipPage, stop2), drivePhone(otherPage, stop2)];
   const deadline2 = Date.now() + 1_400_000;
   while (!state.gameOver && Date.now() < deadline2) {
     await delay(1000);
@@ -518,7 +602,10 @@ async function main(): Promise<void> {
   // continue past game 1's, so a late game-1 ack can never match a game-2 beat.
   check('3: socratesBeatId continues - game 2 opens past game 1', game2FirstBeatId !== null && game1LastBeatId !== null && game2FirstBeatId > game1LastBeatId, `game1 first=${game1FirstBeatId} last=${game1LastBeatId}, game2 first=${game2FirstBeatId}`);
   console.log(`game 2's earliest observed standings: ${JSON.stringify(state.firstStandings)}`);
-  check('3: every player starts game 2 at score 0', (state.firstStandings ?? []).every((s) => s.score === 0), JSON.stringify(state.firstStandings));
+  // Re-read through the declared type: TS narrowed firstStandings to `null`
+  // at the reset above and cannot see the websocket listener refill it.
+  const game2Standings = state.firstStandings as RoomState['firstStandings'];
+  check('3: every player starts game 2 at score 0', (game2Standings ?? []).every((s) => s.score === 0), JSON.stringify(game2Standings));
 
   await delay(7000);
   const podium2Text = (await tvPage.locator('[data-testid="podium-root"]').innerText().catch(() => null)) ?? '';
